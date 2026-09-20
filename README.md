@@ -38,6 +38,11 @@ static assets larger than 25 MiB. `web/_headers` applies the isolation headers
 needed by Stockfish pthreads. The localhost engine stream runs at full speed and
 uses normal browser caching, matching the production delivery behavior.
 
+For Cloudflare Workers Builds, use `npm run build:cloudflare` as the build
+command and `npx wrangler deploy` as the deploy command. The CI build script
+installs the Rust browser-WASM toolchain when necessary, builds the app, and
+prepares `.wrangler-assets` for Wrangler.
+
 The board/game state is intentionally separated from rendering so 2D glyphs can
 later be replaced with timeline-driven Battle Chess animations without changing
 the legality model or engine protocol.

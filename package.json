@@ -5,6 +5,7 @@
     "engine": "node scripts/copy-engine.mjs",
     "build:wasm": "wasm-pack build --target web --release --out-dir web/pkg",
     "build": "npm run engine && npm run build:wasm",
+    "build:cloudflare": "node scripts/cloudflare-build.mjs",
     "dev": "node scripts/dev-server.mjs",
     "prepare:wrangler": "node scripts/prepare-wrangler.mjs",
     "dev:wrangler": "npm run prepare:wrangler && node scripts/wrangler-dev.mjs"
