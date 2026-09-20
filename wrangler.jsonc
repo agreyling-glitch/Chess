@@ -3,6 +3,9 @@
   "name": "ironwood-chess",
   "compatibility_date": "2026-09-19",
   "main": "src/wrangler-worker.js",
+  "vars": {
+    "ENGINE_ORIGIN": "https://pub-f6410a1c728349e6a8429094ceb8561e.r2.dev"
+  },
   "assets": {
     "binding": "ASSETS",
     "directory": "./.wrangler-assets",

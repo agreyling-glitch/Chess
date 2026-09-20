@@ -43,6 +43,11 @@ command and `npx wrangler deploy` as the deploy command. The CI build script
 installs the Rust browser-WASM toolchain when necessary, builds the app, and
 prepares `.wrangler-assets` for Wrangler.
 
+Production runtime variables are declared in `wrangler.jsonc`, because Wrangler
+deployments treat the repository configuration as authoritative and replace
+dashboard-only variables. `ENGINE_ORIGIN` points at the public R2 origin that
+stores the versioned Stockfish engine files.
+
 The board/game state is intentionally separated from rendering so 2D glyphs can
 later be replaced with timeline-driven Battle Chess animations without changing
 the legality model or engine protocol.
