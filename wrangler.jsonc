@@ -3,6 +3,14 @@
   "name": "ironwood-chess",
   "compatibility_date": "2026-09-19",
   "main": "src/wrangler-worker.js",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "ironwoodchess.com",
+      "custom_domain": true
+    }
+  ],
   "vars": {
     "ENGINE_ORIGIN": "https://engine.ironwoodchess.com"
   },
