@@ -1,0 +1,18 @@
+{
+  "name": "ironwood-chess",
+  "private": true,
+  "scripts": {
+    "engine": "node scripts/copy-engine.mjs",
+    "build:wasm": "wasm-pack build --target web --release --out-dir web/pkg",
+    "build": "npm run engine && npm run build:wasm",
+    "dev": "node scripts/dev-server.mjs",
+    "prepare:wrangler": "node scripts/prepare-wrangler.mjs",
+    "dev:wrangler": "npm run prepare:wrangler && node scripts/wrangler-dev.mjs"
+  },
+  "dependencies": {
+    "stockfish": "19.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

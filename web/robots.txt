@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /engine/
+Disallow: /pkg/
+Disallow: /engine-worker.js
+
+Sitemap: /sitemap.xml

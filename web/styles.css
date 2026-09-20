@@ -1,0 +1,6 @@
+html,body,#chess_canvas { width:100%; height:100%; margin:0; overflow:hidden; background:#111418; }
+body { font-family:Inter,system-ui,sans-serif; }
+#loading { position:fixed; inset:0; display:grid; place-items:center; color:#cface5; letter-spacing:.12em; background:#111418; }
+canvas { display:block; }
+.legal-link { position:fixed; right:14px; bottom:8px; z-index:2; color:#8e9690; font-size:11px; text-decoration:none; }
+.legal-link:hover { color:#d3ad62; text-decoration:underline; }

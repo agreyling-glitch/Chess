@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#111418">
+  <meta name="description" content="Play chess against Stockfish 19 with full NNUE evaluation in your browser.">
+  <meta name="robots" content="index,follow">
+  <title>Play — Ironwood Chess</title>
+  <link rel="canonical" href="/play/">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <canvas id="chess_canvas"></canvas>
+  <div id="loading">Forging the board…</div>
+  <a class="legal-link" href="/open-source-notices.html">Open-source notices</a>
+  <script type="module">
+    import init from '/pkg/battle_chess.js';
+    init().then(() => document.getElementById('loading')?.remove());
+  </script>
+</body>
+</html>
