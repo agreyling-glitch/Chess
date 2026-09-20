@@ -1,0 +1,15 @@
+{
+  "name": "battle-chess",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "battle_chess_bg.wasm",
+    "battle_chess.js",
+    "battle_chess.d.ts"
+  ],
+  "main": "battle_chess.js",
+  "types": "battle_chess.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

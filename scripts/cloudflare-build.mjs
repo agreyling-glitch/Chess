@@ -1,6 +1,6 @@
+import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { delimiter, join } from 'node:path';
-import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -12,32 +12,6 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function available(command) {
-  const result = spawnSync(command, ['--version'], { env: process.env, stdio: 'ignore' });
-  return !result.error && result.status === 0;
-}
-
-const cargoHome = process.env.CARGO_HOME || join(homedir(), '.cargo');
-process.env.CARGO_HOME = cargoHome;
-process.env.RUSTUP_HOME ||= join(homedir(), '.rustup');
-process.env.PATH = `${join(cargoHome, 'bin')}${delimiter}${process.env.PATH || ''}`;
-
-if (!available('rustup')) {
-  run('sh', [
-    '-c',
-    "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable",
-  ]);
-}
-
-run('rustup', ['target', 'add', 'wasm32-unknown-unknown']);
-
-if (!available('wasm-pack')) {
-  run('sh', [
-    '-c',
-    "curl --proto '=https' --tlsv1.2 -sSf https://rustwasm.github.io/wasm-pack/installer/init.sh | sh",
-  ]);
-}
-
 function npmRun(script) {
   if (process.platform === 'win32') {
     run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', `npm run ${script}`]);
@@ -46,5 +20,17 @@ function npmRun(script) {
   }
 }
 
-npmRun('build');
+const requiredArtifacts = [
+  join('web', 'pkg', 'battle_chess.js'),
+  join('web', 'pkg', 'battle_chess_bg.wasm'),
+  join('web', 'licenses', 'stockfish-gpl-3.0.txt'),
+];
+
+const missingArtifacts = requiredArtifacts.filter((path) => !existsSync(path));
+if (missingArtifacts.length > 0) {
+  console.error(`Missing committed deployment artifacts:\n${missingArtifacts.join('\n')}`);
+  console.error('Run `npm run build`, then commit the updated web/pkg and license files.');
+  process.exit(1);
+}
+
 npmRun('prepare:wrangler');

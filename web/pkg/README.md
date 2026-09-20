@@ -39,19 +39,9 @@ needed by Stockfish pthreads. The localhost engine stream runs at full speed and
 uses normal browser caching, matching the production delivery behavior.
 
 For Cloudflare Workers Builds, use `npm run build:cloudflare` as the build
-command and `npx wrangler deploy` as the deploy command. The compiled application
-WASM in `web/pkg` is a committed deployment artifact, so HTML, CSS, Worker, and
-other static-only changes do not recompile Rust in CI. The CI build validates
-the required artifacts and prepares `.wrangler-assets` for Wrangler.
-
-After changing Rust code, run `npm run build` locally and commit the refreshed
-`web/pkg` files along with the source change. This makes the compiled artifact
-reviewable and ensures Cloudflare deploys exactly the build that was tested.
-
-Production runtime variables are declared in `wrangler.jsonc`, because Wrangler
-deployments treat the repository configuration as authoritative and replace
-dashboard-only variables. `ENGINE_ORIGIN` points at the public R2 origin that
-stores the versioned Stockfish engine files.
+command and `npx wrangler deploy` as the deploy command. The CI build script
+installs the Rust browser-WASM toolchain when necessary, builds the app, and
+prepares `.wrangler-assets` for Wrangler.
 
 The board/game state is intentionally separated from rendering so 2D glyphs can
 later be replaced with timeline-driven Battle Chess animations without changing

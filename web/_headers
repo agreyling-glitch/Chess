@@ -12,6 +12,7 @@
   X-Robots-Tag: noindex, nofollow, noarchive
 
 /pkg/*
+  Cache-Control: public, max-age=0, must-revalidate
   X-Robots-Tag: noindex, nofollow, noarchive
 
 /engine-worker.js
