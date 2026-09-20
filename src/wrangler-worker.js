@@ -35,6 +35,9 @@ export default {
     ) {
       headers.set("Cache-Control", "no-store");
     }
+    if (url.pathname.startsWith("/engine/")) {
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    }
     if (url.pathname.endsWith(".wasm")) headers.set("Content-Type", "application/wasm");
     if (url.pathname.startsWith("/engine/") || url.pathname.startsWith("/pkg/") || url.pathname === "/engine-worker.js") {
       headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
