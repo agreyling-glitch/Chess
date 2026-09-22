@@ -2,8 +2,97 @@ const installButton = document.querySelector('[data-install-app]');
 const offlineButton = document.querySelector('[data-offline-engine]');
 const offlineProgress = document.querySelector('[data-offline-progress]');
 const offlineStatus = document.querySelector('[data-offline-status]');
+const runningAppVersion = '__APP_SHELL_VERSION__';
+const runningEngineVersion = '__ENGINE_CACHE_VERSION__';
 let installPrompt;
 let registration;
+let reloadForUpdate = false;
+let pendingEngineUpdate = false;
+let pendingAppVersion = '';
+let waitingWorker;
+
+function reminderKey(version) {
+  return `ironwood-update-remind-${version}`;
+}
+
+function remindAfter(version) {
+  return Number(localStorage.getItem(reminderKey(version))) || 0;
+}
+
+function createUpdateNotice() {
+  const notice = document.createElement('dialog');
+  notice.className = 'ironwood-update';
+  notice.setAttribute('aria-labelledby', 'ironwood-update-title');
+  notice.innerHTML = `
+    <h2 id="ironwood-update-title">Ironwood update available</h2>
+    <p data-update-message>A new version is ready. Your current game is saved locally.</p>
+    <div class="ironwood-update-actions">
+      <button type="button" data-update-later>Later</button>
+      <button type="button" data-update-reload>Update and reload</button>
+    </div>`;
+  const style = document.createElement('style');
+  style.textContent = `
+    .ironwood-update{max-width:31rem;padding:1.4rem;border:1px solid #d3ad6266;border-radius:8px;color:#f3f0e4;background:#181c20;box-shadow:0 20px 70px #000b;font:16px/1.5 Inter,system-ui,sans-serif}
+    .ironwood-update::backdrop{background:#080a0cc0}
+    .ironwood-update h2{margin:0 0 .65rem;font:600 1.5rem/1.2 Inter,system-ui,sans-serif;letter-spacing:0;color:#f3f0e4}
+    .ironwood-update p{margin:0;color:#bdc1bc}
+    .ironwood-update-actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1.35rem}
+    .ironwood-update button{padding:.65rem .9rem;border:1px solid #ffffff26;border-radius:4px;color:#f3f0e4;background:#292e32;font:600 .9rem Inter,system-ui,sans-serif;cursor:pointer}
+    .ironwood-update [data-update-reload]{border-color:#d3ad62;background:#d3ad62;color:#17140e}`;
+  document.head.append(style);
+  document.body.append(notice);
+  notice.querySelector('[data-update-later]').addEventListener('click', () => {
+    if (pendingAppVersion) {
+      localStorage.setItem(reminderKey(pendingAppVersion), String(Date.now() + 30 * 60_000));
+    }
+    notice.close();
+  });
+  notice.addEventListener('cancel', event => {
+    event.preventDefault();
+    notice.querySelector('[data-update-later]').click();
+  });
+  notice.querySelector('[data-update-reload]').addEventListener('click', () => {
+    const waiting = waitingWorker || registration?.waiting;
+    if (!waiting) return;
+    reloadForUpdate = true;
+    notice.querySelector('[data-update-reload]').disabled = true;
+    notice.querySelector('[data-update-message]').textContent = 'Finishing the update…';
+    waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+  });
+  return notice;
+}
+
+const updateNotice = createUpdateNotice();
+
+function showUpdateNotice(version, engineChanged = false) {
+  if (!version || version === runningAppVersion || Date.now() < remindAfter(version) || updateNotice.open) return;
+  pendingAppVersion = version;
+  updateNotice.querySelector('[data-update-message]').textContent = engineChanged
+    ? 'A new app and engine version is ready. Your game and existing offline engine remain safe. After reloading, you can explicitly download the new engine for offline play.'
+    : 'A new version is ready. Your current game is saved locally, and your offline Stockfish engine will remain installed.';
+  updateNotice.showModal();
+}
+
+function workerVersion(worker) {
+  return new Promise(resolve => {
+    const channel = new MessageChannel();
+    const timeout = setTimeout(() => resolve(null), 3000);
+    channel.port1.onmessage = ({ data }) => {
+      clearTimeout(timeout);
+      resolve(data?.type === 'APP_VERSION' ? data : null);
+    };
+    worker.postMessage({ type: 'GET_APP_VERSION' }, [channel.port2]);
+  });
+}
+
+async function offerWaitingUpdate(worker = registration?.waiting) {
+  if (!worker || !navigator.serviceWorker.controller) return;
+  const version = await workerVersion(worker);
+  if (!version) return;
+  waitingWorker = worker;
+  pendingEngineUpdate = version.engine_cache_version !== runningEngineVersion;
+  showUpdateNotice(version.version, pendingEngineUpdate);
+}
 
 function formatBytes(value) {
   if (!value) return '';
@@ -62,14 +151,8 @@ offlineButton?.addEventListener('click', async () => {
 
 if ('serviceWorker' in navigator) {
   const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-  const hadController = Boolean(navigator.serviceWorker.controller);
-  let reloadingForUpdate = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // Local development deliberately installs a fresh worker between sessions.
-    // Never auto-reload there: doing so can turn worker activation into a loop.
-    if (isLocalhost || !hadController || reloadingForUpdate) return;
-    reloadingForUpdate = true;
-    window.location.reload();
+    if (reloadForUpdate) window.location.reload();
   });
 
   navigator.serviceWorker.addEventListener('message', ({ data }) => {
@@ -88,19 +171,47 @@ if ('serviceWorker' in navigator) {
     }
   });
 
-  const localWorkerRevision = isLocalhost ? String(Date.now()) : '';
-  const serviceWorkerUrl = isLocalhost
-    ? `/service-worker.js?dev=${localWorkerRevision}`
-    : '/service-worker.js';
-  navigator.serviceWorker.register(serviceWorkerUrl, {
+  navigator.serviceWorker.register('/service-worker.js', {
     scope: '/',
     updateViaCache: 'none',
   }).then(async value => {
     registration = value;
+    const watchInstallingWorker = worker => worker?.addEventListener('statechange', () => {
+      if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+        if (isLocalhost) worker.postMessage({ type: 'ACTIVATE_UPDATE' });
+        else offerWaitingUpdate(worker);
+      }
+    });
+    registration.addEventListener('updatefound', () => watchInstallingWorker(registration.installing));
+    if (registration.waiting) {
+      if (isLocalhost) registration.waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+      else await offerWaitingUpdate();
+    }
     await navigator.serviceWorker.ready;
     (registration.active || navigator.serviceWorker.controller)?.postMessage({
       type: 'CHECK_OFFLINE_ENGINE',
     });
+    if (!isLocalhost) {
+      const checkForUpdate = async () => {
+        if (document.hidden) return;
+        try {
+          const response = await fetch('/app-version.json', { cache: 'no-store' });
+          if (!response.ok) return;
+          const latest = await response.json();
+          if (latest.version !== runningAppVersion) {
+            pendingEngineUpdate = latest.engine?.cache_version !== runningEngineVersion;
+            await registration.update();
+            if (registration.waiting) {
+              await offerWaitingUpdate(registration.waiting);
+            }
+          }
+        } catch { /* Offline players keep using the installed version. */ }
+      };
+      document.addEventListener('visibilitychange', checkForUpdate);
+      window.addEventListener('focus', checkForUpdate);
+      setInterval(checkForUpdate, 5 * 60_000);
+      checkForUpdate();
+    }
   }).catch(error => {
     if (offlineStatus) offlineStatus.textContent = `Offline support is unavailable: ${error.message}`;
   });

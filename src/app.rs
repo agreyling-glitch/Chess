@@ -75,6 +75,40 @@ struct PositionAnalysis {
     pv: String,
 }
 
+#[derive(Deserialize)]
+struct ImportedAnalysisFile {
+    schema: String,
+    engine: ImportedAnalysisEngine,
+    game: ImportedAnalysisGame,
+    positions: Vec<ImportedAnalysisPosition>,
+}
+
+#[derive(Deserialize)]
+struct ImportedAnalysisEngine {
+    threads: u32,
+    hash_mib: u32,
+    full_game_quality: String,
+    nodes_per_position: u64,
+}
+
+#[derive(Deserialize)]
+struct ImportedAnalysisGame {
+    white: String,
+    black: String,
+    moves: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct ImportedAnalysisPosition {
+    fen: String,
+    evaluation_cp: Option<i32>,
+    mate: Option<i32>,
+    depth: Option<u32>,
+    nodes: Option<u64>,
+    best_move: Option<String>,
+    principal_variation: Option<String>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum MoveClassification {
     Best,
@@ -365,6 +399,7 @@ pub struct ChessApp {
     about_dialog_open: bool,
     pgn_dialog_open: bool,
     pgn_analyze_after_import: bool,
+    import_input: String,
     pgn_input: String,
     pgn_error: Option<String>,
     review_positions: Vec<Board>,
@@ -585,6 +620,7 @@ impl ChessApp {
             about_dialog_open: false,
             pgn_dialog_open: false,
             pgn_analyze_after_import: false,
+            import_input: String::new(),
             pgn_input: saved
                 .as_ref()
                 .and_then(|game| game.review_pgn.clone())
@@ -868,18 +904,25 @@ impl ChessApp {
             )
             .show(ctx, |ui| {
                 ui.set_width((ctx.screen_rect().width() - 48.0).clamp(320.0, 620.0));
-                ui.label(RichText::new("Import PGN").size(30.0).strong());
+                ui.label(RichText::new("Import game").size(30.0).strong());
                 ui.label(
-                    RichText::new("Paste a PGN below, or drag a .pgn file onto the app. Comments and side variations are ignored for this first mainline review.")
+                    RichText::new("Paste PGN or Ironwood analysis JSON below, or drag a .pgn or .json file onto the app. JSON restores saved analysis without rerunning Stockfish.")
                         .color(ui.visuals().weak_text_color()),
                 );
                 ui.add_space(14.0);
-                ui.add_sized(
-                    [ui.available_width(), 300.0],
-                    egui::TextEdit::multiline(&mut self.pgn_input)
-                        .hint_text("[Event \"Example\"]\n\n1. e4 e5 2. Nf3 Nc6 ...")
-                        .font(egui::TextStyle::Monospace),
-                );
+                egui::ScrollArea::vertical()
+                    .id_salt("import_game_text")
+                    .max_height(300.0)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.import_input)
+                                .desired_width(ui.available_width())
+                                .desired_rows(14)
+                                .hint_text("[Event \"Example\"]\n\n1. e4 e5 2. Nf3 Nc6 ...\n\nor { \"schema\": \"ironwood.analyzed-game/v1\", ... }")
+                                .font(egui::TextStyle::Monospace),
+                        );
+                    });
                 if let Some(error) = &self.pgn_error {
                     ui.label(RichText::new(error).color(Color32::from_rgb(232, 112, 112)));
                 }
@@ -898,12 +941,12 @@ impl ChessApp {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     if ui.button("Clear").clicked() {
-                        self.pgn_input.clear();
+                        self.import_input.clear();
                         self.pgn_error = None;
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         import = ui
-                            .add_enabled(!self.pgn_input.trim().is_empty(), egui::Button::new("Import game"))
+                            .add_enabled(!self.import_input.trim().is_empty(), egui::Button::new("Import game"))
                             .clicked();
                         cancel = ui.button("Cancel").clicked();
                     });
@@ -912,9 +955,9 @@ impl ChessApp {
         if import {
             #[cfg(target_arch = "wasm32")]
             let analyze_after_import = self.pgn_analyze_after_import;
-            self.load_pgn();
+            let _restored_analysis = self.load_import_text();
             #[cfg(target_arch = "wasm32")]
-            if analyze_after_import && self.pgn_error.is_none() {
+            if analyze_after_import && !_restored_analysis && self.pgn_error.is_none() {
                 self.start_game_analysis();
             }
         } else if cancel || response.should_close() {
@@ -1892,6 +1935,466 @@ impl ChessApp {
         })
     }
 
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn game_result(&self) -> &'static str {
+        let board = self.review_positions.last().copied().unwrap_or(self.board);
+        match board.status() {
+            BoardStatus::Ongoing => "*",
+            BoardStatus::Stalemate => "1/2-1/2",
+            BoardStatus::Checkmate if board.side_to_move() == Color::White => "0-1",
+            BoardStatus::Checkmate => "1-0",
+        }
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn annotated_pgn(&self) -> String {
+        let mut output = String::new();
+        let tags = [
+            (
+                "Event",
+                Self::pgn_tag(&self.pgn_input, "Event")
+                    .unwrap_or_else(|| "Ironwood Chess game".into()),
+            ),
+            (
+                "Site",
+                Self::pgn_tag(&self.pgn_input, "Site")
+                    .unwrap_or_else(|| "ironwoodchess.com".into()),
+            ),
+            (
+                "Date",
+                Self::pgn_tag(&self.pgn_input, "Date").unwrap_or_else(|| "????.??.??".into()),
+            ),
+            (
+                "Round",
+                Self::pgn_tag(&self.pgn_input, "Round").unwrap_or_else(|| "-".into()),
+            ),
+            ("White", self.review_white_player.clone()),
+            ("Black", self.review_black_player.clone()),
+            ("Result", self.game_result().into()),
+            ("Annotator", "Ironwood Chess · Stockfish 19 NNUE".into()),
+        ];
+        for (name, value) in tags {
+            output.push_str(&format!("[{name} \"{}\"]\n", value.replace('"', "'")));
+        }
+        if let Some(initial) = self.review_positions.first()
+            && *initial != Board::default()
+        {
+            output.push_str("[SetUp \"1\"]\n");
+            output.push_str(&format!("[FEN \"{initial}\"]\n"));
+        }
+        output.push('\n');
+
+        for (move_index, san) in self.review_moves.iter().enumerate() {
+            let before = self.review_positions.get(move_index);
+            let fullmove = before
+                .and_then(|board| {
+                    board
+                        .to_string()
+                        .split_whitespace()
+                        .nth(5)?
+                        .parse::<u32>()
+                        .ok()
+                })
+                .unwrap_or((move_index / 2 + 1) as u32);
+            if before.is_some_and(|board| board.side_to_move() == Color::Black) {
+                output.push_str(&format!("{fullmove}... "));
+            } else {
+                output.push_str(&format!("{fullmove}. "));
+            }
+            output.push_str(san);
+            if let Some(analysis) = self
+                .game_analysis
+                .get(move_index + 1)
+                .and_then(Option::as_ref)
+            {
+                let mut annotations = Vec::new();
+                if let Some(mate) = analysis.mate {
+                    annotations.push(format!("[%eval #{mate}]"));
+                } else if let Some(cp) = analysis.eval_cp {
+                    annotations.push(format!("[%eval {:+.2}]", cp as f32 / 100.0));
+                }
+                annotations.push(format!("[%depth {}]", analysis.depth));
+                annotations.push(format!("[%nodes {}]", analysis.nodes));
+                if let Some(loss) = self.move_centipawn_loss(move_index + 1) {
+                    annotations.push(format!("[%cpl {loss}]"));
+                }
+                if let Some(classification) = self.move_classification(move_index + 1) {
+                    annotations.push(format!("Quality: {}", classification.label()));
+                }
+                if let Some(best) = self
+                    .game_analysis
+                    .get(move_index)
+                    .and_then(Option::as_ref)
+                    .and_then(|value| value.best_move.as_deref())
+                {
+                    annotations.push(format!("Best move: {best}"));
+                }
+                if let Some(pv) = self
+                    .game_analysis
+                    .get(move_index)
+                    .and_then(Option::as_ref)
+                    .map(|value| value.pv.as_str())
+                    .filter(|pv| !pv.is_empty())
+                {
+                    annotations.push(format!("PV: {pv}"));
+                }
+                output.push_str(" { ");
+                output.push_str(&annotations.join("; "));
+                output.push_str(" }");
+            }
+            output.push(' ');
+        }
+        output.push_str(self.game_result());
+        output.push('\n');
+        output
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn analysis_json(&self) -> Result<String, serde_json::Error> {
+        let positions = self.review_positions.iter().enumerate().map(|(index, board)| {
+            let analysis = self.game_analysis.get(index).and_then(Option::as_ref);
+            serde_json::json!({
+                "index": index,
+                "fen": board.to_string(),
+                "move": index.checked_sub(1).and_then(|move_index| self.review_moves.get(move_index)),
+                "side_to_move": if board.side_to_move() == Color::White { "white" } else { "black" },
+                "evaluation_cp": analysis.and_then(|value| value.eval_cp),
+                "mate": analysis.and_then(|value| value.mate),
+                "depth": analysis.map(|value| value.depth),
+                "nodes": analysis.map(|value| value.nodes),
+                "best_move": analysis.and_then(|value| value.best_move.as_deref()),
+                "principal_variation": analysis.map(|value| value.pv.as_str()),
+                "centipawn_loss": (index > 0).then(|| self.move_centipawn_loss(index)).flatten(),
+                "classification": (index > 0).then(|| self.move_classification(index).map(MoveClassification::label)).flatten(),
+            })
+        }).collect::<Vec<_>>();
+        let quality = self.full_game_analysis_config.quality;
+        serde_json::to_string_pretty(&serde_json::json!({
+            "schema": "ironwood.analyzed-game/v1",
+            "schema_version": 1,
+            "application": "Ironwood Chess",
+            "engine": {
+                "name": "Stockfish",
+                "version": 19,
+                "network": "Full NNUE",
+                "threads": self.analysis_config.threads,
+                "hash_mib": self.analysis_config.hash_mib,
+                "full_game_quality": quality.label(),
+                "nodes_per_position": quality.nodes(self.full_game_analysis_config.custom_nodes),
+            },
+            "game": {
+                "white": self.review_white_player,
+                "black": self.review_black_player,
+                "result": self.game_result(),
+                "source_pgn": (!self.pgn_input.is_empty()).then_some(self.pgn_input.as_str()),
+                "moves": self.review_moves,
+            },
+            "summary": {
+                "white_accuracy": self.analysis_accuracy(Color::White),
+                "black_accuracy": self.analysis_accuracy(Color::Black),
+                "white_average_centipawn_loss": self.analysis_average_centipawn_loss(Color::White),
+                "black_average_centipawn_loss": self.analysis_average_centipawn_loss(Color::Black),
+            },
+            "positions": positions,
+        }))
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn html_escape(value: &str) -> String {
+        value
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn report_board(
+        board: Board,
+        played: Option<ChessMove>,
+        best: Option<ChessMove>,
+        quality_color: &str,
+        marker_id: usize,
+    ) -> String {
+        let mut html = String::from("<div class=\"board-wrap\"><div class=\"board\">");
+        for rank_index in (0..8).rev() {
+            for file_index in 0..8 {
+                let square =
+                    Square::make_square(Rank::from_index(rank_index), File::from_index(file_index));
+                let piece = board.piece_on(square).and_then(|piece| {
+                    let white = board.color_on(square)? == Color::White;
+                    Some(match (white, piece) {
+                        (true, Piece::Pawn) => '♙',
+                        (true, Piece::Knight) => '♘',
+                        (true, Piece::Bishop) => '♗',
+                        (true, Piece::Rook) => '♖',
+                        (true, Piece::Queen) => '♕',
+                        (true, Piece::King) => '♔',
+                        (false, Piece::Pawn) => '♟',
+                        (false, Piece::Knight) => '♞',
+                        (false, Piece::Bishop) => '♝',
+                        (false, Piece::Rook) => '♜',
+                        (false, Piece::Queen) => '♛',
+                        (false, Piece::King) => '♚',
+                    })
+                });
+                let shade = if (rank_index + file_index) % 2 == 0 {
+                    "light"
+                } else {
+                    "dark"
+                };
+                let style = if played.is_some_and(|value| value.get_dest() == square) {
+                    format!(" style=\"background:{quality_color}\"")
+                } else if played.is_some_and(|value| value.get_source() == square) {
+                    format!(" style=\"box-shadow:inset 0 0 0 3px {quality_color}\"")
+                } else {
+                    String::new()
+                };
+                html.push_str(&format!(
+                    "<div class=\"sq {shade}\"{style}>{}</div>",
+                    piece.unwrap_or(' ')
+                ));
+            }
+        }
+        html.push_str("</div>");
+        if let Some(best) = best {
+            let source = best.get_source();
+            let destination = best.get_dest();
+            let x1 = source.get_file().to_index() * 100 + 50;
+            let y1 = (7 - source.get_rank().to_index()) * 100 + 50;
+            let x2 = destination.get_file().to_index() * 100 + 50;
+            let y2 = (7 - destination.get_rank().to_index()) * 100 + 50;
+            html.push_str(&format!(
+                "<svg class=\"best-arrow\" viewBox=\"0 0 800 800\" aria-label=\"Stockfish best move\"><defs><marker id=\"arrow-{marker_id}\" markerWidth=\"3.2\" markerHeight=\"3.2\" refX=\"2.35\" refY=\"1.6\" orient=\"auto\"><path d=\"M0,0 L3.2,1.6 L0,3.2 Z\" fill=\"#4d996a\" stroke=\"#111713\" stroke-width=\"0.28\" stroke-opacity=\"0.8\" stroke-linejoin=\"round\" paint-order=\"stroke fill\"/></marker></defs><line class=\"arrow-outline\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"#111713\" stroke-width=\"19\" stroke-opacity=\"0.72\" stroke-linecap=\"round\"/><line class=\"arrow-fill\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\" stroke=\"#4d996a\" stroke-width=\"15\" stroke-opacity=\"0.94\" stroke-linecap=\"round\" marker-end=\"url(#arrow-{marker_id})\"/></svg>"
+            ));
+        }
+        html.push_str("</div>");
+        html
+    }
+
+    fn report_evaluation(analysis: Option<&PositionAnalysis>) -> String {
+        analysis.map_or_else(
+            || "-".to_owned(),
+            |value| {
+                value.mate.map_or_else(
+                    || {
+                        value
+                            .eval_cp
+                            .map_or_else(|| "-".into(), |cp| format!("{:+.2}", cp as f32 / 100.0))
+                    },
+                    |mate| format!("M{mate}"),
+                )
+            },
+        )
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn analysis_report_html(&self) -> String {
+        let white = Self::html_escape(&self.review_white_player);
+        let black = Self::html_escape(&self.review_black_player);
+        let analyzed = self
+            .game_analysis
+            .iter()
+            .filter(|entry| entry.is_some())
+            .count();
+        let total = self.review_positions.len();
+        let quality_color = |classification: MoveClassification| match classification {
+            MoveClassification::Best => "#a77a20",
+            MoveClassification::Good => "#3f8752",
+            MoveClassification::Inaccuracy => "#b88a12",
+            MoveClassification::Mistake => "#c76525",
+            MoveClassification::Blunder => "#b53535",
+        };
+        let move_cell = |move_index: usize| {
+            let position_index = move_index + 1;
+            let san = self
+                .review_moves
+                .get(move_index)
+                .map(String::as_str)
+                .unwrap_or("-");
+            let classification = self.move_classification(position_index);
+            let symbol = classification
+                .map(MoveClassification::symbol)
+                .unwrap_or("·");
+            let label = classification
+                .map(MoveClassification::label)
+                .unwrap_or("NOT ANALYZED");
+            let color = classification.map(&quality_color).unwrap_or("#858b86");
+            let evaluation = Self::report_evaluation(
+                self.game_analysis
+                    .get(position_index)
+                    .and_then(Option::as_ref),
+            );
+            let cpl = classification
+                .filter(|value| {
+                    matches!(
+                        value,
+                        MoveClassification::Inaccuracy
+                            | MoveClassification::Mistake
+                            | MoveClassification::Blunder
+                    )
+                })
+                .and_then(|_| self.move_centipawn_loss(position_index))
+                .map_or_else(String::new, |value| {
+                    format!("<span class=\"cpl\">{value} CPL</span>")
+                });
+            format!(
+                "<div class=\"move\" title=\"{label}\"><span class=\"marker\" style=\"color:{color}\">{symbol}</span><span class=\"san\">{}</span><span class=\"eval\">{evaluation}</span>{cpl}</div>",
+                Self::html_escape(san)
+            )
+        };
+        let mut move_rows = String::new();
+        for move_index in (0..self.review_moves.len()).step_by(2) {
+            let white_move = move_cell(move_index);
+            let black_move = if move_index + 1 < self.review_moves.len() {
+                move_cell(move_index + 1)
+            } else {
+                "<div class=\"move empty-move\">-</div>".into()
+            };
+            move_rows.push_str(&format!(
+                "<div class=\"move-row\"><b>{}.</b>{white_move}{black_move}</div>",
+                move_index / 2 + 1
+            ));
+        }
+        let quality_counts = [
+            MoveClassification::Best,
+            MoveClassification::Good,
+            MoveClassification::Inaccuracy,
+            MoveClassification::Mistake,
+            MoveClassification::Blunder,
+        ]
+        .map(|classification| {
+            let count = (1..self.review_positions.len())
+                .filter(|index| self.move_classification(*index) == Some(classification))
+                .count();
+            format!(
+                "<span style=\"color:{}\">{} {} {count}</span>",
+                quality_color(classification),
+                classification.symbol(),
+                classification.label()
+            )
+        })
+        .join("");
+        let mut critical = String::new();
+        for index in 1..self.review_positions.len() {
+            let Some(classification) = self.move_classification(index) else {
+                continue;
+            };
+            if matches!(
+                classification,
+                MoveClassification::Best | MoveClassification::Good
+            ) {
+                continue;
+            }
+            let analysis = self.game_analysis.get(index).and_then(Option::as_ref);
+            let before = self.game_analysis.get(index - 1).and_then(Option::as_ref);
+            let move_number = (index + 1) / 2;
+            let side = if index % 2 == 1 { "White" } else { "Black" };
+            let san = Self::html_escape(
+                self.review_moves
+                    .get(index - 1)
+                    .map(String::as_str)
+                    .unwrap_or("-"),
+            );
+            let evaluation = Self::report_evaluation(analysis);
+            let best = before
+                .and_then(|value| value.best_move.as_deref())
+                .unwrap_or("-");
+            let pv = before
+                .map(|value| value.pv.as_str())
+                .filter(|value| !value.is_empty())
+                .unwrap_or("-");
+            let cpl = self
+                .move_centipawn_loss(index)
+                .map_or_else(|| "-".into(), |value| value.to_string());
+            let color = quality_color(classification);
+            let decision_board = self.review_positions[index - 1];
+            let played = self
+                .review_moves
+                .get(index - 1)
+                .and_then(|value| ChessMove::from_san(&decision_board, value).ok());
+            let best_move = before
+                .and_then(|value| value.best_move.as_deref())
+                .and_then(Self::parse_uci_value);
+            critical.push_str(&format!(
+                "<section class=\"moment\"><div>{}</div><div class=\"notes\"><p class=\"kicker\" style=\"color:{color}\">{} {} - MOVE {move_number}</p><h2>{side} played {san}</h2><dl><dt>Evaluation</dt><dd>{evaluation}</dd><dt>Centipawn loss</dt><dd>{cpl}</dd><dt>Best move</dt><dd>{}</dd><dt>Depth / nodes</dt><dd>{} / {}</dd></dl><h3>Engine line</h3><p class=\"pv\">{}</p></div></section>",
+                Self::report_board(decision_board, played, best_move, color, index),
+                classification.symbol(),
+                classification.label(),
+                Self::html_escape(best),
+                analysis.map_or(0, |value| value.depth),
+                analysis.map_or(0, |value| value.nodes),
+                Self::html_escape(pv),
+            ));
+        }
+        if critical.is_empty() {
+            critical.push_str("<p class=\"empty\">No inaccuracies, mistakes, or blunders were found in the available analysis.</p>");
+        }
+        let generated = Self::html_escape(
+            &Self::pgn_tag(&self.pgn_input, "Date").unwrap_or_else(|| "Undated game".into()),
+        );
+        let white_accuracy = self
+            .analysis_accuracy(Color::White)
+            .map_or_else(|| "-".into(), |value| format!("{value:.1}%"));
+        let black_accuracy = self
+            .analysis_accuracy(Color::Black)
+            .map_or_else(|| "-".into(), |value| format!("{value:.1}%"));
+        let white_cpl = self
+            .analysis_average_centipawn_loss(Color::White)
+            .map_or_else(|| "-".into(), |value| format!("{value:.1}"));
+        let black_cpl = self
+            .analysis_average_centipawn_loss(Color::Black)
+            .map_or_else(|| "-".into(), |value| format!("{value:.1}"));
+        format!(
+            r#"<!doctype html><html><head><meta charset="utf-8"><title>Ironwood analysis - {white} vs {black}</title><style>
+@page{{size:A4 portrait;margin:15mm}}*{{box-sizing:border-box}}body{{margin:0;color:#202521;background:#fff;font:10.5pt/1.45 Arial,sans-serif}}header{{padding:0 0 10mm;border-bottom:2px solid #c89e45}}.brand{{font-size:9pt;letter-spacing:.18em;color:#80601e}}h1{{margin:3mm 0 1mm;font:26pt Georgia,serif}}.meta{{color:#68706a}}.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin:8mm 0}}.metric{{padding:4mm;background:#f0f2ed;border-top:2px solid #c89e45}}.metric strong{{display:block;font-size:16pt;color:#9b7425}}.report-legend{{display:flex;flex-wrap:wrap;gap:3mm 6mm;margin:3mm 0 5mm;font-size:8.5pt;font-weight:bold}}.report-legend span{{white-space:nowrap}}.arrow-key{{color:#397a54;text-shadow:0 0 1px #111}}.move-list{{margin-bottom:7mm;border-top:1px solid #ccd1cc}}.move-row{{display:grid;grid-template-columns:9mm 1fr 1fr;gap:2mm;padding:1.2mm 0;border-bottom:1px solid #e5e7e4;break-inside:avoid}}.move-row>b{{color:#727872;text-align:right}}.move{{display:grid;grid-template-columns:7mm minmax(20mm,1fr) 13mm auto;gap:1mm;align-items:center;min-width:0}}.marker{{font-weight:bold}}.san{{font-weight:bold}}.eval{{color:#68706a;font-variant-numeric:tabular-nums}}.cpl{{color:#7d4b25;font-size:7.5pt;white-space:nowrap}}.critical-break{{break-before:page;page-break-before:always}}.moment{{display:grid;grid-template-columns:76mm 1fr;gap:8mm;padding:9mm 0;border-top:1px solid #d9ddd7;break-inside:avoid;page-break-inside:avoid}}.board-wrap{{position:relative;width:76mm;height:76mm}}.board{{width:76mm;height:76mm;display:grid;grid-template-columns:repeat(8,1fr);border:1px solid #425448}}.sq{{display:grid;place-items:center;font:23pt/1 "DejaVu Sans","Segoe UI Symbol",serif}}.light{{background:#dbe2d3}}.dark{{background:#557c66}}.best-arrow{{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}}.kicker{{margin:0;font-weight:bold;letter-spacing:.08em}}h2{{margin:1mm 0 4mm;font:18pt Georgia,serif}}h3{{margin:4mm 0 1mm;font-size:9pt;text-transform:uppercase;letter-spacing:.1em;color:#737a74}}dl{{display:grid;grid-template-columns:32mm 1fr;margin:0}}dt,dd{{margin:0;padding:1.2mm 0;border-bottom:1px solid #e4e6e2}}dt{{color:#68706a}}dd{{font-weight:bold}}.pv{{font-family:Consolas,monospace;font-size:9pt}}.empty{{padding:12mm;background:#f0f2ed}}footer{{margin-top:10mm;padding-top:4mm;border-top:1px solid #bbb;color:#737a74;font-size:8pt}}@media screen{{html.printing{{overflow:hidden;background:#2b2b2b}}html.printing body{{visibility:hidden}}}}@media print{{body{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}}}</style></head><body><header><div class="brand">IRONWOOD CHESS - STOCKFISH 19 FULL NNUE</div><h1>{white} vs {black}</h1><div class="meta">{generated} - {analyzed} of {total} positions analyzed - {}</div></header><section class="summary"><div class="metric"><strong>{white_accuracy}</strong>White accuracy</div><div class="metric"><strong>{black_accuracy}</strong>Black accuracy</div><div class="metric"><strong>{white_cpl}</strong>White average CPL</div><div class="metric"><strong>{black_cpl}</strong>Black average CPL</div></section><div class="report-legend">{quality_counts}<span class="arrow-key">↗ Stockfish best move</span></div><h1>Game moves</h1><div class="move-list">{move_rows}</div><div class="critical-break"><h1>Critical positions</h1>{critical}</div><footer>Generated locally by Ironwood Chess. Stockfish 19 full NNUE - {} threads - {} MiB hash - {} nodes per position.</footer><script>addEventListener('beforeprint',()=>document.documentElement.classList.add('printing'));addEventListener('afterprint',()=>close());addEventListener('load',()=>setTimeout(()=>print(),300));</script></body></html>"#,
+            self.game_result(),
+            self.analysis_config.threads,
+            self.analysis_config.hash_mib,
+            self.full_game_analysis_config
+                .quality
+                .nodes(self.full_game_analysis_config.custom_nodes),
+        )
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn print_analysis_report(&self) -> Result<(), JsValue> {
+        let html = self.analysis_report_html();
+        let parts = js_sys::Array::new();
+        parts.push(&JsValue::from_str(&html));
+        let options = web_sys::BlobPropertyBag::new();
+        options.set_type("text/html;charset=utf-8");
+        let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)?;
+        let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+        let opened = web_sys::window()
+            .ok_or_else(|| JsValue::from_str("Window unavailable"))?
+            .open_with_url_and_target(&url, "_blank")?;
+        if opened.is_none() {
+            return Err(JsValue::from_str("The report window was blocked"));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn download_text(filename: &str, mime_type: &str, contents: &str) -> Result<(), JsValue> {
+        let parts = js_sys::Array::new();
+        parts.push(&JsValue::from_str(contents));
+        let options = web_sys::BlobPropertyBag::new();
+        options.set_type(mime_type);
+        let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options)?;
+        let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+        let document = web_sys::window()
+            .and_then(|window| window.document())
+            .ok_or_else(|| JsValue::from_str("Document unavailable"))?;
+        let anchor = document
+            .create_element("a")?
+            .dyn_into::<web_sys::HtmlAnchorElement>()?;
+        anchor.set_href(&url);
+        anchor.set_download(filename);
+        anchor.click();
+        web_sys::Url::revoke_object_url(&url)
+    }
+
     fn parse_pgn_mainline(text: &str) -> Result<(Vec<Board>, Vec<String>), String> {
         let initial_fen = Self::pgn_tag(text, "FEN");
         let mut board = initial_fen
@@ -1955,6 +2458,130 @@ impl ChessApp {
         Ok((positions, moves))
     }
 
+    fn pgn_annotation_directive<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
+        let marker = format!("[%{name} ");
+        let start = comment.find(&marker)? + marker.len();
+        let end = comment[start..].find(']')? + start;
+        Some(comment[start..end].trim())
+    }
+
+    fn parse_pgn_annotations(text: &str, positions: &[Board]) -> Vec<Option<PositionAnalysis>> {
+        let move_text = text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with('['))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut analyses = vec![None; positions.len()];
+        let mut board = positions.first().copied().unwrap_or_default();
+        let mut move_count = 0_usize;
+        let mut variation_depth = 0_u32;
+        let mut line_comment = false;
+        let mut comment = String::new();
+        let mut token = String::new();
+        let mut in_comment = false;
+
+        let consume_token = |raw: &mut String, board: &mut Board, move_count: &mut usize| {
+            if raw.is_empty() {
+                raw.clear();
+                return;
+            }
+            let mut value = raw.as_str();
+            if let Some((_, suffix)) = value.rsplit_once('.') {
+                value = suffix;
+            }
+            value = value.trim_matches(|character| matches!(character, '!' | '?'));
+            if !value.is_empty()
+                && !value.starts_with('$')
+                && !matches!(value, "1-0" | "0-1" | "1/2-1/2" | "*")
+                && let Ok(chess_move) = ChessMove::from_san(board, value)
+            {
+                *board = board.make_move_new(chess_move);
+                *move_count += 1;
+            }
+            raw.clear();
+        };
+
+        for character in move_text.chars().chain(std::iter::once(' ')) {
+            if line_comment {
+                if character == '\n' {
+                    line_comment = false;
+                }
+                continue;
+            }
+            if in_comment {
+                if character == '}' {
+                    in_comment = false;
+                    Self::restore_pgn_comment(&comment, move_count, &mut analyses);
+                    comment.clear();
+                } else {
+                    comment.push(character);
+                }
+                continue;
+            }
+            match character {
+                ';' if variation_depth == 0 => {
+                    consume_token(&mut token, &mut board, &mut move_count);
+                    line_comment = true;
+                }
+                '{' if variation_depth == 0 => {
+                    consume_token(&mut token, &mut board, &mut move_count);
+                    in_comment = true;
+                }
+                '(' => {
+                    consume_token(&mut token, &mut board, &mut move_count);
+                    variation_depth += 1;
+                }
+                ')' if variation_depth > 0 => variation_depth -= 1,
+                value if value.is_whitespace() => {
+                    consume_token(&mut token, &mut board, &mut move_count);
+                }
+                value if variation_depth == 0 => token.push(value),
+                _ => {}
+            }
+        }
+        analyses
+    }
+
+    fn restore_pgn_comment(
+        comment: &str,
+        move_count: usize,
+        analyses: &mut [Option<PositionAnalysis>],
+    ) {
+        if move_count == 0 || move_count >= analyses.len() {
+            return;
+        }
+        let eval = Self::pgn_annotation_directive(comment, "eval");
+        let depth = Self::pgn_annotation_directive(comment, "depth");
+        let nodes = Self::pgn_annotation_directive(comment, "nodes");
+        if eval.is_none() && depth.is_none() && nodes.is_none() {
+            return;
+        }
+
+        let result = analyses[move_count].get_or_insert_with(PositionAnalysis::default);
+        if let Some(value) = eval {
+            if let Some(mate) = value.strip_prefix('#').and_then(|value| value.parse().ok()) {
+                result.mate = Some(mate);
+            } else if let Ok(pawns) = value.parse::<f32>() {
+                result.eval_cp = Some((pawns * 100.0).round() as i32);
+            }
+        }
+        if let Some(value) = depth.and_then(|value| value.parse().ok()) {
+            result.depth = value;
+        }
+        if let Some(value) = nodes.and_then(|value| value.parse().ok()) {
+            result.nodes = value;
+        }
+
+        let before = analyses[move_count - 1].get_or_insert_with(PositionAnalysis::default);
+        for section in comment.split(';').map(str::trim) {
+            if let Some(value) = section.strip_prefix("Best move: ") {
+                before.best_move = Some(value.trim().to_owned());
+            } else if let Some(value) = section.strip_prefix("PV: ") {
+                before.pv = value.trim().to_owned();
+            }
+        }
+    }
+
     fn positions_from_san_moves(moves: &[String]) -> Result<(Vec<Board>, Vec<String>), String> {
         let mut board = Board::default();
         let mut positions = vec![board];
@@ -1967,13 +2594,15 @@ impl ChessApp {
         Ok((positions, moves.to_vec()))
     }
 
-    fn load_pgn(&mut self) {
-        match Self::parse_pgn_mainline(&self.pgn_input) {
+    fn load_pgn(&mut self, text: &str) -> bool {
+        match Self::parse_pgn_mainline(text) {
             Ok((positions, moves)) => {
+                let imported_analysis = Self::parse_pgn_annotations(text, &positions);
+                let restored_analysis = imported_analysis.iter().any(Option::is_some);
                 self.review_white_player =
-                    Self::pgn_tag(&self.pgn_input, "White").unwrap_or_else(|| "White".into());
+                    Self::pgn_tag(text, "White").unwrap_or_else(|| "White".into());
                 self.review_black_player =
-                    Self::pgn_tag(&self.pgn_input, "Black").unwrap_or_else(|| "Black".into());
+                    Self::pgn_tag(text, "Black").unwrap_or_else(|| "Black".into());
                 Self::set_page_title(true, &self.review_white_player, &self.review_black_player);
                 #[cfg(target_arch = "wasm32")]
                 if let Some(engine) = &self.engine {
@@ -1983,7 +2612,7 @@ impl ChessApp {
                 self.analysis_running = false;
                 self.review_positions = positions;
                 self.review_moves = moves;
-                self.game_analysis.clear();
+                self.game_analysis = imported_analysis;
                 self.game_analysis_index = None;
                 self.game_analysis_running = false;
                 self.game_analysis_paused = false;
@@ -1996,13 +2625,139 @@ impl ChessApp {
                 self.last_move =
                     Self::review_move_at(&self.review_positions, &self.review_moves, final_index);
                 self.clear_analysis_result();
-                self.engine_status = "PGN loaded · ready to analyze".into();
+                self.engine_status = if restored_analysis {
+                    "Annotated PGN loaded · analysis restored".into()
+                } else {
+                    "PGN loaded · ready to analyze".into()
+                };
+                self.pgn_input = text.to_owned();
+                self.import_input.clear();
                 self.pgn_error = None;
                 self.pgn_dialog_open = false;
                 self.save_game();
+                restored_analysis
             }
-            Err(error) => self.pgn_error = Some(error),
+            Err(error) => {
+                self.pgn_error = Some(error);
+                false
+            }
         }
+    }
+
+    fn load_import_text(&mut self) -> bool {
+        let text = self.import_input.clone();
+        if text.trim_start().starts_with('{') {
+            self.load_analysis_json(&text)
+        } else {
+            self.load_pgn(&text)
+        }
+    }
+
+    fn load_analysis_json(&mut self, text: &str) -> bool {
+        let imported: ImportedAnalysisFile = match serde_json::from_str(text) {
+            Ok(imported) => imported,
+            Err(error) => {
+                self.pgn_error = Some(format!("Could not read Ironwood JSON: {error}"));
+                return false;
+            }
+        };
+        if imported.schema != "ironwood.analyzed-game/v1" {
+            self.pgn_error = Some(format!("Unsupported analysis schema: {}", imported.schema));
+            return false;
+        }
+        if imported.positions.len() != imported.game.moves.len() + 1 {
+            self.pgn_error =
+                Some("The JSON position timeline does not match its number of moves.".into());
+            return false;
+        }
+        let positions = match imported
+            .positions
+            .iter()
+            .map(|position| Board::from_str(&position.fen))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(positions) => positions,
+            Err(_) => {
+                self.pgn_error = Some("The JSON contains an invalid FEN position.".into());
+                return false;
+            }
+        };
+        for (index, san) in imported.game.moves.iter().enumerate() {
+            let Ok(chess_move) = ChessMove::from_san(&positions[index], san) else {
+                self.pgn_error = Some(format!("The JSON contains an invalid move: {san}"));
+                return false;
+            };
+            if positions[index].make_move_new(chess_move) != positions[index + 1] {
+                self.pgn_error = Some(format!(
+                    "The JSON timeline does not match the move at position {}.",
+                    index + 1
+                ));
+                return false;
+            }
+        }
+
+        #[cfg(target_arch = "wasm32")]
+        if let Some(engine) = &self.engine {
+            engine.command("stop");
+        }
+        self.engine_searching = false;
+        self.analysis_running = false;
+        self.game_analysis_running = false;
+        self.game_analysis_paused = false;
+        self.game_analysis_index = None;
+        self.clear_analysis_result();
+        self.review_white_player = imported.game.white;
+        self.review_black_player = imported.game.black;
+        self.review_moves = imported.game.moves;
+        self.review_positions = positions;
+        self.game_analysis = imported
+            .positions
+            .into_iter()
+            .map(|position| {
+                let analyzed = position.evaluation_cp.is_some()
+                    || position.mate.is_some()
+                    || position.depth.is_some()
+                    || position.nodes.is_some()
+                    || position.best_move.is_some()
+                    || position.principal_variation.is_some();
+                analyzed.then_some(PositionAnalysis {
+                    eval_cp: position.evaluation_cp,
+                    mate: position.mate,
+                    depth: position.depth.unwrap_or_default(),
+                    nodes: position.nodes.unwrap_or_default(),
+                    best_move: position.best_move,
+                    pv: position.principal_variation.unwrap_or_default(),
+                })
+            })
+            .collect();
+        let available_threads = Self::engine_thread_count();
+        self.analysis_config.threads = imported.engine.threads.clamp(1, available_threads);
+        self.analysis_config.hash_mib = imported.engine.hash_mib.clamp(16, 256);
+        self.full_game_analysis_config.quality = match imported.engine.full_game_quality.as_str() {
+            "Quick" => FullGameQuality::Quick,
+            "Standard" => FullGameQuality::Standard,
+            "Deep" => FullGameQuality::Deep,
+            _ => FullGameQuality::Custom,
+        };
+        self.full_game_analysis_config.custom_nodes =
+            imported.engine.nodes_per_position.clamp(10_000, 50_000_000);
+        let final_index = self.review_moves.len();
+        self.review_index = Some(final_index);
+        self.review_scroll_to_selected = true;
+        self.board = self.review_positions[final_index];
+        self.last_move =
+            Self::review_move_at(&self.review_positions, &self.review_moves, final_index);
+        self.selected = None;
+        self.legal_targets.clear();
+        self.pgn_input.clear();
+        self.pgn_input = self.annotated_pgn();
+        self.import_input.clear();
+        self.pgn_error = None;
+        self.pgn_dialog_open = false;
+        self.engine_status = "Ironwood analysis restored from JSON".into();
+        Self::set_page_title(true, &self.review_white_player, &self.review_black_player);
+        self.save_game();
+        true
     }
 
     fn review_move_at(
@@ -3422,6 +4177,27 @@ mod tests {
     }
 
     #[test]
+    fn restores_ironwood_analysis_from_annotated_pgn() {
+        let pgn = r#"1. e4 { [%eval +0.25]; [%depth 18]; [%nodes 1000000]; [%cpl 12]; Quality: GOOD; Best move: e2e4; PV: e4 e5 Nf3 } 1... e5 { [%eval -0.10]; [%depth 17]; [%nodes 900000]; Best move: e7e5; PV: e5 Nf3 Nc6 }"#;
+        let (positions, _) = ChessApp::parse_pgn_mainline(pgn).unwrap();
+        let analysis = ChessApp::parse_pgn_annotations(pgn, &positions);
+        assert_eq!(analysis.len(), 3);
+        assert_eq!(analysis[1].as_ref().unwrap().eval_cp, Some(25));
+        assert_eq!(analysis[1].as_ref().unwrap().depth, 18);
+        assert_eq!(analysis[1].as_ref().unwrap().nodes, 1_000_000);
+        assert_eq!(
+            analysis[0].as_ref().unwrap().best_move.as_deref(),
+            Some("e2e4")
+        );
+        assert_eq!(analysis[0].as_ref().unwrap().pv, "e4 e5 Nf3");
+        assert_eq!(analysis[2].as_ref().unwrap().eval_cp, Some(-10));
+        assert_eq!(
+            analysis[1].as_ref().unwrap().best_move.as_deref(),
+            Some("e7e5")
+        );
+    }
+
+    #[test]
     fn restores_live_game_positions_from_san_moves() {
         let moves = vec!["e4".to_owned(), "e5".to_owned(), "Nf3".to_owned()];
         let (positions, restored_moves) = ChessApp::positions_from_san_moves(&moves).unwrap();
@@ -3521,8 +4297,8 @@ impl eframe::App for ChessApp {
                     .and_then(|bytes| String::from_utf8(bytes.to_vec()).ok())
             })
         }) {
-            self.pgn_input = contents;
-            self.load_pgn();
+            self.import_input = contents;
+            self.load_import_text();
         }
         if let Some(index) = self.review_index.or_else(|| {
             (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
@@ -3598,12 +4374,14 @@ impl eframe::App for ChessApp {
                 ui.label(RichText::new("CHESS").color(Color32::from_rgb(207, 172, 93)));
                 ui.separator();
                 ui.menu_button("Game", |ui| {
-                    if ui.button("Import PGN…").clicked() {
-                        self.pgn_dialog_open = true;
-                        self.pgn_error = None;
-                        ui.close();
-                    }
-                    ui.separator();
+                    let analysis_available = !self.review_moves.is_empty()
+                        && self.game_analysis.iter().any(Option::is_some);
+                    let export_enabled = analysis_available && !self.game_analysis_running;
+                    let export_disabled_reason = if self.game_analysis_running {
+                        "Pause or stop full-game analysis before exporting."
+                    } else {
+                        "Analyze at least one position before exporting."
+                    };
                     if ui.button("New game").clicked() {
                         self.reset();
                         ui.close();
@@ -3618,6 +4396,68 @@ impl eframe::App for ChessApp {
                     if ui.button("Flip board").clicked() {
                         self.flipped = !self.flipped;
                         self.save_game();
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Import PGN or JSON…").clicked() {
+                        self.import_input.clear();
+                        self.pgn_dialog_open = true;
+                        self.pgn_error = None;
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(export_enabled, egui::Button::new("Export annotated PGN"))
+                        .on_disabled_hover_text(export_disabled_reason)
+                        .clicked()
+                    {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let pgn = self.annotated_pgn();
+                            self.engine_status = match Self::download_text(
+                                "ironwood-analyzed-game.pgn",
+                                "application/x-chess-pgn;charset=utf-8",
+                                &pgn,
+                            ) {
+                                Ok(()) => "Annotated PGN exported".into(),
+                                Err(_) => "Annotated PGN export failed".into(),
+                            };
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(export_enabled, egui::Button::new("Export analysis JSON"))
+                        .on_disabled_hover_text(export_disabled_reason)
+                        .clicked()
+                    {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            self.engine_status = match self.analysis_json() {
+                                Ok(json) => match Self::download_text(
+                                    "ironwood-analyzed-game.json",
+                                    "application/json;charset=utf-8",
+                                    &json,
+                                ) {
+                                    Ok(()) => "Analysis JSON exported".into(),
+                                    Err(_) => "Analysis JSON export failed".into(),
+                                },
+                                Err(_) => "Analysis JSON export failed".into(),
+                            };
+                        }
+                        ui.close();
+                    }
+                    if ui
+                        .add_enabled(export_enabled, egui::Button::new("Print analysis report…"))
+                        .on_disabled_hover_text(export_disabled_reason)
+                        .on_hover_text("Open a critical-positions report that can be saved as PDF")
+                        .clicked()
+                    {
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            self.engine_status = match self.print_analysis_report() {
+                                Ok(()) => "Analysis report opened · choose Save as PDF".into(),
+                                Err(_) => "Analysis report window was blocked".into(),
+                            };
+                        }
                         ui.close();
                     }
                     ui.separator();

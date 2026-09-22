@@ -1,6 +1,9 @@
-const APP_PACKAGE_VERSION = '__APP_PACKAGE_VERSION__';
-const SHELL_CACHE = `ironwood-shell-${APP_PACKAGE_VERSION}`;
-const ENGINE_CACHE = 'ironwood-engine-stockfish-19';
+const APP_SHELL_VERSION = '__APP_SHELL_VERSION__';
+const ENGINE_CACHE_VERSION = '__ENGINE_CACHE_VERSION__';
+const SHELL_CACHE = `ironwood-shell-${APP_SHELL_VERSION}`;
+const ENGINE_CACHE_PREFIX = 'ironwood-engine-stockfish-19-';
+const ENGINE_CACHE = `${ENGINE_CACHE_PREFIX}${ENGINE_CACHE_VERSION}`;
+const LEGACY_ENGINE_CACHE = 'ironwood-engine-stockfish-19';
 const APP_PACKAGE_URLS = [
   '/pkg/battle_chess.js',
   '/pkg/battle_chess_bg.wasm',
@@ -14,8 +17,10 @@ const SHELL_URLS = [
   '/play/',
   '/blog/',
   '/blog/stockfish-in-your-browser/',
+  '/blog/private-analysis-portable-results/',
   '/changelog/',
   '/changelog/2026-09-21-initial-public-build/',
+  '/changelog/2026-09-22-analysis-workspace/',
   '/open-source-notices.html',
   '/404.html',
   '/landing.css',
@@ -32,8 +37,17 @@ const SHELL_URLS = [
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(SHELL_CACHE).then(cache => cache.addAll(SHELL_URLS)));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const existingCaches = await caches.keys();
+    const cache = await caches.open(SHELL_CACHE);
+    await cache.addAll(SHELL_URLS);
+    // The original Ironwood worker used a 16-character package-only cache key
+    // and immediately replaced itself. Preserve that behavior once so existing
+    // installations can move to the user-confirmed update flow without Ctrl+F5.
+    if (existingCaches.some(name => /^ironwood-shell-[a-f0-9]{16}$/.test(name))) {
+      await self.skipWaiting();
+    }
+  })());
 });
 
 self.addEventListener('activate', event => {
@@ -90,6 +104,11 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  if (url.pathname === '/app-version.json') {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
+
   if (url.pathname.startsWith('/pkg/')) {
     event.respondWith(caches.open(SHELL_CACHE).then(async cache =>
       (await cache.match(request, { ignoreSearch: true })) || fetch(request)
@@ -117,9 +136,20 @@ async function broadcast(message) {
 }
 
 async function engineIsCached() {
+  await migrateLegacyEngineCache();
   const cache = await caches.open(ENGINE_CACHE);
   const matches = await Promise.all(ENGINE_URLS.map(url => cache.match(url)));
   return matches.every(Boolean);
+}
+
+async function migrateLegacyEngineCache() {
+  if (!(await caches.has(LEGACY_ENGINE_CACHE)) || await caches.has(ENGINE_CACHE)) return;
+  const legacy = await caches.open(LEGACY_ENGINE_CACHE);
+  const matches = await Promise.all(ENGINE_URLS.map(url => legacy.match(url)));
+  if (!matches.every(Boolean)) return;
+  const current = await caches.open(ENGINE_CACHE);
+  await Promise.all(ENGINE_URLS.map((url, index) => current.put(url, matches[index])));
+  await caches.delete(LEGACY_ENGINE_CACHE);
 }
 
 async function cacheEngine() {
@@ -148,10 +178,24 @@ async function cacheEngine() {
     }
     await cacheWrite;
   }
+  const names = await caches.keys();
+  await Promise.all(names
+    .filter(name => (name === LEGACY_ENGINE_CACHE || name.startsWith(ENGINE_CACHE_PREFIX)) && name !== ENGINE_CACHE)
+    .map(name => caches.delete(name)));
   await broadcast({ type: 'OFFLINE_ENGINE_READY' });
 }
 
 self.addEventListener('message', event => {
+  if (event.data?.type === 'GET_APP_VERSION') {
+    event.ports[0]?.postMessage({
+      type: 'APP_VERSION',
+      version: APP_SHELL_VERSION,
+      engine_cache_version: ENGINE_CACHE_VERSION,
+    });
+  }
+  if (event.data?.type === 'ACTIVATE_UPDATE') {
+    event.waitUntil(self.skipWaiting());
+  }
   if (event.data?.type === 'CHECK_OFFLINE_ENGINE') {
     event.waitUntil(engineIsCached().then(cached => event.source?.postMessage({
       type: 'OFFLINE_ENGINE_STATUS',
@@ -165,9 +209,12 @@ self.addEventListener('message', event => {
     }));
   }
   if (event.data?.type === 'REMOVE_OFFLINE_ENGINE') {
-    event.waitUntil(caches.delete(ENGINE_CACHE).then(() => broadcast({
-      type: 'OFFLINE_ENGINE_STATUS',
-      cached: false,
-    })));
+    event.waitUntil((async () => {
+      const names = await caches.keys();
+      await Promise.all(names
+        .filter(name => name === LEGACY_ENGINE_CACHE || name.startsWith(ENGINE_CACHE_PREFIX))
+        .map(name => caches.delete(name)));
+      await broadcast({ type: 'OFFLINE_ENGINE_STATUS', cached: false });
+    })());
   }
 });

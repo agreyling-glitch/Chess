@@ -6,7 +6,10 @@ node_modules/
 web/engine/
 .wrangler-assets/
 .hugo-public/
+site/.hugo_build.lock
 .wrangler/
+output/
+tmp/
 
 # Local secrets and environment overrides
 .env

@@ -16,7 +16,9 @@ createServer((req,res) => {
   if (urlPath === '/service-worker.js') {
     const wasm = statSync(join(root, 'pkg', 'battle_chess_bg.wasm'));
     const revision = `${wasm.size}-${Math.trunc(wasm.mtimeMs)}`;
-    const worker = readFileSync(file, 'utf8').replaceAll('__APP_PACKAGE_VERSION__', revision);
+    const worker = readFileSync(file, 'utf8')
+      .replaceAll('__APP_SHELL_VERSION__', revision)
+      .replaceAll('__ENGINE_CACHE_VERSION__', 'development');
     res.end(worker);
     return;
   }

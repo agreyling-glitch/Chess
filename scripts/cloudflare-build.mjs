@@ -34,4 +34,5 @@ if (missingArtifacts.length > 0) {
 }
 
 npmRun('build:site');
+npmRun('engine');
 npmRun('prepare:wrangler');
