@@ -5,6 +5,7 @@ target
 node_modules/
 web/engine/
 .wrangler-assets/
+.hugo-public/
 .wrangler/
 
 # Local secrets and environment overrides

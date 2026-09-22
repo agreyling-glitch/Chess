@@ -1,0 +1,24 @@
+baseURL = "https://ironwoodchess.com/"
+languageCode = "en-us"
+title = "Ironwood Chess"
+enableRobotsTXT = false
+disableKinds = ["taxonomy", "term"]
+
+[params]
+description = "Engineering notes and release history for Ironwood Chess."
+
+[permalinks]
+blog = "/blog/:slug/"
+changelog = "/changelog/:slug/"
+
+[outputs]
+home = ["HTML", "RSS"]
+section = ["HTML", "RSS"]
+
+[sitemap]
+changeFreq = "weekly"
+priority = 0.5
+filename = "sitemap.xml"
+
+[markup.goldmark.renderer]
+unsafe = false

@@ -19,10 +19,10 @@
 <body>
   <canvas id="chess_canvas"></canvas>
   <div id="loading">Forging the board…</div>
-  <a class="legal-link" href="/open-source-notices.html">Open-source notices</a>
   <script type="module">
     import init from '/pkg/battle_chess.js';
     init().then(() => document.getElementById('loading')?.remove());
   </script>
+  <script type="module" src="/pwa.js"></script>
 </body>
 </html>

@@ -13,10 +13,6 @@ export default {
       response = new Response(`User-agent: *\nAllow: /\nDisallow: /engine/\nDisallow: /pkg/\nDisallow: /engine-worker.js\n\nSitemap: ${url.origin}/sitemap.xml\n`, {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
-    } else if (url.pathname === "/sitemap.xml") {
-      const escapedOrigin = url.origin.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n  <url><loc>${escapedOrigin}/</loc></url>\n  <url><loc>${escapedOrigin}/play/</loc></url>\n  <url><loc>${escapedOrigin}/open-source-notices.html</loc></url>\n</urlset>\n`;
-      response = new Response(xml, { headers: { "Content-Type": "application/xml; charset=utf-8" } });
     } else if (url.pathname.startsWith("/engine/")) {
       if (!env.ENGINE_ORIGIN) {
         return new Response("The full-NNUE engine origin is not configured.", { status: 503 });

@@ -31,6 +31,10 @@ onmessage = ({ data }) => {
         ready = true;
         engine.postMessage(`setoption name Threads value ${Math.max(1, Math.min(data.threads || 2, 8))}`);
         engine.postMessage(`setoption name Hash value ${data.hash || 64}`);
+        engine.postMessage(`setoption name Skill Level value ${Math.max(0, Math.min(data.skillLevel ?? 20, 20))}`);
+        engine.postMessage(`setoption name UCI_LimitStrength value ${data.limitStrength ? 'true' : 'false'}`);
+        engine.postMessage(`setoption name UCI_Elo value ${Math.max(1320, Math.min(data.elo || 1800, 3190))}`);
+        engine.postMessage('setoption name Ponder value false');
         while (pending.length) engine.postMessage(pending.shift());
       }
     };

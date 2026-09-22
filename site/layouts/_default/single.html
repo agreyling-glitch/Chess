@@ -1,0 +1,10 @@
+{{ define "main" }}
+<article class="article">
+  <header>
+    <p class="entry-meta"><a href="/{{ .Section }}/">{{ if eq .Section "blog" }}Journal{{ else }}Changelog{{ end }}</a><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "January 2, 2006" }}</time>{{ with .Params.version }}<span>{{ . }}</span>{{ end }}</p>
+    <h1>{{ .Title }}</h1>
+    {{ with .Description }}<p class="lede">{{ . }}</p>{{ end }}
+  </header>
+  <div class="prose">{{ .Content }}</div>
+</article>
+{{ end }}

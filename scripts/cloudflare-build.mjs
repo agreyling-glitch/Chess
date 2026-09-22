@@ -33,4 +33,5 @@ if (missingArtifacts.length > 0) {
   process.exit(1);
 }
 
+npmRun('build:site');
 npmRun('prepare:wrangler');

@@ -1,0 +1,17 @@
+{{ define "main" }}
+<section class="page-heading">
+  <p class="eyebrow">{{ with .Params.eyebrow }}{{ . }}{{ else }}Ironwood Chess{{ end }}</p>
+  <h1>{{ .Title }}</h1>
+  {{ with .Description }}<p class="lede">{{ . }}</p>{{ end }}
+</section>
+<section class="entry-list" aria-label="{{ .Title }} entries">
+  {{ range .Pages.ByDate.Reverse }}
+  <article>
+    <p class="entry-meta"><time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "January 2, 2006" }}</time>{{ with .Params.version }}<span>{{ . }}</span>{{ end }}</p>
+    <h2><a href="{{ .RelPermalink }}">{{ .Title }}</a></h2>
+    <p>{{ .Description }}</p>
+    <a class="read-more" href="{{ .RelPermalink }}">Read entry <span aria-hidden="true">→</span></a>
+  </article>
+  {{ end }}
+</section>
+{{ end }}

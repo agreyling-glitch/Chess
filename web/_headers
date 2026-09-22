@@ -17,3 +17,8 @@
 
 /engine-worker.js
   X-Robots-Tag: noindex, nofollow, noarchive
+
+/service-worker.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+  X-Robots-Tag: noindex, nofollow, noarchive
