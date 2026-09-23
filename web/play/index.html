@@ -19,6 +19,35 @@
 <body>
   <canvas id="chess_canvas"></canvas>
   <div id="loading">Forging the board…</div>
+  <script>
+    (() => {
+      let context;
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      window.ironwoodPlayChessSound = kind => {
+        if (!AudioContext) return;
+        context ||= new AudioContext();
+        const play = () => {
+          const now = context.currentTime;
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = 'triangle';
+          oscillator.frequency.setValueAtTime(kind === 'check' ? 480 : kind === 'capture' ? 145 : 210, now);
+          oscillator.frequency.exponentialRampToValueAtTime(kind === 'check' ? 320 : 82, now + 0.06);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(kind === 'capture' ? 0.24 : 0.18, now + 0.004);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === 'check' ? 0.15 : 0.09));
+          oscillator.connect(gain).connect(context.destination);
+          oscillator.start(now);
+          oscillator.stop(now + 0.16);
+        };
+        if (context.state === 'running') {
+          play();
+        } else {
+          context.resume().then(play).catch(() => {});
+        }
+      };
+    })();
+  </script>
   <script type="module">
     import init from '/pkg/battle_chess.js';
     init().then(() => document.getElementById('loading')?.remove());

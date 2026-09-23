@@ -1,7 +1,7 @@
 use chess::{Board, BoardStatus, ChessMove, Color, File, MoveGen, Piece, Rank, Square};
 use eframe::egui::{
     self, Align, Align2, Color32, CornerRadius, FontFamily, FontId, Frame, Layout, Margin,
-    RichText, Sense, Stroke, TextFormat, Vec2, epaint::TextShape, text::LayoutJob,
+    RichText, Sense, Stroke, Vec2, epaint::TextShape,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -10,6 +10,13 @@ use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::{JsCast, JsValue, closure::Closure};
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPlayChessSound)]
+    fn play_chess_sound(kind: &str);
+}
 
 #[cfg(target_arch = "wasm32")]
 struct EngineBridge {
@@ -32,6 +39,22 @@ struct AnalysisVariation {
     positions: Vec<Board>,
     moves: Vec<String>,
     chess_moves: Vec<ChessMove>,
+}
+
+#[derive(Clone, Copy)]
+struct MoveAnimation {
+    chess_move: ChessMove,
+    piece: Piece,
+    color: Color,
+    started_at: f64,
+}
+
+#[derive(Clone, Copy)]
+struct BestMoveAttempt {
+    target_index: usize,
+    best_move: ChessMove,
+    attempted_move: Option<ChessMove>,
+    revealed: bool,
 }
 
 impl AnalysisVariation {
@@ -116,6 +139,23 @@ enum MoveClassification {
     Inaccuracy,
     Mistake,
     Blunder,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GamePhase {
+    Opening,
+    Middlegame,
+    Endgame,
+}
+
+impl GamePhase {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Opening => "Opening",
+            Self::Middlegame => "Middlegame",
+            Self::Endgame => "Endgame",
+        }
+    }
 }
 
 impl MoveClassification {
@@ -323,10 +363,12 @@ impl Default for FullGameAnalysisConfig {
 
 #[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 enum PieceSet {
-    #[default]
     System,
     Cburnett,
+    #[default]
     Merida,
+    RoyalRascals,
+    UndeadCourt,
 }
 
 impl PieceSet {
@@ -335,8 +377,34 @@ impl PieceSet {
             Self::System => "System (Unicode)",
             Self::Cburnett => "Cburnett",
             Self::Merida => "Merida",
+            Self::RoyalRascals => "Royal Rascals",
+            Self::UndeadCourt => "Undead Court",
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+enum PlayerSide {
+    #[default]
+    White,
+    Black,
+}
+
+impl PlayerSide {
+    fn color(self) -> Color {
+        match self {
+            Self::White => Color::White,
+            Self::Black => Color::Black,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum NewGameColor {
+    #[default]
+    White,
+    Black,
+    Random,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -345,15 +413,21 @@ struct PersistedGame {
     history: Vec<String>,
     last_move: Option<String>,
     flipped: bool,
-    #[serde(default)]
+    #[serde(default = "default_best_move_arrows")]
     show_coordinates: bool,
     #[serde(default = "default_best_move_arrows")]
     show_best_move_arrows: bool,
     #[serde(default = "default_best_move_arrows")]
     show_move_hover_text: bool,
+    #[serde(default = "default_best_move_arrows")]
+    move_sounds: bool,
+    #[serde(default = "default_best_move_arrows")]
+    animate_moves: bool,
     #[serde(default)]
     piece_set: PieceSet,
     engine_enabled: bool,
+    #[serde(default)]
+    player_side: PlayerSide,
     #[serde(default)]
     engine_config: EngineConfig,
     #[serde(default = "EngineConfig::analysis_default")]
@@ -383,8 +457,15 @@ pub struct ChessApp {
     show_coordinates: bool,
     show_best_move_arrows: bool,
     show_move_hover_text: bool,
+    engine_analysis_dock_collapsed: bool,
+    move_sounds: bool,
+    animate_moves: bool,
+    move_animation: Option<MoveAnimation>,
     piece_set: PieceSet,
     engine_enabled: bool,
+    player_side: PlayerSide,
+    new_game_dialog_open: bool,
+    new_game_color: NewGameColor,
     engine_searching: bool,
     engine_status: String,
     engine_progress: Option<(f32, String)>,
@@ -402,13 +483,16 @@ pub struct ChessApp {
     import_input: String,
     pgn_input: String,
     pgn_error: Option<String>,
+    print_notice_until: Option<f64>,
     review_positions: Vec<Board>,
     review_moves: Vec<String>,
     review_index: Option<usize>,
     review_scroll_to_selected: bool,
+    best_move_attempt: Option<BestMoveAttempt>,
     review_white_player: String,
     review_black_player: String,
     analysis_running: bool,
+    realtime_analysis_due_at: Option<f64>,
     analysis_eval_cp: Option<i32>,
     analysis_mate: Option<i32>,
     analysis_depth: u32,
@@ -431,11 +515,27 @@ pub struct ChessApp {
     show_engine_download: bool,
     resume_engine_after_ready: bool,
     pending_analysis_search: Option<String>,
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    ignore_next_bestmove: bool,
     #[cfg(target_arch = "wasm32")]
     engine: Option<EngineBridge>,
 }
 
 impl ChessApp {
+    fn animation_time() -> f64 {
+        #[cfg(target_arch = "wasm32")]
+        {
+            js_sys::Date::now() / 1_000.0
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64()
+        }
+    }
+
     fn paint_arc_text(
         ui: &egui::Ui,
         center: egui::Pos2,
@@ -513,12 +613,28 @@ impl ChessApp {
         });
         let restored_review = restored_pgn_review.or(restored_live_review);
         let review_pgn = saved.as_ref().and_then(|game| game.review_pgn.as_deref());
+        let player_side = saved
+            .as_ref()
+            .map(|game| game.player_side)
+            .unwrap_or_default();
         let review_white_player = review_pgn
             .and_then(|pgn| Self::pgn_tag(pgn, "White"))
-            .unwrap_or_else(|| "You".to_owned());
+            .unwrap_or_else(|| {
+                if player_side == PlayerSide::White {
+                    "You".to_owned()
+                } else {
+                    "Stockfish 19".to_owned()
+                }
+            });
         let review_black_player = review_pgn
             .and_then(|pgn| Self::pgn_tag(pgn, "Black"))
-            .unwrap_or_else(|| "Stockfish 19".to_owned());
+            .unwrap_or_else(|| {
+                if player_side == PlayerSide::Black {
+                    "You".to_owned()
+                } else {
+                    "Stockfish 19".to_owned()
+                }
+            });
         let (review_positions, review_moves, review_index) =
             if let Some((positions, moves)) = restored_review {
                 let saved_index = saved.as_ref().and_then(|game| game.review_index);
@@ -537,7 +653,10 @@ impl ChessApp {
             .filter(|analysis| analysis.len() == review_positions.len())
             .unwrap_or_default();
         let flipped = saved.as_ref().is_some_and(|game| game.flipped);
-        let show_coordinates = saved.as_ref().is_some_and(|game| game.show_coordinates);
+        let show_coordinates = saved
+            .as_ref()
+            .map(|game| game.show_coordinates)
+            .unwrap_or(true);
         let show_best_move_arrows = saved
             .as_ref()
             .map(|game| game.show_best_move_arrows)
@@ -545,6 +664,11 @@ impl ChessApp {
         let show_move_hover_text = saved
             .as_ref()
             .map(|game| game.show_move_hover_text)
+            .unwrap_or(true);
+        let move_sounds = saved.as_ref().map(|game| game.move_sounds).unwrap_or(true);
+        let animate_moves = saved
+            .as_ref()
+            .map(|game| game.animate_moves)
             .unwrap_or(true);
         let piece_set = saved
             .as_ref()
@@ -556,7 +680,7 @@ impl ChessApp {
             .unwrap_or(true);
         let resume_engine_after_ready = engine_enabled
             && review_index.is_none()
-            && board.side_to_move() == Color::Black
+            && board.side_to_move() != player_side.color()
             && board.status() == BoardStatus::Ongoing;
         let show_engine_download = !Self::engine_was_ready();
         let available_threads = Self::engine_thread_count();
@@ -600,8 +724,15 @@ impl ChessApp {
             show_coordinates,
             show_best_move_arrows,
             show_move_hover_text,
+            engine_analysis_dock_collapsed: false,
+            move_sounds,
+            animate_moves,
+            move_animation: None,
             piece_set,
             engine_enabled,
+            player_side,
+            new_game_dialog_open: false,
+            new_game_color: NewGameColor::White,
             engine_searching: false,
             engine_status: if show_engine_download {
                 "Downloading Stockfish 19…".into()
@@ -626,13 +757,16 @@ impl ChessApp {
                 .and_then(|game| game.review_pgn.clone())
                 .unwrap_or_default(),
             pgn_error: None,
+            print_notice_until: None,
             review_positions,
             review_moves,
             review_index,
             review_scroll_to_selected: review_index.is_some(),
+            best_move_attempt: None,
             review_white_player,
             review_black_player,
             analysis_running: false,
+            realtime_analysis_due_at: None,
             analysis_eval_cp: None,
             analysis_mate: None,
             analysis_depth: 0,
@@ -654,6 +788,7 @@ impl ChessApp {
             show_engine_download,
             resume_engine_after_ready,
             pending_analysis_search: None,
+            ignore_next_bestmove: false,
             #[cfg(target_arch = "wasm32")]
             engine: EngineBridge::new(cc.egui_ctx.clone(), &engine_config),
         }
@@ -1015,6 +1150,10 @@ impl ChessApp {
 
     fn analysis_accuracy(&self, color: Color) -> Option<f32> {
         let losses = self.analysis_losses(color);
+        Self::accuracy_from_losses(&losses)
+    }
+
+    fn accuracy_from_losses(losses: &[i32]) -> Option<f32> {
         if losses.is_empty() {
             return None;
         }
@@ -1034,8 +1173,50 @@ impl ChessApp {
         (!losses.is_empty()).then(|| losses.iter().sum::<i32>() as f32 / losses.len() as f32)
     }
 
+    fn game_phase_for_move(&self, position_index: usize) -> Option<GamePhase> {
+        let board = self.review_positions.get(position_index.checked_sub(1)?)?;
+        if position_index <= 20 {
+            return Some(GamePhase::Opening);
+        }
+        let non_pawn_material = board.pieces(Piece::Knight).popcnt() * 3
+            + board.pieces(Piece::Bishop).popcnt() * 3
+            + board.pieces(Piece::Rook).popcnt() * 5
+            + board.pieces(Piece::Queen).popcnt() * 9;
+        Some(if non_pawn_material <= 26 {
+            GamePhase::Endgame
+        } else {
+            GamePhase::Middlegame
+        })
+    }
+
+    fn phase_stats(&self, phase: GamePhase) -> Option<(usize, f32, f32)> {
+        let losses = (1..self.review_positions.len())
+            .filter(|index| self.game_phase_for_move(*index) == Some(phase))
+            .filter_map(|index| self.move_centipawn_loss(index))
+            .collect::<Vec<_>>();
+        let accuracy = Self::accuracy_from_losses(&losses)?;
+        let average = losses.iter().sum::<i32>() as f32 / losses.len() as f32;
+        Some((losses.len(), accuracy, average))
+    }
+
+    fn first_move_in_phase(&self, phase: GamePhase) -> Option<usize> {
+        (1..self.review_positions.len())
+            .find(|index| self.game_phase_for_move(*index) == Some(phase))
+    }
+
     fn classification_count(&self, classification: MoveClassification) -> usize {
         (1..self.review_positions.len())
+            .filter(|index| self.move_classification(*index) == Some(classification))
+            .count()
+    }
+
+    fn classification_count_for_color(
+        &self,
+        classification: MoveClassification,
+        color: Color,
+    ) -> usize {
+        (1..self.review_positions.len())
+            .filter(|index| self.review_positions[index - 1].side_to_move() == color)
             .filter(|index| self.move_classification(*index) == Some(classification))
             .count()
     }
@@ -1048,6 +1229,90 @@ impl ChessApp {
         ((current + 1)..self.review_positions.len())
             .chain(1..=current.min(self.review_positions.len().saturating_sub(1)))
             .find(|index| self.move_classification(*index) == Some(classification))
+    }
+
+    fn next_classified_move_for_color(
+        &self,
+        classification: MoveClassification,
+        color: Color,
+        current: usize,
+    ) -> Option<usize> {
+        ((current + 1)..self.review_positions.len())
+            .chain(1..=current.min(self.review_positions.len().saturating_sub(1)))
+            .find(|index| {
+                self.review_positions[*index - 1].side_to_move() == color
+                    && self.move_classification(*index) == Some(classification)
+            })
+    }
+
+    fn critical_move_indices(&self) -> Vec<usize> {
+        (1..self.review_positions.len())
+            .filter(|index| {
+                matches!(
+                    self.move_classification(*index),
+                    Some(
+                        MoveClassification::Inaccuracy
+                            | MoveClassification::Mistake
+                            | MoveClassification::Blunder
+                    )
+                )
+            })
+            .collect()
+    }
+
+    fn turning_point_index(&self) -> Option<usize> {
+        (1..self.review_positions.len())
+            .filter_map(|index| self.move_centipawn_loss(index).map(|loss| (index, loss)))
+            .filter(|(_, loss)| *loss > 0)
+            .max_by_key(|(_, loss)| *loss)
+            .map(|(index, _)| index)
+    }
+
+    fn move_explanation(&self, position_index: usize) -> Option<String> {
+        let root_index = position_index.checked_sub(1)?;
+        let root = *self.review_positions.get(root_index)?;
+        let before = self.game_analysis.get(root_index)?.as_ref()?;
+        let after = self.game_analysis.get(position_index)?.as_ref()?;
+        let mover_factor = if root.side_to_move() == Color::White {
+            1
+        } else {
+            -1
+        };
+        let before_score = Self::position_score(before).map(|score| score * mover_factor);
+        let after_score = Self::position_score(after).map(|score| score * mover_factor);
+        let explanation = if before.mate.is_some_and(|mate| mate * mover_factor > 0)
+            && !after.mate.is_some_and(|mate| mate * mover_factor > 0)
+        {
+            "This move misses a forced mate.".to_owned()
+        } else if after.mate.is_some_and(|mate| mate * mover_factor < 0) {
+            "This move allows the opponent a forced mate.".to_owned()
+        } else if matches!((before_score, after_score), (Some(before), Some(after)) if before >= 100 && after <= -100)
+        {
+            "The position swings from an advantage to a disadvantage.".to_owned()
+        } else {
+            match self.move_classification(position_index)? {
+                MoveClassification::Blunder => {
+                    "This move causes a decisive evaluation swing.".to_owned()
+                }
+                MoveClassification::Mistake => {
+                    "This move gives away a significant part of the position's value.".to_owned()
+                }
+                MoveClassification::Inaccuracy => {
+                    "This move is playable, but it gives the opponent a noticeably better position."
+                        .to_owned()
+                }
+                MoveClassification::Best | MoveClassification::Good => return None,
+            }
+        };
+        let recommendation = before
+            .best_move
+            .as_deref()
+            .and_then(Self::parse_uci_value)
+            .map(|best_move| Self::san_for_move(&root, best_move));
+        Some(match recommendation {
+            Some(best_move) => format!("{explanation} Stockfish prefers {best_move}."),
+            None => explanation,
+        })
     }
 
     fn analyzed_move_button(
@@ -1079,44 +1344,54 @@ impl ChessApp {
                 "—".to_owned()
             }
         });
-        let font_id = FontId::proportional(13.0);
-        let mut label = LayoutJob::default();
-        label.append(
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::click());
+        let visuals = ui.style().interact(&response);
+        let fill = if selected {
+            ui.visuals().selection.bg_fill
+        } else {
+            visuals.weak_bg_fill
+        };
+        if fill != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, visuals.corner_radius, fill);
+        }
+        ui.painter().rect_stroke(
+            rect,
+            visuals.corner_radius,
+            classification
+                .map(|quality| Stroke::new(1.5, quality.color()))
+                .unwrap_or(visuals.bg_stroke),
+            egui::StrokeKind::Inside,
+        );
+
+        let center_y = rect.center().y;
+        let san_x = rect.left() + rect.width() * 0.27;
+        let quality_x = rect.left() + rect.width() * 0.57;
+        let score_x = rect.left() + rect.width() * 0.80;
+        ui.painter().text(
+            egui::pos2(san_x, center_y),
+            Align2::CENTER_CENTER,
             san,
-            0.0,
-            TextFormat {
-                font_id: font_id.clone(),
-                color: ui.visuals().text_color(),
-                ..Default::default()
-            },
+            FontId::proportional(13.0),
+            ui.visuals().text_color(),
         );
         if let Some(classification) = classification {
-            label.append(
-                &format!(" {}", classification.symbol()),
-                0.0,
-                TextFormat {
-                    font_id: font_id.clone(),
-                    color: classification.color(),
-                    ..Default::default()
-                },
+            ui.painter().text(
+                egui::pos2(quality_x, center_y),
+                Align2::CENTER_CENTER,
+                classification.symbol(),
+                FontId::proportional(13.0),
+                classification.color(),
             );
         }
         if let Some(score) = evaluation_text.as_deref() {
-            label.append(
-                &format!(" {score}"),
-                0.0,
-                TextFormat {
-                    font_id,
-                    color: ui.visuals().weak_text_color(),
-                    ..Default::default()
-                },
+            ui.painter().text(
+                egui::pos2(score_x, center_y),
+                Align2::CENTER_CENTER,
+                score,
+                FontId::proportional(12.5),
+                ui.visuals().weak_text_color(),
             );
         }
-        let mut button = egui::Button::selectable(selected, label);
-        if let Some(classification) = classification {
-            button = button.stroke(Stroke::new(1.5, classification.color()));
-        }
-        let response = ui.add_sized([width, 30.0], button);
         if !self.show_move_hover_text {
             return response;
         }
@@ -1260,6 +1535,77 @@ impl ChessApp {
                 Stroke::new(1.5, Color32::from_rgb(232, 229, 214)),
             );
         }
+        let hover_index = response.hover_pos().map(|pointer| {
+            (((pointer.x - plot.left()) / plot.width()).clamp(0.0, 1.0) * denominator).round()
+                as usize
+        });
+        if let Some(index) = hover_index {
+            let x = plot.left() + plot.width() * index as f32 / denominator;
+            ui.painter().line_segment(
+                [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+                Stroke::new(1.0, Color32::from_rgb(211, 173, 98)),
+            );
+            if let Some(score) = self
+                .game_analysis
+                .get(index)
+                .and_then(Option::as_ref)
+                .and_then(Self::position_score)
+            {
+                ui.painter().circle_filled(
+                    point_for(index, score),
+                    4.5,
+                    Color32::from_rgb(211, 173, 98),
+                );
+            }
+        }
+        let response = if let Some(index) = hover_index {
+            response.on_hover_ui(|ui| {
+                let position = if index == 0 {
+                    "Starting position".to_owned()
+                } else {
+                    let san = self
+                        .review_moves
+                        .get(index - 1)
+                        .map(String::as_str)
+                        .unwrap_or("Position");
+                    if index % 2 == 1 {
+                        format!("{}. {san}", index.div_ceil(2))
+                    } else {
+                        format!("{}... {san}", index / 2)
+                    }
+                };
+                ui.label(RichText::new(position).strong());
+                if let Some(analysis) = self.game_analysis.get(index).and_then(Option::as_ref) {
+                    let evaluation = if let Some(mate) = analysis.mate {
+                        format!("Mate {mate:+}")
+                    } else if let Some(cp) = analysis.eval_cp {
+                        format!("{:+.2}", cp as f32 / 100.0)
+                    } else {
+                        "No evaluation".to_owned()
+                    };
+                    ui.label(format!("White evaluation: {evaluation}"));
+                    if index > 0
+                        && let Some(classification) = self.move_classification(index)
+                    {
+                        ui.label(
+                            RichText::new(format!(
+                                "{} {}",
+                                classification.symbol(),
+                                classification.label()
+                            ))
+                            .color(classification.color()),
+                        );
+                    }
+                }
+                ui.label(
+                    RichText::new("Click to jump to this position")
+                        .small()
+                        .weak(),
+                );
+            })
+        } else {
+            response
+        };
         let pointer = if response.dragged() || response.clicked() {
             response.interact_pointer_pos()
         } else {
@@ -1330,9 +1676,13 @@ impl ChessApp {
         if !self.strength_dialog_open {
             return;
         }
+        if self.game_analysis_running || self.game_analysis_paused {
+            self.strength_dialog_open = false;
+            return;
+        }
 
         let mut apply = false;
-        let mut cancel = false;
+        let mut close = false;
         let mut reset_defaults = false;
         let available_threads = Self::engine_thread_count();
         let width = (ctx.screen_rect().width() - 48.0).clamp(300.0, 560.0);
@@ -1347,7 +1697,18 @@ impl ChessApp {
                 let muted = ui.visuals().weak_text_color();
                 let gold = Color32::from_rgb(211, 173, 98);
 
-                ui.label(RichText::new("Engine settings").size(32.0).strong());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Engine settings").size(32.0).strong());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        close = ui
+                            .add_sized(
+                                [32.0, 32.0],
+                                egui::Button::new(RichText::new("×").size(22.0)),
+                            )
+                            .on_hover_text("Close engine settings")
+                            .clicked();
+                    });
+                });
                 ui.label(
                     RichText::new("Keep playing strength separate from full-strength analysis.")
                         .size(14.0)
@@ -1844,7 +2205,6 @@ impl ChessApp {
                         .clicked();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         apply = ui.add_sized([76.0, 30.0], egui::Button::new("Apply")).clicked();
-                        cancel = ui.button("Cancel").clicked();
                     });
                 });
             });
@@ -1902,7 +2262,7 @@ impl ChessApp {
             self.strength_dialog_open = false;
             #[cfg(target_arch = "wasm32")]
             self.request_engine_move();
-        } else if cancel || response.should_close() {
+        } else if close || response.should_close() {
             self.strength_dialog_open = false;
         }
     }
@@ -2345,9 +2705,66 @@ impl ChessApp {
         let black_cpl = self
             .analysis_average_centipawn_loss(Color::Black)
             .map_or_else(|| "-".into(), |value| format!("{value:.1}"));
+        let phase_summary = [
+            GamePhase::Opening,
+            GamePhase::Middlegame,
+            GamePhase::Endgame,
+        ]
+        .into_iter()
+        .filter_map(|phase| {
+            let (moves, accuracy, average) = self.phase_stats(phase)?;
+            Some(format!(
+                "<div class=\"phase\"><b>{}</b><strong>{accuracy:.1}%</strong><small>{average:.1} average CPL · {moves} moves</small></div>",
+                phase.label()
+            ))
+        })
+        .collect::<String>();
+        let turning_point = self.turning_point_index().map_or_else(String::new, |index| {
+            let classification = self
+                .move_classification(index)
+                .unwrap_or(MoveClassification::Good);
+            let color = quality_color(classification);
+            let decision_board = self.review_positions[index - 1];
+            let mover = decision_board.side_to_move();
+            let side = if mover == Color::White { "White" } else { "Black" };
+            let player = if mover == Color::White { &white } else { &black };
+            let san = Self::html_escape(
+                self.review_moves
+                    .get(index - 1)
+                    .map(String::as_str)
+                    .unwrap_or("-"),
+            );
+            let move_label = if index % 2 == 1 {
+                format!("{}. {san}", index.div_ceil(2))
+            } else {
+                format!("{}... {san}", index / 2)
+            };
+            let before = self.game_analysis.get(index - 1).and_then(Option::as_ref);
+            let after = self.game_analysis.get(index).and_then(Option::as_ref);
+            let best_move = before
+                .and_then(|value| value.best_move.as_deref())
+                .and_then(Self::parse_uci_value);
+            let best = best_move
+                .map(|chess_move| Self::san_for_move(&decision_board, chess_move))
+                .unwrap_or_else(|| "-".to_owned());
+            let played = self
+                .review_moves
+                .get(index - 1)
+                .and_then(|value| ChessMove::from_san(&decision_board, value).ok());
+            let loss = self.move_centipawn_loss(index).unwrap_or_default();
+            format!(
+                "<section class=\"turning-point\"><div>{}</div><div><p class=\"kicker\" style=\"color:{color}\">TURNING POINT · {} {}</p><h2>{side} — {player} played {move_label}</h2><p>The largest evaluation loss in the game was {loss} centipawns.</p><dl><dt>Before the move</dt><dd>{}</dd><dt>After the move</dt><dd>{}</dd><dt>Stockfish preferred</dt><dd>{}</dd></dl></div></section>",
+                Self::report_board(decision_board, played, best_move, color, 10_000 + index),
+                classification.symbol(),
+                classification.label(),
+                Self::report_evaluation(before),
+                Self::report_evaluation(after),
+                Self::html_escape(&best),
+            )
+        });
         format!(
             r#"<!doctype html><html><head><meta charset="utf-8"><title>Ironwood analysis - {white} vs {black}</title><style>
-@page{{size:A4 portrait;margin:15mm}}*{{box-sizing:border-box}}body{{margin:0;color:#202521;background:#fff;font:10.5pt/1.45 Arial,sans-serif}}header{{padding:0 0 10mm;border-bottom:2px solid #c89e45}}.brand{{font-size:9pt;letter-spacing:.18em;color:#80601e}}h1{{margin:3mm 0 1mm;font:26pt Georgia,serif}}.meta{{color:#68706a}}.summary{{display:grid;grid-template-columns:repeat(4,1fr);gap:3mm;margin:8mm 0}}.metric{{padding:4mm;background:#f0f2ed;border-top:2px solid #c89e45}}.metric strong{{display:block;font-size:16pt;color:#9b7425}}.report-legend{{display:flex;flex-wrap:wrap;gap:3mm 6mm;margin:3mm 0 5mm;font-size:8.5pt;font-weight:bold}}.report-legend span{{white-space:nowrap}}.arrow-key{{color:#397a54;text-shadow:0 0 1px #111}}.move-list{{margin-bottom:7mm;border-top:1px solid #ccd1cc}}.move-row{{display:grid;grid-template-columns:9mm 1fr 1fr;gap:2mm;padding:1.2mm 0;border-bottom:1px solid #e5e7e4;break-inside:avoid}}.move-row>b{{color:#727872;text-align:right}}.move{{display:grid;grid-template-columns:7mm minmax(20mm,1fr) 13mm auto;gap:1mm;align-items:center;min-width:0}}.marker{{font-weight:bold}}.san{{font-weight:bold}}.eval{{color:#68706a;font-variant-numeric:tabular-nums}}.cpl{{color:#7d4b25;font-size:7.5pt;white-space:nowrap}}.critical-break{{break-before:page;page-break-before:always}}.moment{{display:grid;grid-template-columns:76mm 1fr;gap:8mm;padding:9mm 0;border-top:1px solid #d9ddd7;break-inside:avoid;page-break-inside:avoid}}.board-wrap{{position:relative;width:76mm;height:76mm}}.board{{width:76mm;height:76mm;display:grid;grid-template-columns:repeat(8,1fr);border:1px solid #425448}}.sq{{display:grid;place-items:center;font:23pt/1 "DejaVu Sans","Segoe UI Symbol",serif}}.light{{background:#dbe2d3}}.dark{{background:#557c66}}.best-arrow{{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}}.kicker{{margin:0;font-weight:bold;letter-spacing:.08em}}h2{{margin:1mm 0 4mm;font:18pt Georgia,serif}}h3{{margin:4mm 0 1mm;font-size:9pt;text-transform:uppercase;letter-spacing:.1em;color:#737a74}}dl{{display:grid;grid-template-columns:32mm 1fr;margin:0}}dt,dd{{margin:0;padding:1.2mm 0;border-bottom:1px solid #e4e6e2}}dt{{color:#68706a}}dd{{font-weight:bold}}.pv{{font-family:Consolas,monospace;font-size:9pt}}.empty{{padding:12mm;background:#f0f2ed}}footer{{margin-top:10mm;padding-top:4mm;border-top:1px solid #bbb;color:#737a74;font-size:8pt}}@media screen{{html.printing{{overflow:hidden;background:#2b2b2b}}html.printing body{{visibility:hidden}}}}@media print{{body{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}}}</style></head><body><header><div class="brand">IRONWOOD CHESS - STOCKFISH 19 FULL NNUE</div><h1>{white} vs {black}</h1><div class="meta">{generated} - {analyzed} of {total} positions analyzed - {}</div></header><section class="summary"><div class="metric"><strong>{white_accuracy}</strong>White accuracy</div><div class="metric"><strong>{black_accuracy}</strong>Black accuracy</div><div class="metric"><strong>{white_cpl}</strong>White average CPL</div><div class="metric"><strong>{black_cpl}</strong>Black average CPL</div></section><div class="report-legend">{quality_counts}<span class="arrow-key">↗ Stockfish best move</span></div><h1>Game moves</h1><div class="move-list">{move_rows}</div><div class="critical-break"><h1>Critical positions</h1>{critical}</div><footer>Generated locally by Ironwood Chess. Stockfish 19 full NNUE - {} threads - {} MiB hash - {} nodes per position.</footer><script>addEventListener('beforeprint',()=>document.documentElement.classList.add('printing'));addEventListener('afterprint',()=>close());addEventListener('load',()=>setTimeout(()=>print(),300));</script></body></html>"#,
+@page{{size:A4 portrait;margin:15mm}}*{{box-sizing:border-box}}body{{margin:0;color:#202521;background:#fff;font:10.5pt/1.45 Arial,sans-serif}}header{{padding:0 0 10mm;border-bottom:2px solid #c89e45}}.brand{{font-size:9pt;letter-spacing:.18em;color:#80601e}}h1{{margin:3mm 0 1mm;font:26pt Georgia,serif}}.meta{{color:#68706a}}.summary{{display:grid;grid-template-columns:repeat(2,1fr);gap:3mm;margin:8mm 0}}.metric{{padding:4mm;background:#f0f2ed;border-top:2px solid #c89e45}}.metric .side{{display:block;font-size:8pt;font-weight:bold;letter-spacing:.13em;color:#68706a}}.metric strong{{display:block;font-size:16pt;color:#9b7425}}.metric b{{display:block;font-size:11pt}}.metric small{{display:block;color:#68706a}}.phases{{display:grid;grid-template-columns:repeat(3,1fr);gap:3mm;margin:0 0 6mm}}.phase{{padding:3mm;background:#f0f2ed;border-left:2px solid #c89e45}}.phase b,.phase strong,.phase small{{display:block}}.phase strong{{font-size:14pt;color:#9b7425}}.phase small{{color:#68706a}}.turning-point{{display:grid;grid-template-columns:52mm 1fr;gap:7mm;padding:5mm;background:#f6f4ed;border:1px solid #d6c18f;break-inside:avoid;page-break-inside:avoid;margin:0 0 6mm}}.turning-point .board-wrap,.turning-point .board{{width:52mm;height:52mm}}.turning-point .sq{{font-size:16pt}}.turning-point h2{{font-size:15pt;margin-bottom:2mm}}.turning-point p{{margin:1mm 0 2mm}}.report-legend{{display:flex;flex-wrap:wrap;gap:3mm 6mm;margin:3mm 0 5mm;font-size:8.5pt;font-weight:bold}}.report-legend span{{white-space:nowrap}}.arrow-key{{color:#397a54;text-shadow:0 0 1px #111}}.move-list{{margin-bottom:7mm;border-top:1px solid #ccd1cc}}.move-row{{display:grid;grid-template-columns:9mm 1fr 1fr;gap:2mm;padding:1.2mm 0;border-bottom:1px solid #e5e7e4;break-inside:avoid}}.move-row>b{{color:#727872;text-align:right}}.move{{display:grid;grid-template-columns:7mm minmax(20mm,1fr) 13mm auto;gap:1mm;align-items:center;min-width:0}}.marker{{font-weight:bold}}.san{{font-weight:bold}}.eval{{color:#68706a;font-variant-numeric:tabular-nums}}.cpl{{color:#7d4b25;font-size:7.5pt;white-space:nowrap}}.critical-break{{break-before:page;page-break-before:always}}.moment{{display:grid;grid-template-columns:76mm 1fr;gap:8mm;padding:9mm 0;border-top:1px solid #d9ddd7;break-inside:avoid;page-break-inside:avoid}}.board-wrap{{position:relative;width:76mm;height:76mm}}.board{{width:76mm;height:76mm;display:grid;grid-template-columns:repeat(8,1fr);border:1px solid #425448}}.sq{{display:grid;place-items:center;font:23pt/1 "DejaVu Sans","Segoe UI Symbol",serif}}.light{{background:#dbe2d3}}.dark{{background:#557c66}}.best-arrow{{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}}.kicker{{margin:0;font-weight:bold;letter-spacing:.08em}}h2{{margin:1mm 0 4mm;font:18pt Georgia,serif}}h3{{margin:4mm 0 1mm;font-size:9pt;text-transform:uppercase;letter-spacing:.1em;color:#737a74}}dl{{display:grid;grid-template-columns:32mm 1fr;margin:0}}dt,dd{{margin:0;padding:1.2mm 0;border-bottom:1px solid #e4e6e2}}dt{{color:#68706a}}dd{{font-weight:bold}}.pv{{font-family:Consolas,monospace;font-size:9pt}}.empty{{padding:12mm;background:#f0f2ed}}.print-guidance{{position:sticky;top:0;z-index:5;margin:0 0 5mm;padding:3mm 4mm;background:#fff3cf;border:1px solid #c89e45;color:#4d3b14;font-weight:bold}}footer{{margin-top:10mm;padding-top:4mm;border-top:1px solid #bbb;color:#737a74;font-size:8pt}}@media screen{{html.printing{{overflow:hidden;background:#2b2b2b}}html.printing body{{visibility:hidden}}}}@media print{{body{{print-color-adjust:exact;-webkit-print-color-adjust:exact}}.print-guidance{{display:none}}}}</style></head><body><div class="print-guidance">Print preview is opening. Edge may pause Ironwood until you finish printing or close this window.</div><header><div class="brand">IRONWOOD CHESS - STOCKFISH 19 FULL NNUE</div><h1>{white} vs {black}</h1><div class="meta">{generated} - {analyzed} of {total} positions analyzed - {}</div></header><section class="summary"><div class="metric"><span class="side">WHITE</span><strong>{white_accuracy}</strong><b>{white}</b><small>{white_cpl} average CPL</small></div><div class="metric"><span class="side">BLACK</span><strong>{black_accuracy}</strong><b>{black}</b><small>{black_cpl} average CPL</small></div></section><section class="phases">{phase_summary}</section>{turning_point}<div class="report-legend">{quality_counts}<span class="arrow-key">↗ Stockfish best move</span></div><h1>Game moves</h1><div class="move-list">{move_rows}</div><div class="critical-break"><h1>Critical positions</h1>{critical}</div><footer>Generated locally by Ironwood Chess. Stockfish 19 full NNUE - {} threads - {} MiB hash - {} nodes per position.</footer><script>addEventListener('beforeprint',()=>document.documentElement.classList.add('printing'));addEventListener('afterprint',()=>close());addEventListener('load',()=>setTimeout(()=>print(),900));</script></body></html>"#,
             self.game_result(),
             self.analysis_config.threads,
             self.analysis_config.hash_mib,
@@ -2610,6 +3027,7 @@ impl ChessApp {
                 }
                 self.engine_searching = false;
                 self.analysis_running = false;
+                self.realtime_analysis_due_at = None;
                 self.review_positions = positions;
                 self.review_moves = moves;
                 self.game_analysis = imported_analysis;
@@ -2702,6 +3120,7 @@ impl ChessApp {
         }
         self.engine_searching = false;
         self.analysis_running = false;
+        self.realtime_analysis_due_at = None;
         self.game_analysis_running = false;
         self.game_analysis_paused = false;
         self.game_analysis_index = None;
@@ -2773,6 +3192,8 @@ impl ChessApp {
         if self.review_positions.is_empty() {
             return;
         }
+        self.realtime_analysis_due_at = None;
+        self.best_move_attempt = None;
         let index = index.min(self.review_positions.len() - 1);
         if self.game_analysis_running || self.game_analysis_paused {
             self.review_index = Some(index);
@@ -2810,6 +3231,7 @@ impl ChessApp {
             &self.review_black_player,
         );
         self.save_game();
+        self.schedule_realtime_analysis();
         #[cfg(target_arch = "wasm32")]
         if live_position {
             self.queue_live_engine_resume();
@@ -3076,8 +3498,78 @@ impl ChessApp {
         self.legal_targets.clear();
     }
 
+    fn load_stored_prediction(&mut self, root_index: usize) -> bool {
+        let Some(root) = self.review_positions.get(root_index).copied() else {
+            return false;
+        };
+        let Some(pv) = self
+            .game_analysis
+            .get(root_index)
+            .and_then(Option::as_ref)
+            .map(|analysis| analysis.pv.clone())
+            .filter(|pv| !pv.is_empty())
+        else {
+            return false;
+        };
+        let mut board = root;
+        let mut positions = vec![board];
+        let mut moves = Vec::new();
+        let mut chess_moves = Vec::new();
+        for san in pv.split_whitespace().take(12) {
+            let Ok(chess_move) = ChessMove::from_san(&board, san) else {
+                break;
+            };
+            moves.push(san.to_owned());
+            chess_moves.push(chess_move);
+            board = board.make_move_new(chess_move);
+            positions.push(board);
+        }
+        if moves.is_empty() {
+            return false;
+        }
+        self.prediction_positions = positions;
+        self.prediction_moves = moves;
+        self.prediction_chess_moves = chess_moves;
+        self.prediction_index = 0;
+        self.prediction_navigation_active = true;
+        self.prediction_scroll_to_selected = true;
+        self.board = root;
+        self.last_move = root_index.checked_sub(1).and_then(|index| {
+            Self::review_move_at(&self.review_positions, &self.review_moves, index + 1)
+        });
+        self.selected = None;
+        self.legal_targets.clear();
+        true
+    }
+
+    fn actual_continuation(&self, position_index: usize, max_plies: usize) -> String {
+        let start = position_index.saturating_sub(1);
+        let mut line = String::new();
+        for (offset, san) in self
+            .review_moves
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(max_plies)
+        {
+            if !line.is_empty() {
+                line.push(' ');
+            }
+            let move_number = offset / 2 + 1;
+            if offset % 2 == 0 {
+                line.push_str(&format!("{move_number}. {san}"));
+            } else if offset == start {
+                line.push_str(&format!("{move_number}... {san}"));
+            } else {
+                line.push_str(san);
+            }
+        }
+        line
+    }
+
     #[cfg(target_arch = "wasm32")]
     fn start_analysis(&mut self) {
+        self.realtime_analysis_due_at = None;
         self.game_analysis_running = false;
         self.game_analysis_paused = false;
         self.game_analysis_index = None;
@@ -3120,11 +3612,22 @@ impl ChessApp {
         engine.command("isready");
     }
 
+    fn schedule_realtime_analysis(&mut self) {
+        let engine_move_pending = self.engine_enabled
+            && self.review_index.is_none()
+            && self.board.side_to_move() != self.player_side.color()
+            && self.board.status() == BoardStatus::Ongoing;
+        self.realtime_analysis_due_at = (!engine_move_pending
+            && self.board.status() == BoardStatus::Ongoing)
+            .then(|| Self::animation_time() + 0.75);
+    }
+
     #[cfg(target_arch = "wasm32")]
     fn start_game_analysis(&mut self) {
         if self.review_positions.is_empty() {
             return;
         }
+        self.realtime_analysis_due_at = None;
         self.game_analysis = vec![None; self.review_positions.len()];
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
@@ -3242,7 +3745,7 @@ impl ChessApp {
     fn resume_live_engine_if_needed(&mut self) {
         if self.pgn_input.is_empty()
             && self.review_index.is_none()
-            && self.board.side_to_move() == Color::Black
+            && self.board.side_to_move() != self.player_side.color()
             && self.board.status() == BoardStatus::Ongoing
         {
             self.request_engine_move();
@@ -3253,7 +3756,7 @@ impl ChessApp {
     fn queue_live_engine_resume(&mut self) {
         if self.pgn_input.is_empty()
             && self.review_index.is_none()
-            && self.board.side_to_move() == Color::Black
+            && self.board.side_to_move() != self.player_side.color()
             && self.board.status() == BoardStatus::Ongoing
         {
             self.resume_engine_after_ready = true;
@@ -3310,8 +3813,11 @@ impl ChessApp {
                 show_coordinates: self.show_coordinates,
                 show_best_move_arrows: self.show_best_move_arrows,
                 show_move_hover_text: self.show_move_hover_text,
+                move_sounds: self.move_sounds,
+                animate_moves: self.animate_moves,
                 piece_set: self.piece_set,
                 engine_enabled: self.engine_enabled,
+                player_side: self.player_side,
                 engine_config: self.engine_config.clone(),
                 analysis_config: self.analysis_config.clone(),
                 full_game_analysis_config: self.full_game_analysis_config.clone(),
@@ -3338,20 +3844,24 @@ impl ChessApp {
         }
     }
 
-    fn reset(&mut self) {
+    fn reset_for_side(&mut self, player_side: PlayerSide) {
         #[cfg(target_arch = "wasm32")]
         if let Some(engine) = &self.engine {
             engine.command("stop");
             engine.command("ucinewgame");
         }
         self.board = Board::default();
+        self.player_side = player_side;
+        self.flipped = player_side == PlayerSide::Black;
         self.selected = None;
         self.legal_targets.clear();
         self.history.clear();
         self.last_move = None;
+        self.move_animation = None;
         self.promotion = None;
         self.engine_searching = false;
         self.analysis_running = false;
+        self.realtime_analysis_due_at = None;
         self.review_positions.clear();
         self.review_moves.clear();
         self.game_analysis.clear();
@@ -3360,17 +3870,37 @@ impl ChessApp {
         self.game_analysis_paused = false;
         self.review_index = None;
         self.review_scroll_to_selected = false;
+        self.best_move_attempt = None;
         self.pgn_input.clear();
-        self.review_white_player = "You".into();
-        self.review_black_player = "Stockfish 19".into();
+        self.review_white_player = if player_side == PlayerSide::White {
+            "You".into()
+        } else {
+            "Stockfish 19".into()
+        };
+        self.review_black_player = if player_side == PlayerSide::Black {
+            "You".into()
+        } else {
+            "Stockfish 19".into()
+        };
         self.clear_analysis_result();
         self.resume_engine_after_ready = false;
-        self.engine_status = "Your move".into();
+        let engine_should_move = self.engine_enabled && player_side == PlayerSide::Black;
+        self.engine_status = if engine_should_move {
+            "Waiting for Stockfish…".into()
+        } else {
+            "Your move".into()
+        };
         Self::set_page_title(false, "", "");
         self.save_game();
+        #[cfg(target_arch = "wasm32")]
+        if engine_should_move {
+            self.queue_live_engine_resume();
+        }
     }
 
     fn play_from_current_position(&mut self) {
+        self.best_move_attempt = None;
+        self.move_animation = None;
         let branch_index = self
             .review_index
             .unwrap_or_else(|| self.review_positions.len().saturating_sub(1))
@@ -3384,7 +3914,8 @@ impl ChessApp {
             self.last_move =
                 Self::review_move_at(&self.review_positions, &self.review_moves, branch_index);
         }
-        let engine_should_move = self.engine_enabled && self.board.side_to_move() == Color::Black;
+        let engine_should_move =
+            self.engine_enabled && self.board.side_to_move() != self.player_side.color();
         #[cfg(target_arch = "wasm32")]
         if let Some(engine) = &self.engine {
             engine.command("stop");
@@ -3404,8 +3935,16 @@ impl ChessApp {
         self.review_index = None;
         self.review_scroll_to_selected = false;
         self.pgn_input.clear();
-        self.review_white_player = "You".into();
-        self.review_black_player = "Stockfish 19".into();
+        self.review_white_player = if self.player_side == PlayerSide::White {
+            "You".into()
+        } else {
+            "Stockfish 19".into()
+        };
+        self.review_black_player = if self.player_side == PlayerSide::Black {
+            "You".into()
+        } else {
+            "Stockfish 19".into()
+        };
         self.clear_analysis_result();
         self.resume_engine_after_ready = engine_should_move;
         self.engine_status = if engine_should_move {
@@ -3418,13 +3957,16 @@ impl ChessApp {
     }
 
     fn select(&mut self, square: Square) {
-        if self.review_index.is_some() {
+        if self.review_index.is_some() && self.best_move_attempt.is_none() {
             return;
         }
         if self.promotion.is_some() || self.board.status() != BoardStatus::Ongoing {
             return;
         }
-        if self.engine_enabled && self.board.side_to_move() == Color::Black {
+        if self.best_move_attempt.is_none()
+            && self.engine_enabled
+            && self.board.side_to_move() != self.player_side.color()
+        {
             return;
         }
         if let Some(from) = self.selected {
@@ -3433,6 +3975,8 @@ impl ChessApp {
                     && matches!(square.get_rank(), Rank::First | Rank::Eighth);
                 if promotion_needed {
                     self.promotion = Some((from, square));
+                } else if self.best_move_attempt.is_some() {
+                    self.submit_best_move_attempt(ChessMove::new(from, square, None));
                 } else {
                     self.play(ChessMove::new(from, square, None));
                 }
@@ -3451,16 +3995,149 @@ impl ChessApp {
         }
     }
 
+    fn start_best_move_attempt(&mut self, target_index: usize) {
+        let Some(root_index) = target_index.checked_sub(1) else {
+            return;
+        };
+        let Some(root) = self.review_positions.get(root_index).copied() else {
+            return;
+        };
+        let Some(best_move) = self
+            .game_analysis
+            .get(root_index)
+            .and_then(Option::as_ref)
+            .and_then(|analysis| analysis.best_move.as_deref())
+            .and_then(Self::parse_uci_value)
+        else {
+            return;
+        };
+        #[cfg(target_arch = "wasm32")]
+        if let Some(engine) = &self.engine {
+            engine.command("stop");
+        }
+        self.analysis_running = false;
+        self.engine_searching = false;
+        self.pending_analysis_search = None;
+        self.clear_analysis_result();
+        self.board = root;
+        self.review_index = Some(root_index);
+        self.review_scroll_to_selected = true;
+        self.last_move =
+            Self::review_move_at(&self.review_positions, &self.review_moves, root_index);
+        self.selected = None;
+        self.legal_targets.clear();
+        self.promotion = None;
+        self.best_move_attempt = Some(BestMoveAttempt {
+            target_index,
+            best_move,
+            attempted_move: None,
+            revealed: false,
+        });
+        self.engine_status = "Find the best move".into();
+    }
+
+    fn submit_best_move_attempt(&mut self, chess_move: ChessMove) {
+        if !MoveGen::new_legal(&self.board).any(|candidate| candidate == chess_move) {
+            return;
+        }
+        let Some(mut attempt) = self.best_move_attempt else {
+            return;
+        };
+        self.board = self.board.make_move_new(chess_move);
+        self.last_move = Some(chess_move);
+        self.review_index = Some(attempt.target_index);
+        self.review_scroll_to_selected = true;
+        attempt.attempted_move = Some(chess_move);
+        self.best_move_attempt = Some(attempt);
+        self.selected = None;
+        self.legal_targets.clear();
+        self.engine_status = if chess_move == attempt.best_move {
+            "Best move found".into()
+        } else {
+            "Try again or reveal Stockfish's move".into()
+        };
+    }
+
+    fn reset_best_move_attempt(&mut self) {
+        let Some(attempt) = self.best_move_attempt else {
+            return;
+        };
+        self.start_best_move_attempt(attempt.target_index);
+    }
+
+    fn reveal_best_move_attempt(&mut self) {
+        let Some(mut attempt) = self.best_move_attempt else {
+            return;
+        };
+        let root_index = attempt.target_index.saturating_sub(1);
+        let Some(root) = self.review_positions.get(root_index).copied() else {
+            return;
+        };
+        attempt.revealed = true;
+        self.best_move_attempt = Some(attempt);
+        self.board = root;
+        self.review_index = Some(root_index);
+        self.last_move =
+            Self::review_move_at(&self.review_positions, &self.review_moves, root_index);
+        self.selected = None;
+        self.legal_targets.clear();
+        self.engine_status = "Best move revealed".into();
+    }
+
     fn play(&mut self, mv: ChessMove) {
         if MoveGen::new_legal(&self.board).any(|candidate| candidate == mv) {
+            #[cfg(target_arch = "wasm32")]
+            if self.analysis_running && self.engine_searching && !self.game_analysis_running {
+                self.analysis_running = false;
+                self.engine_searching = false;
+                self.pending_analysis_search = None;
+                self.ignore_next_bestmove = true;
+                if let Some(engine) = &self.engine {
+                    engine.command("stop");
+                }
+            }
+            let moving_piece = self
+                .board
+                .piece_on(mv.get_source())
+                .expect("legal move has piece");
+            let moving_color = self.board.side_to_move();
+            #[cfg(target_arch = "wasm32")]
+            let is_capture = self.board.piece_on(mv.get_dest()).is_some()
+                || (self.board.piece_on(mv.get_source()) == Some(Piece::Pawn)
+                    && mv.get_source().get_file() != mv.get_dest().get_file());
             let san = Self::san_for_move(&self.board, mv);
             if self.review_positions.is_empty() {
                 self.review_positions.push(self.board);
-                self.review_white_player = "You".into();
-                self.review_black_player = "Stockfish 19".into();
+                self.review_white_player = if self.player_side == PlayerSide::White {
+                    "You".into()
+                } else {
+                    "Stockfish 19".into()
+                };
+                self.review_black_player = if self.player_side == PlayerSide::Black {
+                    "You".into()
+                } else {
+                    "Stockfish 19".into()
+                };
             }
             self.history.push(self.board);
             self.board = self.board.make_move_new(mv);
+            self.move_animation = self.animate_moves.then(|| MoveAnimation {
+                chess_move: mv,
+                piece: moving_piece,
+                color: moving_color,
+                started_at: Self::animation_time(),
+            });
+            #[cfg(target_arch = "wasm32")]
+            if self.move_sounds {
+                let sound = if self.board.checkers().popcnt() > 0 {
+                    "check"
+                } else if is_capture {
+                    "capture"
+                } else {
+                    "move"
+                };
+                play_chess_sound(sound);
+            }
             self.review_moves.push(san);
             self.review_positions.push(self.board);
             if !self.game_analysis.is_empty() {
@@ -3470,12 +4147,13 @@ impl ChessApp {
             self.last_move = Some(mv);
             self.selected = None;
             self.legal_targets.clear();
-            self.engine_status = if self.engine_enabled && self.board.side_to_move() == Color::Black
-            {
-                "Waiting for Stockfish…".into()
-            } else {
-                "Your move".into()
-            };
+            self.engine_status =
+                if self.engine_enabled && self.board.side_to_move() != self.player_side.color() {
+                    "Waiting for Stockfish…".into()
+                } else {
+                    "Your move".into()
+                };
+            self.schedule_realtime_analysis();
             self.save_game();
             #[cfg(target_arch = "wasm32")]
             self.request_engine_move();
@@ -3486,7 +4164,7 @@ impl ChessApp {
     fn request_engine_move(&mut self) {
         if self.engine_enabled
             && self.review_index.is_none()
-            && self.board.side_to_move() == Color::Black
+            && self.board.side_to_move() != self.player_side.color()
             && self.board.status() == BoardStatus::Ongoing
         {
             if let Some(engine) = &self.engine {
@@ -3610,7 +4288,7 @@ impl ChessApp {
                                     self.review_positions.len()
                                 )
                             } else {
-                                "Analyzing position…".into()
+                                "Real-time analysis…".into()
                             };
                         }
                     }
@@ -3618,6 +4296,10 @@ impl ChessApp {
                         self.update_analysis_from_info(&line);
                     }
                     if line.starts_with("bestmove ") {
+                        if self.ignore_next_bestmove {
+                            self.ignore_next_bestmove = false;
+                            continue;
+                        }
                         let completed_analysis = self.analysis_running && self.engine_searching;
                         if completed_analysis {
                             self.pending_analysis_search = None;
@@ -3667,7 +4349,7 @@ impl ChessApp {
                                 self.engine_status = "Game analysis complete".into();
                             } else {
                                 self.analysis_running = false;
-                                self.engine_status = "Analysis complete".into();
+                                self.engine_status = "Real-time analysis complete".into();
                             }
                         } else if self.engine_searching && self.engine_enabled {
                             if let Some(mv) = Self::parse_uci_move(&line) {
@@ -3701,6 +4383,7 @@ impl ChessApp {
             engine.command("stop");
         }
         self.engine_searching = false;
+        self.move_animation = None;
         if let Some(board) = self.history.pop() {
             self.board = board;
             self.review_moves.pop();
@@ -3721,27 +4404,44 @@ impl ChessApp {
     }
 
     fn piece_glyph(&self, square: Square) -> &'static str {
-        match (self.board.color_on(square), self.board.piece_on(square)) {
-            (Some(Color::White), Some(Piece::King)) => "♔",
-            (Some(Color::White), Some(Piece::Queen)) => "♕",
-            (Some(Color::White), Some(Piece::Rook)) => "♖",
-            (Some(Color::White), Some(Piece::Bishop)) => "♗",
-            (Some(Color::White), Some(Piece::Knight)) => "♘",
-            (Some(Color::White), Some(Piece::Pawn)) => "♙",
-            (Some(Color::Black), Some(Piece::King)) => "♚",
-            (Some(Color::Black), Some(Piece::Queen)) => "♛",
-            (Some(Color::Black), Some(Piece::Rook)) => "♜",
-            (Some(Color::Black), Some(Piece::Bishop)) => "♝",
-            (Some(Color::Black), Some(Piece::Knight)) => "♞",
-            (Some(Color::Black), Some(Piece::Pawn)) => "♟",
-            _ => "",
+        let Some(color) = self.board.color_on(square) else {
+            return "";
+        };
+        let Some(piece) = self.board.piece_on(square) else {
+            return "";
+        };
+        Self::piece_glyph_for(color, piece)
+    }
+
+    fn piece_glyph_for(color: Color, piece: Piece) -> &'static str {
+        match (color, piece) {
+            (Color::White, Piece::King) => "♔",
+            (Color::White, Piece::Queen) => "♕",
+            (Color::White, Piece::Rook) => "♖",
+            (Color::White, Piece::Bishop) => "♗",
+            (Color::White, Piece::Knight) => "♘",
+            (Color::White, Piece::Pawn) => "♙",
+            (Color::Black, Piece::King) => "♚",
+            (Color::Black, Piece::Queen) => "♛",
+            (Color::Black, Piece::Rook) => "♜",
+            (Color::Black, Piece::Bishop) => "♝",
+            (Color::Black, Piece::Knight) => "♞",
+            (Color::Black, Piece::Pawn) => "♟",
         }
     }
 
     fn piece_image(&self, square: Square) -> Option<egui::ImageSource<'static>> {
         let color = self.board.color_on(square)?;
         let piece = self.board.piece_on(square)?;
-        match (self.piece_set, color, piece) {
+        Self::piece_image_for(self.piece_set, color, piece)
+    }
+
+    fn piece_image_for(
+        piece_set: PieceSet,
+        color: Color,
+        piece: Piece,
+    ) -> Option<egui::ImageSource<'static>> {
+        match (piece_set, color, piece) {
             (PieceSet::Cburnett, Color::White, Piece::King) => {
                 Some(egui::include_image!("../web/pieces/cburnett/wK.svg"))
             }
@@ -3814,8 +4514,135 @@ impl ChessApp {
             (PieceSet::Merida, Color::Black, Piece::Pawn) => {
                 Some(egui::include_image!("../web/pieces/merida/bP.svg"))
             }
+            (PieceSet::RoyalRascals, Color::White, Piece::King) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wK.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::White, Piece::Queen) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wQ.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::White, Piece::Rook) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wR.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::White, Piece::Bishop) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wB.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::White, Piece::Knight) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wN.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::White, Piece::Pawn) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/wP.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::King) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bK.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::Queen) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bQ.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::Rook) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bR.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::Bishop) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bB.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::Knight) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bN.svg"))
+            }
+            (PieceSet::RoyalRascals, Color::Black, Piece::Pawn) => {
+                Some(egui::include_image!("../web/pieces/royal-rascals/bP.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::King) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wK.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::Queen) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wQ.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::Rook) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wR.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::Bishop) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wB.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::Knight) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wN.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::White, Piece::Pawn) => {
+                Some(egui::include_image!("../web/pieces/undead-court/wP.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::King) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bK.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::Queen) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bQ.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::Rook) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bR.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::Bishop) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bB.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::Knight) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bN.svg"))
+            }
+            (PieceSet::UndeadCourt, Color::Black, Piece::Pawn) => {
+                Some(egui::include_image!("../web/pieces/undead-court/bP.svg"))
+            }
             _ => None,
         }
+    }
+
+    fn paint_piece(
+        ui: &egui::Ui,
+        rect: egui::Rect,
+        cell: f32,
+        piece_set: PieceSet,
+        color: Color,
+        piece: Piece,
+    ) {
+        if let Some(source) = Self::piece_image_for(piece_set, color, piece) {
+            egui::Image::new(source)
+                .maintain_aspect_ratio(true)
+                .paint_at(ui, rect.shrink(cell * 0.06));
+            return;
+        }
+        let label = Self::piece_glyph_for(color, piece);
+        let font = FontId::new(cell * 0.74, FontFamily::Proportional);
+        let piece_color = match color {
+            Color::White => Color32::from_rgb(250, 246, 224),
+            Color::Black => Color32::from_rgb(24, 29, 32),
+        };
+        let (outline, cardinal, diagonal) = match color {
+            Color::White => (Color32::from_rgb(20, 24, 27), 1.5, 1.1),
+            Color::Black => (
+                Color32::from_rgba_unmultiplied(246, 244, 232, 210),
+                0.9,
+                0.65,
+            ),
+        };
+        for offset in [
+            Vec2::new(-cardinal, 0.0),
+            Vec2::new(cardinal, 0.0),
+            Vec2::new(0.0, -cardinal),
+            Vec2::new(0.0, cardinal),
+            Vec2::new(-diagonal, -diagonal),
+            Vec2::new(diagonal, -diagonal),
+            Vec2::new(-diagonal, diagonal),
+            Vec2::new(diagonal, diagonal),
+        ] {
+            ui.painter().text(
+                rect.center() + offset,
+                Align2::CENTER_CENTER,
+                label,
+                font.clone(),
+                outline,
+            );
+        }
+        ui.painter().text(
+            rect.center(),
+            Align2::CENTER_CENTER,
+            label,
+            font,
+            piece_color,
+        );
     }
 
     fn draw_best_move_arrow(
@@ -3873,6 +4700,14 @@ impl ChessApp {
             .min(760.0)
             .max(180.0);
         let cell = board_size / 8.0;
+        let move_animation = self.move_animation.filter(|animation| {
+            self.review_index.is_none()
+                && self.prediction_index == 0
+                && Self::animation_time() - animation.started_at < 0.24
+        });
+        if self.move_animation.is_some() && move_animation.is_none() {
+            self.move_animation = None;
+        }
         let highlighted_position_index = (self.prediction_index == 0)
             .then(|| {
                 self.review_index.or_else(|| {
@@ -3884,25 +4719,31 @@ impl ChessApp {
         let highlighted_classification =
             highlighted_position_index.and_then(|index| self.move_classification(index));
         let best_move_arrow = self
-            .show_best_move_arrows
-            .then_some(())
-            .and(highlighted_position_index)
-            .filter(|_| {
-                matches!(
-                    highlighted_classification,
-                    Some(
-                        MoveClassification::Inaccuracy
-                            | MoveClassification::Mistake
-                            | MoveClassification::Blunder
-                    )
-                )
-            })
-            .and_then(|index| index.checked_sub(1))
-            .and_then(|index| self.game_analysis.get(index))
-            .and_then(Option::as_ref)
-            .and_then(|analysis| analysis.best_move.as_deref())
-            .and_then(Self::parse_uci_value)
-            .filter(|best_move| Some(*best_move) != self.last_move);
+            .best_move_attempt
+            .filter(|attempt| attempt.revealed)
+            .map(|attempt| attempt.best_move)
+            .or_else(|| {
+                self.best_move_attempt.is_none().then_some(())?;
+                self.show_best_move_arrows
+                    .then_some(())
+                    .and(highlighted_position_index)
+                    .filter(|_| {
+                        matches!(
+                            highlighted_classification,
+                            Some(
+                                MoveClassification::Inaccuracy
+                                    | MoveClassification::Mistake
+                                    | MoveClassification::Blunder
+                            )
+                        )
+                    })
+                    .and_then(|index| index.checked_sub(1))
+                    .and_then(|index| self.game_analysis.get(index))
+                    .and_then(Option::as_ref)
+                    .and_then(|analysis| analysis.best_move.as_deref())
+                    .and_then(Self::parse_uci_value)
+                    .filter(|best_move| Some(*best_move) != self.last_move)
+            });
         ui.allocate_ui_with_layout(
             Vec2::new(board_size, board_size + player_area_height),
             Layout::top_down(Align::Min),
@@ -4018,48 +4859,57 @@ impl ChessApp {
                                         );
                                     }
                                     let center = response.rect.center();
-                                    if let Some(source) = piece_image {
-                                        egui::Image::new(source)
-                                            .maintain_aspect_ratio(true)
-                                            .paint_at(ui, response.rect.shrink(cell * 0.06));
-                                    } else if let Some(piece_side) = self.board.color_on(square) {
-                                        let (outline, cardinal, diagonal) = match piece_side {
-                                            Color::White => {
-                                                (Color32::from_rgb(20, 24, 27), 1.5, 1.1)
+                                    let animation_hides_piece =
+                                        move_animation.is_some_and(|animation| {
+                                            animation.chess_move.get_dest() == square
+                                        });
+                                    if !animation_hides_piece {
+                                        if let Some(source) = piece_image {
+                                            egui::Image::new(source)
+                                                .maintain_aspect_ratio(true)
+                                                .paint_at(ui, response.rect.shrink(cell * 0.06));
+                                        } else if let Some(piece_side) = self.board.color_on(square)
+                                        {
+                                            let (outline, cardinal, diagonal) = match piece_side {
+                                                Color::White => {
+                                                    (Color32::from_rgb(20, 24, 27), 1.5, 1.1)
+                                                }
+                                                Color::Black => (
+                                                    Color32::from_rgba_unmultiplied(
+                                                        246, 244, 232, 210,
+                                                    ),
+                                                    0.9,
+                                                    0.65,
+                                                ),
+                                            };
+                                            for offset in [
+                                                Vec2::new(-cardinal, 0.0),
+                                                Vec2::new(cardinal, 0.0),
+                                                Vec2::new(0.0, -cardinal),
+                                                Vec2::new(0.0, cardinal),
+                                                Vec2::new(-diagonal, -diagonal),
+                                                Vec2::new(diagonal, -diagonal),
+                                                Vec2::new(-diagonal, diagonal),
+                                                Vec2::new(diagonal, diagonal),
+                                            ] {
+                                                ui.painter().text(
+                                                    center + offset,
+                                                    Align2::CENTER_CENTER,
+                                                    label,
+                                                    font.clone(),
+                                                    outline,
+                                                );
                                             }
-                                            Color::Black => (
-                                                Color32::from_rgba_unmultiplied(246, 244, 232, 210),
-                                                0.9,
-                                                0.65,
-                                            ),
-                                        };
-                                        for offset in [
-                                            Vec2::new(-cardinal, 0.0),
-                                            Vec2::new(cardinal, 0.0),
-                                            Vec2::new(0.0, -cardinal),
-                                            Vec2::new(0.0, cardinal),
-                                            Vec2::new(-diagonal, -diagonal),
-                                            Vec2::new(diagonal, -diagonal),
-                                            Vec2::new(-diagonal, diagonal),
-                                            Vec2::new(diagonal, diagonal),
-                                        ] {
+                                        }
+                                        if !uses_image {
                                             ui.painter().text(
-                                                center + offset,
+                                                center,
                                                 Align2::CENTER_CENTER,
                                                 label,
-                                                font.clone(),
-                                                outline,
+                                                font,
+                                                piece_color,
                                             );
                                         }
-                                    }
-                                    if !uses_image {
-                                        ui.painter().text(
-                                            center,
-                                            Align2::CENTER_CENTER,
-                                            label,
-                                            font,
-                                            piece_color,
-                                        );
                                     }
                                     if self.show_coordinates {
                                         let coordinate_color = if light {
@@ -4096,6 +4946,32 @@ impl ChessApp {
                         }
                     },
                 );
+                if let Some(animation) = move_animation {
+                    let board_rect = board_response.response.rect;
+                    let square_center = |square: Square| {
+                        let file = square.get_file().to_index() as f32;
+                        let rank = square.get_rank().to_index() as f32;
+                        let screen_file = if self.flipped { 7.0 - file } else { file };
+                        let screen_rank = if self.flipped { rank } else { 7.0 - rank };
+                        board_rect.left_top()
+                            + Vec2::new((screen_file + 0.5) * cell, (screen_rank + 0.5) * cell)
+                    };
+                    let progress = ((Self::animation_time() - animation.started_at) / 0.24)
+                        .clamp(0.0, 1.0) as f32;
+                    let eased = 1.0 - (1.0 - progress).powi(3);
+                    let source = square_center(animation.chess_move.get_source());
+                    let destination = square_center(animation.chess_move.get_dest());
+                    let center = source + (destination - source) * eased;
+                    Self::paint_piece(
+                        ui,
+                        egui::Rect::from_center_size(center, Vec2::splat(cell)),
+                        cell,
+                        self.piece_set,
+                        animation.color,
+                        animation.piece,
+                    );
+                    ui.ctx().request_repaint();
+                }
                 if let Some(best_move) = best_move_arrow {
                     Self::draw_best_move_arrow(
                         ui,
@@ -4123,11 +4999,515 @@ impl ChessApp {
             },
         );
     }
+
+    fn engine_analysis_dock_ui(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let marker = if self.engine_analysis_dock_collapsed {
+                "▶"
+            } else {
+                "▼"
+            };
+            if ui
+                .button(format!("{marker}  Real-Time Analysis"))
+                .on_hover_text("Collapse or expand live position analysis")
+                .clicked()
+            {
+                self.engine_analysis_dock_collapsed = !self.engine_analysis_dock_collapsed;
+            }
+
+            ui.separator();
+            if self.game_analysis_running || self.game_analysis_paused {
+                let state = if self.game_analysis_paused {
+                    "Full-game analysis paused"
+                } else {
+                    "Full-game analysis running"
+                };
+                ui.label(
+                    RichText::new("Live analysis on hold").color(Color32::from_rgb(211, 173, 98)),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(RichText::new(state).weak());
+                });
+            } else {
+                ui.label(
+                    RichText::new(self.evaluation_text())
+                        .size(20.0)
+                        .strong()
+                        .color(Color32::from_rgb(211, 173, 98)),
+                );
+                ui.label(RichText::new("White perspective").weak());
+
+                if self.realtime_analysis_due_at.is_some() {
+                    ui.separator();
+                    ui.label(
+                        RichText::new("Waiting for position to settle…")
+                            .color(Color32::from_rgb(211, 173, 98)),
+                    );
+                }
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(format!("{} nps", self.analysis_nps));
+                    ui.separator();
+                    ui.label(format!("{} nodes", self.analysis_nodes));
+                    ui.separator();
+                    ui.label(format!("Depth {}", self.analysis_depth));
+                });
+            }
+        });
+
+        if self.engine_analysis_dock_collapsed {
+            return;
+        }
+
+        ui.separator();
+        if self.game_analysis_running || self.game_analysis_paused {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(
+                    RichText::new(
+                        "Live position analysis is on hold while the full-game pass is running.",
+                    )
+                    .size(14.0),
+                );
+            });
+            return;
+        }
+
+        ui.horizontal(|ui| {
+            self.evaluation_bar(ui);
+            ui.vertical(|ui| {
+                #[cfg(target_arch = "wasm32")]
+                if self.analysis_running {
+                    if ui
+                        .button("Stop analysis")
+                        .on_hover_text("Stop Stockfish analysis (Space)")
+                        .clicked()
+                    {
+                        self.stop_analysis();
+                    }
+                } else if ui
+                    .button("Analyze position")
+                    .on_hover_text("Analyze this position (Space)")
+                    .clicked()
+                {
+                    self.start_analysis();
+                }
+                ui.label(RichText::new("Local Stockfish · private").small().weak());
+            });
+
+            if !self.prediction_moves.is_empty() {
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.set_min_width(420.0_f32.min(ui.available_width()));
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Engine Move Prediction").size(16.0).strong());
+                        if self.analysis_variations.len() > 1 {
+                            let labels = self
+                                .analysis_variations
+                                .iter()
+                                .enumerate()
+                                .map(|(rank, variation)| variation.label(rank))
+                                .collect::<Vec<_>>();
+                            let mut selected = self.selected_variation.min(labels.len() - 1);
+                            egui::ComboBox::from_id_salt("engine_prediction_variation_dock")
+                                .selected_text(
+                                    RichText::new(&labels[selected])
+                                        .color(Color32::from_rgb(230, 178, 65)),
+                                )
+                                .show_ui(ui, |ui| {
+                                    let baseline =
+                                        self.analysis_variations[selected].comparison_value();
+                                    for (variation_index, label) in labels.iter().enumerate() {
+                                        let color = match (
+                                            self.analysis_variations[variation_index]
+                                                .comparison_value(),
+                                            baseline,
+                                        ) {
+                                            (Some(value), Some(base)) if value > base => {
+                                                Color32::from_rgb(106, 201, 126)
+                                            }
+                                            (Some(value), Some(base)) if value < base => {
+                                                Color32::from_rgb(232, 112, 112)
+                                            }
+                                            _ => Color32::from_rgb(230, 178, 65),
+                                        };
+                                        ui.selectable_value(
+                                            &mut selected,
+                                            variation_index,
+                                            RichText::new(label).color(color),
+                                        );
+                                    }
+                                });
+                            if selected != self.selected_variation {
+                                self.prediction_index = 0;
+                                self.prediction_navigation_active = true;
+                                self.select_analysis_variation(selected);
+                            }
+                        }
+                    });
+
+                    let mut prediction_jump = None;
+                    egui::ScrollArea::horizontal()
+                        .id_salt("engine_prediction_moves_dock")
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                for (move_index, san) in self.prediction_moves.iter().enumerate() {
+                                    let selected = self.prediction_index == move_index + 1;
+                                    let mut response = ui.add_sized(
+                                        [62.0, 28.0],
+                                        egui::Button::selectable(selected, san),
+                                    );
+                                    if self.show_move_hover_text
+                                        && let (Some(board), Some(chess_move)) = (
+                                            self.prediction_positions.get(move_index),
+                                            self.prediction_chess_moves.get(move_index),
+                                        )
+                                    {
+                                        response = response.on_hover_text(Self::move_hover_text(
+                                            board,
+                                            *chess_move,
+                                        ));
+                                    }
+                                    if response.clicked() {
+                                        prediction_jump = Some(move_index + 1);
+                                    }
+                                    if selected && self.prediction_scroll_to_selected {
+                                        response.scroll_to_me(Some(Align::Center));
+                                    }
+                                }
+                            });
+                        });
+                    ui.horizontal(|ui| {
+                        for (label, destination, enabled, hint) in [
+                            ("|◀", 0, self.prediction_index > 0, "First prediction"),
+                            (
+                                "◀",
+                                self.prediction_index.saturating_sub(1),
+                                self.prediction_index > 0,
+                                "Previous predicted move",
+                            ),
+                            (
+                                "▶",
+                                (self.prediction_index + 1).min(self.prediction_moves.len()),
+                                self.prediction_index < self.prediction_moves.len(),
+                                "Next predicted move",
+                            ),
+                            (
+                                "▶|",
+                                self.prediction_moves.len(),
+                                self.prediction_index < self.prediction_moves.len(),
+                                "Last prediction",
+                            ),
+                        ] {
+                            if ui
+                                .add_enabled(enabled, egui::Button::new(label))
+                                .on_hover_text(hint)
+                                .clicked()
+                            {
+                                prediction_jump = Some(destination);
+                            }
+                        }
+                    });
+                    self.prediction_scroll_to_selected = false;
+                    if let Some(destination) = prediction_jump {
+                        self.prediction_to(destination);
+                    }
+                });
+            }
+        });
+    }
+
+    fn game_moves_column_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(index) = self.review_index.or_else(|| {
+            (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
+        }) else {
+            ui.add_space(14.0);
+            ui.heading("Game Moves");
+            ui.label(RichText::new("Moves will appear here as the game develops.").weak());
+            return;
+        };
+
+        ui.add_space(14.0);
+        ui.label(RichText::new("Game Moves").size(19.0).strong());
+        ui.label(RichText::new(format!("Position {index} of {}", self.review_moves.len())).weak());
+        ui.add_space(8.0);
+
+        let mut jump_to = None;
+        let scroll_to_selected = self.review_scroll_to_selected;
+        let moves_height = (ui.available_height() - 62.0).max(160.0);
+        Frame::new()
+            .fill(Color32::from_rgb(11, 16, 29))
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(24)))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::same(8))
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("game_moves_column")
+                    .max_height(moves_height)
+                    .min_scrolled_height(moves_height)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for pair in 0..self.review_moves.len().div_ceil(2) {
+                            let white_ply = pair * 2;
+                            let black_ply = white_ply + 1;
+                            ui.horizontal(|ui| {
+                                let move_number = ui.add_sized(
+                                    [30.0, 28.0],
+                                    egui::Label::new(format!("{}.", pair + 1)),
+                                );
+                                if pair == 0 && index == 0 && scroll_to_selected {
+                                    move_number.scroll_to_me(Some(Align::Min));
+                                }
+                                let move_width =
+                                    ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0)
+                                        .max(62.0);
+                                if let Some(san) = self.review_moves.get(white_ply).cloned() {
+                                    let selected = index == white_ply + 1;
+                                    let response = self.analyzed_move_button(
+                                        ui,
+                                        &san,
+                                        white_ply + 1,
+                                        selected,
+                                        move_width,
+                                    );
+                                    if response.clicked() {
+                                        jump_to = Some(white_ply + 1);
+                                    }
+                                    if selected && scroll_to_selected {
+                                        response.scroll_to_me(Some(Align::Center));
+                                    }
+                                }
+                                if let Some(san) = self.review_moves.get(black_ply).cloned() {
+                                    let selected = index == black_ply + 1;
+                                    let response = self.analyzed_move_button(
+                                        ui,
+                                        &san,
+                                        black_ply + 1,
+                                        selected,
+                                        move_width,
+                                    );
+                                    if response.clicked() {
+                                        jump_to = Some(black_ply + 1);
+                                    }
+                                    if selected && scroll_to_selected {
+                                        response.scroll_to_me(Some(Align::Center));
+                                    }
+                                }
+                            });
+                        }
+                    });
+                ui.separator();
+                ui.horizontal(|ui| {
+                    let gaps = ui.spacing().item_spacing.x * 3.0;
+                    let button_width = ((ui.available_width() - gaps) / 4.0).max(32.0);
+                    for (label, destination, enabled, hint) in [
+                        ("|◀", 0, index > 0, "First position (Home)"),
+                        (
+                            "◀",
+                            index.saturating_sub(1),
+                            index > 0,
+                            "Previous move (Left arrow)",
+                        ),
+                        (
+                            "▶",
+                            (index + 1).min(self.review_moves.len()),
+                            index < self.review_moves.len(),
+                            "Next move (Right arrow)",
+                        ),
+                        (
+                            "▶|",
+                            self.review_moves.len(),
+                            index < self.review_moves.len(),
+                            "Last position (End)",
+                        ),
+                    ] {
+                        if ui
+                            .add_enabled(
+                                enabled,
+                                egui::Button::new(label).min_size(Vec2::new(button_width, 30.0)),
+                            )
+                            .on_hover_text(hint)
+                            .clicked()
+                        {
+                            jump_to = Some(destination);
+                        }
+                    }
+                });
+            });
+
+        self.review_scroll_to_selected = false;
+        if let Some(destination) = jump_to {
+            self.review_to(destination);
+        }
+    }
+
+    fn new_game_color_card(
+        ui: &mut egui::Ui,
+        piece_set: PieceSet,
+        choice: NewGameColor,
+        selected: bool,
+    ) -> egui::Response {
+        let size = Vec2::new(150.0, 176.0);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let accent = Color32::from_rgb(211, 173, 98);
+        let border = if selected {
+            Stroke::new(2.0, accent)
+        } else {
+            Stroke::new(1.0, Color32::from_white_alpha(36))
+        };
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(8),
+            if selected {
+                Color32::from_rgb(43, 39, 29)
+            } else {
+                Color32::from_rgb(24, 28, 33)
+            },
+        );
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(8),
+            border,
+            egui::StrokeKind::Inside,
+        );
+
+        match choice {
+            NewGameColor::White | NewGameColor::Black => {
+                let color = if choice == NewGameColor::White {
+                    Color::White
+                } else {
+                    Color::Black
+                };
+                let king_rect = egui::Rect::from_center_size(
+                    egui::pos2(rect.center().x, rect.top() + 58.0),
+                    Vec2::splat(78.0),
+                );
+                Self::paint_piece(ui, king_rect, 78.0, piece_set, color, Piece::King);
+            }
+            NewGameColor::Random => {
+                for (color, x) in [
+                    (Color::White, rect.center().x - 25.0),
+                    (Color::Black, rect.center().x + 25.0),
+                ] {
+                    let king_rect = egui::Rect::from_center_size(
+                        egui::pos2(x, rect.top() + 60.0),
+                        Vec2::splat(58.0),
+                    );
+                    Self::paint_piece(ui, king_rect, 58.0, piece_set, color, Piece::King);
+                }
+            }
+        }
+
+        let (title, subtitle) = match choice {
+            NewGameColor::White => ("WHITE", "You make the first move"),
+            NewGameColor::Black => ("BLACK", "Stockfish opens the game"),
+            NewGameColor::Random => ("RANDOM", "Let Ironwood choose"),
+        };
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.top() + 113.0),
+            Align2::CENTER_CENTER,
+            title,
+            FontId::proportional(17.0),
+            if selected {
+                accent
+            } else {
+                ui.visuals().text_color()
+            },
+        );
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.top() + 141.0),
+            Align2::CENTER_CENTER,
+            subtitle,
+            FontId::proportional(12.5),
+            ui.visuals().weak_text_color(),
+        );
+        if selected {
+            ui.painter().text(
+                egui::pos2(rect.center().x, rect.bottom() - 14.0),
+                Align2::CENTER_CENTER,
+                "SELECTED",
+                FontId::proportional(10.5),
+                accent,
+            );
+        }
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    }
+
+    fn start_battle_button(ui: &mut egui::Ui, piece_set: PieceSet) -> egui::Response {
+        let size = Vec2::new(310.0, 64.0);
+        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+        let accent = Color32::from_rgb(211, 173, 98);
+        let hovered = response.hovered();
+
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(9),
+            if hovered {
+                Color32::from_rgb(58, 49, 29)
+            } else {
+                Color32::from_rgb(43, 39, 29)
+            },
+        );
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(9),
+            Stroke::new(if hovered { 2.0 } else { 1.0 }, accent),
+            egui::StrokeKind::Inside,
+        );
+
+        let piece_size = 46.0;
+        let left_piece = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 39.0, rect.center().y),
+            Vec2::splat(piece_size),
+        );
+        let right_piece = egui::Rect::from_center_size(
+            egui::pos2(rect.right() - 39.0, rect.center().y),
+            Vec2::splat(piece_size),
+        );
+        Self::paint_piece(
+            ui,
+            left_piece,
+            piece_size,
+            piece_set,
+            Color::White,
+            Piece::Knight,
+        );
+        Self::paint_piece(
+            ui,
+            right_piece,
+            piece_size,
+            piece_set,
+            Color::Black,
+            Piece::Knight,
+        );
+
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.center().y - 8.0),
+            Align2::CENTER_CENTER,
+            "START GAME",
+            FontId::proportional(18.0),
+            Color32::WHITE,
+        );
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.center().y + 13.0),
+            Align2::CENTER_CENTER,
+            "BEGIN THE BATTLE",
+            FontId::proportional(10.0),
+            accent,
+        );
+
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merida_is_the_default_piece_set() {
+        assert!(PieceSet::default() == PieceSet::Merida);
+    }
 
     #[test]
     fn parses_normal_and_promotion_uci_moves() {
@@ -4302,10 +5682,12 @@ impl eframe::App for ChessApp {
         }
         if let Some(index) = self.review_index.or_else(|| {
             (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
-        }) && !ctx.wants_keyboard_input()
+        }) && self.best_move_attempt.is_none()
+            && !ctx.wants_keyboard_input()
             && !self.pgn_dialog_open
             && !self.strength_dialog_open
             && !self.about_dialog_open
+            && !self.new_game_dialog_open
         {
             if self.prediction_navigation_active && !self.prediction_moves.is_empty() {
                 let destination = ctx.input(|input| {
@@ -4353,6 +5735,7 @@ impl eframe::App for ChessApp {
             && !self.pgn_dialog_open
             && !self.strength_dialog_open
             && !self.about_dialog_open
+            && !self.new_game_dialog_open
             && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Space))
         {
             if self.game_analysis_running {
@@ -4383,7 +5766,11 @@ impl eframe::App for ChessApp {
                         "Analyze at least one position before exporting."
                     };
                     if ui.button("New game").clicked() {
-                        self.reset();
+                        self.new_game_color = match self.player_side {
+                            PlayerSide::White => NewGameColor::White,
+                            PlayerSide::Black => NewGameColor::Black,
+                        };
+                        self.new_game_dialog_open = true;
                         ui.close();
                     }
                     if ui
@@ -4453,9 +5840,13 @@ impl eframe::App for ChessApp {
                     {
                         #[cfg(target_arch = "wasm32")]
                         {
+                            self.print_notice_until = Some(Self::animation_time() + 8.0);
                             self.engine_status = match self.print_analysis_report() {
                                 Ok(()) => "Analysis report opened · choose Save as PDF".into(),
-                                Err(_) => "Analysis report window was blocked".into(),
+                                Err(_) => {
+                                    self.print_notice_until = None;
+                                    "Analysis report window was blocked".into()
+                                }
                             };
                         }
                         ui.close();
@@ -4470,32 +5861,64 @@ impl eframe::App for ChessApp {
                     }
                 });
                 ui.menu_button("View", |ui| {
-                    if ui
-                        .checkbox(&mut self.show_coordinates, "Show coordinates")
-                        .changed()
-                    {
-                        self.save_game();
-                    }
-                    if ui
-                        .checkbox(&mut self.show_best_move_arrows, "Show best-move arrows")
-                        .changed()
-                    {
-                        self.save_game();
-                    }
-                    if ui
-                        .checkbox(&mut self.show_move_hover_text, "Show move hover text")
-                        .changed()
-                    {
-                        self.save_game();
-                    }
-                    ui.menu_button("Piece set", |ui| {
-                        for piece_set in [PieceSet::System, PieceSet::Cburnett, PieceSet::Merida] {
-                            if ui
-                                .selectable_value(&mut self.piece_set, piece_set, piece_set.label())
-                                .changed()
-                            {
-                                self.save_game();
-                                ui.close();
+                    ui.menu_button("Board", |ui| {
+                        if ui
+                            .checkbox(&mut self.show_coordinates, "Show coordinates")
+                            .changed()
+                        {
+                            self.save_game();
+                        }
+                        if ui
+                            .checkbox(&mut self.show_best_move_arrows, "Show best-move arrows")
+                            .changed()
+                        {
+                            self.save_game();
+                        }
+                        ui.separator();
+                        ui.menu_button("Piece set", |ui| {
+                            for piece_set in [
+                                PieceSet::System,
+                                PieceSet::Cburnett,
+                                PieceSet::Merida,
+                                PieceSet::RoyalRascals,
+                                PieceSet::UndeadCourt,
+                            ] {
+                                if ui
+                                    .selectable_value(
+                                        &mut self.piece_set,
+                                        piece_set,
+                                        piece_set.label(),
+                                    )
+                                    .changed()
+                                {
+                                    self.save_game();
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+                    ui.menu_button("Move feedback", |ui| {
+                        if ui
+                            .checkbox(&mut self.show_move_hover_text, "Show hover text")
+                            .changed()
+                        {
+                            self.save_game();
+                        }
+                        if ui
+                            .checkbox(&mut self.animate_moves, "Animate live moves")
+                            .changed()
+                        {
+                            self.move_animation = None;
+                            self.save_game();
+                        }
+                        if ui
+                            .checkbox(&mut self.move_sounds, "Play move sounds")
+                            .changed()
+                        {
+                            self.save_game();
+                            #[cfg(target_arch = "wasm32")]
+                            if self.move_sounds {
+                                play_chess_sound("move");
                             }
                         }
                     });
@@ -4563,6 +5986,8 @@ impl eframe::App for ChessApp {
                     } else {
                         format!("Play · {}", Self::strength_summary(&self.engine_config))
                     };
+                    let engine_settings_locked =
+                        self.game_analysis_running || self.game_analysis_paused;
                     let strength_clicked = ui
                         .scope(|ui| {
                             let gold = Color32::from_rgb(211, 173, 98);
@@ -4575,11 +6000,16 @@ impl eframe::App for ChessApp {
                             ui.visuals_mut().widgets.hovered.bg_stroke = Stroke::new(1.5, gold);
                             ui.visuals_mut().widgets.active.weak_bg_fill = gold.gamma_multiply(0.2);
                             ui.visuals_mut().widgets.active.bg_stroke = Stroke::new(1.5, gold);
-                            ui.add(
+                            ui.add_enabled(
+                                !engine_settings_locked,
                                 egui::Button::new(RichText::new(strength_label).color(gold))
                                     .frame(true),
                             )
-                            .on_hover_text("Open Play and Analysis engine settings")
+                            .on_hover_text(if engine_settings_locked {
+                                "Stop full-game analysis before changing engine settings"
+                            } else {
+                                "Open Play and Analysis engine settings"
+                            })
                             .clicked()
                         })
                         .inner;
@@ -4639,12 +6069,18 @@ impl eframe::App for ChessApp {
                 }
             });
 
+        let separate_moves_panel = ctx.available_rect().width() >= 1180.0;
+
         egui::SidePanel::right("game_panel")
             .default_width(340.0)
             .min_width(280.0)
             .max_width(640.0)
             .resizable(true)
             .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("game_panel_scroll")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                 ui.add_space(18.0);
                 ui.heading(match self.board.status() {
                     BoardStatus::Ongoing => {
@@ -4683,6 +6119,7 @@ impl eframe::App for ChessApp {
                 if let Some(index) = self.review_index.or_else(|| {
                     (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
                 }) {
+                    if !separate_moves_panel {
                     let mut jump_to = None;
                     let scroll_to_selected = self.review_scroll_to_selected;
                     ui.label(RichText::new("Game Moves").size(17.0).strong());
@@ -4805,6 +6242,7 @@ impl eframe::App for ChessApp {
                         self.review_to(destination);
                     }
                     ui.add_space(12.0);
+                    }
                     ui.label(RichText::new("Game Analysis").size(18.0).strong());
                     let completed = self
                         .game_analysis
@@ -4911,59 +6349,452 @@ impl eframe::App for ChessApp {
                                     });
                             }
                         });
-                        ui.label(
-                            RichText::new("Ironwood accuracy · consistent node budget")
-                                .size(13.0)
-                                .weak(),
-                        );
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Game phases").size(14.0).strong());
+                        let current_phase = self.game_phase_for_move(index.max(1));
+                        let mut phase_jump = None;
+                        ui.columns(3, |columns| {
+                            for (column, phase) in columns.iter_mut().zip([
+                                GamePhase::Opening,
+                                GamePhase::Middlegame,
+                                GamePhase::Endgame,
+                            ]) {
+                                let stats = self.phase_stats(phase);
+                                let selected = current_phase == Some(phase);
+                                let response = Frame::new()
+                                    .fill(if selected {
+                                        Color32::from_rgb(43, 39, 29)
+                                    } else {
+                                        Color32::from_rgb(24, 28, 33)
+                                    })
+                                    .stroke(Stroke::new(
+                                        if selected { 1.5 } else { 1.0 },
+                                        if selected {
+                                            Color32::from_rgb(211, 173, 98)
+                                        } else {
+                                            Color32::from_white_alpha(20)
+                                        },
+                                    ))
+                                    .corner_radius(CornerRadius::same(5))
+                                    .inner_margin(Margin::same(7))
+                                    .show(column, |ui| {
+                                        ui.set_min_width(ui.available_width());
+                                        ui.label(
+                                            RichText::new(phase.label()).size(12.0).strong(),
+                                        );
+                                        if let Some((moves, accuracy, average)) = stats {
+                                            ui.label(
+                                                RichText::new(format!("{accuracy:.1}%"))
+                                                    .size(17.0)
+                                                    .strong()
+                                                    .color(Color32::from_rgb(230, 178, 65)),
+                                            );
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "{average:.1} CPL · {moves} moves"
+                                                ))
+                                                .size(10.5)
+                                                .weak(),
+                                            );
+                                        } else {
+                                            ui.label(RichText::new("Not reached").weak());
+                                        }
+                                    })
+                                    .response
+                                    .interact(Sense::click())
+                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                    .on_hover_text(format!(
+                                        "Jump to the first move of the {}",
+                                        phase.label().to_lowercase()
+                                    ));
+                                if stats.is_some() && response.clicked() {
+                                    phase_jump = self.first_move_in_phase(phase);
+                                }
+                            }
+                        });
+                        if let Some(destination) = phase_jump {
+                            self.review_to(destination);
+                        }
+                        if let Some(turning_point) = self.turning_point_index() {
+                            let loss = self
+                                .move_centipawn_loss(turning_point)
+                                .unwrap_or_default();
+                            let classification = self
+                                .move_classification(turning_point)
+                                .unwrap_or(MoveClassification::Good);
+                            let mover = self.review_positions[turning_point - 1].side_to_move();
+                            let player = if mover == Color::White {
+                                self.review_white_player.clone()
+                            } else {
+                                self.review_black_player.clone()
+                            };
+                            let san = self
+                                .review_moves
+                                .get(turning_point - 1)
+                                .cloned()
+                                .unwrap_or_else(|| "move".to_owned());
+                            let move_label = if turning_point % 2 == 1 {
+                                format!("{}. {san}", turning_point.div_ceil(2))
+                            } else {
+                                format!("{}... {san}", turning_point / 2)
+                            };
+                            let mut review_turning_point = false;
+                            ui.add_space(8.0);
+                            Frame::new()
+                                .fill(Color32::from_rgb(24, 28, 33))
+                                .stroke(Stroke::new(1.0, classification.color()))
+                                .corner_radius(CornerRadius::same(6))
+                                .inner_margin(Margin::same(9))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new("Turning point")
+                                                .size(15.0)
+                                                .strong(),
+                                        );
+                                        ui.with_layout(
+                                            Layout::right_to_left(Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "{} {}",
+                                                        classification.symbol(),
+                                                        classification.label()
+                                                    ))
+                                                    .color(classification.color()),
+                                                );
+                                            },
+                                        );
+                                    });
+                                    ui.label(
+                                        RichText::new(format!("{player} played {move_label}"))
+                                            .size(14.0)
+                                            .strong(),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "Largest evaluation loss in the game · {loss} centipawns"
+                                        ))
+                                        .size(13.0)
+                                        .weak(),
+                                    );
+                                    review_turning_point = ui
+                                        .button("Review move")
+                                        .on_hover_text("Jump to the game's largest evaluation swing")
+                                        .clicked();
+                                });
+                            if review_turning_point {
+                                self.review_to(turning_point);
+                            }
+                        }
                         ui.add_space(7.0);
                         ui.label(RichText::new("Move quality").size(14.0).strong());
                         let mut summary_jump = None;
-                        for classifications in [
-                            &[
+                        Frame::new()
+                            .fill(Color32::from_rgb(24, 28, 33))
+                            .corner_radius(CornerRadius::same(5))
+                            .inner_margin(Margin::symmetric(8, 6))
+                            .show(ui, |ui| {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(RichText::new("All moves").size(13.0).strong());
+                                    for classification in [
                                 MoveClassification::Best,
                                 MoveClassification::Good,
                                 MoveClassification::Inaccuracy,
-                            ][..],
-                            &[
                                 MoveClassification::Mistake,
                                 MoveClassification::Blunder,
-                            ][..],
-                        ] {
-                            ui.horizontal(|ui| {
-                                for &classification in classifications {
-                                    let count = self.classification_count(classification);
-                                    let response = ui.add_enabled(
-                                        count > 0,
-                                        egui::Button::new(
-                                            RichText::new(format!(
-                                                "{} {} {count}",
-                                                classification.symbol(),
-                                                classification.label()
+                                    ] {
+                                        let count = self.classification_count(classification);
+                                        if ui
+                                            .add_enabled(
+                                                count > 0,
+                                                egui::Button::new(
+                                                    RichText::new(format!(
+                                                        "{} {count}",
+                                                        classification.symbol()
+                                                    ))
+                                                    .size(12.0)
+                                                    .color(classification.color()),
+                                                )
+                                                .stroke(Stroke::new(
+                                                    1.0,
+                                                    classification.color(),
+                                                )),
+                                            )
+                                            .on_hover_text(format!(
+                                                "All moves: {} {} — jump to the next matching move",
+                                                count,
+                                                classification.label().to_lowercase()
                                             ))
-                                            .color(classification.color()),
-                                        )
-                                        .stroke(Stroke::new(1.0, classification.color())),
-                                    );
-                                    if response
-                                        .on_hover_text("Jump to the next matching move")
-                                        .clicked()
-                                    {
-                                        summary_jump =
-                                            self.next_classified_move(classification, index);
+                                            .clicked()
+                                        {
+                                            summary_jump =
+                                                self.next_classified_move(classification, index);
+                                        }
                                     }
-                                }
+                                });
                             });
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("By player").size(13.0).strong().weak());
+                        for (color, player) in [
+                            (Color::White, self.review_white_player.clone()),
+                            (Color::Black, self.review_black_player.clone()),
+                        ] {
+                            Frame::new()
+                                .fill(Color32::from_rgb(24, 28, 33))
+                                .corner_radius(CornerRadius::same(5))
+                                .inner_margin(Margin::symmetric(8, 6))
+                                .show(ui, |ui| {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(RichText::new(&player).size(13.0).strong());
+                                        for classification in [
+                                            MoveClassification::Best,
+                                            MoveClassification::Good,
+                                            MoveClassification::Inaccuracy,
+                                            MoveClassification::Mistake,
+                                            MoveClassification::Blunder,
+                                        ] {
+                                            let count = self.classification_count_for_color(
+                                                classification,
+                                                color,
+                                            );
+                                            if ui
+                                                .add_enabled(
+                                                    count > 0,
+                                                    egui::Button::new(
+                                                        RichText::new(format!(
+                                                            "{} {count}",
+                                                            classification.symbol()
+                                                        ))
+                                                        .size(12.0)
+                                                        .color(classification.color()),
+                                                    )
+                                                    .stroke(Stroke::new(
+                                                        1.0,
+                                                        classification.color(),
+                                                    )),
+                                                )
+                                                .on_hover_text(format!(
+                                                    "{}: {} {} — jump to the next matching move",
+                                                    player,
+                                                    count,
+                                                    classification.label().to_lowercase()
+                                                ))
+                                                .clicked()
+                                            {
+                                                summary_jump = self
+                                                    .next_classified_move_for_color(
+                                                        classification,
+                                                        color,
+                                                        index,
+                                                    );
+                                            }
+                                        }
+                                    });
+                                });
+                            ui.add_space(4.0);
+                        }
+                        let critical_moves = self.critical_move_indices();
+                        if !critical_moves.is_empty() {
+                            ui.add_space(8.0);
+                            Frame::new()
+                                .fill(Color32::from_rgb(24, 28, 33))
+                                .stroke(Stroke::new(
+                                    1.0,
+                                    Color32::from_rgb(211, 173, 98),
+                                ))
+                                .corner_radius(CornerRadius::same(6))
+                                .inner_margin(Margin::same(9))
+                                .show(ui, |ui| {
+                                    if let Some(attempt) = self.best_move_attempt {
+                                        let root_index = attempt.target_index.saturating_sub(1);
+                                        let root = self.review_positions[root_index];
+                                        let best_san = Self::san_for_move(&root, attempt.best_move);
+                                        ui.label(
+                                            RichText::new("Find the best move")
+                                                .size(17.0)
+                                                .strong(),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "Position before move {} · play directly on the board",
+                                                attempt.target_index
+                                            ))
+                                            .size(13.0)
+                                            .weak(),
+                                        );
+                                        ui.add_space(6.0);
+                                        if attempt.revealed {
+                                            ui.label(
+                                                RichText::new(format!("Best move: {best_san}"))
+                                                    .size(16.0)
+                                                    .strong()
+                                                    .color(Color32::from_rgb(106, 201, 126)),
+                                            );
+                                            if let Some(line) = self
+                                                .game_analysis
+                                                .get(root_index)
+                                                .and_then(Option::as_ref)
+                                                .map(|analysis| analysis.pv.as_str())
+                                                .filter(|line| !line.is_empty())
+                                            {
+                                                ui.label(RichText::new(line).size(13.0).weak());
+                                            }
+                                            ui.horizontal(|ui| {
+                                                if ui.button("Try again").clicked() {
+                                                    self.reset_best_move_attempt();
+                                                }
+                                                if ui.button("Back to review").clicked() {
+                                                    self.best_move_attempt = None;
+                                                    summary_jump = Some(attempt.target_index);
+                                                }
+                                            });
+                                        } else if let Some(attempted_move) = attempt.attempted_move {
+                                            let attempted_san =
+                                                Self::san_for_move(&root, attempted_move);
+                                            if attempted_move == attempt.best_move {
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "Best move found: {attempted_san}"
+                                                    ))
+                                                    .size(16.0)
+                                                    .strong()
+                                                    .color(Color32::from_rgb(106, 201, 126)),
+                                                );
+                                            } else {
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "You played {attempted_san}. Stockfish prefers another move."
+                                                    ))
+                                                    .size(15.0)
+                                                    .color(Color32::from_rgb(224, 190, 92)),
+                                                );
+                                            }
+                                            ui.horizontal(|ui| {
+                                                if ui.button("Try again").clicked() {
+                                                    self.reset_best_move_attempt();
+                                                }
+                                                if ui.button("Show solution").clicked() {
+                                                    self.reveal_best_move_attempt();
+                                                }
+                                            });
+                                        } else {
+                                            ui.label(
+                                                RichText::new(
+                                                    "Stockfish's recommendation is hidden until you move or reveal it.",
+                                                )
+                                                .size(14.0),
+                                            );
+                                            if ui.button("Cancel exercise").clicked() {
+                                                self.best_move_attempt = None;
+                                                summary_jump = Some(attempt.target_index);
+                                            }
+                                        }
+                                    } else {
+                                    ui.horizontal(|ui| {
+                                        ui.label(
+                                            RichText::new("Review mistakes")
+                                                .size(15.0)
+                                                .strong(),
+                                        );
+                                        if let Some(review_position) =
+                                            critical_moves.iter().position(|move_index| *move_index == index)
+                                        {
+                                            ui.with_layout(
+                                                Layout::right_to_left(Align::Center),
+                                                |ui| {
+                                                    ui.label(
+                                                        RichText::new(format!(
+                                                            "{} of {}",
+                                                            review_position + 1,
+                                                            critical_moves.len()
+                                                        ))
+                                                        .color(Color32::from_rgb(211, 173, 98)),
+                                                    );
+                                                },
+                                            );
+                                        }
+                                    });
+                                    ui.label(
+                                        RichText::new(
+                                            "Step through every inaccuracy, mistake, and blunder.",
+                                        )
+                                        .size(13.0)
+                                        .weak(),
+                                    );
+                                    ui.add_space(5.0);
+                                    if let Some(review_position) =
+                                        critical_moves.iter().position(|move_index| *move_index == index)
+                                    {
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .add_enabled(
+                                                    review_position > 0,
+                                                    egui::Button::new("◀ Previous"),
+                                                )
+                                                .clicked()
+                                            {
+                                                summary_jump = Some(critical_moves[review_position - 1]);
+                                            }
+                                            if ui
+                                                .add_enabled(
+                                                    review_position + 1 < critical_moves.len(),
+                                                    egui::Button::new("Next ▶"),
+                                                )
+                                                .clicked()
+                                            {
+                                                summary_jump = Some(critical_moves[review_position + 1]);
+                                            }
+                                        });
+                                        if self
+                                            .game_analysis
+                                            .get(index - 1)
+                                            .and_then(Option::as_ref)
+                                            .and_then(|analysis| analysis.best_move.as_ref())
+                                            .is_some()
+                                            && ui.button("Try the best move").clicked()
+                                        {
+                                            self.start_best_move_attempt(index);
+                                        }
+                                    } else if ui.button("Start critical review").clicked() {
+                                        summary_jump = critical_moves.first().copied();
+                                    }
+                                    }
+                                });
                         }
                         if let Some(destination) = summary_jump {
                             self.review_to(destination);
                         }
-                        if index > 0
+                        if self.best_move_attempt.is_none()
+                            && index > 0
                             && let (Some(loss), Some(classification)) = (
                                 self.move_centipawn_loss(index),
                                 self.move_classification(index),
                             )
                         {
+                            let root_index = index - 1;
+                            let root = self.review_positions[root_index];
+                            let before = self.game_analysis[root_index].clone();
+                            let after = self.game_analysis[index].clone();
+                            let played = self
+                                .review_moves
+                                .get(root_index)
+                                .cloned()
+                                .unwrap_or_else(|| "-".to_owned());
+                            let best_move = before
+                                .as_ref()
+                                .and_then(|analysis| analysis.best_move.as_deref())
+                                .and_then(Self::parse_uci_value);
+                            let best_san = best_move
+                                .map(|chess_move| Self::san_for_move(&root, chess_move))
+                                .unwrap_or_else(|| "-".to_owned());
+                            let actual_line = self.actual_continuation(index, 6);
+                            let recommended_line = before
+                                .as_ref()
+                                .map(|analysis| analysis.pv.clone())
+                                .unwrap_or_default();
+                            let mut try_best_move = false;
+                            let mut step_best_line = false;
                             ui.add_space(6.0);
                             Frame::new()
                                 .fill(Color32::from_rgb(24, 28, 33))
@@ -4973,278 +6804,112 @@ impl eframe::App for ChessApp {
                                 .show(ui, |ui| {
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new(classification.label())
-                                                .strong()
-                                                .color(classification.color()),
+                                            RichText::new("Move Analysis")
+                                                .size(16.0)
+                                                .strong(),
                                         );
                                         ui.with_layout(
                                             Layout::right_to_left(Align::Center),
                                             |ui| {
-                                                ui.label(format!("{loss} CPL"));
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "{} {} · {loss} CPL",
+                                                        classification.symbol(),
+                                                        classification.label()
+                                                    ))
+                                                    .strong()
+                                                    .color(classification.color()),
+                                                );
                                             },
                                         );
                                     });
-                                    if let Some(before) =
-                                        self.game_analysis.get(index - 1).and_then(Option::as_ref)
-                                    {
-                                        if let Some(best_move) = &before.best_move {
-                                            ui.label(format!("Best move: {best_move}"));
-                                        }
-                                        if !before.pv.is_empty() {
-                                            ui.label(RichText::new(&before.pv).size(13.0).weak());
-                                        }
-                                        ui.label(
-                                            RichText::new(format!(
-                                                "Depth {} · {} nodes",
-                                                before.depth, before.nodes
-                                            ))
-                                            .size(13.0)
-                                            .weak(),
-                                        );
-                                    }
-                                });
-                        }
-                    }
-                    ui.add_space(12.0);
-                    if self.game_analysis_running || self.game_analysis_paused {
-                        Frame::new()
-                            .fill(Color32::from_rgb(24, 28, 33))
-                            .corner_radius(CornerRadius::same(5))
-                            .inner_margin(Margin::same(9))
-                            .show(ui, |ui| {
-                                ui.label(RichText::new("Position analysis is on hold").strong());
-                                ui.label(
-                                    RichText::new(
-                                        "Manual evaluation and move prediction return when the full-game pass finishes or stops.",
-                                    )
-                                    .size(14.0)
-                                    .color(ui.visuals().weak_text_color()),
-                                );
-                            });
-                    } else {
-                    ui.label(RichText::new("Engine Analysis").size(17.0).strong());
-                    ui.horizontal(|ui| {
-                        self.evaluation_bar(ui);
-                        ui.vertical(|ui| {
-                            ui.label(
-                                RichText::new(self.evaluation_text())
-                                    .size(26.0)
-                                    .strong()
-                                    .color(Color32::from_rgb(211, 173, 98)),
-                            );
-                            ui.label("White perspective");
-                            ui.add_space(8.0);
-                            #[cfg(target_arch = "wasm32")]
-                            if self.analysis_running {
-                                if ui
-                                    .button("Stop analysis")
-                                    .on_hover_text("Stop Stockfish analysis (Space)")
-                                    .clicked()
-                                {
-                                    self.stop_analysis();
-                                }
-                            } else if ui
-                                .button("Analyze position")
-                                .on_hover_text("Analyze this position (Space)")
-                                .clicked()
-                            {
-                                self.start_analysis();
-                            }
-                            ui.label(format!("Depth {}", self.analysis_depth));
-                            ui.label(format!("{} nodes", self.analysis_nodes));
-                            ui.label(format!("{} nps", self.analysis_nps));
-                        });
-                    });
-                    if !self.prediction_moves.is_empty() {
-                        ui.add_space(12.0);
-                        ui.label(RichText::new("Engine Move Prediction").size(17.0).strong());
-                        if self.analysis_variations.len() > 1 {
-                            let labels = self
-                                .analysis_variations
-                                .iter()
-                                .enumerate()
-                                .map(|(rank, variation)| variation.label(rank))
-                                .collect::<Vec<_>>();
-                            let mut selected = self.selected_variation.min(labels.len() - 1);
-                            let baseline = self.analysis_variations[selected].comparison_value();
-                            let comparison_color = |variation: &AnalysisVariation| match (
-                                variation.comparison_value(),
-                                baseline,
-                            ) {
-                                (Some(value), Some(baseline)) if value > baseline => {
-                                    Color32::from_rgb(106, 201, 126)
-                                }
-                                (Some(value), Some(baseline)) if value < baseline => {
-                                    Color32::from_rgb(232, 112, 112)
-                                }
-                                _ => Color32::from_rgb(230, 178, 65),
-                            };
-                            egui::ComboBox::from_id_salt("engine_prediction_variation")
-                                .width(ui.available_width())
-                                .selected_text(
-                                    RichText::new(&labels[selected])
-                                        .color(Color32::from_rgb(230, 178, 65)),
-                                )
-                                .show_ui(ui, |ui| {
-                                    for (index, label) in labels.iter().enumerate() {
-                                        ui.selectable_value(
-                                            &mut selected,
-                                            index,
-                                            RichText::new(label).color(comparison_color(
-                                                &self.analysis_variations[index],
-                                            )),
-                                        );
-                                    }
-                                });
-                            if selected != self.selected_variation {
-                                self.prediction_index = 0;
-                                self.prediction_navigation_active = true;
-                                self.select_analysis_variation(selected);
-                            }
-                            ui.add_space(4.0);
-                        }
-                        let root = self
-                            .review_positions
-                            .get(index)
-                            .copied()
-                            .unwrap_or(self.board);
-                        let start_fullmove = root
-                            .to_string()
-                            .split_whitespace()
-                            .nth(5)
-                            .and_then(|value| value.parse::<usize>().ok())
-                            .unwrap_or(1);
-                        let starting_offset = usize::from(root.side_to_move() == Color::Black);
-                        let mut rows: Vec<(usize, Option<usize>, Option<usize>)> = Vec::new();
-                        for move_index in 0..self.prediction_moves.len() {
-                            let absolute = starting_offset + move_index;
-                            let row_index = absolute / 2;
-                            while rows.len() <= row_index {
-                                rows.push((start_fullmove + rows.len(), None, None));
-                            }
-                            if absolute % 2 == 0 {
-                                rows[row_index].1 = Some(move_index);
-                            } else {
-                                rows[row_index].2 = Some(move_index);
-                            }
-                        }
-                        let mut prediction_jump = None;
-                        let scroll_prediction_to_selected = self.prediction_scroll_to_selected;
-                        Frame::new()
-                            .fill(Color32::from_rgb(20, 23, 27))
-                            .stroke(Stroke::new(1.0, Color32::from_white_alpha(28)))
-                            .corner_radius(CornerRadius::same(6))
-                            .inner_margin(Margin::same(8))
-                            .show(ui, |ui| {
-                                egui::ScrollArea::vertical()
-                                    .id_salt("engine_prediction_moves")
-                                    .max_height(150.0)
-                                    .auto_shrink([false, false])
-                                    .show(ui, |ui| {
-                                        for (row_offset, (move_number, white, black)) in
-                                            rows.into_iter().enumerate()
-                                        {
-                                            ui.horizontal(|ui| {
-                                                let number_response = ui.add_sized(
-                                                    [30.0, 28.0],
-                                                    egui::Label::new(format!("{move_number}.")),
-                                                );
-                                                if row_offset == 0
-                                                    && self.prediction_index == 0
-                                                    && scroll_prediction_to_selected
-                                                {
-                                                    number_response.scroll_to_me(Some(Align::Min));
-                                                }
-                                                for move_index in [white, black] {
-                                                    if let Some(move_index) = move_index {
-                                                        let selected =
-                                                            self.prediction_index == move_index + 1;
-                                                        let button = egui::Button::new(
-                                                            &self.prediction_moves[move_index],
-                                                        )
-                                                        .fill(if selected {
-                                                            Color32::from_rgb(91, 98, 102)
-                                                        } else {
-                                                            Color32::TRANSPARENT
-                                                        })
-                                                        .frame(selected);
-                                                        let mut response =
-                                                            ui.add_sized([82.0, 28.0], button);
-                                                        if self.show_move_hover_text
-                                                            && let (Some(board), Some(chess_move)) = (
-                                                                self.prediction_positions
-                                                                    .get(move_index),
-                                                                self.prediction_chess_moves
-                                                                    .get(move_index),
-                                                            )
-                                                        {
-                                                            response = response.on_hover_text(
-                                                                Self::move_hover_text(
-                                                                    board,
-                                                                    *chess_move,
-                                                                ),
-                                                            );
-                                                        }
-                                                        if response.clicked() {
-                                                            prediction_jump = Some(move_index + 1);
-                                                        }
-                                                        if selected && scroll_prediction_to_selected
-                                                        {
-                                                            response
-                                                                .scroll_to_me(Some(Align::Center));
-                                                        }
-                                                    } else {
-                                                        ui.allocate_space(Vec2::new(82.0, 28.0));
-                                                    }
-                                                }
-                                            });
+                                    ui.add_space(5.0);
+                                    ui.columns(2, |columns| {
+                                        for (column, (label, analysis)) in columns.iter_mut().zip([
+                                            ("Before", before.as_ref()),
+                                            ("After", after.as_ref()),
+                                        ]) {
+                                            Frame::new()
+                                                .fill(Color32::from_rgb(18, 21, 25))
+                                                .corner_radius(CornerRadius::same(4))
+                                                .inner_margin(Margin::same(7))
+                                                .show(column, |ui| {
+                                                    ui.label(
+                                                        RichText::new(label).size(11.5).weak(),
+                                                    );
+                                                    ui.label(
+                                                        RichText::new(Self::report_evaluation(
+                                                            analysis,
+                                                        ))
+                                                        .size(17.0)
+                                                        .strong()
+                                                        .color(Color32::from_rgb(230, 178, 65)),
+                                                    );
+                                                });
                                         }
                                     });
-                                ui.separator();
-                                ui.horizontal(|ui| {
-                                    let gaps = ui.spacing().item_spacing.x * 3.0;
-                                    let width = ((ui.available_width() - gaps) / 4.0).max(32.0);
-                                    for (label, destination, enabled, hint) in [
-                                        ("|◀", 0, self.prediction_index > 0, "First prediction"),
-                                        (
-                                            "◀",
-                                            self.prediction_index.saturating_sub(1),
-                                            self.prediction_index > 0,
-                                            "Previous predicted move",
-                                        ),
-                                        (
-                                            "▶",
-                                            (self.prediction_index + 1)
-                                                .min(self.prediction_moves.len()),
-                                            self.prediction_index < self.prediction_moves.len(),
-                                            "Next predicted move",
-                                        ),
-                                        (
-                                            "▶|",
-                                            self.prediction_moves.len(),
-                                            self.prediction_index < self.prediction_moves.len(),
-                                            "Last prediction",
-                                        ),
-                                    ] {
-                                        if ui
-                                            .add_enabled(
-                                                enabled,
-                                                egui::Button::new(label)
-                                                    .min_size(Vec2::new(width, 30.0)),
-                                            )
-                                            .on_hover_text(hint)
-                                            .clicked()
-                                        {
-                                            prediction_jump = Some(destination);
-                                        }
+                                    ui.add_space(7.0);
+                                    ui.label(
+                                        RichText::new(format!("Played: {played}"))
+                                            .size(14.0)
+                                            .strong(),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!("Stockfish preferred: {best_san}"))
+                                            .size(14.0)
+                                            .strong()
+                                            .color(Color32::from_rgb(106, 201, 126)),
+                                    );
+                                    if let Some(explanation) = self.move_explanation(index) {
+                                        ui.label(RichText::new(explanation).size(14.0));
                                     }
+                                    if !actual_line.is_empty() {
+                                        ui.add_space(7.0);
+                                        ui.label(
+                                            RichText::new("WHAT HAPPENED")
+                                                .size(11.0)
+                                                .strong()
+                                                .weak(),
+                                        );
+                                        ui.label(RichText::new(&actual_line).size(13.0));
+                                    }
+                                    if !recommended_line.is_empty() {
+                                        ui.add_space(7.0);
+                                        ui.label(
+                                            RichText::new("STOCKFISH CONTINUATION")
+                                                .size(11.0)
+                                                .strong()
+                                                .weak(),
+                                        );
+                                        ui.label(
+                                            RichText::new(&recommended_line).size(13.0).weak(),
+                                        );
+                                    }
+                                    ui.add_space(7.0);
+                                    ui.horizontal_wrapped(|ui| {
+                                        try_best_move = ui
+                                            .add_enabled(
+                                                best_move.is_some(),
+                                                egui::Button::new("Try the best move"),
+                                            )
+                                            .clicked();
+                                        step_best_line = ui
+                                            .add_enabled(
+                                                !recommended_line.is_empty(),
+                                                egui::Button::new("Step through best line"),
+                                            )
+                                            .on_hover_text(
+                                                "Load the saved engine line into move prediction",
+                                            )
+                                            .clicked();
+                                    });
                                 });
-                            });
-                        self.prediction_scroll_to_selected = false;
-                        if let Some(destination) = prediction_jump {
-                            self.prediction_to(destination);
+                            if try_best_move {
+                                self.start_best_move_attempt(index);
+                            } else if step_best_line {
+                                self.load_stored_prediction(root_index);
+                            }
                         }
-                    }
                     }
                     ui.add_space(12.0);
                     if self.review_index.is_some()
@@ -5259,11 +6924,147 @@ impl eframe::App for ChessApp {
                     ui.label(format!("{} half-moves played", self.history.len()));
                     ui.label(RichText::new("Saved locally").small().weak());
                 }
+                    });
             });
+
+        let dock_height = if self.engine_analysis_dock_collapsed {
+            40.0
+        } else {
+            190.0
+        };
+        egui::TopBottomPanel::bottom("engine_analysis_dock")
+            .exact_height(dock_height)
+            .frame(
+                Frame::new()
+                    .fill(Color32::from_rgb(18, 21, 25))
+                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(28)))
+                    .inner_margin(Margin::same(10)),
+            )
+            .show(ctx, |ui| self.engine_analysis_dock_ui(ui));
+
+        if separate_moves_panel {
+            egui::SidePanel::right("game_moves_panel")
+                .default_width(270.0)
+                .min_width(220.0)
+                .max_width(420.0)
+                .resizable(true)
+                .frame(
+                    Frame::new()
+                        .fill(Color32::from_rgb(18, 21, 25))
+                        .stroke(Stroke::new(1.0, Color32::from_white_alpha(28)))
+                        .inner_margin(Margin::symmetric(10, 0)),
+                )
+                .show(ctx, |ui| self.game_moves_column_ui(ui));
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| self.board_ui(ui));
         });
+
+        if let Some(until) = self.print_notice_until {
+            if Self::animation_time() < until {
+                let mut dismiss = false;
+                egui::Area::new(egui::Id::new("print_report_notice"))
+                    .order(egui::Order::Foreground)
+                    .anchor(egui::Align2::CENTER_TOP, Vec2::new(0.0, 48.0))
+                    .show(ctx, |ui| {
+                        Frame::new()
+                            .fill(Color32::from_rgb(43, 39, 29))
+                            .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
+                            .corner_radius(CornerRadius::same(7))
+                            .inner_margin(Margin::symmetric(14, 10))
+                            .show(ui, |ui| {
+                                ui.set_max_width(560.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(
+                                        RichText::new("Print preview is opening")
+                                            .strong()
+                                            .color(Color32::from_rgb(230, 178, 65)),
+                                    );
+                                    ui.label(
+                                        "Edge may pause Ironwood until you finish printing or close the print window.",
+                                    );
+                                    dismiss = ui
+                                        .button("×")
+                                        .on_hover_text("Dismiss this notice")
+                                        .clicked();
+                                });
+                            });
+                    });
+                if dismiss {
+                    self.print_notice_until = None;
+                } else {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(250));
+                }
+            } else {
+                self.print_notice_until = None;
+            }
+        }
+
+        if self.new_game_dialog_open {
+            let mut open = self.new_game_dialog_open;
+            egui::Window::new("New game")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .open(&mut open)
+                .frame(Frame::window(&ctx.style()).inner_margin(Margin {
+                    left: 22,
+                    right: 22,
+                    top: 14,
+                    bottom: 24,
+                }))
+                .show(ctx, |ui| {
+                    ui.set_min_width(500.0);
+                    ui.vertical_centered(|ui| {
+                        ui.heading(RichText::new("Choose your side").size(25.0));
+                        ui.label(
+                            RichText::new(format!(
+                                "Playing with the {} piece set",
+                                self.piece_set.label()
+                            ))
+                            .weak(),
+                        );
+                    });
+                    ui.add_space(14.0);
+                    ui.horizontal(|ui| {
+                        const CARDS_WIDTH: f32 = 466.0;
+                        let side_padding = ((ui.available_width() - CARDS_WIDTH) * 0.5).max(0.0);
+                        ui.add_space(side_padding);
+                        for choice in [
+                            NewGameColor::White,
+                            NewGameColor::Black,
+                            NewGameColor::Random,
+                        ] {
+                            let selected = self.new_game_color == choice;
+                            if Self::new_game_color_card(ui, self.piece_set, choice, selected)
+                                .clicked()
+                            {
+                                self.new_game_color = choice;
+                            }
+                        }
+                    });
+                    ui.add_space(24.0);
+                    ui.vertical_centered(|ui| {
+                        if Self::start_battle_button(ui, self.piece_set).clicked() {
+                            let side = match self.new_game_color {
+                                NewGameColor::White => PlayerSide::White,
+                                NewGameColor::Black => PlayerSide::Black,
+                                NewGameColor::Random => {
+                                    if Self::animation_time().to_bits() & 1 == 0 {
+                                        PlayerSide::White
+                                    } else {
+                                        PlayerSide::Black
+                                    }
+                                }
+                            };
+                            self.new_game_dialog_open = false;
+                            self.reset_for_side(side);
+                        }
+                    });
+                });
+            self.new_game_dialog_open &= open;
+        }
 
         if let Some((from, to)) = self.promotion {
             egui::Window::new("Choose promotion")
@@ -5280,7 +7081,12 @@ impl eframe::App for ChessApp {
                         ] {
                             if ui.button(name).clicked() {
                                 self.promotion = None;
-                                self.play(ChessMove::new(from, to, Some(piece)));
+                                let chess_move = ChessMove::new(from, to, Some(piece));
+                                if self.best_move_attempt.is_some() {
+                                    self.submit_best_move_attempt(chess_move);
+                                } else {
+                                    self.play(chess_move);
+                                }
                             }
                         }
                     });
@@ -5290,5 +7096,32 @@ impl eframe::App for ChessApp {
         self.about_dialog(ctx);
         self.strength_dialog(ctx);
         self.pgn_dialog(ctx);
+
+        // Moves are made while drawing the central panel, so arm the delayed
+        // repaint after all UI interaction for this frame has completed.
+        #[cfg(target_arch = "wasm32")]
+        if let Some(due_at) = self.realtime_analysis_due_at {
+            let remaining = due_at - Self::animation_time();
+            if remaining <= 0.0 {
+                let blocked_temporarily = self.engine_searching
+                    || self.pgn_dialog_open
+                    || self.strength_dialog_open
+                    || self.about_dialog_open
+                    || self.new_game_dialog_open;
+                if self.game_analysis_running
+                    || self.game_analysis_paused
+                    || self.board.status() != BoardStatus::Ongoing
+                {
+                    self.realtime_analysis_due_at = None;
+                } else if blocked_temporarily {
+                    self.realtime_analysis_due_at = Some(Self::animation_time() + 0.25);
+                    ctx.request_repaint_after(std::time::Duration::from_millis(250));
+                } else {
+                    self.start_analysis();
+                }
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(remaining));
+            }
+        }
     }
 }
