@@ -6,6 +6,7 @@ const root = join(import.meta.dirname, '..');
 const source = join(root, 'web');
 const hugoSource = join(root, '.hugo-public');
 const target = join(root, '.wrangler-assets');
+const changelogSource = join(root, 'site', 'content', 'changelog');
 
 mkdirSync(target, { recursive: true });
 for (const entry of readdirSync(target)) {
@@ -26,6 +27,29 @@ cpSync(hugoSource, target, {
   },
 });
 
+const newestChangelog = readdirSync(changelogSource)
+  .filter(name => name.endsWith('.md') && name !== '_index.md')
+  .map(name => {
+    const contents = readFileSync(join(changelogSource, name), 'utf8');
+    const date = contents.match(/^date:\s*(\S+)/m)?.[1];
+    const slug = contents.match(/^slug:\s*["']?([^"'\r\n]+)["']?/m)?.[1];
+    if (!date || !slug || Number.isNaN(Date.parse(date))) {
+      throw new Error(`Invalid changelog metadata in ${name}`);
+    }
+    return { date, slug };
+  })
+  .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+if (!newestChangelog) throw new Error('A changelog entry is required for the home-page update date');
+const updatedIso = newestChangelog.date.slice(0, 10);
+const updatedLabel = new Date(`${updatedIso}T12:00:00Z`).toLocaleDateString('en-US', {
+  month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+});
+const homePath = join(target, 'index.html');
+writeFileSync(homePath, readFileSync(homePath, 'utf8')
+  .replaceAll('__LAST_UPDATED_ISO__', updatedIso)
+  .replaceAll('__LAST_UPDATED_DATE__', updatedLabel)
+  .replaceAll('__LATEST_CHANGELOG_URL__', `/changelog/${newestChangelog.slug}/`));
+
 const packageVersion = createHash('sha256')
   .update(readFileSync(join(target, 'pkg', 'battle_chess.js')))
   .update(readFileSync(join(target, 'pkg', 'battle_chess_bg.wasm')))
@@ -42,7 +66,7 @@ function hashTree(directory, hash, prefix = '') {
     const path = join(directory, entry.name);
     const name = `${prefix}${entry.name}`;
     if (entry.isDirectory()) hashTree(path, hash, `${name}/`);
-    else if (name !== 'service-worker.js' && name !== 'app-version.json') {
+    else if (name !== 'app-version.json') {
       hash.update(name).update(readFileSync(path));
     }
   }
@@ -55,6 +79,7 @@ const shellVersion = shellHash.digest('hex').slice(0, 20);
 const pwaPath = join(target, 'pwa.js');
 writeFileSync(pwaPath, readFileSync(pwaPath, 'utf8')
   .replaceAll('__APP_SHELL_VERSION__', shellVersion)
+  .replaceAll('__PACKAGE_VERSION__', packageVersion)
   .replaceAll('__ENGINE_CACHE_VERSION__', engineVersion));
 writeFileSync(join(target, 'app-version.json'), `${JSON.stringify({
   version: shellVersion,

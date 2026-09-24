@@ -1,7 +1,53 @@
 html,body,#chess_canvas { width:100%; height:100%; margin:0; overflow:hidden; background:#111418; }
+* { scrollbar-color:#b99652 #252b30; scrollbar-width:thin; }
+*::-webkit-scrollbar { width:10px; height:10px; }
+*::-webkit-scrollbar-track { background:#252b30; border-radius:8px; }
+*::-webkit-scrollbar-thumb { background:#b99652; border:2px solid #252b30; border-radius:8px; }
+*::-webkit-scrollbar-thumb:hover { background:#d3ad62; }
 body { font-family:Inter,system-ui,sans-serif; }
 #loading { position:fixed; inset:0; display:grid; place-items:center; color:#cface5; letter-spacing:.12em; background:#111418; }
 canvas { display:block; }
+#game-library-dialog { width:min(710px,calc(100vw - 24px)); max-height:min(84vh,850px); box-sizing:border-box; padding:18px; border:1px solid #a8874d; border-radius:8px; background:#191d23; color:#ecebe4; box-shadow:0 20px 70px #000a; }
+#game-library-dialog::backdrop { background:#0009; }
+#game-library-dialog[open] { display:flex; flex-direction:column; height:min(84vh,850px); overflow:hidden; }
+#storage-management-dialog { width:min(560px,calc(100vw - 24px)); box-sizing:border-box; padding:20px; border:1px solid #a8874d; border-radius:8px; background:#191d23; color:#ecebe4; box-shadow:0 20px 70px #000a; font:14px/1.45 Inter,system-ui,sans-serif; }
+#storage-management-dialog::backdrop { background:#0009; }
+.storage-guidance { color:#b9bdb8; }
+.storage-actions { display:flex; justify-content:flex-end; gap:9px; margin-top:20px; }
+.storage-actions button { padding:8px 12px; border:1px solid #586068; border-radius:4px; color:#ecebe4; background:#293037; cursor:pointer; }
+.storage-actions button.danger { border-color:#a85454; color:#ffb2ad; }
+.storage-info-grid { display:grid; grid-template-columns:max-content 1fr; gap:8px 18px; }
+.storage-info-grid strong { color:#b9bdb8; }
+.game-library-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.game-library-heading h2 { margin:0 0 14px; font-size:21px; font-weight:600; }
+.game-library-heading button { border:0; background:transparent; color:#ecebe4; font-size:25px; cursor:pointer; }
+.game-library-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.game-library-tabs button,.game-library-actions button { padding:7px 9px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; cursor:pointer; }
+.game-library-tabs button.selected { border-color:#d3ad62; color:#f1ce83; background:#413a2d; }
+.game-library-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; min-height:28px; margin-bottom:10px; color:#adb4b6; font-size:13px; }
+.game-library-filters select { margin-left:6px; padding:4px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; }
+.game-library-list { display:grid; align-content:start; gap:8px; flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
+.game-library-pager { display:flex; align-items:center; justify-content:space-between; gap:10px; flex:none; padding-top:12px; color:#abb0b3; font-size:13px; }
+.game-library-pager button { padding:7px 10px; border:1px solid #816b42; border-radius:4px; background:#302d28; color:#f1ce83; cursor:pointer; }
+.game-library-pager button:disabled { opacity:.4; cursor:default; }
+.game-library-entry { display:flex; gap:12px; align-items:flex-start; padding:10px; border:1px solid #3f4951; border-radius:5px; background:#242b32; }
+.game-library-entry:hover { border-color:#7d704f; }
+.game-library-board { display:grid; grid-template-columns:repeat(8,1fr); grid-template-rows:repeat(8,1fr); flex:none; width:144px; height:144px; overflow:hidden; border:1px solid #758179; background:#dbe2d2; color:#454c46; font-size:11px; }
+.game-library-square { display:grid; place-items:center; min-width:0; min-height:0; }
+.game-library-square.light { background:#dbe2d2; }
+.game-library-square.dark { background:#496e5d; }
+.game-library-square img { width:100%; height:100%; object-fit:contain; }
+.game-library-main { display:grid; gap:6px; min-width:0; }
+.game-library-main strong { overflow-wrap:anywhere; }
+.game-library-main span { color:#abb0b3; font-size:13px; }
+.game-library-players { display:flex; flex-wrap:wrap; gap:4px 12px; }
+.game-library-players span { color:#dce1dc; }
+.game-library-main .game-library-result { color:#d3ad62; font-weight:600; }
+.game-library-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:3px; }
+.game-library-actions button:hover,.game-library-actions button:focus-visible { border-color:#d3ad62; }
+.game-library-actions button.favorite[aria-pressed="true"] { border-color:#d3ad62; color:#f1ce83; background:#413a2d; }
+.game-library-actions button.danger { color:#e6a69d; }
+@media (max-width:500px) { .game-library-board { width:104px; height:104px; } .game-library-entry { gap:8px; } .game-library-actions button { font-size:12px; } }
 @media (display-mode: window-controls-overlay) {
   #chess_canvas { height:calc(100% - env(titlebar-area-height, 32px)); margin-top:env(titlebar-area-height, 32px); }
   #loading { top:env(titlebar-area-height, 32px); }

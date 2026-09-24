@@ -4,6 +4,7 @@ const SHELL_CACHE = `ironwood-shell-${APP_SHELL_VERSION}`;
 const ENGINE_CACHE_PREFIX = 'ironwood-engine-stockfish-19-';
 const ENGINE_CACHE = `${ENGINE_CACHE_PREFIX}${ENGINE_CACHE_VERSION}`;
 const LEGACY_ENGINE_CACHE = 'ironwood-engine-stockfish-19';
+const LOCAL_DEVELOPMENT = ['127.0.0.1', 'localhost'].includes(self.location.hostname);
 const APP_PACKAGE_URLS = [
   '/pkg/battle_chess.js',
   '/pkg/battle_chess_bg.wasm',
@@ -15,18 +16,22 @@ const ENGINE_URLS = [
 const SHELL_URLS = [
   '/',
   '/play/',
+  '/features/',
   '/blog/',
   '/blog/stockfish-in-your-browser/',
   '/blog/private-analysis-portable-results/',
+  '/blog/local-first-library-and-safe-updates/',
   '/changelog/',
   '/changelog/2026-09-21-initial-public-build/',
   '/changelog/2026-09-22-analysis-workspace/',
+  '/changelog/2026-09-24-saved-games-and-storage/',
   '/open-source-notices.html',
   '/404.html',
   '/landing.css',
   '/styles.css',
   '/site.css',
   '/pwa.js',
+  '/game-storage.js',
   '/engine-worker.js',
   '/favicon.ico',
   '/favicon.svg',
@@ -44,7 +49,7 @@ self.addEventListener('install', event => {
     // The original Ironwood worker used a 16-character package-only cache key
     // and immediately replaced itself. Preserve that behavior once so existing
     // installations can move to the user-confirmed update flow without Ctrl+F5.
-    if (existingCaches.some(name => /^ironwood-shell-[a-f0-9]{16}$/.test(name))) {
+    if (LOCAL_DEVELOPMENT || existingCaches.some(name => /^ironwood-shell-[a-f0-9]{16}$/.test(name))) {
       await self.skipWaiting();
     }
   })());
@@ -109,7 +114,19 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // The saved-games dialog is a separate module from the WASM app. Serving its
+  // stale copy first made local updates appear only after a second reload.
+  if (url.pathname === '/game-storage.js' || url.pathname === '/styles.css' ||
+      LOCAL_DEVELOPMENT && url.pathname === '/pwa.js') {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   if (url.pathname.startsWith('/pkg/')) {
+    if (LOCAL_DEVELOPMENT) {
+      event.respondWith(networkFirst(request));
+      return;
+    }
     event.respondWith(caches.open(SHELL_CACHE).then(async cache =>
       (await cache.match(request, { ignoreSearch: true })) || fetch(request)
     ));

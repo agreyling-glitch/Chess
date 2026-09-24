@@ -1,0 +1,13 @@
+{{ define "main" }}
+<section class="page-heading features-heading">
+  <p class="eyebrow">Inside Ironwood</p>
+  <h1>{{ .Title }}</h1>
+  <p class="lede">{{ .Description }}</p>
+  <a class="features-cta" href="/play/">Play now <span aria-hidden="true">→</span></a>
+</section>
+<article class="features-content prose">{{ .Content }}</article>
+<div class="features-finish">
+  <p>Ready to put it to work?</p>
+  <a class="features-cta" href="/play/">Open Ironwood <span aria-hidden="true">→</span></a>
+</div>
+{{ end }}

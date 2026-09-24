@@ -3,13 +3,85 @@ const offlineButton = document.querySelector('[data-offline-engine]');
 const offlineProgress = document.querySelector('[data-offline-progress]');
 const offlineStatus = document.querySelector('[data-offline-status]');
 const runningAppVersion = '__APP_SHELL_VERSION__';
+const runningPackageVersion = '__PACKAGE_VERSION__';
 const runningEngineVersion = '__ENGINE_CACHE_VERSION__';
+const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 let installPrompt;
 let registration;
 let reloadForUpdate = false;
 let pendingEngineUpdate = false;
 let pendingAppVersion = '';
 let waitingWorker;
+
+const versionDiagnostics = {
+  status: 'Checking versions…',
+  environment: isLocalhost ? 'Local development' : location.origin,
+  app_version: runningAppVersion,
+  package_version: runningPackageVersion,
+  engine_version: runningEngineVersion,
+  server_app_version: null,
+  server_package_version: null,
+  server_engine_version: null,
+  service_worker_version: null,
+  service_worker_engine_version: null,
+  service_worker_state: isLocalhost ? 'Disabled for local development' : 'Checking…',
+  online: navigator.onLine,
+  cross_origin_isolated: window.crossOriginIsolated,
+  browser: navigator.userAgent,
+};
+
+function summarizeVersionDiagnostics() {
+  const serverKnown = Boolean(versionDiagnostics.server_app_version);
+  const appMatches = versionDiagnostics.server_app_version === runningAppVersion;
+  const packageMatches = versionDiagnostics.server_package_version === runningPackageVersion;
+  const engineMatches = versionDiagnostics.server_engine_version === runningEngineVersion;
+  const workerMatches = !versionDiagnostics.service_worker_version
+    || versionDiagnostics.service_worker_version === runningAppVersion;
+  if (!serverKnown) return navigator.onLine ? 'Server version unavailable' : 'Offline — server version unavailable';
+  return appMatches && packageMatches && engineMatches && workerMatches
+    ? 'All loaded components match the server'
+    : 'Version mismatch detected — update or reload may be required';
+}
+
+async function refreshVersionDiagnostics() {
+  versionDiagnostics.online = navigator.onLine;
+  versionDiagnostics.cross_origin_isolated = window.crossOriginIsolated;
+  try {
+    const response = await fetch('/app-version.json', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const latest = await response.json();
+    versionDiagnostics.server_app_version = latest.version || null;
+    versionDiagnostics.server_package_version = latest.package_version || null;
+    versionDiagnostics.server_engine_version = latest.engine?.cache_version || null;
+  } catch {
+    versionDiagnostics.server_app_version = null;
+    versionDiagnostics.server_package_version = null;
+    versionDiagnostics.server_engine_version = null;
+  }
+
+  if (!isLocalhost && 'serviceWorker' in navigator) {
+    const worker = registration?.active || navigator.serviceWorker.controller;
+    versionDiagnostics.service_worker_state = registration?.waiting
+      ? 'Update waiting'
+      : registration?.installing
+        ? `Installing (${registration.installing.state})`
+        : worker
+          ? worker.state || 'Active'
+          : 'Not controlling this page';
+    if (worker) {
+      const details = await workerVersion(worker);
+      versionDiagnostics.service_worker_version = details?.version || null;
+      versionDiagnostics.service_worker_engine_version = details?.engine_cache_version || null;
+    }
+  }
+  versionDiagnostics.status = summarizeVersionDiagnostics();
+}
+
+window.ironwoodVersionDiagnostics = () => JSON.stringify(versionDiagnostics);
+window.ironwoodRefreshVersionDiagnostics = () => { void refreshVersionDiagnostics(); };
+window.addEventListener('online', refreshVersionDiagnostics);
+window.addEventListener('offline', refreshVersionDiagnostics);
+void refreshVersionDiagnostics();
 
 function reminderKey(version) {
   return `ironwood-update-remind-${version}`;
@@ -149,9 +221,32 @@ offlineButton?.addEventListener('click', async () => {
   active.postMessage({ type: 'CACHE_OFFLINE_ENGINE' });
 });
 
-if ('serviceWorker' in navigator) {
-  const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+if ('serviceWorker' in navigator && isLocalhost) {
+  const reloadKey = 'ironwood.local-service-worker-disabled';
+  Promise.all([
+    navigator.serviceWorker.getRegistrations().then(registrations =>
+      Promise.all(registrations
+        .filter(item => new URL(item.scope).origin === location.origin)
+        .map(item => item.unregister()))
+    ),
+    'caches' in window ? caches.keys().then(names =>
+      Promise.all(names
+        .filter(name => name.startsWith('ironwood-shell-'))
+        .map(name => caches.delete(name)))
+    ) : Promise.resolve(),
+  ]).then(() => {
+    if (navigator.serviceWorker.controller && !sessionStorage.getItem(reloadKey)) {
+      sessionStorage.setItem(reloadKey, '1');
+      location.reload();
+    } else if (!navigator.serviceWorker.controller) {
+      sessionStorage.removeItem(reloadKey);
+    }
+  }).catch(error => console.warn('Ironwood could not disable local PWA caching:', error));
+}
+
+if ('serviceWorker' in navigator && !isLocalhost) {
   navigator.serviceWorker.addEventListener('controllerchange', () => {
+    void refreshVersionDiagnostics();
     if (reloadForUpdate) window.location.reload();
   });
 
@@ -176,42 +271,43 @@ if ('serviceWorker' in navigator) {
     updateViaCache: 'none',
   }).then(async value => {
     registration = value;
+    void refreshVersionDiagnostics();
     const watchInstallingWorker = worker => worker?.addEventListener('statechange', () => {
       if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-        if (isLocalhost) worker.postMessage({ type: 'ACTIVATE_UPDATE' });
-        else offerWaitingUpdate(worker);
+        offerWaitingUpdate(worker);
       }
     });
     registration.addEventListener('updatefound', () => watchInstallingWorker(registration.installing));
     if (registration.waiting) {
-      if (isLocalhost) registration.waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
-      else await offerWaitingUpdate();
+      await offerWaitingUpdate();
     }
     await navigator.serviceWorker.ready;
     (registration.active || navigator.serviceWorker.controller)?.postMessage({
       type: 'CHECK_OFFLINE_ENGINE',
     });
-    if (!isLocalhost) {
-      const checkForUpdate = async () => {
-        if (document.hidden) return;
-        try {
-          const response = await fetch('/app-version.json', { cache: 'no-store' });
-          if (!response.ok) return;
-          const latest = await response.json();
-          if (latest.version !== runningAppVersion) {
-            pendingEngineUpdate = latest.engine?.cache_version !== runningEngineVersion;
-            await registration.update();
-            if (registration.waiting) {
-              await offerWaitingUpdate(registration.waiting);
-            }
+    const checkForUpdate = async () => {
+      if (document.hidden) return;
+      try {
+        const response = await fetch('/app-version.json', { cache: 'no-store' });
+        if (!response.ok) return;
+        const latest = await response.json();
+        versionDiagnostics.server_app_version = latest.version || null;
+        versionDiagnostics.server_package_version = latest.package_version || null;
+        versionDiagnostics.server_engine_version = latest.engine?.cache_version || null;
+        versionDiagnostics.status = summarizeVersionDiagnostics();
+        if (latest.version !== runningAppVersion) {
+          pendingEngineUpdate = latest.engine?.cache_version !== runningEngineVersion;
+          await registration.update();
+          if (registration.waiting) {
+            await offerWaitingUpdate(registration.waiting);
           }
-        } catch { /* Offline players keep using the installed version. */ }
-      };
-      document.addEventListener('visibilitychange', checkForUpdate);
-      window.addEventListener('focus', checkForUpdate);
-      setInterval(checkForUpdate, 5 * 60_000);
-      checkForUpdate();
-    }
+        }
+      } catch { /* Offline players keep using the installed version. */ }
+    };
+    document.addEventListener('visibilitychange', checkForUpdate);
+    window.addEventListener('focus', checkForUpdate);
+    setInterval(checkForUpdate, 5 * 60_000);
+    checkForUpdate();
   }).catch(error => {
     if (offlineStatus) offlineStatus.textContent = `Offline support is unavailable: ${error.message}`;
   });

@@ -14,7 +14,12 @@
   <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#d3ad62">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="msapplication-config" content="/browserconfig.xml">
-  <link rel="stylesheet" href="/styles.css">
+  <link id="ironwood-styles" rel="stylesheet" href="/styles.css">
+  <script>
+    if (['localhost', '127.0.0.1'].includes(location.hostname)) {
+      document.getElementById('ironwood-styles').href = `/styles.css?v=${Date.now()}`;
+    }
+  </script>
 </head>
 <body>
   <canvas id="chess_canvas"></canvas>
@@ -49,9 +54,51 @@
     })();
   </script>
   <script type="module">
-    import init from '/pkg/battle_chess.js';
-    init().then(() => document.getElementById('loading')?.remove());
+    const loading = document.getElementById('loading');
+    window.ironwoodStoreCurrentGame = () => {};
+    window.ironwoodStoreImportedGame = () => {};
+    window.ironwoodStartNewStoredGame = () => {};
+    window.ironwoodIsImportedDuplicate = () => false;
+    window.ironwoodImportedIndexReady = () => false;
+    window.ironwoodEnsureImportedIndex = () => {};
+    window.ironwoodRefreshStorageStatus = () => {};
+    window.ironwoodStorageStatus = () => 'Browser storage estimate unavailable';
+    window.ironwoodBeginBatchImport = () => {};
+    window.ironwoodBatchImportStatus = () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
+    window.ironwoodEndBatchImport = () => {};
+    window.ironwoodOpenGameLibrary = () => alert('Saved games are unavailable. Please reload Ironwood.');
+    window.ironwoodBackupStorage = () => alert('Storage backup is unavailable. Please reload Ironwood.');
+    window.ironwoodRestoreStorage = () => alert('Storage restore is unavailable. Please reload Ironwood.');
+    window.ironwoodOpenStorageInfo = () => alert('Storage information is unavailable. Please reload Ironwood.');
+    window.ironwoodClearSavedGames = () => alert('Storage management is unavailable. Please reload Ironwood.');
+    window.ironwoodResetLocalData = () => alert('Storage management is unavailable. Please reload Ironwood.');
+    window.ironwoodVersionDiagnostics = () => '{"status":"Version diagnostics are loading"}';
+    window.ironwoodRefreshVersionDiagnostics = () => {};
+    try {
+      const localDevelopment = ['localhost', '127.0.0.1'].includes(location.hostname);
+      const storageUrl = localDevelopment ? `/game-storage.js?v=${Date.now()}` : '/game-storage.js';
+      const storage = await import(storageUrl).catch(error => {
+        console.warn('Ironwood game library is unavailable:', error);
+        return null;
+      });
+      if (storage) await storage.initializeGameStorage();
+      const packageToken = localDevelopment ? Date.now() : null;
+      const packageUrl = packageToken ? `/pkg/battle_chess.js?v=${packageToken}` : '/pkg/battle_chess.js';
+      const { default: init } = await import(packageUrl);
+      await (packageToken
+        ? init({ module_or_path: `/pkg/battle_chess_bg.wasm?v=${packageToken}` })
+        : init());
+      loading?.remove();
+    } catch (error) {
+      console.error('Ironwood could not start:', error);
+      if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
+    }
   </script>
-  <script type="module" src="/pwa.js"></script>
+  <script type="module">
+    const pwaUrl = ['localhost', '127.0.0.1'].includes(location.hostname)
+      ? `/pwa.js?v=${Date.now()}`
+      : '/pwa.js';
+    import(pwaUrl);
+  </script>
 </body>
 </html>
