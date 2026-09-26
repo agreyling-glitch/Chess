@@ -32,11 +32,13 @@ canvas { display:block; }
 .game-library-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .game-library-heading h2 { margin:0 0 14px; font-size:21px; font-weight:600; }
 .game-library-heading button { border:0; background:transparent; color:#ecebe4; font-size:25px; cursor:pointer; }
-.game-library-tabs { display:flex; gap:8px; margin-bottom:12px; }
+.game-library-tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 .game-library-tabs button,.game-library-actions button { padding:7px 9px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; cursor:pointer; }
 .game-library-tabs button.selected { border-color:#d3ad62; color:#f1ce83; background:#413a2d; }
 .game-library-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; min-height:28px; margin-bottom:10px; color:#adb4b6; font-size:13px; }
 .game-library-filters select { margin-left:6px; padding:4px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; }
+.game-library-filters input[type="search"] { width:230px; max-width:100%; padding:6px 8px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; }
+.game-library-filters input[type="search"]::placeholder { color:#adb4b6; }
 .game-library-list { display:grid; align-content:start; gap:8px; flex:1; min-height:0; overflow-y:auto; padding-right:4px; }
 .game-library-pager { display:flex; align-items:center; justify-content:space-between; gap:10px; flex:none; padding-top:12px; color:#abb0b3; font-size:13px; }
 .game-library-pager button { padding:7px 10px; border:1px solid #816b42; border-radius:4px; background:#302d28; color:#f1ce83; cursor:pointer; }

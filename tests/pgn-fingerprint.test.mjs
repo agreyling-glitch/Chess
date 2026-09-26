@@ -4,7 +4,7 @@ import test from 'node:test';
 
 globalThis.window = globalThis;
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const { backupSummary, gameMatchesCategory, importFingerprint } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { backupSummary, gameDetails, gameMatchesCategory, importFingerprint } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 
 test('same game ignores comments, variations and whitespace', () => {
   const plain = '[White "Ada"]\n[Black "Ben"]\n[Date "2026.09.24"]\n\n1. e4 e5 2. Nf3 Nc6 1-0';
@@ -41,10 +41,31 @@ test('backup validation summarizes restorable data', () => {
       { id: 'two', category: 'imported', favorite: false, json },
     ],
   });
-  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, favorites: 1, hasPreferences: true });
+  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, observed: 0, favorites: 1, hasPreferences: true });
 });
 
 test('backup validation rejects unknown formats and incomplete games', () => {
   assert.throws(() => backupSummary({ format: 'unknown', version: 1, games: [] }));
   assert.throws(() => backupSummary({ format: 'ironwood-backup', version: 1, games: [{ id: 'one' }] }));
+});
+
+
+test('observed games retain their category through backup and shared views', () => {
+  const game = { id: 'observed-1', category: 'observed', source: 'FICS', favorite: true,
+    json: JSON.stringify({ board: 'start', player_side: 'White' }) };
+  assert.equal(gameMatchesCategory(game, 'all'), true);
+  assert.equal(gameMatchesCategory(game, 'observed'), true);
+  assert.equal(gameMatchesCategory(game, 'favorites'), true);
+  assert.equal(gameMatchesCategory(game, 'imported'), false);
+  assert.equal(backupSummary({ format: 'ironwood-backup', version: 1, games: [game] }).observed, 1);
+});
+
+test('PGN library analysis status distinguishes partial and complete results', () => {
+  const game = { review_pgn: '[White "Ada"]\n[Black "Ben"]\n[Site "freechess.org"]\n\n1.e4 {comment} e5 (1... c5) 2.Nf3 Nc6 1-0', game_analysis: [] };
+  assert.equal(gameDetails(JSON.stringify(game)).moves, 4);
+  assert.equal(gameDetails(JSON.stringify(game)).analysisStatus, 'Not analyzed');
+  game.game_analysis = [{ eval_cp: 10 }, null, null, null, null];
+  assert.equal(gameDetails(JSON.stringify(game)).analysisStatus, 'Partial');
+  game.game_analysis.fill({ eval_cp: 10 });
+  assert.equal(gameDetails(JSON.stringify(game)).analysisStatus, 'Complete');
 });

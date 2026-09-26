@@ -695,6 +695,9 @@ function __wbg_get_imports() {
         __wbg_ironwoodStoreImportedGame_763bf2f44116fe22: function(arg0, arg1) {
             window.ironwoodStoreImportedGame(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_ironwoodStoreObservedGame_73cbbd62bc2ba6f7: function(arg0, arg1, arg2, arg3) {
+            window.ironwoodStoreObservedGame(getStringFromWasm0(arg0, arg1), getStringFromWasm0(arg2, arg3));
+        },
         __wbg_ironwoodVersionDiagnostics_f2138868d4781b43: function(arg0) {
             const ret = window.ironwoodVersionDiagnostics();
             const ptr1 = passStringToWasm0(ret, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
@@ -1823,7 +1826,7 @@ function __wbg_get_imports() {
             return ret;
         },
         __wbindgen_generic_0000000000000005: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 304, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [NamedExternref("MessageEvent")], shim_idx: 182, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
             const ret = makeMutClosure(arg0, arg1, wasm_bindgen__convert__closures_____invoke__hf5d43ac1932e2d23);
             return ret;
         },

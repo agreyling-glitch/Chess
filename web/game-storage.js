@@ -7,6 +7,7 @@ const PREFERENCES_KEY = 'ironwood.chess.preferences.v1';
 const BACKUP_FORMAT = 'ironwood-backup';
 const BACKUP_VERSION = 1;
 
+const observationSession = newId();
 let databasePromise;
 let pendingWrite = Promise.resolve();
 let importedFingerprints = new Set();
@@ -134,8 +135,8 @@ async function listGames() {
         return;
       }
       const { json, ...summary } = cursor.value;
-      const details = summary.title && summary.analyzed !== undefined ? {} : gameDetails(json);
-      games.push({ ...details, ...summary, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
+      const details = gameDetails(json);
+      games.push({ ...summary, ...details, category: summary.category || details.category, source: summary.source, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
       cursor.continue();
     };
     request.onerror = () => reject(request.error || new Error('Could not list saved games'));
@@ -164,7 +165,7 @@ function validateBackup(value) {
     return {
       ...record,
       id: record.id,
-      category: record.category === 'imported' ? 'imported' : 'mine',
+      category: ['imported', 'observed'].includes(record.category) ? record.category : 'mine',
       favorite: Boolean(record.favorite),
       updatedAt: Number(record.updatedAt) || Date.now(),
     };
@@ -182,6 +183,7 @@ export function backupSummary(value) {
     games: backup.games.length,
     mine: backup.games.filter(game => game.category === 'mine').length,
     imported: backup.games.filter(game => game.category === 'imported').length,
+    observed: backup.games.filter(game => game.category === 'observed').length,
     favorites: backup.games.filter(game => game.favorite).length,
     hasPreferences: Boolean(backup.preferences),
   };
@@ -310,7 +312,7 @@ window.ironwoodRestoreStorage = () => {
       const summary = backupSummary(raw);
       const dialog = storageDialog('Restore backup');
       const message = document.createElement('p');
-      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
+      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.observed} observed, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
       const guidance = document.createElement('p');
       guidance.className = 'storage-guidance';
       guidance.textContent = 'Merge keeps existing games and adds the backup. Replace removes existing games first. Both options restore included preferences.';
@@ -364,6 +366,7 @@ window.ironwoodOpenStorageInfo = async () => {
       ['Saved games', String(games.length)],
       ['My games', String(games.filter(game => game.category === 'mine').length)],
       ['Imported games', String(games.filter(game => game.category === 'imported').length)],
+      ['Observed games', String(games.filter(game => game.category === 'observed').length)],
       ['Favorites', String(games.filter(game => game.favorite).length)],
       ['Browser usage', format(estimate?.usage)],
       ['Browser quota', format(estimate?.quota)],
@@ -499,6 +502,15 @@ function pgnTag(pgn, name) {
   return pgn?.match(new RegExp(`^\\[${name} "([^"]+)"\\]`, 'm'))?.[1];
 }
 
+function pgnMoveCount(pgn) {
+  if (!pgn) return 0;
+  let body = pgn.split(/\r?\n/).filter(line => !line.trimStart().startsWith('[')).join('\n');
+  body = body.replace(/\{[^}]*\}|;[^\n]*/g, ' ');
+  while (/\([^()]*\)/.test(body)) body = body.replace(/\([^()]*\)/g, ' ');
+  return body.replace(/\d+\.(?:\.\.)?/g, ' ').split(/\s+/)
+    .filter(token => token && token !== '...' && !token.startsWith('$') && !['*', '1-0', '0-1', '1/2-1/2'].includes(token)).length;
+}
+
 export function gameDetails(json) {
   const game = JSON.parse(json);
   const imported = Boolean(game.review_pgn);
@@ -510,24 +522,25 @@ export function gameDetails(json) {
   const venue = rawSite && rawSite !== '-' && rawSite !== '?' ? rawSite : null;
   const recordedResult = pgnTag(game.review_pgn, 'Result') || game.result;
   const result = ['1-0', '0-1', '1/2-1/2', '*'].includes(recordedResult) ? recordedResult : '*';
-  const moves = game.live_moves?.length || Math.max(0, (game.game_analysis?.length || 1) - 1);
+  const moves = game.live_moves?.length || pgnMoveCount(game.review_pgn) || Math.max(0, (game.game_analysis?.length || 1) - 1);
   const analyzed = game.game_analysis?.filter(Boolean).length || 0;
-  return { title: `${white} vs ${black}`, white, black, playedAt, venue, result, moves, analyzed,
+  const analysisStatus = analyzed === 0 ? 'Not analyzed' : analyzed >= moves + 1 ? 'Complete' : 'Partial';
+  return { analysisStatus, title: `${white} vs ${black}`, white, black, playedAt, venue, result, moves, analyzed,
     finalFen: game.final_board || game.board, category: imported ? 'imported' : 'mine' };
 }
 
 export function gameMatchesCategory(game, category) {
-  return category === 'favorites' ? Boolean(game.favorite) : game.category === category;
+  return category === 'all' || (category === 'favorites' ? Boolean(game.favorite) : game.category === category);
 }
 
-function queueGameRecord(json, id, category, trackBatch = false) {
+function queueGameRecord(json, id, category, trackBatch = false, source) {
   const batch = trackBatch ? batchImport : null;
   try {
     const details = gameDetails(json);
     const fingerprint = importFingerprint(JSON.parse(json).review_pgn);
     if (fingerprint) importedFingerprints.add(fingerprint);
     if (batch) batch.pending++;
-    const write = putGame({ id, ...details, category, fingerprint, updatedAt: Date.now(), json });
+    const write = putGame({ id, ...details, category, fingerprint, ...(source ? { source } : {}), updatedAt: Date.now(), json });
     if (batch) write.then(() => {
       batch.pending--;
       batch.saved++;
@@ -554,6 +567,10 @@ window.ironwoodStoreCurrentGame = json => {
   }
 };
 
+window.ironwoodStoreObservedGame = (json, id) => {
+  queueGameRecord(json, `observed-${observationSession}-${id}`, 'observed', false, 'FICS');
+};
+
 window.ironwoodStoreImportedGame = json => {
   queueGameRecord(json, newId(), 'imported', true);
 };
@@ -561,7 +578,7 @@ window.ironwoodStoreImportedGame = json => {
 window.ironwoodStartNewStoredGame = category => {
   try {
     localStorage.setItem(ACTIVE_ID_KEY, newId());
-    localStorage.setItem(ACTIVE_CATEGORY_KEY, category === 'imported' ? 'imported' : 'mine');
+    localStorage.setItem(ACTIVE_CATEGORY_KEY, ['imported', 'observed'].includes(category) ? category : 'mine');
   } catch (error) {
     console.warn('Ironwood could not start a new saved game:', error);
   }
@@ -696,15 +713,18 @@ window.ironwoodOpenGameLibrary = async () => {
   dialog.showModal();
   try {
     const games = await listGames();
-    let category = 'mine';
+    let category = 'all';
     let playerFilter = '*';
+    let searchQuery = '';
     let analysisFilter = '*';
     let page = 0;
     const pageSize = 10;
     const render = () => {
       tabs.replaceChildren();
       for (const [value, label] of [
+        ['all', 'All Games'],
         ['mine', 'My Games'],
+        ['observed', 'Observed'],
         ['imported', 'Imported Games'],
         ['favorites', 'Favorites'],
       ]) {
@@ -716,7 +736,22 @@ window.ironwoodOpenGameLibrary = async () => {
         tabs.append(tab);
       }
       filters.replaceChildren();
-      if (category === 'imported' || category === 'favorites') {
+      const search = document.createElement('input');
+      search.type = 'search';
+      search.placeholder = 'Search players, source, or date';
+      search.setAttribute('aria-label', 'Search saved games');
+      search.value = searchQuery;
+      search.addEventListener('input', () => {
+        const cursor = search.selectionStart;
+        searchQuery = search.value;
+        page = 0;
+        render();
+        const replacement = filters.querySelector('input[type=search]');
+        replacement.focus();
+        replacement.setSelectionRange(cursor, cursor);
+      });
+      filters.append(search);
+      {
         const label = document.createElement('label');
         label.textContent = 'Player ';
         const select = document.createElement('select');
@@ -736,7 +771,7 @@ window.ironwoodOpenGameLibrary = async () => {
       const analysisLabel = document.createElement('label');
       analysisLabel.textContent = 'Analysis ';
       const analysisSelect = document.createElement('select');
-      for (const [value, text] of [['*', 'All games'], ['analyzed', 'Analyzed'], ['unanalyzed', 'Not analyzed']]) {
+      for (const [value, text] of [['*', 'All games'], ['complete', 'Complete'], ['partial', 'Partial'], ['unanalyzed', 'Not analyzed']]) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = text;
@@ -748,14 +783,17 @@ window.ironwoodOpenGameLibrary = async () => {
       filters.append(analysisLabel);
       list.replaceChildren();
       pager.replaceChildren();
-      const visible = games.filter(game => gameMatchesCategory(game, category) && (playerFilter === '*' ||
+      const visible = games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
-        analysisFilter === 'analyzed' && game.analyzed > 0 ||
+        analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
+        analysisFilter === 'partial' && game.analysisStatus === 'Partial' ||
         analysisFilter === 'unanalyzed' && !(game.analyzed > 0)));
       if (!visible.length) {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
-          category === 'mine' ? 'No games here yet. Games against Stockfish are saved automatically.' :
+          category === 'all' ? 'No saved games yet.' :
+          category === 'observed' ? 'Finished games you watch are saved here automatically.' :
+          category === 'mine' ? 'No games here yet. Finished online games and games against Stockfish are saved automatically.' :
             category === 'imported' ? 'No imported games here yet. Import a PGN or analysis JSON to add one.' :
               'No favorite games yet. Mark a game as a favorite to see it here.';
         return;
@@ -797,7 +835,7 @@ window.ironwoodOpenGameLibrary = async () => {
           game.result === '0-1' ? `${game.black} won (Black)` :
           game.result === '1/2-1/2' ? 'Draw' : 'Result unknown / unfinished';
         const details = document.createElement('span');
-        details.textContent = `${game.playedAt ? `Played ${game.playedAt}` : 'Date played unknown'} · ${game.venue ? `Venue: ${game.venue}` : 'Venue unknown'} · Saved ${new Date(game.updatedAt).toLocaleString()} · ${game.moves} moves · ${game.analyzed} positions analyzed`;
+        details.textContent = `${game.playedAt ? `Played ${game.playedAt}` : 'Date played unknown'} · ${game.venue ? `Venue: ${game.venue}` : 'Venue unknown'} · Saved ${new Date(game.updatedAt).toLocaleString()} · ${game.moves} moves · ${game.analysisStatus} · ${game.analyzed} positions analyzed${game.source ? ` · ${game.source}` : ''}`;
         const actions = document.createElement('div');
         actions.className = 'game-library-actions';
         const open = document.createElement('button');
@@ -818,6 +856,7 @@ window.ironwoodOpenGameLibrary = async () => {
         });
         const move = document.createElement('button');
         move.type = 'button';
+        move.hidden = game.category === 'observed';
         move.textContent = game.category === 'mine' ? 'Move to Imported' : 'Move to My Games';
         move.addEventListener('click', async () => {
           const oldCategory = game.category;

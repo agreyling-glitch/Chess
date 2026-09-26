@@ -13,6 +13,8 @@ Online play connects Ironwood to the Free Internet Chess Server. You can enter a
 
 Watching has its own workflow. Up to 10 games can be open in observation tabs at once, so following several games does not mean repeatedly finding them in the running-game list. The Available games and Observe a game menus have more space and scrollable lists to make choosing a game easier. Once an observed game finishes, you can run full-game analysis and revisit its decisions and turning points.
 
+Finished watched games now have an **Observed** category in Saved Games. Their FICS source and analysis progress stay with the record. Switching observation tabs pauses analysis without losing completed results; reopening a saved game lets you resume after a restart. An All Games view, shared search, favorites, and analysis-status filters keep the categories part of one library.
+
 ## Conversations beside the board
 
 The FICS console opens when a connection is established. It remains the place for commands and server replies, while player conversations and channel messages have separate tabs. Each conversation keeps its own draft, and unread counts make new messages visible without taking you away from the current tab.

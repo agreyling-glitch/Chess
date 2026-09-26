@@ -118,6 +118,8 @@ extern "C" {
     fn play_chess_sound(kind: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStoreCurrentGame)]
     fn store_current_game(json: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStoreObservedGame)]
+    fn store_observed_game(json: &str, id: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStoreImportedGame)]
     fn store_imported_game(json: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStartNewStoredGame)]
@@ -748,6 +750,7 @@ impl FicsRunningGame {
 #[derive(Clone)]
 struct ObservedGame {
     id: i32,
+    storage_id: String,
     white: String,
     black: String,
     board: Board,
@@ -761,6 +764,18 @@ struct ObservedGame {
     finished: bool,
     ended: bool,
     end_message: Option<String>,
+    analysis: Option<ObservedAnalysis>,
+}
+
+#[derive(Clone)]
+struct ObservedAnalysis {
+    results: Vec<Option<PositionAnalysis>>,
+    index: Option<usize>,
+    paused: bool,
+    verification_targets: Vec<usize>,
+    verification_results: Vec<Option<PositionAnalysis>>,
+    verification_nodes: u64,
+    config: FullGameAnalysisConfig,
 }
 
 #[derive(Clone)]
@@ -1256,6 +1271,7 @@ impl ChessApp {
             }
             self.fics_observed_games.push(ObservedGame {
                 id: game,
+                storage_id: format!("{game}-{now}"),
                 white,
                 black,
                 board: server_board,
@@ -1269,6 +1285,7 @@ impl ChessApp {
                 finished: false,
                 ended: false,
                 end_message: None,
+                analysis: None,
             });
         }
         if !self.fics_playing && (first_observed || self.fics_game_id == Some(game)) {
@@ -1328,14 +1345,24 @@ impl ChessApp {
         else {
             return;
         };
-        let switching = self.fics_game_id != Some(game) || !self.fics_observing;
+        let switching = self.fics_game_id != Some(game);
         if switching {
+            if let Some(id) = self.fics_game_id { self.save_observed_game(id); }
             if let Some(previous) = self
                 .fics_observed_games
                 .iter_mut()
                 .find(|item| Some(item.id) == self.fics_game_id)
             {
                 previous.flipped = self.flipped;
+                previous.analysis = Some(ObservedAnalysis {
+                    results: self.game_analysis.clone(),
+                    index: self.game_analysis_index,
+                    paused: self.game_analysis_running || self.game_analysis_paused,
+                    verification_targets: self.verification_targets.clone(),
+                    verification_results: self.verification_results.clone(),
+                    verification_nodes: self.verification_nodes,
+                    config: self.full_game_analysis_config.clone(),
+                });
             }
             self.fics_observing = true;
             self.reset_for_side(if observed.flipped {
@@ -1343,6 +1370,15 @@ impl ChessApp {
             } else {
                 PlayerSide::White
             });
+            if let Some(analysis) = &observed.analysis {
+                self.game_analysis = analysis.results.clone();
+                self.game_analysis_index = analysis.index;
+                self.game_analysis_paused = analysis.paused;
+                self.verification_targets = analysis.verification_targets.clone();
+                self.verification_results = analysis.verification_results.clone();
+                self.verification_nodes = analysis.verification_nodes;
+                self.full_game_analysis_config = analysis.config.clone();
+            }
         }
         self.board = observed.board;
         self.review_positions = observed.positions.clone();
@@ -1444,6 +1480,7 @@ impl ChessApp {
         observed.start_ply = 0;
         observed.positions = positions;
         observed.moves = moves;
+        self.save_observed_game(game);
         if self.fics_game_id == Some(game) && !self.fics_playing {
             self.show_observed_game(game);
         }
@@ -1634,6 +1671,7 @@ impl ChessApp {
                             if self.fics_game_id == Some(game) && !self.fics_playing {
                                 self.show_observed_game(game);
                             }
+                            self.save_observed_game(game);
                         }
                         self.fics_log.push(message);
                         continue;
@@ -6483,16 +6521,8 @@ impl ChessApp {
         None
     }
 
-    fn save_game(&self) {
-        self.save_preferences();
-        if self.fics_active && !self.fics_game_finished {
-            return;
-        }
-        #[cfg(target_arch = "wasm32")]
-        if let Some(storage) =
-            web_sys::window().and_then(|window| window.local_storage().ok().flatten())
-        {
-            let game = PersistedGame {
+    fn persisted_game(&self) -> PersistedGame {
+        PersistedGame {
                 local_clock: self.local_clock.clone(),
                 local_start_ply: self.local_start_ply,
                 board: self.board.to_string(),
@@ -6539,7 +6569,81 @@ impl ChessApp {
                 verification_targets: self.verification_targets.clone(),
                 verification_results: self.verification_results.clone(),
                 verification_nodes: self.verification_nodes,
-            };
+            }
+    }
+
+    fn observed_saved_game(&self, observed: &ObservedGame) -> PersistedGame {
+        let mut game = self.persisted_game();
+        let active = self.fics_game_id == Some(observed.id) && !self.fics_playing;
+        let result = ["1-0", "0-1", "1/2-1/2"].into_iter()
+            .find(|result| observed.end_message.as_deref().unwrap_or("").contains(result))
+            .unwrap_or("*");
+        let mut pgn = fics_game_pgn(&observed.white, &observed.black, result, &observed.moves);
+        if let Some(first) = observed.positions.first() {
+            if observed.start_ply != 0 {
+                pgn = format!("[SetUp \"1\"]\n[FEN \"{first}\"]\n{pgn}");
+            }
+        }
+        game.local_clock = None;
+        game.local_start_ply = observed.start_ply;
+        game.board = observed.board.to_string();
+        game.final_board = observed.board.to_string();
+        game.result = result.into();
+        game.history = observed.positions.iter().take(observed.positions.len().saturating_sub(1)).map(ToString::to_string).collect();
+        game.last_move = None;
+        game.flipped = observed.flipped;
+        game.engine_enabled = false;
+        game.review_pgn = Some(pgn);
+        game.live_moves.clear();
+        game.live_positions.clear();
+        game.review_index = Some(observed.moves.len());
+        game.game_analysis_running = false;
+        if active {
+            game.game_analysis_paused = self.game_analysis_running || self.game_analysis_paused;
+        } else if let Some(analysis) = &observed.analysis {
+            game.game_analysis = analysis.results.clone();
+            game.game_analysis_paused = analysis.paused;
+            game.verification_targets = analysis.verification_targets.clone();
+            game.verification_results = analysis.verification_results.clone();
+            game.verification_nodes = analysis.verification_nodes;
+            game.full_game_analysis_config = analysis.config.clone();
+        } else {
+            game.game_analysis.clear();
+            game.game_analysis_paused = false;
+            game.verification_targets.clear();
+            game.verification_results.clear();
+            game.verification_nodes = 0;
+        }
+        game
+    }
+
+    fn save_observed_game(&self, id: i32) {
+        #[cfg(target_arch = "wasm32")]
+        if let Some(observed) = self.fics_observed_games.iter().find(|game| game.id == id && game.ended) {
+            if let Ok(json) = serde_json::to_string(&self.observed_saved_game(observed)) {
+                store_observed_game(&json, &observed.storage_id);
+            }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = id;
+    }
+
+    fn save_game(&self) {
+        self.save_preferences();
+        if !self.fics_playing {
+            if let Some(id) = self.fics_game_id.filter(|id| self.fics_observed_games.iter().any(|game| game.id == *id)) {
+                self.save_observed_game(id);
+                return;
+            }
+        }
+        if self.fics_active && !self.fics_game_finished {
+            return;
+        }
+        #[cfg(target_arch = "wasm32")]
+        if let Some(storage) =
+            web_sys::window().and_then(|window| window.local_storage().ok().flatten())
+        {
+            let game = self.persisted_game();
             if let Ok(json) = serde_json::to_string(&game) {
                 let _ = storage.set_item(STORAGE_KEY, &json);
                 store_current_game(&json);
@@ -7236,8 +7340,13 @@ impl ChessApp {
                             self.resume_live_engine_if_needed();
                         }
                     }
-                    if line.contains("Cross-origin isolation") || line.contains("worker failed") {
-                        self.engine_status = line;
+                    if line.contains("Cross-origin isolation") || line.contains("worker failed")
+                        || line.starts_with("info string CRITICAL ERROR:") {
+                        self.engine_status = if let Some(index) = self.game_analysis_index {
+                            format!("Analysis failed at position {} of {}: {line}. Completed results are saved.", index + 1, self.review_positions.len())
+                        } else {
+                            line
+                        };
                         self.engine_progress = None;
                         self.pending_analysis_search = None;
                         self.analysis_running = false;
@@ -9395,6 +9504,89 @@ mod tests {
     }
 
     #[test]
+    fn observation_switch_preserves_partial_analysis_and_verification() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.receive_observed_board(1, "White".into(), "Black".into(), Board::default(), "", "", 1, 300, 300, false);
+        app.fics_observed_games[0].finished = true;
+        app.fics_game_finished = true;
+        app.fics_observing = false;
+        app.game_analysis = vec![Some(PositionAnalysis { eval_cp: Some(42), ..Default::default() }), None];
+        app.game_analysis_index = Some(1);
+        app.game_analysis_running = true;
+        app.verification_targets = vec![1];
+        app.verification_results = vec![None, None];
+        app.verification_nodes = 1_250_000;
+        app.receive_observed_board(2, "Other White".into(), "Other Black".into(), Board::default(), "", "", 1, 300, 300, false);
+        app.show_observed_game(2);
+        assert!(app.game_analysis.is_empty());
+        assert!(!app.game_analysis_running);
+        app.show_observed_game(1);
+        assert_eq!(app.game_analysis[0].as_ref().unwrap().eval_cp, Some(42));
+        assert!(app.game_analysis[1].is_none());
+        assert_eq!(app.game_analysis_index, Some(1));
+        assert!(app.game_analysis_paused);
+        assert!(!app.game_analysis_running);
+        assert_eq!(app.verification_targets, vec![1]);
+        assert_eq!(app.verification_nodes, 1_250_000);
+        // Selecting an already selected finished game must not clear its results.
+        app.show_observed_game(1);
+        assert_eq!(app.game_analysis[0].as_ref().unwrap().eval_cp, Some(42));
+    }
+
+    #[test]
+    fn observed_en_passant_game_exports_valid_engine_positions() {
+        let (positions, moves) = ChessApp::parse_pgn_mainline(include_str!("../tests/fixtures/observed-en-passant.pgn")).unwrap();
+        assert_eq!(moves.len(), 104);
+        assert_eq!(positions.len(), 105);
+        assert_eq!(positions[97].to_string().split_whitespace().nth(3), Some("g3"));
+        println!("Position 98 FEN: {}", positions[97]);
+        for board in &positions {
+            let _: shakmaty::Chess = shakmaty::fen::Fen::from_ascii(board.to_string().as_bytes()).unwrap()
+                .into_position(shakmaty::CastlingMode::Standard).unwrap();
+        }
+        assert_eq!(positions.last().unwrap().status(), BoardStatus::Checkmate);
+    }
+
+    #[test]
+    fn observed_save_roundtrips_moves_results_and_paused_analysis() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.receive_observed_board(1, "Ada".into(), "Ben".into(), Board::default(), "", "", 1, 300, 300, false);
+        let (positions, moves) = ChessApp::parse_pgn_mainline("1. e4 e5 2. Nf3 Nc6 1-0").unwrap();
+        let observed = &mut app.fics_observed_games[0];
+        observed.board = *positions.last().unwrap();
+        observed.positions = positions.clone();
+        observed.moves = moves.clone();
+        observed.ended = true;
+        observed.finished = true;
+        observed.end_message = Some("Ada wins 1-0".into());
+        app.game_analysis = vec![Some(PositionAnalysis::default()), None, None, None, None];
+        app.game_analysis_running = true;
+        let snapshot = app.observed_saved_game(&app.fics_observed_games[0]);
+        let restored: PersistedGame = serde_json::from_str(&serde_json::to_string(&snapshot).unwrap()).unwrap();
+        let (restored_positions, restored_moves) = ChessApp::parse_pgn_mainline(restored.review_pgn.as_ref().unwrap()).unwrap();
+        assert_eq!(restored_positions.len(), positions.len());
+        assert_eq!(restored_moves, moves);
+        assert_eq!(restored.result, "1-0");
+        assert!(!restored.engine_enabled);
+        assert_eq!(ChessApp::analysis_resume_state(&restored.game_analysis, restored.game_analysis_running, restored.game_analysis_paused), (Some(1), false, true));
+        // A background game must never inherit the selected game's analysis.
+        app.fics_game_id = Some(2);
+        let background = app.observed_saved_game(&app.fics_observed_games[0]);
+        assert!(background.game_analysis.is_empty());
+        assert!(!background.game_analysis_paused);
+        // A partial observation must replay from its actual starting position.
+        app.fics_observed_games[0].positions = positions[2..].to_vec();
+        app.fics_observed_games[0].moves = moves[2..].to_vec();
+        app.fics_observed_games[0].start_ply = 2;
+        let partial = app.observed_saved_game(&app.fics_observed_games[0]);
+        let (partial_positions, _) = ChessApp::parse_pgn_mainline(partial.review_pgn.as_ref().unwrap()).unwrap();
+        assert_eq!(partial_positions[0].to_string(), positions[2].to_string());
+        assert_eq!(partial_positions.last().unwrap().to_string(), positions.last().unwrap().to_string());
+    }
+
+    #[test]
     fn verification_resumes_at_first_unfinished_target() {
         let done = Some(PositionAnalysis::default());
         let results = [None, done.clone(), None, done, None];
@@ -10182,17 +10374,17 @@ impl eframe::App for ChessApp {
                         ui.separator();
                     }
                     let status_lower = self.engine_status.to_ascii_lowercase();
-                    let dock_state = if self.analysis_running {
+                    let dock_state = if status_lower.contains("failed")
+                        || status_lower.contains("error")
+                        || status_lower.contains("cross-origin")
+                    {
+                        "Error"
+                    } else if self.analysis_running {
                         "Analyzing"
                     } else if self.review_index.is_some() {
                         "Ready"
                     } else if !self.engine_enabled {
                         "Disabled"
-                    } else if status_lower.contains("failed")
-                        || status_lower.contains("error")
-                        || status_lower.contains("cross-origin")
-                    {
-                        "Error"
                     } else if status_lower.contains("download") {
                         "Downloading"
                     } else if status_lower.contains("initializ")
@@ -10215,7 +10407,8 @@ impl eframe::App for ChessApp {
                             Color32::from_rgb(211, 173, 98)
                         },
                     );
-                    ui.label(RichText::new(dock_state).strong());
+                    ui.label(RichText::new(dock_state).strong())
+                        .on_hover_text(&self.engine_status);
                     ui.separator();
                     ui.label("Stockfish 19 · Full NNUE");
                     ui.separator();
@@ -10545,6 +10738,11 @@ impl eframe::App for ChessApp {
                             }
                         });
                     });
+                    if self.engine_status.to_ascii_lowercase().contains("failed")
+                        || self.engine_status.to_ascii_lowercase().contains("error")
+                    {
+                        ui.colored_label(Color32::LIGHT_RED, &self.engine_status);
+                    }
                     if let Some(destination) = self.analysis_graph(ui) {
                         self.review_to(destination);
                     }

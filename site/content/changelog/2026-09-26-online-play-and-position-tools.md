@@ -17,8 +17,12 @@ version: "2026.09.26"
 - A visual position editor with piece placement, board rotation, and editable game-state details.
 - Screenshot import through upload, paste, or drag and drop. Recognition runs on the device and produces a position that can be checked and corrected before starting.
 
+- An Observed category in Saved Games for finished watched games, with FICS source labels, automatic analysis-progress saves, and resumable partial analysis.
+- An All Games view with shared player and text search, favorites, and Not analyzed, Partial, and Complete analysis filters. Observed games are included in backups.
+
 ## Improved
 
+- Switching observation tabs pauses analysis and preserves completed results for the original game.
 - Larger, scrollable Available games and Observe a game menus with more room for player names and time controls.
 - The FICS console opens automatically on connection. Chat uses the same readable monospace font as the console, and server replies stay in the Console tab.
 - Online Controls sits beside Help in the main menu.

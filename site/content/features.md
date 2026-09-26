@@ -36,7 +36,7 @@ Run Stockfish 19 with its full NNUE network directly in your browser. Review eva
 
 ## Build your library
 
-Saved Games keeps games against Stockfish and imported games together on this device. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Filter the library by player or analysis state, mark favorites, and reopen a game with its saved analysis.
+Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis.
 
 ## Keep control of your data
 

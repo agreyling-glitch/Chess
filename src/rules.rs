@@ -32,10 +32,18 @@ impl Deref for Board {
 impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let base = self.inner.to_string();
-        if !self.chess960 {
-            return f.write_str(&base);
-        }
         let mut fields: Vec<_> = base.split_whitespace().map(str::to_owned).collect();
+        if !self.chess960 {
+            // chess::Board stores and prints the capturable pawn square.
+            // FEN/UCI instead requires the empty square the capture lands on.
+            fields[3] = self.inner.en_passant().map_or_else(|| "-".into(), |pawn| {
+                chess::Square::make_square(
+                    if self.inner.side_to_move() == chess::Color::White { chess::Rank::Sixth } else { chess::Rank::Third },
+                    pawn.get_file(),
+                ).to_string()
+            });
+            return f.write_str(&fields.join(" "));
+        }
         let mut rights = String::new();
         for (color, files) in self.rook_files.iter().enumerate() {
             for file in 0..8 {
@@ -241,6 +249,23 @@ impl MoveGen {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn standard_fen_uses_en_passant_capture_square_for_both_colors() {
+        for (moves, target, capture) in [
+            (vec!["e2e4", "a7a6", "e4e5", "d7d5"], "d6", "e5d6"),
+            (vec!["a2a3", "h7h5", "a3a4", "h5h4", "g2g4"], "g3", "h4g3"),
+        ] {
+            let mut board = Board::default();
+            for mv in moves { board = board.make_move_new(ChessMove::from_str(mv).unwrap()); }
+            let fen = board.to_string();
+            assert_eq!(fen.split_whitespace().nth(3), Some(target));
+            let position: Chess = Fen::from_ascii(fen.as_bytes()).unwrap().into_position(CastlingMode::Standard).unwrap();
+            assert!(UciMove::from_str(capture).unwrap().to_move(&position).is_ok());
+            let restored = Board::from_str(&fen).unwrap();
+            assert_eq!(restored, board);
+            assert!(MoveGen::new_legal(&restored).any(|mv| mv.to_string() == capture));
+        }
+    }
     #[test]
     fn chess960_playouts_keep_positions_valid() {
         let mut seed = 42u64;
