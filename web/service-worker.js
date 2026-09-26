@@ -16,6 +16,9 @@ const ENGINE_URLS = [
 const SHELL_URLS = [
   '/',
   '/play/',
+  '/fics/',
+  '/fics/bridge.js',
+  '/fics/protocol.js',
   '/features/',
   '/blog/',
   '/blog/stockfish-in-your-browser/',
@@ -32,8 +35,19 @@ const SHELL_URLS = [
   '/site.css',
   '/pwa.js',
   '/game-storage.js',
+  '/position-editor/editor.js',
+  '/position-editor/model.js',
+  '/position-editor/editor.css',
   '/engine-worker.js',
   '/favicon.ico',
+  '/favicon-16x16.png',
+  '/favicon-32x32.png',
+  '/favicon-48x48.png',
+  '/brand/ironwood-logo-192.webp',
+  '/brand/ironwood-logo-256.webp',
+  '/brand/ironwood-logo-384.webp',
+  '/brand/ironwood-logo-768.webp',
+  '/android-chrome-maskable-512x512.png',
   '/favicon.svg',
   '/apple-touch-icon.png',
   '/android-chrome-192x192.png',
@@ -118,6 +132,11 @@ self.addEventListener('fetch', event => {
   // stale copy first made local updates appear only after a second reload.
   if (url.pathname === '/game-storage.js' || url.pathname === '/styles.css' ||
       LOCAL_DEVELOPMENT && url.pathname === '/pwa.js') {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (url.pathname.startsWith('/position-editor/')) {
     event.respondWith(networkFirst(request));
     return;
   }

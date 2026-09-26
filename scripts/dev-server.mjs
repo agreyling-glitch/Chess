@@ -7,7 +7,8 @@ const mime = {'.html':'text/html','.js':'text/javascript','.wasm':'application/w
 createServer((req,res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   let file = normalize(join(root, urlPath === '/' ? 'index.html' : urlPath));
-  if (!file.startsWith(root) || !existsSync(file) || statSync(file).isDirectory()) file = join(root, 'index.html');
+  if (file.startsWith(root) && existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
+  if (!file.startsWith(root) || !existsSync(file)) file = join(root, 'index.html');
   res.setHeader('Cross-Origin-Opener-Policy','same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
   res.setHeader('Cross-Origin-Resource-Policy','same-origin');

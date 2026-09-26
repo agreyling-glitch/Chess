@@ -4,53 +4,43 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111418">
-  <meta name="description" content="Play private, uncompromised chess against Stockfish 19 with full NNUE evaluation, directly in your browser.">
+  <meta name="description" content="Play against an engine, meet opponents online, and analyze your games in Ironwood Chess. Your board. Your way.">
   <meta name="robots" content="index,follow,max-image-preview:large">
-  <title>Ironwood Chess — Stockfish 19 in your browser</title>
+  <title>Ironwood Chess — Your board. Your way.</title>
   <link rel="canonical" href="/">
   <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#d3ad62">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="msapplication-config" content="/browserconfig.xml">
   <link rel="stylesheet" href="/landing.css">
 </head>
 <body>
   <header class="nav">
-    <a class="brand" href="/" aria-label="Ironwood Chess home"><span>IRONWOOD</span> CHESS</a>
+    <a class="brand" href="/" aria-label="Ironwood Chess home"><img class="brand-logo" src="/brand/ironwood-logo-192.webp" width="80" height="80" alt="" decoding="async"><span class="brand-name"><span>IRONWOOD</span> CHESS</span></a>
     <nav class="nav-actions" aria-label="Primary navigation"><a class="nav-link" href="/features/">Features</a><a class="nav-link" href="/blog/">Journal</a><a class="nav-link" href="/changelog/">Changelog</a><a class="nav-link" href="/play/">Play now</a></nav>
   </header>
 
   <main>
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">A serious engine. A quiet board.</p>
-        <h1>Chess without compromise.</h1>
-        <p class="lede">Face Stockfish 19 with its full NNUE network, run unlimited full-game analysis, and export polished PDF reports. Everything runs locally, so the board stays responsive and your games never leave the browser.</p>
+        <p class="eyebrow">Play. Connect. Explore.</p>
+        <h1>Your board.<br>Your way.</h1>
+        <p class="lede">Play against an engine, meet opponents online, or explore your games with powerful analysis—all in one chess workspace.</p>
         <div class="actions">
-          <a class="primary" href="/play/">Start a game <span aria-hidden="true">→</span></a>
+          <a class="primary" href="/play/">Start playing <span aria-hidden="true">→</span></a>
           <a class="secondary" href="/features/">Explore features</a>
         </div>
-        <p class="note">The full engine is a 94.5 MiB one-time download and is cached by your browser.</p>
+        <div class="available-today"><p class="eyebrow">Available today</p><ul aria-label="Available features"><li>Stockfish 19</li><li>FICS online play</li><li>Local analysis</li></ul></div>
       </div>
-      <div class="board-mark" aria-hidden="true">
-        <svg class="emblem-type" viewBox="0 0 400 400">
-          <defs>
-            <path id="emblem-top" d="M 54,200 A 146,146 0 0,1 346,200" />
-            <path id="emblem-bottom" d="M 54,200 A 146,146 0 0,0 346,200" />
-          </defs>
-          <text><textPath href="#emblem-top" startOffset="50%">STOCKFISH 19</textPath></text>
-          <text><textPath href="#emblem-bottom" startOffset="50%">FULL NNUE</textPath></text>
-        </svg>
-        <div class="piece">♞</div>
-        <div class="orbit orbit-one"></div>
-        <div class="orbit orbit-two"></div>
+      <div class="hero-art" aria-hidden="true">
+        <img src="/brand/ironwood-logo-768.webp" srcset="/brand/ironwood-logo-384.webp 384w, /brand/ironwood-logo-768.webp 768w" sizes="(max-width: 800px) 240px, 360px" width="768" height="768" alt="" fetchpriority="high">
       </div>
     </section>
 
     <section class="offline-panel" aria-labelledby="offline-title">
-      <div><p class="eyebrow">Install or take it offline</p><h2 id="offline-title">Your board. Your engine.</h2><p data-offline-status>Store the 94.5 MiB engine on this device for play without a connection.</p><progress data-offline-progress hidden></progress></div>
+      <div><p class="eyebrow">Install or take it offline</p><h2 id="offline-title">Make yourself at home.</h2><p>Install Ironwood for quick access. Stockfish 19 with full NNUE evaluation is a 94.5 MiB one-time download, cached on your device.</p><p>Engine play and analysis run locally in your browser. Online games connect to FICS and require an internet connection.</p><p data-offline-status>Store the 94.5 MiB engine on this device for play without a connection.</p><progress data-offline-progress hidden></progress></div>
       <div class="offline-actions"><button data-install-app hidden>Install Ironwood</button><button data-offline-engine disabled>Enable offline play</button></div>
     </section>
 

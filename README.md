@@ -64,6 +64,24 @@ The board/game state is intentionally separated from rendering so 2D glyphs can
 later be replaced with timeline-driven Battle Chess animations without changing
 the legality model or engine protocol.
 
+## Play online through FICS
+
+Open `/play/`, choose **New game → Online**, and use the FICS lobby window to seek
+an unrated game, join a listed game, or challenge a FICS handle. Ironwood connects
+as a guest by default. The lobby also lets you sign in to an existing FICS account
+or open the [official FICS registration page](https://www.freechess.org/Register/).
+FICS confirms each move and sends the authoritative board and clocks.
+When a game ends, Ironwood keeps its moves for local Stockfish analysis and saves
+the finished game on this device. Active online games require a connection and
+are not stored in the Saved Games library until they finish.
+
+The browser connects over a same-origin WebSocket to the Cloudflare Worker, which
+opens a TCP connection to `freechess.org:5000`. Use `npm run dev:wrangler` for a
+local end-to-end connection; `npm run dev` serves the page but does not provide
+the WebSocket bridge. The FICS service and its availability are independent of
+Ironwood. The FICS TCP hop uses its legacy unencrypted protocol. Ironwood does
+not save the sign-in password, and you should use a unique FICS password.
+
 ## Saved games
 
 The browser automatically saves the current FEN, undo history, last-move

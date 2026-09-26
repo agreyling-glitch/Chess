@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod fics_chat;
+mod rules;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

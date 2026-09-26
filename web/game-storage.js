@@ -627,6 +627,44 @@ function finalBoard(fen) {
   return board;
 }
 
+function confirmDeleteGame(game, active) {
+  return new Promise(resolve => {
+    const dialog = document.createElement('dialog');
+    dialog.id = 'game-delete-dialog';
+    const title = document.createElement('h2');
+    title.textContent = 'Delete saved game?';
+    const name = document.createElement('p');
+    name.className = 'game-delete-name';
+    name.textContent = game.title;
+    const warning = document.createElement('p');
+    warning.className = 'game-delete-warning';
+    warning.textContent = active
+      ? 'This cannot be undone. The current board will reset.'
+      : 'This cannot be undone.';
+    const actions = document.createElement('div');
+    actions.className = 'game-delete-actions';
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', () => dialog.close('cancel'));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Delete game';
+    remove.addEventListener('click', () => dialog.close('delete'));
+    actions.append(cancel, remove);
+    dialog.append(title, name, warning, actions);
+    document.body.append(dialog);
+    dialog.addEventListener('close', () => {
+      const confirmed = dialog.returnValue === 'delete';
+      dialog.remove();
+      resolve(confirmed);
+    }, { once: true });
+    dialog.showModal();
+    cancel.focus();
+  });
+}
+
 window.ironwoodOpenGameLibrary = async () => {
   let dialog = document.getElementById('game-library-dialog');
   if (!dialog) {
@@ -819,7 +857,7 @@ window.ironwoodOpenGameLibrary = async () => {
         remove.textContent = 'Delete';
         remove.addEventListener('click', async () => {
           const active = localStorage.getItem(ACTIVE_ID_KEY) === game.id;
-          if (!confirm(`Delete “${game.title}”? This cannot be undone.${active ? ' The current board will reset.' : ''}`)) return;
+          if (!await confirmDeleteGame(game, active)) return;
           try {
             await deleteGame(game.id);
             games.splice(games.indexOf(game), 1);

@@ -9,9 +9,9 @@
   <title>Play — Ironwood Chess</title>
   <link rel="canonical" href="/play/">
   <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#d3ad62">
   <link rel="manifest" href="/site.webmanifest">
   <meta name="msapplication-config" content="/browserconfig.xml">
   <link id="ironwood-styles" rel="stylesheet" href="/styles.css">
@@ -74,6 +74,11 @@
     window.ironwoodResetLocalData = () => alert('Storage management is unavailable. Please reload Ironwood.');
     window.ironwoodVersionDiagnostics = () => '{"status":"Version diagnostics are loading"}';
     window.ironwoodRefreshVersionDiagnostics = () => {};
+    window.ironwoodFicsConnect = () => {};
+    window.ironwoodFicsDisconnect = () => {};
+    window.ironwoodFicsSend = () => {};
+    window.ironwoodFicsSendCommand = () => {};
+    window.ironwoodFicsPoll = () => '';
     try {
       const localDevelopment = ['localhost', '127.0.0.1'].includes(location.hostname);
       const storageUrl = localDevelopment ? `/game-storage.js?v=${Date.now()}` : '/game-storage.js';
@@ -82,6 +87,8 @@
         return null;
       });
       if (storage) await storage.initializeGameStorage();
+      await import(localDevelopment ? `/fics/bridge.js?v=${Date.now()}` : '/fics/bridge.js');
+      await import('/position-editor/editor.js');
       const packageToken = localDevelopment ? Date.now() : null;
       const packageUrl = packageToken ? `/pkg/battle_chess.js?v=${packageToken}` : '/pkg/battle_chess.js';
       const { default: init } = await import(packageUrl);

@@ -9,16 +9,16 @@
   <title>{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}</title>
   <link rel="canonical" href="{{ .Permalink }}">
   <link rel="icon" href="/favicon.ico" sizes="any">
-  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
+  <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="mask-icon" href="/safari-pinned-tab.svg" color="#d3ad62">
   <link rel="manifest" href="/site.webmanifest">
   {{ with .OutputFormats.Get "rss" }}<link rel="alternate" type="application/rss+xml" title="{{ $.Title }}" href="{{ .Permalink }}">{{ end }}
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
   <header class="nav">
-    <a class="brand" href="/" aria-label="Ironwood Chess home"><span>IRONWOOD</span> CHESS</a>
+    <a class="brand" href="/" aria-label="Ironwood Chess home"><img class="brand-logo" src="/brand/ironwood-logo-192.webp" width="80" height="80" alt="" decoding="async"><span class="brand-name"><span>IRONWOOD</span> CHESS</span></a>
     <nav aria-label="Primary navigation">
       <a href="/features/">Features</a>
       <a href="/blog/">Journal</a>
