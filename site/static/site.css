@@ -50,3 +50,24 @@ footer span { margin-right:auto; } footer a { color:var(--gold); }
 .brand-logo { width:80px; height:80px; border-radius:50%; object-fit:cover; }
 .brand .brand-name { color:var(--ink); white-space:nowrap; }
 @media(max-width:560px){.brand{gap:10px;font-size:.72rem}.brand-logo{width:56px;height:56px}}
+
+.gallery-heading { padding:clamp(64px,9vw,112px) 0 50px; border-bottom:1px solid #ffffff18; }
+.gallery-heading h1 { font-size:clamp(3.4rem,7vw,6.5rem); }
+.gallery-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:28px; padding:42px 0 95px; }
+.gallery-card { min-width:0; margin:0; overflow:hidden; background:var(--panel); border:1px solid #ffffff1b; }
+.gallery-card>a { display:flex; height:310px; align-items:center; justify-content:center; padding:18px; background:#0d1114; }
+.gallery-card img { display:block; max-width:100%; max-height:100%; width:auto; height:auto; object-fit:contain; transition:transform .2s ease; }
+.gallery-card>a:hover img { transform:scale(1.025); }
+.gallery-card figcaption { padding:25px 27px 29px; }
+.gallery-card h2 { margin:0 0 9px; font:2rem/1.1 Georgia,serif; }
+.gallery-card p { min-height:3em; margin:0 0 17px; color:var(--muted); line-height:1.55; }
+.gallery-card figcaption a,.gallery-report-fallback a { color:var(--gold); text-decoration:none; border-bottom:1px solid #d3ad6266; }
+.gallery-card figcaption a:hover,.gallery-report-fallback a:hover { border-color:var(--gold); }
+.gallery-report { padding:0 0 120px; }
+.gallery-report-heading { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:25px; }
+.gallery-report h2 { margin:0; font:clamp(2.2rem,4vw,3.8rem)/1.05 Georgia,serif; }
+.gallery-report-heading p:not(.eyebrow) { color:var(--muted); line-height:1.6; }
+.gallery-report-link { flex-shrink:0; padding:14px 20px; color:#17140e; background:var(--gold); text-decoration:none; font-weight:700; }
+.gallery-report iframe { display:block; width:100%; height:min(78vh,850px); min-height:480px; background:#222; border:1px solid #d3ad6270; }
+.gallery-report-fallback { color:var(--muted); font-size:.9rem; }
+@media(max-width:720px){.gallery-grid{grid-template-columns:1fr;gap:22px}.gallery-card>a{height:260px}.gallery-report-heading{align-items:start;flex-direction:column}.gallery-report iframe{min-height:420px}}

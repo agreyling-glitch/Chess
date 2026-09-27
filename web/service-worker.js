@@ -39,6 +39,7 @@ const SHELL_URLS = [
   '/position-editor/model.js',
   '/position-editor/editor.css',
   '/engine-worker.js',
+  '/board-clipboard.js',
   '/favicon.ico',
   '/favicon-16x16.png',
   '/favicon-32x32.png',
@@ -81,7 +82,8 @@ self.addEventListener('activate', event => {
 
     const names = await caches.keys();
     await Promise.all(names
-      .filter(name => name.startsWith('ironwood-shell-') && name !== SHELL_CACHE)
+      .filter(name => (name.startsWith('ironwood-shell-') && name !== SHELL_CACHE) ||
+        name.startsWith('ironwood-engine-lc0-'))
       .map(name => caches.delete(name)));
     await self.clients.claim();
   })());

@@ -65,3 +65,34 @@ canvas { display:block; }
   #chess_canvas { height:calc(100% - env(titlebar-area-height, 32px)); margin-top:env(titlebar-area-height, 32px); }
   #loading { top:env(titlebar-area-height, 32px); }
 }
+
+.game-library-selection { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:10px; font-size:13px; }
+.game-library-selection label { display:flex; align-items:center; gap:5px; cursor:pointer; }
+.game-library-selection button { padding:7px 9px; border:1px solid #535d61; border-radius:4px; background:#282f35; color:#ecebe4; cursor:pointer; }
+.game-library-selection button.danger { color:#e6a69d; }
+.game-library-selection button:disabled { opacity:.4; cursor:default; }
+.game-library-selection input,.game-library-select { width:18px; height:18px; flex:none; accent-color:#d3ad62; }
+.game-library-entry.selected { border-color:#d3ad62; background:#302f29; }
+
+#game-library-dialog.maximized { inset:0; margin:0; width:100vw; max-width:none; height:100dvh; max-height:none; border-radius:0; }
+.game-library-window-controls { display:flex; align-items:center; gap:6px; }
+.game-library-window-controls button { width:36px; height:36px; line-height:1; border-radius:4px; }
+.game-library-window-controls button:hover { background:#343c44; }
+.game-library-window-controls button:focus-visible { outline:2px solid #d3ad62; outline-offset:2px; }
+
+.game-library-export { position:relative; }
+.game-library-export-options:not([hidden]) { position:absolute; top:100%; left:0; z-index:2; display:grid; min-width:160px; padding:5px; border:1px solid #816b42; border-radius:4px; background:#191d23; box-shadow:0 6px 20px #0008; }
+.game-library-export-options button { text-align:left; border:0; }
+.game-library-export-options button:hover,.game-library-export-options button:focus-visible { background:#413a2d; }
+
+.game-library-preview { display:block; flex:none; padding:0; border:0; background:transparent; color:inherit; cursor:zoom-in; border-radius:2px; }
+.game-library-preview:disabled { cursor:default; }
+.game-library-preview:not(:disabled):hover,.game-library-preview:focus-visible { outline:2px solid #d3ad62; outline-offset:3px; }
+#game-preview-dialog { box-sizing:border-box; width:fit-content; max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px); padding:22px; border:1px solid #a8874d; border-radius:10px; background:#191d23; color:#ecebe4; box-shadow:0 20px 70px #000b; overflow:auto; }
+#game-preview-dialog::backdrop { background:#000b; }
+.game-preview-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; }
+.game-preview-heading h2 { margin:0; font-size:21px; overflow-wrap:anywhere; min-width:0; }
+.game-preview-heading button { flex:none; width:40px; height:40px; border:0; border-radius:4px; background:#282f35; color:#ecebe4; font-size:28px; cursor:pointer; }
+.game-preview-heading button:focus-visible { outline:2px solid #d3ad62; }
+#game-preview-dialog p { margin:4px 0 16px; color:#abb0b3; font-size:15px; }
+#game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 72px),calc(100dvh - 190px)); height:auto; aspect-ratio:1; }

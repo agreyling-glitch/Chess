@@ -35,3 +35,9 @@ pub fn run_native() -> eframe::Result {
         Box::new(|cc| Ok(Box::new(app::ChessApp::new(cc)))),
     )
 }
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn export_saved_game(json: &str, format: &str) -> Result<String, JsValue> {
+    app::ChessApp::export_saved_game(json, format).map_err(|error| JsValue::from_str(&error))
+}

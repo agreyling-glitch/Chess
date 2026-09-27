@@ -1,14 +1,14 @@
 ---
 title: "Features"
-lastmod: 2026-09-26T17:00:00-05:00
-description: "Play against Stockfish or opponents on FICS, watch live games, chat with players, and explore positions with local analysis."
+lastmod: 2026-09-27T12:00:00-05:00
+description: "Play Stockfish or FICS games, watch live matches, annotate moves, and study them with local analysis."
 layout: "features"
 url: "/features/"
 ---
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Adjust the engine's strength and choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. Optional move animation and sounds make moves, captures, and checks easier to follow.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine** or **Play Both Sides** in a fixed-size New Game window. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. A dark board frame with gold coordinates and piece shadows are on by default; move animation and sounds add feedback for moves, captures, and checks.
 
 ## Meet opponents online
 
@@ -32,11 +32,11 @@ Upload, paste, or drop a chessboard screenshot into the position editor. Recogni
 
 ## Analyze the whole game
 
-Run Stockfish 19 with its full NNUE network directly in your browser. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis, step through critical positions, and export annotated PGN, analysis JSON, or a printable report. Choose letter or figurine notation for the move list.
+Run Stockfish 19 with its full NNUE network directly in your browser. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Add a personal note to any move or the starting position. Notes stay separate from engine analysis and appear in the expanded graph and printed report. The Game Moves right-click menu also copies the selected position as FEN or a board image, or copies a partial or full PGN. Choose letter or figurine notation for the move list.
 
 ## Build your library
 
-Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis.
+Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Maximize the library or click a board preview for a larger view. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
 
 ## Keep control of your data
 

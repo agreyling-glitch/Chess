@@ -1,0 +1,30 @@
+{{ define "main" }}
+<section class="gallery-heading">
+  <p class="eyebrow">A look inside Ironwood</p>
+  <h1>See the board<br>in action.</h1>
+  <p class="lede">Browse the game library, analysis tools, and position editor. Select a screenshot to view it at full size, or open the example analysis report below.</p>
+</section>
+<section class="gallery-grid" aria-label="Ironwood Chess screenshots">
+  <figure class="gallery-card">
+    <a href="/gallery/saved-games.png" target="_blank" rel="noopener" aria-label="View Saved games screenshot at full size"><img src="/gallery/saved-games.png" alt="Saved games library with filters, game previews, and bulk selection" width="1071" height="763" loading="lazy"></a>
+    <figcaption><h2>Saved games</h2><p>Find, organize, and revisit the games in your local library.</p><a href="/gallery/saved-games.png" target="_blank" rel="noopener">View full size ↗</a></figcaption>
+  </figure>
+  <figure class="gallery-card">
+    <a href="/gallery/full-analysis.png" target="_blank" rel="noopener" aria-label="View Full analysis screenshot at full size"><img src="/gallery/full-analysis.png" alt="Chess board, annotated moves, evaluation graph, and full-game analysis summary" width="1533" height="1241" loading="lazy"></a>
+    <figcaption><h2>Full-game analysis</h2><p>Review move quality, turning points, and engine suggestions together.</p><a href="/gallery/full-analysis.png" target="_blank" rel="noopener">View full size ↗</a></figcaption>
+  </figure>
+  <figure class="gallery-card">
+    <a href="/gallery/position-editor.png" target="_blank" rel="noopener" aria-label="View Position editor screenshot at full size"><img src="/gallery/position-editor.png" alt="Position editor with chess board, piece palette, screenshot import, and FEN fields" width="943" height="950" loading="lazy"></a>
+    <figcaption><h2>Position editor</h2><p>Arrange a position by hand, import a screenshot, or load FEN.</p><a href="/gallery/position-editor.png" target="_blank" rel="noopener">View full size ↗</a></figcaption>
+  </figure>
+  <figure class="gallery-card">
+    <a href="/gallery/game-moves-menu.png" target="_blank" rel="noopener" aria-label="View Game Moves menu screenshot at full size"><img src="/gallery/game-moves-menu.png" alt="Game Moves right-click menu with notes, play-from-position, and copy options" width="426" height="329" loading="lazy"></a>
+    <figcaption><h2>Game Moves menu</h2><p>Add notes, resume from a move, or copy the board, FEN, and PGN.</p><a href="/gallery/game-moves-menu.png" target="_blank" rel="noopener">View full size ↗</a></figcaption>
+  </figure>
+</section>
+<section class="gallery-report" aria-labelledby="gallery-report-title">
+  <div class="gallery-report-heading"><div><p class="eyebrow">Example report</p><h2 id="gallery-report-title">Kasparov vs Vachier-Lagrave</h2><p>Explore an Ironwood full-game analysis report in PDF format.</p></div><a class="gallery-report-link" href="/gallery/kasparov-vachier-lagrave-analysis.pdf" target="_blank" rel="noopener">Open PDF ↗</a></div>
+  <iframe src="/gallery/kasparov-vachier-lagrave-analysis.pdf#toolbar=1" title="Example Ironwood full-game analysis PDF" loading="lazy"></iframe>
+  <p class="gallery-report-fallback">If the preview is unavailable in your browser, <a href="/gallery/kasparov-vachier-lagrave-analysis.pdf" target="_blank" rel="noopener">open the PDF directly</a>.</p>
+</section>
+{{ end }}

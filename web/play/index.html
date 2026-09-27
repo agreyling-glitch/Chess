@@ -89,12 +89,14 @@
       if (storage) await storage.initializeGameStorage();
       await import(localDevelopment ? `/fics/bridge.js?v=${Date.now()}` : '/fics/bridge.js');
       await import('/position-editor/editor.js');
+      await import(localDevelopment ? `/board-clipboard.js?v=${Date.now()}` : '/board-clipboard.js');
       const packageToken = localDevelopment ? Date.now() : null;
       const packageUrl = packageToken ? `/pkg/battle_chess.js?v=${packageToken}` : '/pkg/battle_chess.js';
-      const { default: init } = await import(packageUrl);
+      const { default: init, export_saved_game } = await import(packageUrl);
       await (packageToken
         ? init({ module_or_path: `/pkg/battle_chess_bg.wasm?v=${packageToken}` })
         : init());
+      window.ironwoodExportSavedGame = export_saved_game;
       loading?.remove();
     } catch (error) {
       console.error('Ironwood could not start:', error);

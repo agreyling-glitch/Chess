@@ -35,9 +35,20 @@ globalThis.indexedDB = { open() {
 const local = new Map([['ironwood.chess.active-game-id.v1', 'personal-game'], ['ironwood.chess.active-game-category.v1', 'mine']]);
 globalThis.localStorage = { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value) };
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { gameDetails } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const makeGame = analysis => JSON.stringify({ review_pgn: '[White "Ada"]\n[Black "Ben"]\n[Site "freechess.org"]\n\n1.e4 e5 1-0', game_analysis: analysis, game_analysis_paused: true });
+
+test('personal game names use the saved opponent on either side, with legacy Stockfish fallback', () => {
+  for (const player_side of ['White', 'Black']) {
+    const details = gameDetails(JSON.stringify({ player_side, engine_config: { opponent: 'Lc0' } }));
+    assert.equal(details.title, player_side === 'White' ? 'You vs Lc0 · Good Gyal' : 'Lc0 · Good Gyal vs You');
+  }
+  assert.equal(gameDetails(JSON.stringify({ player_side: 'Black' })).title, 'Stockfish 19 vs You');
+  assert.equal(gameDetails(JSON.stringify({ engine_enabled: false, engine_config: { opponent: 'Lc0' } })).title, 'White vs Black');
+  assert.equal(gameDetails(JSON.stringify({ player_side: 'White', engine_config: { opponent: 'Stockfish' } })).title, 'You vs Stockfish 19');
+  assert.equal(gameDetails(JSON.stringify({ review_pgn: '[White "Ada"]\n[Black "Ben"]', engine_config: { opponent: 'Lc0' } })).title, 'Ada vs Ben');
+});
 
 test('observed autosaves update one record without replacing the active personal game', async () => {
   ironwoodStoreObservedGame(makeGame([]), 'game-1');

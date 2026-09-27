@@ -1,17 +1,20 @@
 /* tslint:disable */
 /* eslint-disable */
 
+export function export_saved_game(json: string, format: string): string;
+
 export function start(): Promise<void>;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly start: () => void;
     readonly wasm_bindgen__convert__closures_____invoke__h9c1e3b016b26ab54: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h0bc566e440eb3467: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h2fed09458863a297: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h2fed09458863a297_4: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h2fed09458863a297_5: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__hd6d2c8eede5c1c7d: (a: number, b: number) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__hf5d43ac1932e2d23: (a: number, b: number, c: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

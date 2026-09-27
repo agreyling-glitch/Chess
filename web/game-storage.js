@@ -229,12 +229,68 @@ async function clearSavedGames() {
 
 function downloadJson(filename, value) {
   const blob = new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: 'application/json;charset=utf-8' });
+  downloadBlob(filename, blob);
+}
+
+function downloadBlob(filename, blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = filename;
   anchor.click();
   setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function storedZip(files) {
+  const encoder = new TextEncoder();
+  const chunks = [], directory = [];
+  let offset = 0;
+  const crc32 = bytes => {
+    let crc = 0xffffffff;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  for (const file of files) {
+    const name = encoder.encode(file.name), data = encoder.encode(file.content);
+    const crc = crc32(data);
+    const local = new Uint8Array(30 + name.length), l = new DataView(local.buffer);
+    l.setUint32(0, 0x04034b50, true); l.setUint16(4, 20, true); l.setUint16(6, 0x800, true);
+    l.setUint16(12, 33, true); l.setUint32(14, crc, true);
+    l.setUint32(18, data.length, true); l.setUint32(22, data.length, true); l.setUint16(26, name.length, true);
+    local.set(name, 30);
+    const central = new Uint8Array(46 + name.length), c = new DataView(central.buffer);
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true);
+    c.setUint16(8, 0x800, true); c.setUint16(14, 33, true); c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true); c.setUint32(24, data.length, true);
+    c.setUint16(28, name.length, true); c.setUint32(42, offset, true); central.set(name, 46);
+    chunks.push(local, data); directory.push(central); offset += local.length + data.length;
+  }
+  const directorySize = directory.reduce((sum, chunk) => sum + chunk.length, 0);
+  if (files.length > 65535 || offset + directorySize > 0xffffffff) throw new Error('Selection is too large for one ZIP; export smaller batches');
+  const end = new Uint8Array(22), e = new DataView(end.buffer);
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true);
+  e.setUint32(12, directorySize, true); e.setUint32(16, offset, true);
+  const output = new Uint8Array(offset + directorySize + end.length);
+  let cursor = 0;
+  for (const chunk of [...chunks, ...directory, end]) { output.set(chunk, cursor); cursor += chunk.length; }
+  return output;
+}
+
+export function buildGameExport(records, format, exporter) {
+  if (!records.length) throw new Error('Select at least one game');
+  if (typeof exporter !== 'function') throw new Error('The game is still loading. Try again shortly');
+  const contents = records.map(record => exporter(record.json, format));
+  const base = records.length === 1 ? 'ironwood-game' : 'ironwood-games';
+  if (format === 'json' && records.length > 1) {
+    return { filename: `${base}-analysis.zip`, type: 'application/zip',
+      content: storedZip(contents.map((content, i) => ({ name: `game-${i + 1}.json`, content }))) };
+  }
+  return { filename: `${base}${format === 'annotated' ? '-annotated' : ''}.${format === 'json' ? 'json' : 'pgn'}`,
+    type: format === 'json' ? 'application/json;charset=utf-8' : 'application/x-chess-pgn;charset=utf-8',
+    content: contents.map(value => value.trim()).join('\n\n') + '\n' };
 }
 
 function storageDialog(titleText) {
@@ -274,7 +330,24 @@ function storageDialog(titleText) {
   close.textContent = '×';
   close.setAttribute('aria-label', `Close ${titleText.toLowerCase()}`);
   close.addEventListener('click', () => dialog.close());
-  heading.append(title, close);
+  const windowControls = document.createElement('div');
+  windowControls.className = 'game-library-window-controls';
+  const maximize = document.createElement('button');
+  maximize.type = 'button';
+  const updateMaximize = () => {
+    const maximized = dialog.classList.contains('maximized');
+    maximize.textContent = maximized ? '❐' : '□';
+    maximize.title = maximized ? 'Restore saved games window' : 'Maximize saved games window';
+    maximize.setAttribute('aria-label', maximize.title);
+    maximize.setAttribute('aria-pressed', String(maximized));
+  };
+  maximize.addEventListener('click', () => {
+    dialog.classList.toggle('maximized');
+    updateMaximize();
+  });
+  updateMaximize();
+  windowControls.append(maximize, close);
+  heading.append(title, windowControls);
   dialog.append(heading);
   return dialog;
 }
@@ -473,12 +546,13 @@ function putGame(record) {
   return pendingWrite;
 }
 
-async function deleteGame(id) {
+async function deleteGames(ids) {
   await pendingWrite;
   const db = await openDatabase();
   await new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE_NAME, 'readwrite');
-    transaction.objectStore(STORE_NAME).delete(id);
+    const store = transaction.objectStore(STORE_NAME);
+    for (const id of ids) store.delete(id);
     transaction.oncomplete = resolve;
     transaction.onerror = () => reject(transaction.error || new Error('Could not delete game'));
     transaction.onabort = () => reject(transaction.error || new Error('Game deletion was interrupted'));
@@ -514,8 +588,11 @@ function pgnMoveCount(pgn) {
 export function gameDetails(json) {
   const game = JSON.parse(json);
   const imported = Boolean(game.review_pgn);
-  const white = imported ? pgnTag(game.review_pgn, 'White') || 'Unknown' : game.player_side === 'Black' ? 'Stockfish 19' : 'You';
-  const black = imported ? pgnTag(game.review_pgn, 'Black') || 'Unknown' : game.player_side === 'Black' ? 'You' : 'Stockfish 19';
+  // Preserve historical opponent names for games saved before the engine was removed.
+  const opponent = game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
+  const bothSides = game.engine_enabled === false;
+  const white = imported ? pgnTag(game.review_pgn, 'White') || 'Unknown' : bothSides ? 'White' : game.player_side === 'Black' ? opponent : 'You';
+  const black = imported ? pgnTag(game.review_pgn, 'Black') || 'Unknown' : bothSides ? 'Black' : game.player_side === 'Black' ? 'You' : opponent;
   const rawDate = pgnTag(game.review_pgn, 'Date');
   const playedAt = rawDate && rawDate !== '????.??.??' ? rawDate : null;
   const rawSite = pgnTag(game.review_pgn, 'Site');
@@ -607,7 +684,7 @@ export async function initializeGameStorage() {
 }
 
 function finalBoard(fen) {
-  const board = document.createElement('div');
+  const board = document.createElement('span');
   board.className = 'game-library-board';
   board.setAttribute('role', 'img');
   board.setAttribute('aria-label', 'Final board position');
@@ -644,15 +721,43 @@ function finalBoard(fen) {
   return board;
 }
 
-function confirmDeleteGame(game, active) {
+function showGamePreview(game, trigger) {
+  const dialog = document.createElement('dialog');
+  dialog.id = 'game-preview-dialog';
+  dialog.setAttribute('aria-labelledby', 'game-preview-title');
+  const heading = document.createElement('div');
+  heading.className = 'game-preview-heading';
+  const title = document.createElement('h2');
+  title.id = 'game-preview-title';
+  title.textContent = game.title;
+  const close = document.createElement('button');
+  close.type = 'button'; close.textContent = '×';
+  close.setAttribute('aria-label', 'Close board preview');
+  close.addEventListener('click', () => dialog.close());
+  heading.append(title, close);
+  const caption = document.createElement('p');
+  caption.textContent = `Final position · ${game.result || '*'}${game.playedAt ? ` · ${game.playedAt}` : ''}`;
+  const board = finalBoard(game.finalFen);
+  board.setAttribute('aria-label', `Final position: ${game.title}`);
+  dialog.append(heading, caption, board);
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    if (trigger.isConnected) trigger.focus();
+  }, { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+  close.focus();
+}
+
+function confirmDeleteGames(games, active) {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog');
     dialog.id = 'game-delete-dialog';
     const title = document.createElement('h2');
-    title.textContent = 'Delete saved game?';
+    title.textContent = games.length === 1 ? 'Delete saved game?' : `Delete ${games.length} saved games?`;
     const name = document.createElement('p');
     name.className = 'game-delete-name';
-    name.textContent = game.title;
+    name.textContent = games.length === 1 ? games[0].title : `${games.length} selected games will be permanently deleted, including their saved analysis.`;
     const warning = document.createElement('p');
     warning.className = 'game-delete-warning';
     warning.textContent = active
@@ -667,7 +772,7 @@ function confirmDeleteGame(game, active) {
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'danger';
-    remove.textContent = 'Delete game';
+    remove.textContent = games.length === 1 ? 'Delete game' : `Delete ${games.length} games`;
     remove.addEventListener('click', () => dialog.close('delete'));
     actions.append(cancel, remove);
     dialog.append(title, name, warning, actions);
@@ -699,7 +804,24 @@ window.ironwoodOpenGameLibrary = async () => {
   close.textContent = '×';
   close.setAttribute('aria-label', 'Close saved games');
   close.addEventListener('click', () => dialog.close());
-  heading.append(title, close);
+  const windowControls = document.createElement('div');
+  windowControls.className = 'game-library-window-controls';
+  const maximize = document.createElement('button');
+  maximize.type = 'button';
+  const updateMaximize = () => {
+    const maximized = dialog.classList.contains('maximized');
+    maximize.textContent = maximized ? '❐' : '□';
+    maximize.title = maximized ? 'Restore saved games window' : 'Maximize saved games window';
+    maximize.setAttribute('aria-label', maximize.title);
+    maximize.setAttribute('aria-pressed', String(maximized));
+  };
+  maximize.addEventListener('click', () => {
+    dialog.classList.toggle('maximized');
+    updateMaximize();
+  });
+  updateMaximize();
+  windowControls.append(maximize, close);
+  heading.append(title, windowControls);
   const tabs = document.createElement('div');
   tabs.className = 'game-library-tabs';
   const filters = document.createElement('div');
@@ -709,7 +831,9 @@ window.ironwoodOpenGameLibrary = async () => {
   list.textContent = 'Loading games…';
   const pager = document.createElement('div');
   pager.className = 'game-library-pager';
-  dialog.append(heading, tabs, filters, list, pager);
+  const selection = document.createElement('div');
+  selection.className = 'game-library-selection';
+  dialog.append(heading, tabs, filters, selection, list, pager);
   dialog.showModal();
   try {
     const games = await listGames();
@@ -719,6 +843,34 @@ window.ironwoodOpenGameLibrary = async () => {
     let analysisFilter = '*';
     let page = 0;
     const pageSize = 10;
+    const selectedIds = new Set();
+    let deleting = false;
+    const removeGames = async targets => {
+      if (deleting || !targets.length) return;
+      deleting = true;
+      try {
+        const active = targets.some(game => localStorage.getItem(ACTIVE_ID_KEY) === game.id);
+        if (!await confirmDeleteGames(targets, active)) return;
+        await deleteGames(targets.map(game => game.id));
+        const removed = new Set(targets.map(game => game.id));
+        for (let index = games.length - 1; index >= 0; index--) {
+          if (removed.has(games[index].id)) games.splice(index, 1);
+        }
+        removed.forEach(id => selectedIds.delete(id));
+        importedFingerprints = new Set(games.map(storedFingerprint).filter(Boolean));
+        if (active) {
+          localStorage.removeItem(CURRENT_GAME_KEY);
+          localStorage.removeItem(ACTIVE_ID_KEY);
+          localStorage.removeItem(ACTIVE_CATEGORY_KEY);
+          location.reload();
+        } else render();
+      } catch (error) {
+        const message = document.createElement('p');
+        message.setAttribute('role', 'alert');
+        message.textContent = `Could not delete games: ${error.message}`;
+        selection.append(message);
+      } finally { deleting = false; }
+    };
     const render = () => {
       tabs.replaceChildren();
       for (const [value, label] of [
@@ -732,7 +884,7 @@ window.ironwoodOpenGameLibrary = async () => {
         tab.type = 'button';
         tab.textContent = `${label} (${games.filter(game => gameMatchesCategory(game, value)).length})`;
         tab.className = category === value ? 'selected' : '';
-        tab.addEventListener('click', () => { category = value; playerFilter = '*'; page = 0; render(); });
+        tab.addEventListener('click', () => { category = value; playerFilter = '*'; selectedIds.clear(); page = 0; render(); });
         tabs.append(tab);
       }
       filters.replaceChildren();
@@ -744,6 +896,7 @@ window.ironwoodOpenGameLibrary = async () => {
       search.addEventListener('input', () => {
         const cursor = search.selectionStart;
         searchQuery = search.value;
+        selectedIds.clear();
         page = 0;
         render();
         const replacement = filters.querySelector('input[type=search]');
@@ -764,7 +917,7 @@ window.ironwoodOpenGameLibrary = async () => {
           select.append(option);
         }
         select.value = playerFilter;
-        select.addEventListener('change', () => { playerFilter = select.value; page = 0; render(); });
+        select.addEventListener('change', () => { playerFilter = select.value; selectedIds.clear(); page = 0; render(); });
         label.append(select);
         filters.append(label);
       }
@@ -778,7 +931,7 @@ window.ironwoodOpenGameLibrary = async () => {
         analysisSelect.append(option);
       }
       analysisSelect.value = analysisFilter;
-      analysisSelect.addEventListener('change', () => { analysisFilter = analysisSelect.value; page = 0; render(); });
+      analysisSelect.addEventListener('change', () => { analysisFilter = analysisSelect.value; selectedIds.clear(); page = 0; render(); });
       analysisLabel.append(analysisSelect);
       filters.append(analysisLabel);
       list.replaceChildren();
@@ -789,6 +942,85 @@ window.ironwoodOpenGameLibrary = async () => {
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
         analysisFilter === 'partial' && game.analysisStatus === 'Partial' ||
         analysisFilter === 'unanalyzed' && !(game.analyzed > 0)));
+      // Selection stays across pages, but never includes games hidden by filters.
+      const matchingIds = new Set(visible.map(game => game.id));
+      for (const id of selectedIds) if (!matchingIds.has(id)) selectedIds.delete(id);
+      page = Math.max(0, Math.min(page, Math.ceil(visible.length / pageSize) - 1));
+      const pageGames = visible.slice(page * pageSize, (page + 1) * pageSize);
+      selection.replaceChildren();
+      const selectPageLabel = document.createElement('label');
+      const selectPage = document.createElement('input');
+      selectPage.type = 'checkbox';
+      selectPage.checked = pageGames.length > 0 && pageGames.every(game => selectedIds.has(game.id));
+      selectPage.indeterminate = !selectPage.checked && pageGames.some(game => selectedIds.has(game.id));
+      selectPage.disabled = !pageGames.length;
+      selectPage.addEventListener('change', () => {
+        for (const game of pageGames) {
+          if (selectPage.checked) selectedIds.add(game.id); else selectedIds.delete(game.id);
+        }
+        render();
+      });
+      selectPageLabel.append(selectPage, ' Select page');
+      const selectAll = document.createElement('button');
+      selectAll.type = 'button';
+      selectAll.textContent = `Select all ${visible.length} matching`;
+      selectAll.disabled = !visible.length || selectedIds.size === visible.length;
+      selectAll.addEventListener('click', () => { visible.forEach(game => selectedIds.add(game.id)); render(); });
+      const exportMenu = document.createElement('div');
+      exportMenu.className = 'game-library-export';
+      const exportButton = document.createElement('button');
+      exportButton.type = 'button';
+      exportButton.textContent = 'Export ▾';
+      exportButton.disabled = !selectedIds.size;
+      exportButton.setAttribute('aria-expanded', 'false');
+      const exportChoices = document.createElement('div');
+      exportChoices.className = 'game-library-export-options';
+      exportChoices.hidden = true;
+      exportButton.addEventListener('click', () => {
+        exportChoices.hidden = !exportChoices.hidden;
+        exportButton.setAttribute('aria-expanded', String(!exportChoices.hidden));
+        if (!exportChoices.hidden) exportChoices.querySelector('button').focus();
+      });
+      exportMenu.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !exportChoices.hidden) {
+          event.preventDefault(); event.stopPropagation();
+          exportChoices.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); exportButton.focus();
+        }
+      });
+      exportMenu.addEventListener('focusout', event => {
+        if (!exportMenu.contains(event.relatedTarget)) {
+          exportChoices.hidden = true; exportButton.setAttribute('aria-expanded', 'false');
+        }
+      });
+      for (const [format, label] of [['pgn', 'PGN'], ['annotated', 'Annotated PGN'], ['json', 'Analysis JSON']]) {
+        const choice = document.createElement('button');
+        choice.type = 'button'; choice.textContent = label;
+        choice.addEventListener('click', async () => {
+          const ids = games.filter(game => selectedIds.has(game.id)).map(game => game.id);
+          exportChoices.hidden = true; exportButton.setAttribute('aria-expanded', 'false');
+          exportButton.disabled = true;
+          try {
+            await pendingWrite;
+            const records = await Promise.all(ids.map(readGame));
+            if (records.some(record => !record?.json)) throw new Error('A selected game is no longer available');
+            const payload = buildGameExport(records, format, window.ironwoodExportSavedGame);
+            downloadBlob(payload.filename, new Blob([payload.content], { type: payload.type }));
+          } catch (error) {
+            const message = document.createElement('p');
+            message.setAttribute('role', 'alert'); message.textContent = `Could not export games: ${error.message}`;
+            selection.append(message);
+          } finally { exportButton.disabled = !selectedIds.size; }
+        });
+        exportChoices.append(choice);
+      }
+      exportMenu.append(exportButton, exportChoices);
+      const removeSelected = document.createElement('button');
+      removeSelected.type = 'button';
+      removeSelected.className = 'danger';
+      removeSelected.textContent = `Delete selected (${selectedIds.size})`;
+      removeSelected.disabled = !selectedIds.size;
+      removeSelected.addEventListener('click', () => removeGames(games.filter(game => selectedIds.has(game.id))));
+      selection.append(selectPageLabel, selectAll, exportMenu, removeSelected);
       if (!visible.length) {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
           category === 'all' ? 'No saved games yet.' :
@@ -814,10 +1046,30 @@ window.ironwoodOpenGameLibrary = async () => {
       next.disabled = page + 1 >= pageCount;
       next.addEventListener('click', () => { page++; render(); list.scrollTop = 0; });
       pager.append(previous, count, next);
-      for (const game of visible.slice(page * pageSize, (page + 1) * pageSize)) {
+      for (const game of pageGames) {
         const entry = document.createElement('div');
-        entry.className = 'game-library-entry';
-        entry.append(finalBoard(game.finalFen));
+        entry.className = `game-library-entry${selectedIds.has(game.id) ? ' selected' : ''}`;
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'game-library-select';
+        checkbox.setAttribute('aria-label', `Select ${game.title}`);
+        checkbox.checked = selectedIds.has(game.id);
+        checkbox.addEventListener('change', () => {
+          if (checkbox.checked) selectedIds.add(game.id); else selectedIds.delete(game.id);
+          render();
+          list.querySelectorAll('.game-library-select')[pageGames.indexOf(game)]?.focus();
+        });
+        entry.append(checkbox);
+        const preview = document.createElement('button');
+        preview.type = 'button';
+        preview.className = 'game-library-preview';
+        preview.setAttribute('aria-label', `Enlarge board preview: ${game.title}`);
+        preview.title = 'Enlarge board preview';
+        const previewBoard = finalBoard(game.finalFen);
+        preview.append(previewBoard);
+        preview.disabled = previewBoard.children.length !== 64;
+        preview.addEventListener('click', () => showGamePreview(game, preview));
+        entry.append(preview);
         const main = document.createElement('div');
         main.className = 'game-library-main';
         const name = document.createElement('strong');
@@ -894,23 +1146,7 @@ window.ironwoodOpenGameLibrary = async () => {
         remove.type = 'button';
         remove.className = 'danger';
         remove.textContent = 'Delete';
-        remove.addEventListener('click', async () => {
-          const active = localStorage.getItem(ACTIVE_ID_KEY) === game.id;
-          if (!await confirmDeleteGame(game, active)) return;
-          try {
-            await deleteGame(game.id);
-            games.splice(games.indexOf(game), 1);
-            importedFingerprints = new Set(games.map(storedFingerprint).filter(Boolean));
-            if (active) {
-              localStorage.removeItem(CURRENT_GAME_KEY);
-              localStorage.removeItem(ACTIVE_ID_KEY);
-              localStorage.removeItem(ACTIVE_CATEGORY_KEY);
-              location.reload();
-            } else render();
-          } catch (error) {
-            list.textContent = `Could not delete game: ${error.message}`;
-          }
-        });
+        remove.addEventListener('click', () => removeGames([game]));
         actions.append(open, favorite, move, remove);
         main.append(name, players, result, details, actions);
         entry.append(main);
