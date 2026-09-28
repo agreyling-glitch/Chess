@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#121815">
+  <title>Ironwood Chess — 3D board</title>
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">IRONWOOD CHESS</p><h1>3D board</h1></div>
+      <a class="badge" href="/play/">Return to game</a>
+    </header>
+    <section class="stage" aria-label="3D chess board">
+      <div id="scene"></div>
+      <p id="status" role="status">Loading chess pieces…</p>
+      <div class="hint">Drag to rotate · Scroll to zoom</div>
+    </section>
+    <section class="controls" aria-label="Board controls">
+      <form id="fen-form">
+        <label for="fen">Position (FEN)</label>
+        <div class="input-row"><input id="fen" name="fen" spellcheck="false" autocomplete="off" aria-describedby="fen-error"><button type="submit">Show position</button></div>
+        <p id="fen-error" role="alert"></p>
+      </form>
+      <div class="actions"><button id="flip" type="button">Flip board</button><button id="reset" type="button">Starting position</button></div>
+    </section>
+    <footer>Board and pieces: <a href="https://polyhaven.com/a/chess_set">Chess Set by Riley Queen / Poly Haven</a>, <a href="https://polyhaven.com/license">CC0 1.0</a>. Rendering: <a href="https://threejs.org/">Three.js</a>, <a href="./licenses/three-mit.txt">MIT license</a>.</footer>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

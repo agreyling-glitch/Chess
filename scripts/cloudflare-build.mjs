@@ -36,4 +36,5 @@ if (missingArtifacts.length > 0) {
 
 npmRun('build:site');
 npmRun('engine');
+npmRun('build:3d');
 npmRun('prepare:wrangler');

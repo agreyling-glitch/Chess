@@ -6,17 +6,20 @@
     "engine": "node scripts/copy-engine.mjs",
     "build:wasm": "wasm-pack build --target web --release --out-dir web/pkg",
     "build:site": "node scripts/build-site.mjs",
-    "build": "npm run engine && npm run build:wasm && npm run build:site",
+    "build": "npm run engine && npm run build:wasm && npm run build:3d && npm run build:site",
     "build:cloudflare": "node scripts/cloudflare-build.mjs",
-    "dev": "node scripts/dev-server.mjs",
+    "dev": "npm run build:3d && node scripts/dev-server.mjs",
     "prepare:wrangler": "npm run build:editor && node scripts/prepare-wrangler.mjs",
-    "dev:wrangler": "npm run build:site && npm run prepare:wrangler && node scripts/wrangler-dev.mjs",
-    "build:editor": "node scripts/build-position-editor.mjs"
+    "dev:wrangler": "npm run build:3d && npm run build:site && npm run prepare:wrangler && node scripts/wrangler-dev.mjs",
+    "build:editor": "node scripts/build-position-editor.mjs",
+    "build:3d": "node scripts/build-3d.mjs",
+    "dev:3d": "npm run build:3d && node scripts/dev-server.mjs"
   },
   "dependencies": {
     "@scoriiu/fenshot": "^0.1.4",
     "onnxruntime-web": "^1.30.0",
-    "stockfish": "19.0.0"
+    "stockfish": "19.0.0",
+    "three": "0.186.0"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
