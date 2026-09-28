@@ -1,5 +1,6 @@
 {
   "name": "ironwood-chess",
+  "license": "GPL-3.0-or-later",
   "private": true,
   "scripts": {
     "engine": "node scripts/copy-engine.mjs",

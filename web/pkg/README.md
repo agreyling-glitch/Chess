@@ -101,11 +101,16 @@ offline engine copy. Bump `SHELL_CACHE` whenever a release needs to invalidate
 all previously cached shell assets; versioned engine upgrades must use a new
 engine cache name and new asset filenames.
 
-## Stockfish license
+## License
 
-The bundled Stockfish.js 19 engine is GPLv3 software and remains separate from
-the proprietary Ironwood Chess application. `npm run engine` copies the full
-GPLv3 text from the pinned npm package into the deployed site. Public attribution,
-license, and exact corresponding-source links are available at
-`/open-source-notices.html`. Do not remove that page, its links, or the deployed
-license file when publishing the application.
+Ironwood Chess's original application code, interface, and project artwork are
+licensed under the [GNU General Public License, version 3 or later](LICENSE)
+(`GPL-3.0-or-later`). The corresponding source is available in this repository.
+
+Bundled third-party components retain their own licenses. These include
+Stockfish.js (GPLv3), the Cburnett and Merida chess pieces (GPLv2 or later),
+the Rust logo (CC BY 4.0), Fenshot (MIT), and ONNX Runtime Web (MIT). See the
+[open-source notices](web/open-source-notices.html) for attribution, license
+texts, and source links. `npm run engine` copies the Stockfish license from the
+pinned npm package into the deployed site. Keep the notices, licenses, and
+corresponding-source links with published builds.

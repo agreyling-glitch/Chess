@@ -181,6 +181,8 @@ enum FicsEvent {
         connected: bool,
         #[serde(default)]
         registered: bool,
+        #[serde(default)]
+        transport_open: bool,
     },
     Line {
         message: String,
@@ -1127,6 +1129,8 @@ pub struct ChessApp {
     fics_minutes: i32,
     fics_increment: i32,
     fics_player: String,
+    fics_challenge_open: bool,
+    fics_challenge_error: String,
     fics_sign_in_open: bool,
     fics_username: String,
     fics_password: String,
@@ -1599,6 +1603,8 @@ impl ChessApp {
         self.fics_log.clear();
         self.fics_chats = crate::fics_chat::Chats::default();
         self.fics_ads.clear();
+        self.fics_challenge_open = false;
+        self.fics_challenge_error.clear();
         self.fics_sign_in_open = false;
         self.fics_password.clear();
         self.fics_sign_in_error.clear();
@@ -1633,6 +1639,8 @@ impl ChessApp {
         self.fics_pending_move = false;
         self.fics_game_id = None;
         self.fics_status = "Offline".into();
+        self.fics_challenge_open = false;
+        self.fics_challenge_error.clear();
         self.fics_sign_in_open = false;
         self.fics_password.clear();
         self.workspace_mode = self.fics_previous_workspace_mode;
@@ -1657,8 +1665,9 @@ impl ChessApp {
                     message,
                     connected,
                     registered,
+                    transport_open,
                 } => {
-                    if connected && !self.fics_connected {
+                    if transport_open || (connected && !self.fics_connected) {
                         self.fics_console_open = true;
                     }
                     self.fics_connected = connected;
@@ -2178,6 +2187,8 @@ impl ChessApp {
             fics_minutes: 5,
             fics_increment: 0,
             fics_player: String::new(),
+            fics_challenge_open: false,
+            fics_challenge_error: String::new(),
             fics_sign_in_open: false,
             fics_username: String::new(),
             fics_password: String::new(),
@@ -2651,7 +2662,7 @@ impl ChessApp {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new("Stockfish is licensed under GPLv3.")
+                            RichText::new("Ironwood Chess: GPLv3 or later · Stockfish: GPLv3")
                                 .size(11.0)
                                 .color(muted),
                         );
@@ -8556,84 +8567,23 @@ impl ChessApp {
         Self::set_menu_item_font(ui);
         ui.menu_button("Connection", |ui| self.fics_connection_menu(ui));
         ui.add_enabled_ui(!self.fics_playing, |ui| {
-            ui.menu_button("FICS account", |ui| {
+        ui.menu_button("FICS account", |ui| {
                 ui.hyperlink_to("Create account", "https://www.freechess.org/Register/");
                 if !self.fics_registered {
-                    ui.add_space(8.0);
-                    Frame::new()
-                        .fill(Color32::from_rgb(25, 31, 36))
-                        .stroke(Stroke::new(1.0, Color32::from_white_alpha(32)))
-                        .corner_radius(CornerRadius::same(8))
-                        .inner_margin(Margin::same(14))
-                        .show(ui, |ui| {
-                            ui.set_min_width(ui.available_width());
-                            ui.label(RichText::new("Sign in to FICS").strong().size(16.0));
-                            ui.add_space(8.0);
-                            ui.horizontal(|ui| {
-                                ui.label("Handle");
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut self.fics_username)
-                                        .desired_width(150.0),
-                                );
-                                ui.label("Password");
-                                ui.add(
-                                    egui::TextEdit::singleline(&mut self.fics_password)
-                                        .password(true)
-                                        .desired_width(150.0),
-                                );
-                            });
-                            ui.add_space(8.0);
-                            ui.label(
-                                RichText::new("FICS uses a legacy unencrypted connection beyond Ironwood. Use a unique FICS password.")
-                                    .size(12.0)
-                                    .color(Color32::from_rgb(211, 173, 98)),
-                            );
-                            if !self.fics_sign_in_error.is_empty() {
-                                ui.label(
-                                    RichText::new(&self.fics_sign_in_error)
-                                        .color(Color32::from_rgb(225, 137, 126)),
-                                );
-                            }
-                            ui.add_space(8.0);
-                            if ui.button("Sign in").clicked() {
-                                if self.fics_username.len() < 3
-                                    || self.fics_username.len() > 17
-                                    || !self.fics_username.chars().all(|c| c.is_ascii_alphabetic())
-                                    || self.fics_password.is_empty()
-                                    || self.fics_password.len() > 128
-                                    || !self.fics_password.bytes().all(|c| (33..=126).contains(&c))
-                                {
-                                    self.fics_sign_in_error = "Enter a 3–17 letter handle and a valid password.".into();
-                                } else {
-                                    #[cfg(target_arch = "wasm32")]
-                                    fics_connect_registered(&self.fics_username, &self.fics_password);
-                                    self.fics_active = true;
-                                    self.engine_enabled = false;
-                                    self.engine_searching = false;
-                                    self.analysis_running = false;
-                                    self.local_clock = None;
-        self.local_resigned_white = None;
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let Some(engine) = &self.engine { engine.command("stop"); }
-                                    self.fics_password.clear();
-                                    self.fics_sign_in_error.clear();
-                                    self.fics_sign_in_open = false;
-                                    self.fics_connected = false;
-                                    self.fics_registered = false;
-                                    self.fics_ads.clear();
-                                    self.fics_log.clear();
-                                    self.fics_chats = crate::fics_chat::Chats::default();
-                                    self.fics_status = format!("Connecting as {}…", self.fics_username);
-                                }
-                            }
-                        });
+                    if ui.button("Sign in…").clicked() {
+                        self.fics_sign_in_open = true;
+                        ui.close();
+                    }
                 }
-
             });
         });
         ui.separator();
         ui.add_enabled_ui(self.fics_connected && !self.fics_playing, |ui| {
-            ui.menu_button("Available games", |ui| {
+            egui::containers::menu::SubMenuButton::new("Available games")
+                .config(egui::containers::menu::MenuConfig::new().close_behavior(
+                    egui::containers::PopupCloseBehavior::CloseOnClickOutside,
+                ))
+                .ui(ui, |ui| {
                 Self::set_menu_item_font(ui);
                 let screen = ui.ctx().screen_rect();
                 let list_width = (screen.width() - 40.0).clamp(180.0, 600.0);
@@ -8641,7 +8591,8 @@ impl ChessApp {
                 ui.set_width(list_width);
                 ui.spacing_mut().button_padding.y = 5.0;
                 self.fics_available_open_this_frame = true;
-                if !self.fics_available_was_open || ui.button("↻ Refresh available games").clicked() {
+                let refresh_clicked = ui.button("↻ Refresh available games").clicked();
+                if !self.fics_available_was_open || refresh_clicked {
                     self.fics_ads.clear();
                     #[cfg(target_arch = "wasm32")] fics_send("sought");
                 }
@@ -8661,7 +8612,11 @@ impl ChessApp {
                     }
                 });
             });
-            ui.menu_button("Observe a game", |ui| {
+            egui::containers::menu::SubMenuButton::new("Observe a game")
+                .config(egui::containers::menu::MenuConfig::new().close_behavior(
+                    egui::containers::PopupCloseBehavior::CloseOnClickOutside,
+                ))
+                .ui(ui, |ui| {
                 Self::set_menu_item_font(ui);
                 // Submenus start with a small default area. Give the live list
                 // its own viewport so it cannot collapse to a few wrapped rows.
@@ -8671,7 +8626,8 @@ impl ChessApp {
                 ui.set_width(list_width);
                 ui.spacing_mut().button_padding.y = 5.0;
                 self.fics_observe_open_this_frame = true;
-                if !self.fics_observe_was_open || ui.button("↻ Refresh running games").clicked() {
+                let refresh_clicked = ui.button("↻ Refresh running games").clicked();
+                if !self.fics_observe_was_open || refresh_clicked {
                     self.fics_running_games.clear();
                     #[cfg(target_arch = "wasm32")] fics_send_command("games /blsu");
                 }
@@ -8705,29 +8661,11 @@ impl ChessApp {
                     #[cfg(target_arch = "wasm32")] fics_send(&format!("seek {} {} unrated",self.fics_minutes,self.fics_increment)); self.fics_seeking = true; ui.close();
                 }
             });
-                ui.menu_button("Challenge a specific player", |ui| {
-                    ui.horizontal(|ui| {
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.fics_player)
-                                .desired_width(150.0)
-                                .hint_text("FICS username"),
-                        );
-                        if ui.button("Challenge").clicked()
-                            && !self.fics_player.is_empty()
-                            && self.fics_player.len() <= 20
-                            && self
-                                .fics_player
-                                .chars()
-                                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-                        {
-                            #[cfg(target_arch = "wasm32")]
-                            fics_send(&format!(
-                                "match {} unrated {} {}",
-                                self.fics_player, self.fics_minutes, self.fics_increment
-                            ));
-                        }
-                    });
-                });
+                if ui.button("Challenge a specific player…").clicked() {
+                    self.fics_challenge_open = true;
+                    self.fics_challenge_error.clear();
+                    ui.close();
+                }
                 ui.menu_button("Challenge requests", |ui| {
                     ui.horizontal(|ui| {
                         for (label, command) in [("Accept", "accept"), ("Decline", "decline")] {
@@ -11728,6 +11666,177 @@ impl eframe::App for ChessApp {
                         }
                     };
                 }
+            }
+        }
+
+        if self.fics_challenge_open {
+            let mut open = true;
+            let mut sent = false;
+            egui::Window::new("Challenge a player")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .default_width(390.0)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.set_min_width(380.0);
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(16, 14))
+                        .show(ui, |ui| {
+                            ui.label(RichText::new("FICS handle").size(13.0).strong());
+                            ui.add_sized(
+                                [ui.available_width(), 30.0],
+                                egui::TextEdit::singleline(&mut self.fics_player)
+                                    .hint_text("Player to challenge"),
+                            );
+                            ui.add_space(12.0);
+                            ui.horizontal(|ui| {
+                                ui.label("Minutes");
+                                ui.add(egui::DragValue::new(&mut self.fics_minutes).range(1..=60));
+                                ui.add_space(12.0);
+                                ui.label("Increment");
+                                ui.add(egui::DragValue::new(&mut self.fics_increment).range(0..=60));
+                            });
+                            ui.add_space(6.0);
+                            ui.label(RichText::new("Unrated game").size(12.0).weak());
+                            if !self.fics_challenge_error.is_empty() {
+                                ui.add_space(8.0);
+                                ui.colored_label(Color32::from_rgb(225, 137, 126), &self.fics_challenge_error);
+                            }
+                            ui.add_space(16.0);
+                            if ui.add_sized(
+                                [ui.available_width(), 36.0],
+                                egui::Button::new(
+                                    RichText::new("Send challenge")
+                                        .size(14.0)
+                                        .strong()
+                                        .color(Color32::from_rgb(25, 29, 35)),
+                                )
+                                .fill(Color32::from_rgb(211, 173, 98)),
+                            ).clicked() {
+                                if !self.fics_connected || self.fics_playing {
+                                    self.fics_challenge_error = "Connect to FICS before sending a challenge.".into();
+                                } else if self.fics_player.len() > 20
+                                    || !self.fics_player.starts_with(|c: char| c.is_ascii_alphabetic())
+                                    || !self.fics_player.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                                {
+                                    self.fics_challenge_error = "Enter a valid FICS handle (up to 20 characters).".into();
+                                } else {
+                                    #[cfg(target_arch = "wasm32")]
+                                    fics_send(&format!(
+                                        "match {} unrated {} {}",
+                                        self.fics_player, self.fics_minutes, self.fics_increment
+                                    ));
+                                    self.fics_challenge_error.clear();
+                                    sent = true;
+                                }
+                            }
+                        });
+                });
+            self.fics_challenge_open = open && !sent;
+            if !open {
+                self.fics_challenge_error.clear();
+            }
+        }
+
+        if self.fics_sign_in_open {
+            let mut open = true;
+            let mut signed_in = false;
+            egui::Window::new("FICS account")
+                .open(&mut open)
+                .resizable(false)
+                .collapsible(false)
+                .default_width(390.0)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.set_min_width(380.0);
+                    Frame::new()
+                        .inner_margin(Margin::symmetric(16, 14))
+                        .show(ui, |ui| {
+                            ui.label(RichText::new("Handle").size(13.0).strong());
+                            ui.add_sized(
+                                [ui.available_width(), 30.0],
+                                egui::TextEdit::singleline(&mut self.fics_username)
+                                    .hint_text("Your FICS handle"),
+                            );
+                            ui.add_space(10.0);
+                            ui.label(RichText::new("Password").size(13.0).strong());
+                            ui.add_sized(
+                                [ui.available_width(), 30.0],
+                                egui::TextEdit::singleline(&mut self.fics_password)
+                                    .password(true)
+                                    .hint_text("Your FICS password"),
+                            );
+                            ui.add_space(14.0);
+                            Frame::new()
+                                .fill(Color32::from_rgb(48, 40, 27))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(105, 82, 43)))
+                                .corner_radius(CornerRadius::same(6))
+                                .inner_margin(Margin::same(10))
+                                .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.label(
+                                        RichText::new("FICS uses an unencrypted connection beyond Ironwood. Use a password unique to FICS.")
+                                            .size(12.0)
+                                            .color(Color32::from_rgb(226, 192, 128)),
+                                    );
+                                });
+                            if !self.fics_sign_in_error.is_empty() {
+                                ui.add_space(8.0);
+                                ui.colored_label(Color32::from_rgb(225, 137, 126), &self.fics_sign_in_error);
+                            }
+                            ui.add_space(16.0);
+                            if ui.add_sized(
+                                [ui.available_width(), 36.0],
+                                egui::Button::new(
+                                    RichText::new("Sign in to FICS")
+                                        .size(14.0)
+                                        .strong()
+                                        .color(Color32::from_rgb(25, 29, 35)),
+                                )
+                                .fill(Color32::from_rgb(211, 173, 98)),
+                            ).clicked() {
+                                if self.fics_username.len() < 3
+                                    || self.fics_username.len() > 17
+                                    || !self.fics_username.chars().all(|c| c.is_ascii_alphabetic())
+                                    || self.fics_password.is_empty()
+                                    || self.fics_password.len() > 128
+                                    || !self.fics_password.bytes().all(|c| (33..=126).contains(&c))
+                                {
+                                    self.fics_sign_in_error = "Enter a 3–17 letter handle and a valid password.".into();
+                                } else {
+                                    #[cfg(target_arch = "wasm32")]
+                                    fics_connect_registered(&self.fics_username, &self.fics_password);
+                                    self.fics_active = true;
+                                    self.engine_enabled = false;
+                                    self.engine_searching = false;
+                                    self.analysis_running = false;
+                                    self.local_clock = None;
+                                    self.local_resigned_white = None;
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let Some(engine) = &self.engine { engine.command("stop"); }
+                                    self.fics_password.clear();
+                                    self.fics_sign_in_error.clear();
+                                    self.fics_connected = false;
+                                    self.fics_registered = false;
+                                    self.fics_ads.clear();
+                                    self.fics_log.clear();
+                                    self.fics_chats = crate::fics_chat::Chats::default();
+                                    self.fics_status = format!("Connecting as {}…", self.fics_username);
+                                    signed_in = true;
+                                }
+                            }
+                            ui.add_space(10.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("New to FICS?").size(12.0).weak());
+                                ui.hyperlink_to("Create an account", "https://www.freechess.org/Register/");
+                            });
+                        });
+                });
+            self.fics_sign_in_open = open && !signed_in;
+            if !open {
+                self.fics_password.clear();
+                self.fics_sign_in_error.clear();
             }
         }
 

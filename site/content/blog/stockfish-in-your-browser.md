@@ -50,11 +50,11 @@ That makes long, private analysis possible without an account, a metered server 
 
 The word *full* matters here. Ironwood is preserving Stockfish 19's complete NNUE network and multithreaded search rather than presenting a lightweight imitation under the Stockfish name. The browser remains a delivery and security boundary; it is not intended to become an artificial product boundary around the engine's depth.
 
-## What is—and is not—open
+## Open-source licensing
 
 Stockfish is free software licensed under the GNU General Public License version 3. Ironwood publishes the license, attribution, and a link to the exact corresponding Stockfish source for the engine version it distributes on its [open-source notices page](/open-source-notices.html). That provenance matters when powerful code is being asked to run on a player's machine, even inside a browser sandbox.
 
-The Ironwood interface, original application code, branding, and artwork are separate proprietary work. The hosted game is free to use, but delivering it through a browser does not by itself make that application source open source. The notices page draws that boundary explicitly rather than leaving players to infer it from the presence of WebAssembly.
+Ironwood's original application code, interface, and project artwork are also free software, licensed under GPL version 3 or later. The [project source](https://github.com/agreyling-glitch/Chess) and [license](https://github.com/agreyling-glitch/Chess/blob/main/LICENSE) are available for anyone who wants to study, modify, or share them. Third-party components retain the licenses listed on the notices page.
 
 Today the board is intentionally restrained. Calibrated playing strengths and a dedicated analysis workspace are the next functional layers; the longer road leads toward the animated battlefield the architecture was designed to support.
 

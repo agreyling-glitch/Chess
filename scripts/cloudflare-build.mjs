@@ -24,6 +24,7 @@ const requiredArtifacts = [
   join('web', 'pkg', 'battle_chess.js'),
   join('web', 'pkg', 'battle_chess_bg.wasm'),
   join('web', 'licenses', 'stockfish-gpl-3.0.txt'),
+  join('web', 'licenses', 'ironwood-gpl-3.0.txt'),
 ];
 
 const missingArtifacts = requiredArtifacts.filter((path) => !existsSync(path));

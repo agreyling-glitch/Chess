@@ -72,6 +72,40 @@ test('registered login sends the password only at the password prompt', async ()
   assert.ok(!events.some(event => JSON.stringify(event).includes('unique-password')));
 });
 
+test('unknown registered handle returns a sign-in error instead of waiting for a password', async () => {
+  let connection;
+  class FakeWebSocket {
+    static OPEN = 1;
+    constructor() { this.readyState = 1; this.sent = []; connection = this; }
+    send(command) { this.sent.push(command); }
+    close() { this.readyState = 3; this.onclose?.(); }
+  }
+  globalThis.window = {};
+  globalThis.location = { protocol: 'http:', host: '127.0.0.1:8788' };
+  globalThis.WebSocket = FakeWebSocket;
+  await import('../web/fics/bridge.js?unknown-registered-handle');
+  window.ironwoodFicsConnectRegistered('Zyqnotreal', 'example-password');
+  connection.onopen();
+  connection.onmessage({ data: 'Welcome to FICS\n' });
+  connection.onmessage({ data: 'login: ' });
+  connection.onmessage({ data: '\n"Zyqnotreal" is not a registered name. You may use this name to play unrated games.\n' });
+  assert.deepEqual(connection.sent, ['Zyqnotreal']);
+  assert.equal(connection.readyState, 3);
+  const events = [];
+  for (let json; (json = window.ironwoodFicsPoll());) events.push(JSON.parse(json));
+  assert.ok(events.some(event => event.type === 'status' && event.transport_open && !event.connected));
+  assert.ok(events.some(event => event.type === 'line' && event.message === 'Welcome to FICS'));
+  assert.ok(events.some(event => event.type === 'line' && event.message === 'login: '));
+  assert.ok(events.some(event => event.type === 'line' && event.message.includes('not a registered name')));
+  assert.deepEqual(events.at(-1), {
+    type: 'status',
+    message: 'FICS rejected the handle: it is not registered.',
+    connected: false,
+    registered: false,
+  });
+  assert.ok(!events.some(event => JSON.stringify(event).includes('example-password')));
+});
+
 test('observed games update the board without becoming a played game', async () => {
   let connection;
   class FakeWebSocket {

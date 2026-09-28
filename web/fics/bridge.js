@@ -93,14 +93,24 @@ function finishMoveRequest() {
 
 function handleLine(line) {
   handleLoginPrompt(line);
-  if (loginMode === 'registered' && !ready) {
-    if (/(?:invalid|incorrect|wrong).*(?:password|login)|(?:password|login).*(?:invalid|incorrect)/i.test(line)) {
-      failLogin('FICS rejected the username or password.');
-    }
-    if (!/fics%/i.test(line)) return;
-  }
   const name = line.match(/\bGuest[A-Z]{4}\b/i);
   if (name && /(?:logged|session|guest|enter)/i.test(line) && !guestName) guestName = name[0];
+  if (!ready && line.trim() && !/\bfics%/i.test(line)) {
+    emit({ type: 'line', message: line });
+  }
+  if (loginMode === 'registered' && !ready) {
+    if (/\bis not a registered name\b/i.test(line)) {
+      failLogin('FICS rejected the handle: it is not registered.');
+      return;
+    }
+    if (/(?:invalid|incorrect|wrong).*(?:password|login)|(?:password|login).*(?:invalid|incorrect)/i.test(line)) {
+      failLogin('FICS rejected the username or password.');
+      return;
+    }
+    if (!/fics%/i.test(line)) return;
+  } else if (!ready && !/fics%/i.test(line)) {
+    return;
+  }
   if (!ready && /fics%/i.test(line)) finishLogin();
   const promptPrefixed = /^\s*fics%\s*/i.test(line);
   if (promptPrefixed) line = line.replace(/^\s*fics%\s*/i, '');
@@ -184,6 +194,10 @@ function connect(mode, username = '', password = '') {
   const connection = new WebSocket(`${scheme}//${location.host}/fics/socket`);
   socket = connection;
   emit({ type: 'status', message: 'Connecting to FICS…', connected: false });
+  connection.onopen = () => {
+    if (socket !== connection) return;
+    emit({ type: 'status', message: 'Connected to FICS server · signing in…', connected: false, transport_open: true });
+  };
   connection.onmessage = event => {
     if (socket !== connection) return;
     const parsed = parseFicsChunk(buffer, String(event.data));
