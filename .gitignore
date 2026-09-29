@@ -46,3 +46,5 @@ Thumbs.db
 
 # Rebuilt by npm run build:editor
 web/position-editor/vendor/
+3D_chess_sets_pack_1_lowpoly.zip
+scripts/__pycache__/

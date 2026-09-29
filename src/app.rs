@@ -8743,6 +8743,8 @@ impl ChessApp {
                     crate::board3d::Theme::Marble => (1.5, 2048.0),
                     crate::board3d::Theme::Wood => (1.65, 2304.0),
                     crate::board3d::Theme::Glass => (1.8, 2560.0),
+                    crate::board3d::Theme::ArtDeco |
+                    crate::board3d::Theme::Egyptian => (1.5, 2048.0),
                 };
                 let scale = (ui.ctx().pixels_per_point() * supersample).min(limit / size.x.max(size.y));
                 let render_key = format!(

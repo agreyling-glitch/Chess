@@ -75,6 +75,12 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
 }
 
 @fragment fn scene_fragment(input: SceneOutput) -> @location(0) vec4<f32> {
+    if (input.mode == 5u) {
+        let radial = 2.0 * input.uv - vec2<f32>(1.0);
+        let alpha = 0.55 * pow(max(1.0 - dot(radial, radial), 0.0), 2.0);
+        if (alpha <= 0.001) { discard; }
+        return vec4<f32>(input.color.rgb, alpha);
+    }
     if (input.mode == 4u) {
         let radius_sq = dot(2.0 * input.uv - vec2<f32>(1.0), 2.0 * input.uv - vec2<f32>(1.0));
         let alpha = 0.34 * pow(max(1.0 - radius_sq, 0.0), 2.0);
@@ -97,9 +103,10 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         map = textureSampleLevel(black_normal, texture_sampler, input.uv, 0.0).rgb;
     }
     let mapped = map * 2.0 - vec3<f32>(1.0);
-    let normal = normalize(base_normal * max(mapped.z, 0.1) + tangent * mapped.x * strength + bitangent * mapped.y * strength);
-    let lit = lighting(normal, input.world, input.mode == 3u);
     let theme = u32(camera_adjustment.z);
+    let normal = select(normalize(base_normal * max(mapped.z, 0.1) + tangent * mapped.x * strength + bitangent * mapped.y * strength),
+        base_normal, theme >= 3u && input.mode >= 2u);
+    let lit = lighting(normal, input.world, input.mode == 3u);
     if (theme == 2u && input.mode >= 2u) {
         let view = normalize(vec3<f32>(0.0, 13.0, 11.0) - input.world);
         let rim = pow(1.0 - abs(dot(base_normal, view)), 2.5);
@@ -119,6 +126,12 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         let base = select(select(marble, quiet_wood, theme == 1u),
             marble * vec3<f32>(0.40, 0.52, 0.63) + vec3<f32>(0.08, 0.14, 0.19), theme == 2u);
         let color = min(base * lit.x + vec3<f32>(lit.y * gloss / 255.0), vec3<f32>(230.0 / 255.0));
+        return vec4<f32>(appearance_color(color), 1.0);
+    }
+    if (theme >= 3u) {
+        let paint = select(textureSampleLevel(white_diff, texture_sampler, input.uv, 0.0).rgb,
+            textureSampleLevel(black_diff, texture_sampler, input.uv, 0.0).rgb, input.mode == 3u);
+        let color = min(paint * lit.x + vec3<f32>(lit.y * 0.6 / 255.0), vec3<f32>(0.98));
         return vec4<f32>(appearance_color(color), 1.0);
     }
     if (theme == 1u) {

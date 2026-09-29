@@ -11,6 +11,7 @@ const SCENE_SHADER: &str = include_str!("gpu_scene.wgsl");
 pub struct Scene {
     vertices: Arc<[u8]>,
     id: u64,
+    glow_count: u32,
     board_count: u32,
     overlay_count: u32,
     shadow_count: u32,
@@ -43,7 +44,9 @@ fn append_triangles<'a>(
     let mut count = 0;
     for tri in triangles {
         count += 3;
-        let mode = if tri.shadow_uv.is_some() {
+        let mode = if tri.glow_uv.is_some() {
+            5.0
+        } else if tri.shadow_uv.is_some() {
             4.0
         } else if let Some((_, side)) = tri.texture {
             match side {
@@ -57,7 +60,7 @@ fn append_triangles<'a>(
         for i in 0..3 {
             let p = tri.points[i] - rect.min;
             let uv = tri
-                .shadow_uv
+                .glow_uv.or(tri.shadow_uv)
                 .map(|uv| uv[i])
                 .or_else(|| tri.texture.map(|(uv, _)| uv[i]))
                 .unwrap_or([0.0; 2]);
@@ -149,6 +152,7 @@ pub fn scene(
     }
     let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
     let mut vertices = Vec::with_capacity((board_triangles.len() + dynamic.len()) * 3 * 104);
+    let glow_count = append_triangles(&mut vertices, &board_glow(camera, rect, theme), rect);
     let board_count = append_triangles(&mut vertices, &board_triangles, rect);
     let overlay_count = append_triangles(
         &mut vertices,
@@ -172,11 +176,13 @@ pub fn scene(
         Theme::Marble => (1.5, 2048.0),
         Theme::Wood => (1.65, 2304.0),
         Theme::Glass => (2.0, 2816.0),
+        Theme::ArtDeco | Theme::Egyptian => (1.5, 2048.0),
     };
     let scale = (pixels_per_point * supersample).min(limit / rect.width().max(rect.height()));
     Scene {
         vertices: vertices.into(),
         id,
+        glow_count,
         board_count,
         overlay_count,
         shadow_count,
@@ -571,7 +577,11 @@ impl CallbackTrait for Scene {
         let mut adjustment = [0_u8; 16];
         adjustment[..4].copy_from_slice(&self.distance_delta.to_le_bytes());
         adjustment[4..8].copy_from_slice(&self.appearance.to_le_bytes());
-        let theme_code = match self.theme { Theme::Marble => 0.0_f32, Theme::Wood => 1.0, Theme::Glass => 2.0 };
+        let theme_code = match self.theme {
+            Theme::Marble => 0.0_f32, Theme::Wood => 1.0, Theme::Glass => 2.0,
+            Theme::ArtDeco => 3.0,
+            Theme::Egyptian => 4.0,
+        };
         adjustment[8..12].copy_from_slice(&theme_code.to_le_bytes());
         queue.write_buffer(&gpu.distance_buffer, 0, &adjustment);
         if changed_scene {
@@ -612,10 +622,12 @@ impl CallbackTrait for Scene {
         });
         pass.set_bind_group(0, &gpu.textures_group, &[]);
         pass.set_vertex_buffer(0, gpu.vertex_buffer.as_ref().unwrap().slice(..));
-        pass.set_pipeline(&gpu.scene_pipeline);
-        pass.draw(0..self.board_count, 0..1);
         pass.set_pipeline(&gpu.translucent_pipeline);
-        let mut start = self.board_count;
+        pass.draw(0..self.glow_count, 0..1);
+        pass.set_pipeline(&gpu.scene_pipeline);
+        pass.draw(self.glow_count..self.glow_count + self.board_count, 0..1);
+        pass.set_pipeline(&gpu.translucent_pipeline);
+        let mut start = self.glow_count + self.board_count;
         pass.draw(start..start + self.overlay_count, 0..1);
         start += self.overlay_count;
         pass.draw(start..start + self.shadow_count, 0..1);

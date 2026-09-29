@@ -12,15 +12,24 @@ use std::sync::OnceLock;
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
     #[default]
+    #[serde(alias = "bauhaus", alias = "scifi")]
     Marble,
     Wood,
     Glass,
+    ArtDeco,
+    Egyptian,
 }
 
 impl Theme {
-    pub const ALL: [(Self, &'static str); 3] = [
+    pub const ALL: [(Self, &'static str); 5] = [
         (Self::Marble, "Marble"), (Self::Wood, "Wood"), (Self::Glass, "Glass"),
+        (Self::ArtDeco, "Art Deco"),
+        (Self::Egyptian, "Egyptian"),
     ];
+
+    fn is_polyy(self) -> bool {
+        matches!(self, Self::ArtDeco | Self::Egyptian)
+    }
 }
 
 #[derive(Clone, Copy, Default)]
@@ -57,6 +66,7 @@ impl V3 {
     }
 }
 
+#[derive(Clone)]
 struct Model {
     positions: Vec<V3>,
     normals: Vec<V3>,
@@ -177,6 +187,7 @@ fn textures() -> &'static (
 fn theme_textures(theme: Theme) -> &'static (
     RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage,
 ) {
+    if theme.is_polyy() { return polyy_textures(theme); }
     if theme != Theme::Wood { return textures(); }
     WOOD_TEXTURES.get_or_init(|| {
         let decode = |bytes| image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
@@ -192,7 +203,50 @@ fn theme_textures(theme: Theme) -> &'static (
         )
     })
 }
+type TextureSet = (RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage);
+static DECO_TEXTURES: OnceLock<TextureSet> = OnceLock::new();
+static EGYPT_TEXTURES: OnceLock<TextureSet> = OnceLock::new();
+
+fn polyy_textures(theme: Theme) -> &'static TextureSet {
+    let (slot, light, dark) = match theme {
+        Theme::ArtDeco => (&DECO_TEXTURES, include_bytes!("../assets/3d/polyy-chess-pack-1/deco/light.jpg").as_slice(), include_bytes!("../assets/3d/polyy-chess-pack-1/deco/dark.jpg").as_slice()),
+        Theme::Egyptian => (&EGYPT_TEXTURES, include_bytes!("../assets/3d/polyy-chess-pack-1/egypt/light.jpg").as_slice(), include_bytes!("../assets/3d/polyy-chess-pack-1/egypt/dark.jpg").as_slice()),
+        _ => unreachable!(),
+    };
+    slot.get_or_init(|| {
+        let base = textures();
+        let decode = |data| image::load_from_memory_with_format(data, ImageFormat::Jpeg)
+            .expect("Polyy chess atlas").to_rgb8();
+        (decode(light), decode(dark), base.2.clone(), base.3.clone(),
+         base.4.clone(), base.5.clone(), base.6.clone())
+    })
+}
+
+static DECO_MODELS: OnceLock<Models> = OnceLock::new();
+static EGYPT_MODELS: OnceLock<Models> = OnceLock::new();
+
+fn polyy_models(theme: Theme) -> &'static Models {
+    macro_rules! set_models {
+        ($slot:expr, $dir:literal) => {
+            $slot.get_or_init(|| Models {
+                board: models().board.clone(),
+                pawn: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/pawn.glb")), true).with_dimensions(0.51, 0.90),
+                rook: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/rook.glb")), true).with_dimensions(0.58, 0.98),
+                knight: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/knight.glb")), true).with_dimensions(0.65, 1.15),
+                bishop: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/bishop.glb")), true).with_dimensions(0.63, 1.30),
+                queen: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/queen.glb")), true).with_dimensions(0.63, 1.43),
+                king: parse_glb(include_bytes!(concat!("../assets/3d/polyy-chess-pack-1/", $dir, "/king.glb")), true).with_dimensions(0.66, 1.52),
+            })
+        };
+    }
+    match theme {
+        Theme::ArtDeco => set_models!(DECO_MODELS, "deco"),
+        Theme::Egyptian => set_models!(EGYPT_MODELS, "egypt"),
+        _ => unreachable!(),
+    }
+}
 fn theme_models(theme: Theme) -> &'static Models {
+    if theme.is_polyy() { return polyy_models(theme); }
     if theme != Theme::Wood { return models(); }
     WOOD_MODELS.get_or_init(|| {
         let mut board = parse_glb(include_bytes!("../assets/3d/omies-chess-set/board.glb"), false);
@@ -515,6 +569,7 @@ struct Triangle {
     vertex_lighting: Option<[(f32, f32); 3]>,
     normal_surface: Option<NormalSurface>,
     shadow_uv: Option<[[f32; 2]; 3]>,
+    glow_uv: Option<[[f32; 2]; 3]>,
 }
 
 struct NormalSurface {
@@ -643,6 +698,7 @@ fn push_triangle(
         vertex_lighting,
         normal_surface,
         shadow_uv: None,
+        glow_uv: None,
     });
 }
 fn quad(triangles: &mut Vec<Triangle>, camera: Camera, rect: Rect, pts: [V3; 4], color: [u8; 3]) {
@@ -708,12 +764,36 @@ fn contact_shadow(
     }
 }
 
+// A light pool on a plane below the board follows camera orbit and zoom.
+fn board_glow(camera: Camera, rect: Rect, theme: Theme) -> Vec<Triangle> {
+    let model = &theme_models(theme).board;
+    let y = model.positions.iter().map(|p| p.y).fold(f32::INFINITY, f32::min) - 0.08;
+    let tint = match theme {
+        Theme::Wood | Theme::ArtDeco | Theme::Egyptian => [232, 164, 80],
+        Theme::Marble | Theme::Glass => [76, 170, 220],
+    };
+    let mut triangles = Vec::new();
+    let radius = 7.8;
+    quad(&mut triangles, camera, rect, [
+        V3::new(-radius, y, -radius), V3::new(radius, y, -radius),
+        V3::new(radius, y, radius), V3::new(-radius, y, radius),
+    ], tint);
+    if triangles.len() == 2 {
+        triangles[0].glow_uv = Some([[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]);
+        triangles[1].glow_uv = Some([[0.0, 0.0], [1.0, 1.0], [0.0, 1.0]]);
+        for triangle in &mut triangles { triangle.color = Color32::from_rgb(tint[0], tint[1], tint[2]); }
+    }
+    triangles
+}
+
 fn piece_yaw(piece: Piece, side: Color, square: Square) -> f32 {
     let kind = match piece {
         Piece::Knight => 1,
         Piece::Bishop => 2,
         Piece::King => 3,
-        _ => return 0.0,
+        Piece::Pawn => 4,
+        Piece::Rook => 5,
+        Piece::Queen => 6,
     };
     // A square gives each moved piece a repeatable new facing, so stepping
     // backward and forward through game history does not make it jump around.
@@ -899,7 +979,7 @@ pub fn image_with_theme(
         if base.as_ref().is_none_or(|cached| cached.key != key) {
             let mut image = ColorImage::filled([width, height], background);
             let mut depth = vec![0.0_f32; width * height];
-            let mut board_triangles = Vec::new();
+            let mut board_triangles = board_glow(camera, rect, theme);
             let board_model = &theme_models(theme).board;
             for face in board_model.indices.chunks_exact(3) {
                 let points = std::array::from_fn(|i| board_model.positions[face[i] as usize]);
@@ -1132,7 +1212,20 @@ fn rasterize(
                 let near = w0 * reciprocal[0] + w1 * reciprocal[1] + w2 * reciprocal[2];
                 let index = y * width + x;
                 if near > depth_buffer[index] {
-                    image.pixels[index] = if let Some(uv) = tri.shadow_uv {
+                    image.pixels[index] = if let Some(uv) = tri.glow_uv {
+                        let u = (w0 * reciprocal[0] * uv[0][0] + w1 * reciprocal[1] * uv[1][0]
+                            + w2 * reciprocal[2] * uv[2][0]) / near;
+                        let v = (w0 * reciprocal[0] * uv[0][1] + w1 * reciprocal[1] * uv[1][1]
+                            + w2 * reciprocal[2] * uv[2][1]) / near;
+                        let radius_sq = (2.0 * u - 1.0).powi(2) + (2.0 * v - 1.0).powi(2);
+                        let alpha = 0.55 * (1.0 - radius_sq).max(0.0).powi(2);
+                        let previous = image.pixels[index];
+                        Color32::from_rgb(
+                            (previous.r() as f32 * (1.0 - alpha) + tri.color.r() as f32 * alpha) as u8,
+                            (previous.g() as f32 * (1.0 - alpha) + tri.color.g() as f32 * alpha) as u8,
+                            (previous.b() as f32 * (1.0 - alpha) + tri.color.b() as f32 * alpha) as u8,
+                        )
+                    } else if let Some(uv) = tri.shadow_uv {
                         let u = (w0 * reciprocal[0] * uv[0][0]
                             + w1 * reciprocal[1] * uv[1][0]
                             + w2 * reciprocal[2] * uv[2][0])
@@ -1191,7 +1284,7 @@ fn rasterize(
                             } else {
                                 &maps.6
                             };
-                            let (diffuse, specular) = tri.normal_surface.as_ref().map_or(
+                            let (diffuse, specular) = if theme.is_polyy() { (diffuse, specular) } else { tri.normal_surface.as_ref().map_or(
                                 (diffuse, specular),
                                 |surface| {
                                     normal_mapped_lighting(
@@ -1210,9 +1303,16 @@ fn rasterize(
                                         theme,
                                     )
                                 },
-                            );
+                            ) };
                             let specular = specular * gloss;
-                            if theme == Theme::Wood {
+                            if theme.is_polyy() {
+                                let paint = texture_rgb(texture, [u, v]);
+                                Color32::from_rgb(
+                                    (paint[0] * diffuse + specular * 0.6).min(250.0) as u8,
+                                    (paint[1] * diffuse + specular * 0.6).min(250.0) as u8,
+                                    (paint[2] * diffuse + specular * 0.6).min(250.0) as u8,
+                                )
+                            } else if theme == Theme::Wood {
                                 let wood = texture_rgb(texture, [u, v]);
                                 let (scale, lift) = if side == Color::White { ([0.99, 0.98, 0.96], 6.0) } else { ([0.72, 0.74, 0.76], 3.0) };
                                 Color32::from_rgb(
@@ -1313,6 +1413,31 @@ fn rasterize(
 mod tests {
     use super::*;
     #[test]
+    fn underboard_glow_renders_outside_board_with_theme_tint() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(600.0));
+        let background = Color32::from_rgb(24, 27, 31);
+        for theme in Theme::ALL.map(|(theme, _)| theme) {
+            let camera = Camera::new(false, View::default());
+            let glow = board_glow(camera, rect, theme);
+            assert_eq!(glow.len(), 2);
+            let mut halo = ColorImage::filled([600, 600], background);
+            let mut depth = vec![0.0; 600 * 600];
+            rasterize(&mut halo, &mut depth, glow, camera, rect, 1.0, 0.5, theme);
+            assert!(halo.pixels.iter().any(|p| p != &background));
+            let rendered = image_with_theme(&Board::default(), rect, false, View::default(),
+                None, &[], None, background, 1.0, 0.5, theme);
+            // The board occludes the center, while a visible halo remains outside it.
+            assert!(rendered.pixels.iter().zip(&halo.pixels).any(|(p, h)| p == h && h != &background));
+            if std::env::var_os("IRONWOOD_GLOW_PREVIEW").is_some() {
+                let mut output = RgbImage::new(600, 600);
+                for (pixel, color) in output.pixels_mut().zip(rendered.pixels) {
+                    *pixel = image::Rgb([color.r(), color.g(), color.b()]);
+                }
+                output.save(format!("target/underlight-{theme:?}.png")).unwrap();
+            }
+        }
+    }
+    #[test]
     fn bundled_gltf_models_load() {
         for model in [
             &models().board,
@@ -1368,6 +1493,21 @@ mod tests {
             assert!(model.indices.iter().all(|&index| (index as usize) < model.positions.len()));
         }
         assert_eq!(theme_textures(Theme::Wood).2.dimensions(), (1024, 1024));
+    }
+    #[test]
+    fn polyy_sets_load_with_aligned_atlases() {
+        for theme in [Theme::ArtDeco, Theme::Egyptian] {
+            let models = theme_models(theme);
+            for model in [&models.pawn, &models.rook, &models.knight,
+                &models.bishop, &models.queen, &models.king] {
+                assert!(!model.indices.is_empty(), "{theme:?}");
+                assert!(model.indices.iter().all(|&index| (index as usize) < model.positions.len()), "{theme:?}");
+                assert!(model.texcoords.iter().all(|uv| uv[0].is_finite() && uv[1].is_finite()
+                    && (0.0..=1.0).contains(&uv[0]) && (0.0..=1.0).contains(&uv[1])), "{theme:?}");
+            }
+            assert_eq!(theme_textures(theme).0.dimensions(), (1536, 1024));
+            assert_eq!(theme_textures(theme).1.dimensions(), (1536, 1024));
+        }
     }
     #[test]
     fn marble_grid_matches_piece_and_pick_coordinates() {
@@ -1634,15 +1774,15 @@ mod tests {
         assert_eq!(plain, render(None));
     }
     #[test]
-    fn facing_changes_only_for_selected_piece_types_when_they_move() {
+    fn facing_changes_for_all_piece_types_when_they_move() {
         let b1 = Square::make_square(Rank::First, File::B);
         let c3 = Square::make_square(Rank::Third, File::C);
-        for piece in [Piece::Knight, Piece::Bishop, Piece::King] {
-            assert_ne!(piece_yaw(piece, Color::White, b1), piece_yaw(piece, Color::White, c3));
-        }
-        for piece in [Piece::Pawn, Piece::Rook, Piece::Queen] {
-            assert_eq!(piece_yaw(piece, Color::White, b1), 0.0);
-            assert_eq!(piece_yaw(piece, Color::White, c3), 0.0);
+        for piece in [Piece::Pawn, Piece::Rook, Piece::Knight, Piece::Bishop, Piece::Queen, Piece::King] {
+            for side in [Color::White, Color::Black] {
+                let yaw = piece_yaw(piece, side, b1);
+                assert_ne!(yaw, piece_yaw(piece, side, c3));
+                assert_eq!(yaw, piece_yaw(piece, side, b1));
+            }
         }
     }
     #[test]
