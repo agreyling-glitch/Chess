@@ -2,7 +2,7 @@
 title: "What do the move symbols mean?"
 description: "A quick guide to the star, plus, question marks, and move notation shown during review."
 category: "analysis"
-keywords: [?, ??, ?!, star, plus, symbols, annotations, move list]
+keywords: ["?", "??", "?!", star, plus, symbols, annotations, move list]
 weight: 35
 ---
 
