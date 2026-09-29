@@ -8,6 +8,21 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Marble,
+    Wood,
+    Glass,
+}
+
+impl Theme {
+    pub const ALL: [(Self, &'static str); 3] = [
+        (Self::Marble, "Marble"), (Self::Wood, "Wood"), (Self::Glass, "Glass"),
+    ];
+}
+
 #[derive(Clone, Copy, Default)]
 struct V3 {
     x: f32,
@@ -98,8 +113,9 @@ struct Models {
     king: Model,
 }
 static MODELS: OnceLock<Models> = OnceLock::new();
+static WOOD_MODELS: OnceLock<Models> = OnceLock::new();
 struct BoardBase {
-    key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32),
+    key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32, Theme),
     image: ColorImage,
     depth: Vec<f32>,
 }
@@ -114,6 +130,9 @@ static TEXTURES: OnceLock<(
     RgbImage,
     RgbImage,
     RgbImage,
+)> = OnceLock::new();
+static WOOD_TEXTURES: OnceLock<(
+    RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage,
 )> = OnceLock::new();
 fn textures() -> &'static (
     RgbImage,
@@ -154,6 +173,93 @@ fn textures() -> &'static (
             )),
         )
     })
+}
+fn theme_textures(theme: Theme) -> &'static (
+    RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage,
+) {
+    if theme != Theme::Wood { return textures(); }
+    WOOD_TEXTURES.get_or_init(|| {
+        let decode = |bytes| image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
+            .expect("bundled Omie texture").to_rgb8();
+        (
+            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_white_diff.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_black_diff.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/board_diff.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/board_nor.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/board_rough.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_white_nor.jpg")),
+            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_black_nor.jpg")),
+        )
+    })
+}
+fn theme_models(theme: Theme) -> &'static Models {
+    if theme != Theme::Wood { return models(); }
+    WOOD_MODELS.get_or_init(|| {
+        let mut board = parse_glb(include_bytes!("../assets/3d/omies-chess-set/board.glb"), false);
+        let span = board.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max)
+            - board.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        // The checker grid occupies pixels 49..463 of the board atlas's
+        // 512-pixel top-face region. Scale that 414-pixel grid to eight move
+        // units, rather than scaling the full board (including its frame).
+        let grid_fraction = 414.0 / 512.0;
+        let scale = 8.0 / (span * grid_fraction);
+        let top = board.positions.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max) * scale;
+        for point in &mut board.positions { *point = point.mul(scale); point.y += 0.055 - top; }
+        align_wood_board_grid(&mut board);
+        Models {
+            board,
+            pawn: parse_glb(include_bytes!("../assets/3d/omies-chess-set/pawn.glb"), true).with_dimensions(0.51, 0.90),
+            rook: parse_glb(include_bytes!("../assets/3d/omies-chess-set/rook.glb"), true).with_dimensions(0.58, 0.98),
+            knight: parse_glb(include_bytes!("../assets/3d/omies-chess-set/knight.glb"), true).with_dimensions(0.65, 1.15),
+            bishop: parse_glb(include_bytes!("../assets/3d/omies-chess-set/bishop.glb"), true).with_dimensions(0.63, 1.30),
+            queen: parse_glb(include_bytes!("../assets/3d/omies-chess-set/queen.glb"), true).with_dimensions(0.63, 1.43),
+            king: parse_glb(include_bytes!("../assets/3d/omies-chess-set/king.glb"), true).with_dimensions(0.66, 1.52),
+        }
+    })
+}
+
+fn align_wood_board_grid(board: &mut Model) {
+    // The atlas is a photograph-like texture: its eight checker columns and
+    // rows are not perfectly uniform. Give each square its own top-face quad
+    // so every visible seam lands on the move/highlight grid exactly.
+    let x_pixels: [f32; 11] = [0.0, 47.0, 96.0, 148.0, 200.0, 252.0, 304.0, 357.0, 409.0, 461.0, 512.0];
+    let z_pixels: [f32; 11] = [0.0, 47.0, 99.0, 151.0, 203.0, 256.0, 308.0, 361.0, 413.0, 461.0, 512.0];
+    let min_x = board.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+    let max_x = board.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+    let min_z = board.positions.iter().map(|p| p.z).fold(f32::INFINITY, f32::min);
+    let max_z = board.positions.iter().map(|p| p.z).fold(f32::NEG_INFINITY, f32::max);
+    let top = board.positions.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+    let xs = [min_x, -4.0, -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, max_x];
+    let zs = [max_z, 4.0, 3.0, 2.0, 1.0, 0.0, -1.0, -2.0, -3.0, -4.0, min_z];
+    let mut aligned = Model { positions: Vec::new(), normals: Vec::new(), texcoords: Vec::new(), indices: Vec::new() };
+    let mut vertex = |point: V3, normal: V3, uv: [f32; 2]| {
+        aligned.indices.push(aligned.positions.len() as u16);
+        aligned.positions.push(point);
+        aligned.normals.push(normal);
+        aligned.texcoords.push(uv);
+    };
+    for face in board.indices.chunks_exact(3) {
+        if face.iter().all(|&i| board.normals[i as usize].y > 0.9) { continue; }
+        for &i in face {
+            let i = i as usize;
+            vertex(board.positions[i], board.normals[i], board.texcoords[i]);
+        }
+    }
+    for row in 0..10 {
+        for column in 0..10 {
+            let corners = [
+                (xs[column], zs[row], x_pixels[column], z_pixels[row]),
+                (xs[column + 1], zs[row], x_pixels[column + 1], z_pixels[row]),
+                (xs[column + 1], zs[row + 1], x_pixels[column + 1], z_pixels[row + 1]),
+                (xs[column], zs[row + 1], x_pixels[column], z_pixels[row + 1]),
+            ];
+            for index in [0, 1, 2, 0, 2, 3] {
+                let (x, z, u, v) = corners[index];
+                vertex(V3::new(x, top, z), V3::new(0.0, 1.0, 0.0), [u / 1024.0, v / 1024.0]);
+            }
+        }
+    }
+    *board = aligned;
 }
 fn models() -> &'static Models {
     MODELS.get_or_init(|| Models {
@@ -419,24 +525,49 @@ struct NormalSurface {
 }
 
 fn studio_lighting(normal: V3, point: V3, camera: Camera, side: Option<Color>) -> (f32, f32) {
+    studio_lighting_for_theme(normal, point, camera, side, Theme::Marble)
+}
+
+fn studio_lighting_for_theme(
+    normal: V3, point: V3, camera: Camera, side: Option<Color>, theme: Theme,
+) -> (f32, f32) {
     // The Poly Haven glTF has no lights. Recreate its preview's soft studio
     // key/fill and glossy marble highlights within this CPU rasterizer.
-    let key = V3::new(-0.55, 1.0, 0.75).unit();
+    let key = if theme == Theme::Wood {
+        V3::new(-0.25, 1.0, 0.05).unit()
+    } else {
+        V3::new(-0.55, 1.0, 0.75).unit()
+    };
     let fill = V3::new(0.8, 0.55, -0.35).unit();
     let view = camera.eye.sub(point).unit();
     let black = side == Some(Color::Black);
-    let diffuse = (if black { 0.39 } else { 0.32 }
-        + 0.43 * normal.dot(key).max(0.0)
-        + (if black { 0.29 } else { 0.17 }) * normal.dot(fill).max(0.0)
-        + 0.08 * normal.y.max(0.0))
-    .clamp(0.32, if black { 1.08 } else { 0.92 });
+    let center_light = if theme == Theme::Wood {
+        (1.04 - 0.003 * (point.x * point.x + point.z * point.z)).clamp(0.96, 1.04)
+    } else { 1.0 };
+    let (ambient, key_power, fill_power) = if theme == Theme::Wood {
+        (if black { 0.62 } else { 0.50 }, 0.25, 0.20)
+    } else {
+        (if black { 0.39 } else { 0.32 }, 0.43, if black { 0.29 } else { 0.17 })
+    };
+    let diffuse = ((ambient
+        + key_power * normal.dot(key).max(0.0)
+        + fill_power * normal.dot(fill).max(0.0)
+        + 0.08 * normal.y.max(0.0)) * center_light)
+    .clamp(0.32, if black { if theme == Theme::Wood { 1.12 } else { 1.08 } } else { 0.92 });
     let key_reflection = normal.dot(key.add(view).unit()).max(0.0);
     let fill_reflection = normal.dot(fill.add(view).unit()).max(0.0);
-    (
-        diffuse,
+    let reflected = if theme == Theme::Wood {
+        22.0 * key_reflection.powf(20.0)
+            + 45.0 * key_reflection.powf(48.0)
+            + 5.0 * fill_reflection.powf(32.0)
+    } else {
         28.0 * key_reflection.powf(12.0)
             + 36.0 * key_reflection.powf(48.0)
-            + 18.0 * fill_reflection.powf(16.0),
+            + 18.0 * fill_reflection.powf(16.0)
+    };
+    (
+        diffuse,
+        reflected * center_light,
     )
 }
 
@@ -644,6 +775,7 @@ fn normal_mapped_lighting(
     strength: f32,
     side: Option<Color>,
     roughness_map: Option<&RgbImage>,
+    theme: Theme,
 ) -> (f32, f32) {
     let base = surface.normals[0]
         .mul(weights[0])
@@ -666,11 +798,15 @@ fn normal_mapped_lighting(
         .add(tangent.mul((mapped[0] / 127.5 - 1.0) * strength))
         .add(bitangent.mul((mapped[1] / 127.5 - 1.0) * strength))
         .unit();
-    let (diffuse, specular) = studio_lighting(normal, surface.center, camera, side);
+    let (diffuse, specular) = studio_lighting_for_theme(normal, surface.center, camera, side, theme);
     let gloss = roughness_map.map_or(1.0, |map| {
         // The glTF ARM map stores roughness in its green channel.
         let roughness = texture_rgb(map, uv)[1] / 255.0;
-        (0.42 + 1.18 * (1.0 - roughness)).clamp(0.42, 1.35)
+        if theme == Theme::Wood {
+            (0.55 + 0.8 * (1.0 - roughness)).clamp(0.55, 1.35)
+        } else {
+            (0.42 + 1.18 * (1.0 - roughness)).clamp(0.42, 1.35)
+        }
     });
     (diffuse, specular * gloss)
 }
@@ -734,6 +870,15 @@ pub fn image(
     scale: f32,
     appearance: f32,
 ) -> ColorImage {
+    image_with_theme(board, rect, flipped, view, selected, targets, last_move,
+        background, scale, appearance, Theme::Marble)
+}
+
+pub fn image_with_theme(
+    board: &Board, rect: Rect, flipped: bool, view: View,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
+    background: Color32, scale: f32, appearance: f32, theme: Theme,
+) -> ColorImage {
     let camera = Camera::new(flipped, view);
     let width = (rect.width() * scale).ceil().max(1.0) as usize;
     let height = (rect.height() * scale).ceil().max(1.0) as usize;
@@ -747,6 +892,7 @@ pub fn image(
         background,
         scale.to_bits(),
         appearance.to_bits(),
+        theme,
     );
     let (mut image, mut depth_buffer) = BOARD_BASE.with(|base| {
         let mut base = base.borrow_mut();
@@ -754,7 +900,7 @@ pub fn image(
             let mut image = ColorImage::filled([width, height], background);
             let mut depth = vec![0.0_f32; width * height];
             let mut board_triangles = Vec::new();
-            let board_model = &models().board;
+            let board_model = &theme_models(theme).board;
             for face in board_model.indices.chunks_exact(3) {
                 let points = std::array::from_fn(|i| board_model.positions[face[i] as usize]);
                 let uv = std::array::from_fn(|i| board_model.texcoords[face[i] as usize]);
@@ -769,7 +915,7 @@ pub fn image(
                     Some(normals),
                 );
             }
-            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale, appearance);
+            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale, appearance, theme);
             *base = Some(BoardBase {
                 key,
                 image,
@@ -779,14 +925,14 @@ pub fn image(
         let cached = base.as_ref().unwrap();
         (cached.image.clone(), cached.depth.clone())
     });
-    let triangles = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move);
-    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale, appearance);
+    let triangles = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
+    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale, appearance, theme);
     image
 }
 
 fn dynamic_triangles(
     board: &Board, rect: Rect, flipped: bool, view: View,
-    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme,
 ) -> Vec<Triangle> {
     let camera = Camera::new(flipped, view);
     let mut triangles = Vec::with_capacity(40000);
@@ -807,29 +953,38 @@ fn dynamic_triangles(
                 color = Some([230, 178, 65]);
             }
             if let Some(color) = color {
+                // The Wood atlas's painted checker seams sit slightly away
+                // from the mesh grid. Keep the tint full-size and register it
+                // to the painted squares rather than shrinking its footprint.
+                let (highlight_x, highlight_z) = if theme == Theme::Wood {
+                    (x + 0.04, z - 0.035)
+                } else { (x, z) };
                 overlay_quad(
                     &mut triangles,
                     camera,
                     rect,
                     [
-                        V3::new(x, 0.061, z),
-                        V3::new(x + 1.0, 0.061, z),
-                        V3::new(x + 1.0, 0.061, z + 1.0),
-                        V3::new(x, 0.061, z + 1.0),
+                        V3::new(highlight_x, 0.061, highlight_z),
+                        V3::new(highlight_x + 1.0, 0.061, highlight_z),
+                        V3::new(highlight_x + 1.0, 0.061, highlight_z + 1.0),
+                        V3::new(highlight_x, 0.061, highlight_z + 1.0),
                     ],
                     color,
                 );
             }
             if let (Some(piece), Some(side)) = (board.piece_on(square), board.color_on(square)) {
-                let model = models().get(piece);
+                let model = theme_models(theme).get(piece);
                 let center = V3::new(file as f32 - 3.5, 0.075, 3.5 - rank as f32);
                 let yaw = piece_yaw(piece, side, square);
                 let (sin, cos) = yaw.sin_cos();
+                let shadow_center = if theme == Theme::Wood {
+                    center.add(V3::new(-0.055, 0.0, 0.06))
+                } else { center };
                 contact_shadow(
                     &mut piece_triangles,
                     camera,
                     rect,
-                    center,
+                    shadow_center,
                     if piece == Piece::Pawn { 0.45 } else { 0.54 },
                 );
                 let color = if side == Color::White {
@@ -882,19 +1037,38 @@ fn appearance_color(color: Color32, appearance: f32) -> Color32 {
     Color32::from_rgb(adjust(color.r()), adjust(color.g()), adjust(color.b()))
 }
 
-pub fn coordinate_labels(rect: Rect, flipped: bool, view: View) -> Vec<(char, Pos2)> {
+pub fn coordinate_labels(rect: Rect, flipped: bool, view: View, theme: Theme) -> Vec<(char, Pos2)> {
     let camera = Camera::new(flipped, view);
-    let front_z = if flipped { -4.22 } else { 4.22 };
-    let left_x = if flipped { 4.22 } else { -4.22 };
+    let board = &theme_models(theme).board;
+    let front_z = board.positions.iter().map(|p| p.z).fold(
+        if flipped { f32::INFINITY } else { f32::NEG_INFINITY },
+        |edge, z| if flipped { edge.min(z) } else { edge.max(z) },
+    );
+    let left_x = board.positions.iter().map(|p| p.x).fold(
+        if flipped { f32::NEG_INFINITY } else { f32::INFINITY },
+        |edge, x| if flipped { edge.max(x) } else { edge.min(x) },
+    );
+    let bottom_y = board.positions.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+    let file_spacing = camera.project(V3::new(-2.5, bottom_y, front_z), rect)
+        .zip(camera.project(V3::new(-3.5, bottom_y, front_z), rect))
+        .map(|((a, _), (b, _))| a.distance(b))
+        .unwrap_or(48.0);
+    let font_size = (file_spacing * 0.22).clamp(10.0, 18.0);
+    let file_margin = font_size * 0.5 + 11.0;
+    let rank_margin = font_size * 0.5 + 3.0;
     let mut labels = Vec::with_capacity(16);
     for file in 0..8 {
-        if let Some((point, _)) = camera.project(V3::new(file as f32 - 3.5, 0.07, front_z), rect) {
-            labels.push(((b'a' + file as u8) as char, point));
+        if let Some((point, _)) = camera.project(V3::new(file as f32 - 3.5, bottom_y, front_z), rect) {
+            // At close zoom the frame can extend past the canvas. Keep the
+            // label in the small strip below it rather than losing it.
+            let y = (point.y + file_margin).min(rect.max.y + 8.0);
+            labels.push(((b'a' + file as u8) as char, Pos2::new(point.x, y)));
         }
     }
     for rank in 0..8 {
         if let Some((point, _)) = camera.project(V3::new(left_x, 0.07, 3.5 - rank as f32), rect) {
-            labels.push(((b'1' + rank as u8) as char, point));
+            let x = (point.x - rank_margin).max(rect.min.x - 2.0);
+            labels.push(((b'1' + rank as u8) as char, Pos2::new(x, point.y)));
         }
     }
     labels
@@ -908,6 +1082,7 @@ fn rasterize(
     rect: Rect,
     scale: f32,
     appearance: f32,
+    theme: Theme,
 ) {
     let [width, height] = image.size;
     for tri in triangles {
@@ -1005,15 +1180,16 @@ fn rasterize(
                             });
                         let gloss = 1.0 + 0.75 * ((appearance - 0.5) * 2.0).clamp(-1.0, 1.0);
                         let surface_color = if let Some(side) = side {
+                            let maps = theme_textures(theme);
                             let texture = if side == Color::White {
-                                &textures().0
+                                &maps.0
                             } else {
-                                &textures().1
+                                &maps.1
                             };
                             let normal_map = if side == Color::White {
-                                &textures().5
+                                &maps.5
                             } else {
-                                &textures().6
+                                &maps.6
                             };
                             let (diffuse, specular) = tri.normal_surface.as_ref().map_or(
                                 (diffuse, specular),
@@ -1031,10 +1207,33 @@ fn rasterize(
                                         0.55,
                                         Some(side),
                                         None,
+                                        theme,
                                     )
                                 },
                             );
                             let specular = specular * gloss;
+                            if theme == Theme::Wood {
+                                let wood = texture_rgb(texture, [u, v]);
+                                let (scale, lift) = if side == Color::White { ([0.99, 0.98, 0.96], 6.0) } else { ([0.94, 0.98, 1.00], 6.0) };
+                                Color32::from_rgb(
+                                    ((wood[0] * scale[0] + lift) * diffuse + specular * 0.35).min(245.0) as u8,
+                                    ((wood[1] * scale[1] + lift) * diffuse + specular * 0.35).min(245.0) as u8,
+                                    ((wood[2] * scale[2] + lift) * diffuse + specular * 0.35).min(245.0) as u8,
+                                )
+                            } else if theme == Theme::Glass {
+                                let base = tri.normal_surface.as_ref().map_or(V3::new(0.0, 1.0, 0.0), |surface| {
+                                    surface.normals[0].mul(w0).add(surface.normals[1].mul(w1)).add(surface.normals[2].mul(w2)).unit()
+                                });
+                                let view = camera.eye.sub(tri.normal_surface.as_ref().map_or(V3::default(), |s| s.center)).unit();
+                                let rim = (1.0 - base.dot(view).abs()).powf(2.5);
+                                let tint = if side == Color::White { [151.0, 202.0, 219.0] } else { [168.0, 51.0, 112.0] };
+                                let rim_color = if side == Color::White { [120.0, 130.0, 135.0] } else { [128.0, 61.0, 105.0] };
+                                Color32::from_rgb(
+                                    (tint[0] * (0.42 + 0.25 * diffuse) + rim_color[0] * rim + specular * 1.5).min(250.0) as u8,
+                                    (tint[1] * (0.42 + 0.25 * diffuse) + rim_color[1] * rim + specular * 1.5).min(250.0) as u8,
+                                    (tint[2] * (0.42 + 0.25 * diffuse) + rim_color[2] * rim + specular * 1.5).min(250.0) as u8,
+                                )
+                            } else {
                             let reference = if side == Color::White { 210.0 } else { 48.0 };
                             let detail =
                                 (texture_brightness(texture, [u, v]) / reference).clamp(0.0, 1.35);
@@ -1047,8 +1246,10 @@ fn rasterize(
                                 (tri.color.b() as f32 * brightness + specular * 0.93).min(ceiling)
                                     as u8,
                             )
+                            }
                         } else {
-                            let marble = texture_rgb(&textures().2, [u, v]);
+                            let maps = theme_textures(theme);
+                            let marble = texture_rgb(&maps.2, [u, v]);
                             let (diffuse, specular) = tri.normal_surface.as_ref().map_or(
                                 (diffuse, specular),
                                 |surface| {
@@ -1061,18 +1262,24 @@ fn rasterize(
                                             w2 * reciprocal[2] / near,
                                         ],
                                         camera,
-                                        &textures().3,
+                                        &maps.3,
                                         0.7,
                                         None,
-                                        Some(&textures().4),
+                                        Some(&maps.4),
+                                        theme,
                                     )
                                 },
                             );
                             let specular = specular * gloss;
+                            let color = if theme == Theme::Wood {
+                                [marble[0] * 0.72, marble[1] * 0.72, marble[2] * 0.72]
+                            } else if theme == Theme::Glass {
+                                [marble[0] * 0.40 + 20.0, marble[1] * 0.52 + 35.0, marble[2] * 0.63 + 48.0]
+                            } else { marble };
                             Color32::from_rgb(
-                                (marble[0] * diffuse + specular).min(230.0) as u8,
-                                (marble[1] * diffuse + specular).min(230.0) as u8,
-                                (marble[2] * diffuse + specular).min(230.0) as u8,
+                                (color[0] * diffuse + specular).min(230.0) as u8,
+                                (color[1] * diffuse + specular).min(230.0) as u8,
+                                (color[2] * diffuse + specular).min(230.0) as u8,
                             )
                         };
                         appearance_color(surface_color, appearance)
@@ -1134,6 +1341,28 @@ mod tests {
         assert_eq!(textures().6.dimensions(), (1024, 1024));
     }
     #[test]
+    fn wood_models_and_maps_load() {
+        let models = theme_models(Theme::Wood);
+        let board_span = models.board.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max)
+            - models.board.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        assert!((board_span * 414.0 / 512.0 - 8.0).abs() < 0.01);
+        for x in -4..=4 {
+            for z in -4..=4 {
+                assert!(models.board.positions.iter().any(|p|
+                    (p.x - x as f32).abs() < 0.001 && (p.z - z as f32).abs() < 0.001
+                    && (p.y - 0.055).abs() < 0.001));
+            }
+        }
+        for model in [&models.board, &models.pawn, &models.rook, &models.knight,
+            &models.bishop, &models.queen, &models.king] {
+            assert!(!model.positions.is_empty());
+            assert_eq!(model.normals.len(), model.positions.len());
+            assert_eq!(model.texcoords.len(), model.positions.len());
+            assert!(model.indices.iter().all(|&index| (index as usize) < model.positions.len()));
+        }
+        assert_eq!(theme_textures(Theme::Wood).2.dimensions(), (1024, 1024));
+    }
+    #[test]
     fn marble_grid_matches_piece_and_pick_coordinates() {
         let board = &models().board;
         for edge in [-4.0_f32, -3.0, 0.0, 3.0, 4.0] {
@@ -1145,16 +1374,54 @@ mod tests {
     #[test]
     fn coordinate_labels_follow_board_flip() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(840.0, 600.0));
-        let normal = coordinate_labels(rect, false, View::default());
-        let flipped = coordinate_labels(rect, true, View::default());
+        let normal = coordinate_labels(rect, false, View::default(), Theme::Marble);
+        let flipped = coordinate_labels(rect, true, View::default(), Theme::Marble);
         assert_eq!(normal.len(), 16);
         assert_eq!(flipped.len(), 16);
         assert_eq!(normal[0].0, 'a');
         assert_eq!(normal[7].0, 'h');
         assert!(normal[0].1.x < normal[7].1.x);
         assert!(flipped[0].1.x > flipped[7].1.x);
-        assert!(normal.iter().all(|(_, point)| rect.contains(*point)));
-        assert!(flipped.iter().all(|(_, point)| rect.contains(*point)));
+        let label_area = rect.expand2(egui::Vec2::new(2.0, 12.0));
+        assert!(normal.iter().all(|(_, point)| label_area.contains(*point)));
+        assert!(flipped.iter().all(|(_, point)| label_area.contains(*point)));
+    }
+    #[test]
+    fn coordinate_labels_stay_outside_squares_at_zoom_limits() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(840.0, 600.0));
+        for theme in [Theme::Marble, Theme::Wood, Theme::Glass] {
+          let board = &theme_models(theme).board;
+          for flipped in [false, true] {
+            for distance in [17.0, 26.0] {
+                let view = View { distance, ..View::default() };
+                let labels = coordinate_labels(rect, flipped, view, theme);
+                let camera = Camera::new(flipped, view);
+                let front_z = board.positions.iter().map(|p| p.z).fold(
+                    if flipped { f32::INFINITY } else { f32::NEG_INFINITY },
+                    |edge, z| if flipped { edge.min(z) } else { edge.max(z) },
+                );
+                let left_x = board.positions.iter().map(|p| p.x).fold(
+                    if flipped { f32::NEG_INFINITY } else { f32::INFINITY },
+                    |edge, x| if flipped { edge.max(x) } else { edge.min(x) },
+                );
+                let spacing = labels[0].1.distance(labels[1].1);
+                let half_font = (spacing * 0.22).clamp(10.0, 18.0) * 0.5;
+                for file in 0..8 {
+                    let bottom_y = board.positions.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+                    let (edge, _) = camera.project(V3::new(file as f32 - 3.5, bottom_y, front_z), rect).unwrap();
+                    assert!(
+                        labels[file].1.y - edge.y > half_font
+                            || (labels[file].1.y - (rect.max.y + 8.0)).abs() < 0.01,
+                        "{theme:?} {flipped} {distance}",
+                    );
+                }
+                for rank in 0..8 {
+                    let (edge, _) = camera.project(V3::new(left_x, 0.07, 3.5 - rank as f32), rect).unwrap();
+                    assert!(edge.x - labels[rank + 8].1.x > half_font, "{theme:?} {flipped} {distance}");
+                }
+            }
+          }
+        }
     }
     #[test]
     fn promotion_square_is_pickable_and_all_promoted_models_render() {

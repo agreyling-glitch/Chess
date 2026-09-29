@@ -64,11 +64,12 @@ The board/game state is intentionally separated from rendering so 2D glyphs can
 later be replaced with timeline-driven Battle Chess animations without changing
 the legality model or engine protocol.
 
-The in-game 3D board uses the bundled Poly Haven glTF piece meshes inside the
+The in-game 3D board uses bundled CC0 Poly Haven and Omie chess assets inside the
 same egui canvas as the rest of the workspace. Choose **View > Show 3D board**
 or use the 2D/3D button beside Flip Board to switch views; the board, legal moves,
 clocks, and other controls stay in place. The game board uses a fixed perspective;
-scroll over it to zoom. In Game Moves, **Copy Board to Clipboard** captures the
+scroll over it to zoom. Choose Marble, Wood, or Glass in **View > Board > 3D theme**.
+In Game Moves, **Copy Board to Clipboard** captures the
 selected position as a 2D or 3D image according to the active view.
 The in-game view draws the 3D board with wgpu inside egui. A CPU renderer
 remains available for PNG export and renderer fallback. The separate `/3d/` FEN viewer

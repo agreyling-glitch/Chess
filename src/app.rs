@@ -1061,6 +1061,7 @@ struct UserPreferences {
     animate_moves: bool,
     piece_set: PieceSet,
     board_3d_active: bool,
+    board_3d_theme: crate::board3d::Theme,
     board_3d_appearance: u8,
     board_3d_appearance_customized: bool,
 }
@@ -1079,6 +1080,7 @@ impl Default for UserPreferences {
             animate_moves: true,
             piece_set: PieceSet::default(),
             board_3d_active: false,
+            board_3d_theme: crate::board3d::Theme::Marble,
             board_3d_appearance: 85,
             board_3d_appearance_customized: false,
         }
@@ -1099,6 +1101,7 @@ impl UserPreferences {
             animate_moves: game.animate_moves,
             piece_set: game.piece_set,
             board_3d_active: false,
+            board_3d_theme: crate::board3d::Theme::Marble,
             board_3d_appearance: 85,
             board_3d_appearance_customized: false,
         }
@@ -1108,6 +1111,7 @@ impl UserPreferences {
 pub struct ChessApp {
     board: Board,
     board_3d_active: bool,
+    board_3d_theme: crate::board3d::Theme,
     board_3d_distance: f32,
     board_3d_appearance: u8,
     board_3d_appearance_customized: bool,
@@ -1207,6 +1211,12 @@ pub struct ChessApp {
     engine_settings_tab: EngineSettingsTab,
     strength_dialog_open: bool,
     about_dialog_open: bool,
+    elo_calculator_open: bool,
+    elo_your_rating: i32,
+    elo_opponent_rating: i32,
+    elo_k_factor: i32,
+    elo_system: usize,
+    elo_result: usize,
     pgn_dialog_open: bool,
     batch_pgn_dialog_open: bool,
     batch_pgn_games: Vec<BatchPgnGame>,
@@ -1230,6 +1240,7 @@ pub struct ChessApp {
     pgn_error: Option<String>,
     print_confirm_open: bool,
     expanded_graph_open: bool,
+    expanded_graph_hover_index: Option<usize>,
     print_notice_until: Option<f64>,
     review_positions: Vec<Board>,
     review_moves: Vec<String>,
@@ -2207,6 +2218,7 @@ impl ChessApp {
         let app = Self {
             board,
             board_3d_active: preferences.board_3d_active,
+            board_3d_theme: preferences.board_3d_theme,
             board_3d_distance: crate::board3d::View::default().distance,
             board_3d_appearance,
             board_3d_appearance_customized: preferences.board_3d_appearance_customized,
@@ -2316,6 +2328,12 @@ impl ChessApp {
             engine_settings_tab: EngineSettingsTab::Play,
             strength_dialog_open: false,
             about_dialog_open: false,
+            elo_calculator_open: false,
+            elo_your_rating: 1200,
+            elo_opponent_rating: 1400,
+            elo_k_factor: 20,
+            elo_system: 0,
+            elo_result: 0,
             pgn_dialog_open: false,
             batch_pgn_dialog_open: false,
             batch_pgn_games: Vec::new(),
@@ -2342,6 +2360,7 @@ impl ChessApp {
             pgn_error: None,
             print_confirm_open: false,
             expanded_graph_open: false,
+            expanded_graph_hover_index: None,
             print_notice_until: None,
             review_positions,
             review_moves,
@@ -2453,8 +2472,21 @@ impl ChessApp {
 
     fn style_context_menu(ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
-        // Nested menu popups use the current style's window stroke.
-        ui.visuals_mut().window_stroke = Stroke::new(1.5, Color32::from_rgb(211, 173, 98));
+    }
+
+    fn gold_menu_style(style: &mut egui::Style) {
+        egui::containers::menu::menu_style(style);
+        style.visuals.window_stroke = Stroke::new(1.5, Color32::from_rgb(211, 173, 98));
+    }
+
+    fn gold_menu_button<R>(
+        ui: &mut egui::Ui,
+        title: &'static str,
+        contents: impl FnOnce(&mut egui::Ui) -> R,
+    ) {
+        egui::containers::menu::MenuButton::new(title)
+            .config(egui::containers::menu::MenuConfig::new().style(Self::gold_menu_style))
+            .ui(ui, contents);
     }
 
     fn set_menu_item_font(ui: &mut egui::Ui) {
@@ -2488,6 +2520,116 @@ impl ChessApp {
             .map(|count| count.get() as u32)
             .unwrap_or(1)
             .clamp(1, ENGINE_MAX_THREADS)
+    }
+
+    fn elo_expected_score(your_rating: i32, opponent_rating: i32) -> f64 {
+        1.0 / (1.0 + 10.0_f64.powf((opponent_rating - your_rating) as f64 / 400.0))
+    }
+
+    fn elo_calculator_dialog(&mut self, ctx: &egui::Context) {
+        if !self.elo_calculator_open {
+            return;
+        }
+        let mut close = false;
+        let width = (ctx.screen_rect().width() - 64.0).clamp(280.0, 540.0);
+        let response = egui::Modal::new(egui::Id::new("elo_calculator"))
+            .frame(Frame::popup(&ctx.style_of(ctx.theme()))
+                .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
+                .corner_radius(CornerRadius::same(10))
+                .inner_margin(Margin::same(22)))
+            .show(ctx, |ui| {
+                ui.set_width(width);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Elo calculator").size(25.0).strong());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        close = ui.button("×").on_hover_text("Close calculator").clicked();
+                    });
+                });
+                ui.label("Estimate your expected score and rating change for one game.");
+                ui.add_space(12.0);
+
+                ui.columns(2, |columns| {
+                    for (column, (label, rating)) in columns.iter_mut().zip([
+                        ("Your rating", &mut self.elo_your_rating),
+                        ("Opponent rating", &mut self.elo_opponent_rating),
+                    ]) {
+                        column.label(RichText::new(label).strong());
+                        column.horizontal(|ui| {
+                            if ui.button("−").on_hover_text("Decrease by 50").clicked() {
+                                *rating -= 50;
+                            }
+                            ui.add(egui::DragValue::new(rating).range(100..=4000).speed(1.0));
+                            if ui.button("+").on_hover_text("Increase by 50").clicked() {
+                                *rating += 50;
+                            }
+                            ui.add_sized([88.0, 20.0],
+                                egui::Slider::new(rating, 100..=4000).show_value(false));
+                        });
+                        *rating = (*rating).clamp(100, 4000);
+                    }
+                });
+                ui.add_space(8.0);
+
+                let expected = Self::elo_expected_score(self.elo_your_rating, self.elo_opponent_rating);
+                let pct = (expected * 100.0).round() as i32;
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("You {pct}%")).strong()
+                        .color(Color32::from_rgb(211, 173, 98)));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(format!("Opponent {}%", 100 - pct));
+                    });
+                });
+                ui.add(egui::ProgressBar::new(expected as f32).desired_width(width));
+                ui.add_space(12.0);
+                ui.label(RichText::new("If you...").strong());
+                let results = [("Win", 1.0), ("Draw", 0.5), ("Loss", 0.0)];
+                ui.columns(3, |columns| {
+                    for (index, (label, score)) in results.iter().enumerate() {
+                        let change = (self.elo_k_factor as f64 * (score - expected)).round() as i32;
+                        if columns[index].selectable_label(self.elo_result == index,
+                            format!("{label}\n{change:+} points")).clicked() {
+                            self.elo_result = index;
+                        }
+                    }
+                });
+                let score = results[self.elo_result].1;
+                let change = (self.elo_k_factor as f64 * (score - expected)).round() as i32;
+                ui.add_space(10.0);
+                Frame::new()
+                    .fill(Color32::from_rgb(43, 39, 29))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)))
+                    .corner_radius(6.0)
+                    .inner_margin(Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.set_min_width(width - 24.0);
+                        ui.label("Estimated new rating");
+                        ui.label(RichText::new(format!("{}  ({change:+})",
+                            self.elo_your_rating + change)).size(25.0).strong()
+                            .color(Color32::from_rgb(211, 173, 98)));
+                    });
+                ui.add_space(8.0);
+                ui.collapsing("Advanced", |ui| {
+                    let systems = ["FIDE / standard Elo", "Chess.com estimate", "Lichess estimate"];
+                    egui::ComboBox::from_label("Rating system")
+                        .selected_text(systems[self.elo_system])
+                        .show_ui(ui, |ui| {
+                            for (index, name) in systems.iter().enumerate() {
+                                if ui.selectable_value(&mut self.elo_system, index, *name).changed() {
+                                    self.elo_k_factor = [20, 32, 40][index];
+                                }
+                            }
+                        });
+                    ui.add(egui::Slider::new(&mut self.elo_k_factor, 5..=60).text("K-factor"));
+                });
+                if self.elo_system == 0 {
+                    ui.label(RichText::new("Elo estimate: new rating = current rating + K × (result − expected score). Official FIDE changes may use additional rules.").small().weak());
+                } else {
+                    ui.label(RichText::new("Illustrative Elo estimate only. Chess.com and Lichess use Glicko-based systems, so actual changes depend on rating uncertainty and may differ.").small().weak());
+                }
+            });
+        if close || response.should_close() {
+            self.elo_calculator_open = false;
+        }
     }
 
     fn about_dialog(&mut self, ctx: &egui::Context) {
@@ -3933,7 +4075,7 @@ impl ChessApp {
             Vec2::new(
                 ui.available_width(),
                 if expanded {
-                    (ui.ctx().screen_rect().height() * 0.48).max(160.0)
+                    (ui.ctx().screen_rect().height() * 0.43).max(160.0)
                 } else {
                     112.0
                 },
@@ -3950,6 +4092,7 @@ impl ChessApp {
         );
         if !expanded {
             egui::Popup::context_menu(&response)
+                .style(Self::gold_menu_style)
                 .frame(Self::context_menu_frame(&response.ctx))
                 .show(|ui| {
                     Self::style_context_menu(ui);
@@ -4078,6 +4221,9 @@ impl ChessApp {
             (((pointer.x - plot.left()) / plot.width()).clamp(0.0, 1.0) * denominator).round()
                 as usize
         });
+        if expanded {
+            self.expanded_graph_hover_index = hover_index;
+        }
         if let Some(index) = hover_index {
             let x = plot.left() + plot.width() * index as f32 / denominator;
             ui.painter().line_segment(
@@ -4300,10 +4446,65 @@ impl ChessApp {
         }
     }
 
+    fn expanded_graph_board_preview(&self, ui: &mut egui::Ui, width: f32) {
+        let index = self.expanded_graph_hover_index
+            .or(self.review_index)
+            .unwrap_or(self.review_moves.len())
+            .min(self.review_positions.len().saturating_sub(1));
+        let Some(board) = self.review_positions.get(index) else { return; };
+        Frame::new()
+            .fill(Color32::from_rgb(20, 24, 28))
+            .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
+            .corner_radius(6.0)
+            .inner_margin(Margin::same(9))
+            .show(ui, |ui| {
+              ui.allocate_ui_with_layout(
+                  Vec2::new(width - 18.0, width - 18.0 + 24.0),
+                  Layout::top_down(Align::Min),
+                  |ui| {
+                let side = width - 18.0;
+                ui.set_min_width(side);
+                ui.label(RichText::new(self.graph_position_label(index, true)).small().weak());
+                ui.add_space(3.0);
+                let (rect, _) = ui.allocate_exact_size(Vec2::splat(side), Sense::hover());
+                let cell = side / 8.0;
+                let last_move = Self::review_move_at(&self.review_positions, &self.review_moves, index);
+                for screen_rank in 0..8 {
+                    for screen_file in 0..8 {
+                        let file_index = if self.flipped { 7 - screen_file } else { screen_file };
+                        let rank_index = if self.flipped { screen_rank } else { 7 - screen_rank };
+                        let square = Square::make_square(
+                            Rank::from_index(rank_index), File::from_index(file_index),
+                        );
+                        let square_rect = egui::Rect::from_min_size(
+                            rect.min + Vec2::new(screen_file as f32 * cell, screen_rank as f32 * cell),
+                            Vec2::splat(cell),
+                        );
+                        let light = (file_index + rank_index) % 2 == 1;
+                        let mut color = if light {
+                            Color32::from_rgb(205, 214, 193)
+                        } else {
+                            Color32::from_rgb(76, 116, 92)
+                        };
+                        if last_move.is_some_and(|chess_move| chess_move.get_source() == square || chess_move.get_dest() == square) {
+                            color = Self::blend_color(color, Color32::from_rgb(211, 173, 98), 0.42);
+                        }
+                        ui.painter().rect_filled(square_rect, 0.0, color);
+                        if let (Some(color), Some(piece)) = (board.color_on(square), board.piece_on(square)) {
+                            Self::paint_piece(ui, square_rect, cell, self.piece_set, color, piece);
+                        }
+                    }
+                }
+                  },
+              );
+            });
+    }
+
     fn expanded_analysis_graph(&mut self, ctx: &egui::Context) {
         if !self.expanded_graph_open {
             return;
         }
+        self.expanded_graph_hover_index = None;
         let mut close = false;
         let response = egui::Modal::new(egui::Id::new("expanded_analysis_graph"))
             .frame(Frame::new().fill(Color32::from_rgb(18,21,25)).inner_margin(Margin::same(24)))
@@ -4318,13 +4519,20 @@ impl ChessApp {
                             .on_hover_text("Close expanded graph (Esc)").clicked();
                     });
                 });
-                egui::ScrollArea::vertical().auto_shrink([false,false]).show(ui, |ui| {
                     ui.label(RichText::new(format!("{}  vs  {}",self.review_white_player,self.review_black_player)).size(20.0));
                     let completed = self.game_analysis.iter().filter(|value| value.is_some()).count();
                     ui.label(format!("Stockfish 19 · {completed}/{} positions analyzed · White perspective · Nonlinear pawn scale; mates reach the edges",
                         self.review_positions.len()));
                     ui.add_space(10.0);
                     if let Some(index) = self.analysis_graph(ui, true) { self.review_to(index); }
+                let bottom_height = ui.available_height();
+                let preview_width = (size.x * 0.19).clamp(150.0, 240.0)
+                    .min((bottom_height - 43.0).max(100.0));
+                let details_width = (ui.available_width() - preview_width - 16.0).max(320.0);
+                ui.horizontal(|ui| {
+                  ui.allocate_ui_with_layout(Vec2::new(details_width, bottom_height), Layout::top_down(Align::Min), |ui| {
+                   ui.set_max_width(details_width);
+                   egui::ScrollArea::vertical().auto_shrink([false,false]).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         for quality in [MoveClassification::Inaccuracy,MoveClassification::Mistake,MoveClassification::Blunder] {
                             ui.label(RichText::new(format!("● {}",quality.label())).color(quality.color()).size(16.0));
@@ -4363,6 +4571,11 @@ impl ChessApp {
                         if ui.button(if self.note_at(index).is_empty() { "Add note…" } else { "Edit note…" }).clicked() { self.edit_note(index); }
                     });
                     ui.label(RichText::new(if self.note_at(index).is_empty() { "No note for this position." } else { self.note_at(index) }).size(18.0));
+                   });
+                  });
+                  ui.allocate_ui_with_layout(Vec2::new(preview_width, bottom_height), Layout::top_down(Align::Max), |ui| {
+                      self.expanded_graph_board_preview(ui, preview_width);
+                  });
                 });
             });
         if close || response.should_close() {
@@ -7085,6 +7298,7 @@ impl ChessApp {
                 animate_moves: self.animate_moves,
                 piece_set: self.piece_set,
                 board_3d_active: self.board_3d_active,
+                board_3d_theme: self.board_3d_theme,
                 board_3d_appearance: self.board_3d_appearance,
                 board_3d_appearance_customized: self.board_3d_appearance_customized,
             };
@@ -8416,7 +8630,7 @@ impl ChessApp {
         let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(size));
         let mut view = crate::board3d::View::default();
         view.distance = self.board_3d_distance;
-        let image = crate::board3d::image(
+        let image = crate::board3d::image_with_theme(
             board,
             rect,
             self.flipped,
@@ -8427,6 +8641,7 @@ impl ChessApp {
             ctx.style().visuals.panel_fill,
             1.0,
             self.board_3d_appearance as f32 / 100.0,
+            self.board_3d_theme,
         );
         let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
         for pixel in image.pixels {
@@ -8495,10 +8710,10 @@ impl ChessApp {
             let background = ui.visuals().panel_fill;
             if let Some(target_format) = self.board_3d_gpu_format {
                 let key = format!(
-                    "{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}",
+                    "{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{:?}",
                     self.board, size.x.to_bits(), size.y.to_bits(),
                     self.flipped, self.selected, self.legal_targets, self.last_move,
-                    background, ui.ctx().pixels_per_point().to_bits(),
+                    background, ui.ctx().pixels_per_point().to_bits(), self.board_3d_theme,
                 );
                 if self.board_3d_gpu_key != key || self.board_3d_gpu_scene.is_none() {
                     self.board_3d_gpu_scene_id = self.board_3d_gpu_scene_id.wrapping_add(1);
@@ -8506,6 +8721,7 @@ impl ChessApp {
                         &self.board, rect, self.flipped, view, self.selected,
                         &self.legal_targets, self.last_move, background,
                         ui.ctx().pixels_per_point(), target_format, self.board_3d_gpu_scene_id,
+                        self.board_3d_theme,
                     ));
                     self.board_3d_gpu_key = key;
                     self.board_3d_rendered_distance = view.distance;
@@ -8519,9 +8735,14 @@ impl ChessApp {
                     ));
                 }
             } else {
-                let scale = (ui.ctx().pixels_per_point() * 1.5).min(2048.0 / size.x.max(size.y));
+                let (supersample, limit) = match self.board_3d_theme {
+                    crate::board3d::Theme::Marble => (1.5, 2048.0),
+                    crate::board3d::Theme::Wood => (1.65, 2304.0),
+                    crate::board3d::Theme::Glass => (1.8, 2560.0),
+                };
+                let scale = (ui.ctx().pixels_per_point() * supersample).min(limit / size.x.max(size.y));
                 let render_key = format!(
-                    "{}:{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{}",
+                    "{}:{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{}:{:?}",
                     self.board,
                     size.x.to_bits(),
                     size.y.to_bits(),
@@ -8533,11 +8754,12 @@ impl ChessApp {
                     background,
                     scale.to_bits(),
                     self.board_3d_appearance,
+                    self.board_3d_theme,
                 );
                 if self.board_3d_render_key != render_key
                     && (!zooming || self.board_3d_texture.is_none())
                 {
-                    let image = crate::board3d::image(
+                    let image = crate::board3d::image_with_theme(
                         &self.board,
                         rect,
                         self.flipped,
@@ -8548,6 +8770,7 @@ impl ChessApp {
                         background,
                         scale,
                         self.board_3d_appearance as f32 / 100.0,
+                        self.board_3d_theme,
                     );
                     if let Some(texture) = &mut self.board_3d_texture {
                         texture.set(image, egui::TextureOptions::LINEAR);
@@ -8572,12 +8795,12 @@ impl ChessApp {
                 }
             }
             if self.show_coordinates {
-                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view);
+                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view, self.board_3d_theme);
                 let file_spacing = labels.get(0).zip(labels.get(1))
                     .map(|((_, a), (_, b))| a.distance(*b))
                     .unwrap_or(48.0);
                 let font = FontId::proportional((file_spacing * 0.22).clamp(10.0, 18.0));
-                let painter = ui.painter().with_clip_rect(rect);
+                let painter = ui.painter().with_clip_rect(rect.expand2(Vec2::new(14.0, 16.0)));
                 for (label, position) in labels {
                     painter.text(
                         position + Vec2::new(1.0, 1.0),
@@ -9626,7 +9849,7 @@ impl ChessApp {
                         closed = Some(tab.target.clone());
                     }
                 }
-                ui.menu_button("+ New chat", |ui| {
+                Self::gold_menu_button(ui, "+ New chat", |ui| {
                     ui.label("Player name or channel number (0–255)");
                     ui.text_edit_singleline(&mut self.fics_chats.new_target);
                     if ui.add_enabled(self.fics_connected, egui::Button::new("Open chat / join channel")).clicked() {
@@ -10050,6 +10273,7 @@ impl ChessApp {
                 .ctx
                 .input_mut(|input| input.consume_key(egui::Modifiers::SHIFT, egui::Key::F10));
         let mut popup = egui::Popup::context_menu(response)
+            .style(Self::gold_menu_style)
             .frame(Self::context_menu_frame(&response.ctx))
             .at_position(response.rect.right_bottom());
         if keyboard_open {
@@ -10114,7 +10338,7 @@ impl ChessApp {
                                 let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(1200.0));
                                 let mut view = crate::board3d::View::default();
                                 view.distance = self.board_3d_distance;
-                                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view);
+                                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view, self.board_3d_theme);
                                 let spacing = labels.get(0).zip(labels.get(1))
                                     .map(|((_, a), (_, b))| a.distance(*b))
                                     .unwrap_or(48.0);
@@ -10775,6 +10999,16 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn elo_calculator_matches_standard_expected_score_and_changes() {
+        let expected = ChessApp::elo_expected_score(1200, 1400);
+        assert!((expected - 0.240_253).abs() < 0.000_001);
+        assert_eq!((20.0 * (1.0 - expected)).round() as i32, 15);
+        assert_eq!((20.0 * (0.5 - expected)).round() as i32, 5);
+        assert_eq!((20.0 * (0.0 - expected)).round() as i32, -5);
+        assert_eq!(ChessApp::elo_expected_score(1500, 1500), 0.5);
+    }
+
     #[test]
     fn captured_material_follows_the_displayed_position_and_ignores_promotion() {
         use chess::{ChessMove, Color, Piece, Square};
@@ -11690,7 +11924,7 @@ impl eframe::App for ChessApp {
                 ui.heading("IRONWOOD");
                 ui.label(RichText::new("CHESS").color(Color32::from_rgb(207, 172, 93)));
                 ui.separator();
-                ui.menu_button("Game", |ui| {
+                Self::gold_menu_button(ui, "Game", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("New game").clicked() {
                         self.new_game_online = self.fics_active;
@@ -11784,7 +12018,7 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("View", |ui| {
+                Self::gold_menu_button(ui, "View", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button(if self.board_3d_active { "Show 2D board" } else { "Show 3D board" }).clicked() {
                         self.toggle_board_dimension(ui.ctx());
@@ -11827,6 +12061,15 @@ impl eframe::App for ChessApp {
                         Self::set_menu_item_font(ui);
                         if self.board_3d_active {
                             ui.set_min_width(245.0);
+                            ui.menu_button("3D theme", |ui| {
+                                Self::set_menu_item_font(ui);
+                                for (theme, label) in crate::board3d::Theme::ALL {
+                                    if ui.selectable_value(&mut self.board_3d_theme, theme, label).changed() {
+                                        self.save_preferences();
+                                        ui.close();
+                                    }
+                                }
+                            });
                             let appearance = ui.add(
                                 egui::Slider::new(&mut self.board_3d_appearance, 0..=100)
                                     .text("3D appearance"),
@@ -11862,7 +12105,7 @@ impl eframe::App for ChessApp {
                             self.save_game();
                         }
                         ui.separator();
-                        ui.menu_button("Piece set", |ui| {
+                        ui.menu_button("2D Piece set", |ui| {
                             Self::set_menu_item_font(ui);
                             for piece_set in [
                                 PieceSet::System,
@@ -11906,9 +12149,13 @@ impl eframe::App for ChessApp {
                         }
                     });
                 });
-                ui.menu_button("Tools", |ui| {
+                Self::gold_menu_button(ui, "Tools", |ui| {
                     Self::set_menu_item_font(ui);
                     ui.set_min_width(170.0);
+                    if ui.button("Elo calculator…").clicked() {
+                        self.elo_calculator_open = true;
+                        ui.close();
+                    }
                     if ui.button("Position Editor…").clicked() {
                         #[cfg(target_arch = "wasm32")]
                         if let Err(error) = open_position_editor(&self.board.to_string()) {
@@ -11918,7 +12165,7 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("Storage", |ui| {
+                Self::gold_menu_button(ui, "Storage", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("Backup all data…").clicked() {
                         #[cfg(target_arch = "wasm32")]
@@ -11947,8 +12194,8 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
-                ui.menu_button("Online Controls", |ui| self.fics_online_menu(ui));
-                ui.menu_button("Help", |ui| {
+                Self::gold_menu_button(ui, "Online Controls", |ui| self.fics_online_menu(ui));
+                Self::gold_menu_button(ui, "Help", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("Join our Discord…").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(DISCORD_URL));
@@ -11975,7 +12222,7 @@ impl eframe::App for ChessApp {
             )
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.menu_button(
+                    Self::gold_menu_button(ui,
                         if self.fics_connected {
                             "FICS · Connected"
                         } else {
@@ -13506,6 +13753,7 @@ impl eframe::App for ChessApp {
                                 }
                             }
                             egui::Popup::context_menu(&output.response)
+                                .style(Self::gold_menu_style)
                                 .frame(Self::context_menu_frame(&output.response.ctx))
                                 .show(|ui| {
                                     Self::style_context_menu(ui);
@@ -14030,6 +14278,7 @@ impl eframe::App for ChessApp {
                 });
         }
 
+        self.elo_calculator_dialog(ctx);
         self.about_dialog(ctx);
         self.strength_dialog(ctx);
         self.pgn_dialog(ctx);

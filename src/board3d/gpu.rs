@@ -20,6 +20,7 @@ pub struct Scene {
     target_format: wgpu::TextureFormat,
     distance_delta: f32,
     appearance: f32,
+    theme: Theme,
 }
 
 impl Scene {
@@ -127,10 +128,11 @@ pub fn scene(
     pixels_per_point: f32,
     target_format: wgpu::TextureFormat,
     id: u64,
+    theme: Theme,
 ) -> Scene {
     let camera = Camera::new(flipped, view);
     let mut board_triangles = Vec::new();
-    let model = &models().board;
+    let model = &theme_models(theme).board;
     for face in model.indices.chunks_exact(3) {
         let points = std::array::from_fn(|i| model.positions[face[i] as usize]);
         let uv = std::array::from_fn(|i| model.texcoords[face[i] as usize]);
@@ -145,7 +147,7 @@ pub fn scene(
             Some(normals),
         );
     }
-    let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move);
+    let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
     let mut vertices = Vec::with_capacity((board_triangles.len() + dynamic.len()) * 3 * 104);
     let board_count = append_triangles(&mut vertices, &board_triangles, rect);
     let overlay_count = append_triangles(
@@ -166,7 +168,12 @@ pub fn scene(
         rect,
     );
     // Render above display resolution and let the blit sampler soften edges.
-    let scale = (pixels_per_point * 1.5).min(2048.0 / rect.width().max(rect.height()));
+    let (supersample, limit) = match theme {
+        Theme::Marble => (1.5, 2048.0),
+        Theme::Wood => (1.65, 2304.0),
+        Theme::Glass => (2.0, 2816.0),
+    };
+    let scale = (pixels_per_point * supersample).min(limit / rect.width().max(rect.height()));
     Scene {
         vertices: vertices.into(),
         id,
@@ -182,10 +189,12 @@ pub fn scene(
         target_format,
         distance_delta: 0.0,
         appearance: 0.5,
+        theme,
     }
 }
 
 struct Gpu {
+    theme: Theme,
     scene_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
     blit_pipeline: wgpu::RenderPipeline,
@@ -323,7 +332,7 @@ impl Gpu {
             label: Some("3D chess textures"),
             entries: &texture_entries,
         });
-        let source = textures();
+        let source = theme_textures(scene.theme);
         let maps = [
             &source.0, &source.1, &source.2, &source.3, &source.4, &source.5, &source.6,
         ];
@@ -483,6 +492,7 @@ impl Gpu {
             ],
         });
         Self {
+            theme: scene.theme,
             scene_pipeline,
             translucent_pipeline,
             blit_pipeline,
@@ -546,7 +556,7 @@ impl CallbackTrait for Scene {
         encoder: &mut wgpu::CommandEncoder,
         resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        if resources.get::<Gpu>().is_none() {
+        if resources.get::<Gpu>().is_none_or(|gpu| gpu.theme != self.theme) {
             resources.insert(Gpu::new(device, queue, self));
         }
         let gpu = resources.get_mut::<Gpu>().unwrap();
@@ -561,6 +571,8 @@ impl CallbackTrait for Scene {
         let mut adjustment = [0_u8; 16];
         adjustment[..4].copy_from_slice(&self.distance_delta.to_le_bytes());
         adjustment[4..8].copy_from_slice(&self.appearance.to_le_bytes());
+        let theme_code = match self.theme { Theme::Marble => 0.0_f32, Theme::Wood => 1.0, Theme::Glass => 2.0 };
+        adjustment[8..12].copy_from_slice(&theme_code.to_le_bytes());
         queue.write_buffer(&gpu.distance_buffer, 0, &adjustment);
         if changed_scene {
             gpu.vertex_buffer = Some(device.create_buffer_init(

@@ -46,16 +46,21 @@ struct SceneOutput {
 }
 
 fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool) -> vec2<f32> {
-    let key = normalize(vec3<f32>(-0.55, 1.0, 0.75));
+    let wood = u32(camera_adjustment.z) == 1u;
+    let key = normalize(select(vec3<f32>(-0.55, 1.0, 0.75), vec3<f32>(-0.25, 1.0, 0.05), wood));
     let fill = normalize(vec3<f32>(0.8, 0.55, -0.35));
     let view = normalize(vec3<f32>(0.0, 13.0, 11.0) - world);
-    let ambient = select(0.32, 0.39, black);
-    let fill_power = select(0.17, 0.29, black);
-    let ceiling = select(0.92, 1.08, black);
-    let diffuse = clamp(ambient + 0.43 * max(dot(normal, key), 0.0) + fill_power * max(dot(normal, fill), 0.0) + 0.08 * max(normal.y, 0.0), 0.32, ceiling);
+    let ambient = select(select(0.32, 0.39, black), select(0.50, 0.62, black), wood);
+    let key_power = select(0.43, 0.25, wood);
+    let fill_power = select(select(0.17, 0.29, black), 0.20, wood);
+    let ceiling = select(0.92, select(1.08, 1.12, wood), black);
+    let center_light = select(1.0, clamp(1.04 - 0.003 * dot(world.xz, world.xz), 0.96, 1.04), wood);
+    let diffuse = clamp((ambient + key_power * max(dot(normal, key), 0.0) + fill_power * max(dot(normal, fill), 0.0) + 0.08 * max(normal.y, 0.0)) * center_light, 0.32, ceiling);
     let kr = max(dot(normal, normalize(key + view)), 0.0);
     let fr = max(dot(normal, normalize(fill + view)), 0.0);
-    return vec2<f32>(diffuse, 28.0 * pow(kr, 12.0) + 36.0 * pow(kr, 48.0) + 18.0 * pow(fr, 16.0));
+    let reflection = select(28.0 * pow(kr, 12.0) + 36.0 * pow(kr, 48.0) + 18.0 * pow(fr, 16.0),
+        22.0 * pow(kr, 20.0) + 45.0 * pow(kr, 48.0) + 5.0 * pow(fr, 32.0), wood);
+    return vec2<f32>(diffuse, reflection * center_light);
 }
 
 fn appearance_strength() -> f32 {
@@ -94,11 +99,32 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     let mapped = map * 2.0 - vec3<f32>(1.0);
     let normal = normalize(base_normal * max(mapped.z, 0.1) + tangent * mapped.x * strength + bitangent * mapped.y * strength);
     let lit = lighting(normal, input.world, input.mode == 3u);
+    let theme = u32(camera_adjustment.z);
+    if (theme == 2u && input.mode >= 2u) {
+        let view = normalize(vec3<f32>(0.0, 13.0, 11.0) - input.world);
+        let rim = pow(1.0 - abs(dot(base_normal, view)), 2.5);
+        let tint = select(vec3<f32>(0.59, 0.79, 0.86), vec3<f32>(0.66, 0.20, 0.44), input.mode == 3u);
+        let rim_color = select(vec3<f32>(0.48, 0.52, 0.54), vec3<f32>(0.50, 0.24, 0.41), input.mode == 3u);
+        let color = min(tint * (0.42 + 0.25 * lit.x) + rim_color * rim
+            + vec3<f32>(lit.y * 1.5 / 255.0), vec3<f32>(0.98));
+        return vec4<f32>(appearance_color(color), 1.0);
+    }
     if (input.mode == 1u) {
         let marble = textureSampleLevel(board_diff, texture_sampler, input.uv, 0.0).rgb;
         let roughness = textureSampleLevel(board_arm, texture_sampler, input.uv, 0.0).g;
-        let gloss = clamp(0.42 + 1.18 * (1.0 - roughness), 0.42, 1.35) * (1.0 + 0.75 * appearance_strength());
-        let color = min(marble * lit.x + vec3<f32>(lit.y * gloss / 255.0), vec3<f32>(230.0 / 255.0));
+        let gloss = select(clamp(0.42 + 1.18 * (1.0 - roughness), 0.42, 1.35),
+            clamp(0.55 + 0.8 * (1.0 - roughness), 0.55, 1.35), theme == 1u) * (1.0 + 0.75 * appearance_strength());
+        let base = select(select(marble, marble * 0.72, theme == 1u),
+            marble * vec3<f32>(0.40, 0.52, 0.63) + vec3<f32>(0.08, 0.14, 0.19), theme == 2u);
+        let color = min(base * lit.x + vec3<f32>(lit.y * gloss / 255.0), vec3<f32>(230.0 / 255.0));
+        return vec4<f32>(appearance_color(color), 1.0);
+    }
+    if (theme == 1u) {
+        let wood = select(textureSampleLevel(white_diff, texture_sampler, input.uv, 0.0).rgb,
+            textureSampleLevel(black_diff, texture_sampler, input.uv, 0.0).rgb, input.mode == 3u);
+        let scale = select(vec3<f32>(0.99, 0.98, 0.96), vec3<f32>(0.94, 0.98, 1.00), input.mode == 3u);
+        let lift = 6.0 / 255.0;
+        let color = min((wood * scale + vec3<f32>(lift)) * lit.x + vec3<f32>(lit.y * 0.35 * (1.0 + 0.75 * appearance_strength()) / 255.0), vec3<f32>(245.0 / 255.0));
         return vec4<f32>(appearance_color(color), 1.0);
     }
     var detail = 0.0;
