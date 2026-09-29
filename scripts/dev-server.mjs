@@ -3,12 +3,17 @@ import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
 
 const root = normalize(join(import.meta.dirname, '..', 'web'));
+const siteRoot = normalize(join(import.meta.dirname, '..', '.hugo-public'));
 const mime = {'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css','.nnue':'application/octet-stream'};
 createServer((req,res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   let file = normalize(join(root, urlPath === '/' ? 'index.html' : urlPath));
   if (file.startsWith(root) && existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
-  if (!file.startsWith(root) || !existsSync(file)) file = join(root, 'index.html');
+  if ((!file.startsWith(root) || !existsSync(file)) && urlPath !== '/') {
+    file = normalize(join(siteRoot, urlPath));
+    if (file.startsWith(siteRoot) && existsSync(file) && statSync(file).isDirectory()) file = join(file, 'index.html');
+  }
+  if ((!file.startsWith(root) && !file.startsWith(siteRoot)) || !existsSync(file)) file = join(root, 'index.html');
   res.setHeader('Cross-Origin-Opener-Policy','same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
   res.setHeader('Cross-Origin-Resource-Policy','same-origin');

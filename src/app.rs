@@ -11,6 +11,10 @@ use std::str::FromStr;
 const DISCORD_URL: &str = "/discord";
 #[cfg(not(target_arch = "wasm32"))]
 const DISCORD_URL: &str = "https://ironwoodchess.com/discord";
+#[cfg(target_arch = "wasm32")]
+const HELP_URL: &str = "/help/";
+#[cfg(not(target_arch = "wasm32"))]
+const HELP_URL: &str = "https://ironwoodchess.com/help/";
 
 trait GoldScrollAreaExt {
     fn show_gold<R>(
@@ -12197,6 +12201,10 @@ impl eframe::App for ChessApp {
                 Self::gold_menu_button(ui, "Online Controls", |ui| self.fics_online_menu(ui));
                 Self::gold_menu_button(ui, "Help", |ui| {
                     Self::set_menu_item_font(ui);
+                    if ui.button("Contents…").clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(HELP_URL));
+                        ui.close();
+                    }
                     if ui.button("Join our Discord…").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(DISCORD_URL));
                         ui.close();

@@ -114,7 +114,9 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         let roughness = textureSampleLevel(board_arm, texture_sampler, input.uv, 0.0).g;
         let gloss = select(clamp(0.42 + 1.18 * (1.0 - roughness), 0.42, 1.35),
             clamp(0.55 + 0.8 * (1.0 - roughness), 0.55, 1.35), theme == 1u) * (1.0 + 0.75 * appearance_strength());
-        let base = select(select(marble, marble * 0.72, theme == 1u),
+        let wood_gray = dot(marble, vec3<f32>(0.2126, 0.7152, 0.0722));
+        let quiet_wood = mix(vec3<f32>(wood_gray), marble, 0.12) * 0.72;
+        let base = select(select(marble, quiet_wood, theme == 1u),
             marble * vec3<f32>(0.40, 0.52, 0.63) + vec3<f32>(0.08, 0.14, 0.19), theme == 2u);
         let color = min(base * lit.x + vec3<f32>(lit.y * gloss / 255.0), vec3<f32>(230.0 / 255.0));
         return vec4<f32>(appearance_color(color), 1.0);
@@ -122,8 +124,8 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     if (theme == 1u) {
         let wood = select(textureSampleLevel(white_diff, texture_sampler, input.uv, 0.0).rgb,
             textureSampleLevel(black_diff, texture_sampler, input.uv, 0.0).rgb, input.mode == 3u);
-        let scale = select(vec3<f32>(0.99, 0.98, 0.96), vec3<f32>(0.94, 0.98, 1.00), input.mode == 3u);
-        let lift = 6.0 / 255.0;
+        let scale = select(vec3<f32>(0.99, 0.98, 0.96), vec3<f32>(0.72, 0.74, 0.76), input.mode == 3u);
+        let lift = select(6.0, 3.0, input.mode == 3u) / 255.0;
         let color = min((wood * scale + vec3<f32>(lift)) * lit.x + vec3<f32>(lit.y * 0.35 * (1.0 + 0.75 * appearance_strength()) / 255.0), vec3<f32>(245.0 / 255.0));
         return vec4<f32>(appearance_color(color), 1.0);
     }

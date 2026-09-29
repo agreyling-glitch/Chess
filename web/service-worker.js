@@ -147,6 +147,7 @@ self.addEventListener('fetch', event => {
   // The saved-games dialog is a separate module from the WASM app. Serving its
   // stale copy first made local updates appear only after a second reload.
   if (url.pathname === '/game-storage.js' || url.pathname === '/styles.css' ||
+      url.pathname === '/site.css' || url.pathname === '/help-search.js' ||
       LOCAL_DEVELOPMENT && url.pathname === '/pwa.js') {
     event.respondWith(networkFirst(request));
     return;

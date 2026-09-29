@@ -1214,7 +1214,7 @@ fn rasterize(
                             let specular = specular * gloss;
                             if theme == Theme::Wood {
                                 let wood = texture_rgb(texture, [u, v]);
-                                let (scale, lift) = if side == Color::White { ([0.99, 0.98, 0.96], 6.0) } else { ([0.94, 0.98, 1.00], 6.0) };
+                                let (scale, lift) = if side == Color::White { ([0.99, 0.98, 0.96], 6.0) } else { ([0.72, 0.74, 0.76], 3.0) };
                                 Color32::from_rgb(
                                     ((wood[0] * scale[0] + lift) * diffuse + specular * 0.35).min(245.0) as u8,
                                     ((wood[1] * scale[1] + lift) * diffuse + specular * 0.35).min(245.0) as u8,
@@ -1272,7 +1272,14 @@ fn rasterize(
                             );
                             let specular = specular * gloss;
                             let color = if theme == Theme::Wood {
-                                [marble[0] * 0.72, marble[1] * 0.72, marble[2] * 0.72]
+                                // Keep the wood grain and square contrast while letting the
+                                // colored pieces stand out against a nearly neutral board.
+                                let gray = marble[0] * 0.2126 + marble[1] * 0.7152 + marble[2] * 0.0722;
+                                [
+                                    (gray * 0.88 + marble[0] * 0.12) * 0.72,
+                                    (gray * 0.88 + marble[1] * 0.12) * 0.72,
+                                    (gray * 0.88 + marble[2] * 0.12) * 0.72,
+                                ]
                             } else if theme == Theme::Glass {
                                 [marble[0] * 0.40 + 20.0, marble[1] * 0.52 + 35.0, marble[2] * 0.63 + 48.0]
                             } else { marble };

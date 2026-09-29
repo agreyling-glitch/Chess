@@ -1,0 +1,16 @@
+{{ define "main" }}
+<div class="help-layout help-article-layout">
+  <nav class="help-sidebar" aria-label="Help articles">
+    <a class="help-back" href="/help/">← All help</a>
+    <p class="eyebrow">Contents</p>
+    {{ with .Site.GetPage "/help" }}{{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}" {{ if eq .RelPermalink $.RelPermalink }}aria-current="page"{{ end }}>{{ .Title }}</a>{{ end }}{{ end }}
+  </nav>
+  <article class="help-article">
+    <p class="help-category">{{ replace .Params.category "-" " " }}</p>
+    <h1>{{ .Title }}</h1>
+    <p class="lede">{{ .Description }}</p>
+    <div class="prose">{{ .Content }}</div>
+    <a class="help-back help-bottom" href="/help/">← Back to all help</a>
+  </article>
+</div>
+{{ end }}

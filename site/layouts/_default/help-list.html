@@ -1,0 +1,35 @@
+{{ define "main" }}
+<section class="help-heading">
+  <p class="eyebrow">Ironwood knowledge base</p>
+  <h1>Understand your game.</h1>
+  <p class="lede">Clear guides to Ironwood's analysis, scores, move labels, and tools. Start with a question or browse the topics below.</p>
+  <label class="help-search-label" for="help-search">Search help</label>
+  <input id="help-search" class="help-search" type="search" placeholder="Try CPL, accuracy, or engine line" autocomplete="off">
+  <div class="help-filters" role="group" aria-label="Help topics">
+    <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="analysis" aria-pressed="false">Analysis</button>
+    <button type="button" data-filter="terms" aria-pressed="false">Terms</button>
+    <button type="button" data-filter="using-ironwood" aria-pressed="false">Using Ironwood</button>
+  </div>
+</section>
+<div class="help-layout">
+  <nav class="help-sidebar" aria-label="Help articles">
+    <p class="eyebrow">Contents</p>
+    {{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ end }}
+  </nav>
+  <section class="help-results" aria-label="Help articles">
+    <p class="help-count" id="help-count">{{ len .Pages }} articles</p>
+    <div class="help-cards">
+      {{ range .Pages.ByWeight }}
+      <article class="help-card" data-category="{{ .Params.category }}" data-search="{{ lower (printf "%s %s %s" .Title .Description (delimit .Params.keywords " ")) }}">
+        <p class="help-category">{{ replace .Params.category "-" " " }}</p>
+        <h2><a href="{{ .RelPermalink }}">{{ .Title }} <span aria-hidden="true">→</span></a></h2>
+        <p>{{ .Description }}</p>
+      </article>
+      {{ end }}
+    </div>
+    <p id="help-empty" hidden>No articles match that search. Try a shorter term.</p>
+  </section>
+</div>
+<script src="/help-search.js" defer></script>
+{{ end }}
