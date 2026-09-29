@@ -86,3 +86,69 @@ window.ironwoodCopyBoard = async (fen, settings) => {
     showStatus('Board image copied to clipboard');
   } catch (error) { showStatus(`Could not copy board: ${error.message}`); }
 };
+
+let pendingPngCopy;
+window.ironwoodBeginBoardPngCopy = () => {
+  if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+    showStatus('Image clipboard is unavailable in this browser');
+    return false;
+  }
+  if (pendingPngCopy) {
+    showStatus('A board image is already being copied');
+    return false;
+  }
+  const image = new Promise((resolve, reject) => {
+    pendingPngCopy = { resolve, reject };
+  });
+  // Start the clipboard write during the click, before 3D rendering takes time.
+  try {
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
+      .then(() => showStatus('3D board image copied to clipboard'))
+      .catch(error => showStatus(`Could not copy board: ${error.message}`));
+    return true;
+  } catch (error) {
+    pendingPngCopy = undefined;
+    showStatus(`Could not copy board: ${error.message}`);
+    return false;
+  }
+};
+window.ironwoodFinishBoardPngCopy = async (png, coordinates) => {
+  const copy = pendingPngCopy;
+  pendingPngCopy = undefined;
+  if (!copy) return;
+  const image = new Blob([png], { type: 'image/png' });
+  if (!coordinates) {
+    copy.resolve(image);
+    return;
+  }
+  try {
+    const { fontSize, labels } = JSON.parse(coordinates);
+    const bitmap = await createImageBitmap(image);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Image rendering is unavailable');
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    context.font = `${fontSize}px system-ui, sans-serif`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    for (const { text, x, y } of labels) {
+      context.fillStyle = '#141617';
+      context.fillText(text, x + 1, y + 1);
+      context.fillStyle = '#dcbd80';
+      context.fillText(text, x, y);
+    }
+    canvas.toBlob(blob => blob
+      ? copy.resolve(blob)
+      : copy.reject(new Error('Could not create the board image')), 'image/png');
+  } catch (error) {
+    copy.reject(error);
+  }
+};
+window.ironwoodFailBoardPngCopy = message => {
+  const copy = pendingPngCopy;
+  pendingPngCopy = undefined;
+  copy?.reject(new Error(message));
+};

@@ -1,7 +1,7 @@
 ---
 title: "Features"
-lastmod: 2026-09-27T12:00:00-05:00
-description: "Play Stockfish or FICS games, watch live matches, annotate moves, and study them with local analysis."
+lastmod: 2026-09-29T00:00:00-05:00
+description: "Play and analyze chess in 2D or 3D, meet FICS opponents, and keep your games on your device."
 layout: "features"
 url: "/features/"
 ---
@@ -9,6 +9,10 @@ url: "/features/"
 ## Play your way
 
 Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine** or **Play Both Sides** in a fixed-size New Game window. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. A dark board frame with gold coordinates and piece shadows are on by default; move animation and sounds add feedback for moves, captures, and checks.
+
+## Choose a 2D or 3D board
+
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with a fixed perspective, scroll-wheel zoom, marble board and textured pieces. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
 ## Meet opponents online
 
@@ -41,3 +45,7 @@ Saved Games keeps My Games, Observed games, and Imported games together on this 
 ## Keep control of your data
 
 Ironwood saves games and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
+
+## Device and browser compatibility
+
+Ironwood is currently designed for desktop and laptop screens. Use a current browser and graphics device with WebGPU support and hardware acceleration enabled. WebGPU availability and 3D performance vary by browser, operating system, and graphics hardware. The full Stockfish 19 engine is a separate 94.5 MiB download; allow space for it if you enable offline play. We have not established a reliable minimum CPU, RAM, or GPU model, so those are not listed as requirements.

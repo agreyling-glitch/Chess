@@ -213,6 +213,7 @@ dependencies = [
  "image",
  "js-sys",
  "log",
+ "naga",
  "serde",
  "serde_json",
  "shakmaty",

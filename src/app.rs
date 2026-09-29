@@ -112,6 +112,12 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCopyBoard)]
     fn copy_board_image(fen: &str, settings: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodBeginBoardPngCopy)]
+    fn begin_board_png_copy() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFinishBoardPngCopy)]
+    fn finish_board_png_copy(png: &js_sys::Uint8Array, coordinates: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFailBoardPngCopy)]
+    fn fail_board_png_copy(message: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodOpenPositionEditor)]
     fn open_position_editor(fen: &str) -> Result<(), JsValue>;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollPositionEditor)]
@@ -1054,6 +1060,9 @@ struct UserPreferences {
     move_sounds: bool,
     animate_moves: bool,
     piece_set: PieceSet,
+    board_3d_active: bool,
+    board_3d_appearance: u8,
+    board_3d_appearance_customized: bool,
 }
 
 impl Default for UserPreferences {
@@ -1069,6 +1078,9 @@ impl Default for UserPreferences {
             move_sounds: true,
             animate_moves: true,
             piece_set: PieceSet::default(),
+            board_3d_active: false,
+            board_3d_appearance: 85,
+            board_3d_appearance_customized: false,
         }
     }
 }
@@ -1086,6 +1098,9 @@ impl UserPreferences {
             move_sounds: game.move_sounds,
             animate_moves: game.animate_moves,
             piece_set: game.piece_set,
+            board_3d_active: false,
+            board_3d_appearance: 85,
+            board_3d_appearance_customized: false,
         }
     }
 }
@@ -1094,10 +1109,16 @@ pub struct ChessApp {
     board: Board,
     board_3d_active: bool,
     board_3d_distance: f32,
+    board_3d_appearance: u8,
+    board_3d_appearance_customized: bool,
     board_3d_rendered_distance: f32,
     board_3d_zoom_until: f64,
     board_3d_render_key: String,
     board_3d_texture: Option<egui::TextureHandle>,
+    board_3d_gpu_format: Option<eframe::wgpu::TextureFormat>,
+    board_3d_gpu_key: String,
+    board_3d_gpu_scene: Option<crate::board3d::gpu::Scene>,
+    board_3d_gpu_scene_id: u64,
     selected: Option<Square>,
     legal_targets: Vec<Square>,
     history: Vec<Board>,
@@ -2136,6 +2157,11 @@ impl ChessApp {
         let move_sounds = preferences.move_sounds;
         let animate_moves = preferences.animate_moves;
         let piece_set = preferences.piece_set;
+        let board_3d_appearance = if preferences.board_3d_appearance_customized {
+            preferences.board_3d_appearance.min(100)
+        } else {
+            85
+        };
         let engine_enabled = saved
             .as_ref()
             .map(|game| game.engine_enabled)
@@ -2180,12 +2206,18 @@ impl ChessApp {
         #[allow(unused_mut)]
         let app = Self {
             board,
-            board_3d_active: false,
+            board_3d_active: preferences.board_3d_active,
             board_3d_distance: crate::board3d::View::default().distance,
+            board_3d_appearance,
+            board_3d_appearance_customized: preferences.board_3d_appearance_customized,
             board_3d_rendered_distance: crate::board3d::View::default().distance,
             board_3d_zoom_until: 0.0,
             board_3d_render_key: String::new(),
             board_3d_texture: None,
+            board_3d_gpu_format: cc.wgpu_render_state.as_ref().map(|state| state.target_format),
+            board_3d_gpu_key: String::new(),
+            board_3d_gpu_scene: None,
+            board_3d_gpu_scene_id: 0,
             selected: None,
             legal_targets: vec![],
             history,
@@ -7052,6 +7084,9 @@ impl ChessApp {
                 move_sounds: self.move_sounds,
                 animate_moves: self.animate_moves,
                 piece_set: self.piece_set,
+                board_3d_active: self.board_3d_active,
+                board_3d_appearance: self.board_3d_appearance,
+                board_3d_appearance_customized: self.board_3d_appearance_customized,
             };
             if let Ok(json) = serde_json::to_string(&preferences) {
                 let _ = storage.set_item(PREFERENCES_KEY, &json);
@@ -8374,24 +8409,24 @@ impl ChessApp {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn save_3d_board_png(&self, ctx: &egui::Context) -> Result<(), wasm_bindgen::JsValue> {
+    fn board_3d_png(&self, board: &Board, ctx: &egui::Context) -> Result<Vec<u8>, wasm_bindgen::JsValue> {
         use image::ImageEncoder;
-        use wasm_bindgen::JsCast;
 
         let size = 1200.0;
         let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(size));
         let mut view = crate::board3d::View::default();
         view.distance = self.board_3d_distance;
         let image = crate::board3d::image(
-            &self.board,
+            board,
             rect,
             self.flipped,
             view,
-            self.selected,
-            &self.legal_targets,
-            self.last_move,
+            None,
+            &[],
+            None,
             ctx.style().visuals.panel_fill,
             1.0,
+            self.board_3d_appearance as f32 / 100.0,
         );
         let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
         for pixel in image.pixels {
@@ -8402,21 +8437,38 @@ impl ChessApp {
             .write_image(&rgba, image.size[0] as u32, image.size[1] as u32, image::ColorType::Rgba8.into())
             .map_err(|error| wasm_bindgen::JsValue::from_str(&error.to_string()))?;
 
-        let parts = js_sys::Array::new();
-        parts.push(&js_sys::Uint8Array::from(png.as_slice()));
-        let options = web_sys::BlobPropertyBag::new();
-        options.set_type("image/png");
-        let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options)?;
-        let url = web_sys::Url::create_object_url_with_blob(&blob)?;
-        let document = web_sys::window().unwrap().document().unwrap();
-        let anchor = document.create_element("a")?.dyn_into::<web_sys::HtmlAnchorElement>()?;
-        anchor.set_href(&url);
-        anchor.set_download("ironwood-3d-board.png");
-        let body = document.body().unwrap();
-        body.append_child(&anchor)?;
-        anchor.click();
-        body.remove_child(&anchor)?;
-        Ok(())
+        Ok(png)
+    }
+
+    fn board_3d_preview_rect(&self, rect: egui::Rect, view: crate::board3d::View) -> egui::Rect {
+        let mut rendered_view = crate::board3d::View::default();
+        rendered_view.distance = self.board_3d_rendered_distance;
+        let a4 = Square::make_square(Rank::Fourth, File::A);
+        let h4 = Square::make_square(Rank::Fourth, File::H);
+        if let (Some(old_left), Some(old_right), Some(new_left), Some(new_right)) = (
+            crate::board3d::square_center(a4, rect, self.flipped, rendered_view),
+            crate::board3d::square_center(h4, rect, self.flipped, rendered_view),
+            crate::board3d::square_center(a4, rect, self.flipped, view),
+            crate::board3d::square_center(h4, rect, self.flipped, view),
+        ) {
+            let old_pivot = old_left + (old_right - old_left) * 0.5;
+            let new_pivot = new_left + (new_right - new_left) * 0.5;
+            let scale = (new_right - new_left).length()
+                / (old_right - old_left).length();
+            egui::Rect::from_min_max(
+                new_pivot + (rect.min - old_pivot) * scale,
+                new_pivot + (rect.max - old_pivot) * scale,
+            )
+        } else {
+            rect
+        }
+    }
+
+    fn toggle_board_dimension(&mut self, ctx: &egui::Context) {
+        self.board_3d_active = !self.board_3d_active;
+        self.save_preferences();
+        self.move_animation = None;
+        ctx.request_repaint();
     }
 
     fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2) -> egui::InnerResponse<()> {
@@ -8434,87 +8486,119 @@ impl ChessApp {
                 }
             }
             let zooming = Self::animation_time() < self.board_3d_zoom_until;
-            if zooming {
+            if zooming && self.board_3d_gpu_format.is_none() {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(160));
             }
             let mut view = crate::board3d::View::default();
             view.distance = self.board_3d_distance;
             let background = ui.visuals().panel_fill;
-            let scale = (ui.ctx().pixels_per_point() * 1.5).min(2048.0 / size.x.max(size.y));
-            let render_key = format!(
-                "{}:{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}",
-                self.board,
-                size.x.to_bits(),
-                size.y.to_bits(),
-                view.distance.to_bits(),
-                self.flipped,
-                self.selected,
-                self.legal_targets,
-                self.last_move,
-                background,
-                scale.to_bits(),
-            );
-            if self.board_3d_render_key != render_key
-                && (!zooming || self.board_3d_texture.is_none())
-            {
-                let image = crate::board3d::image(
-                    &self.board,
-                    rect,
-                    self.flipped,
-                    view,
-                    self.selected,
-                    &self.legal_targets,
-                    self.last_move,
-                    background,
-                    scale,
+            if let Some(target_format) = self.board_3d_gpu_format {
+                let key = format!(
+                    "{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}",
+                    self.board, size.x.to_bits(), size.y.to_bits(),
+                    self.flipped, self.selected, self.legal_targets, self.last_move,
+                    background, ui.ctx().pixels_per_point().to_bits(),
                 );
-                if let Some(texture) = &mut self.board_3d_texture {
-                    texture.set(image, egui::TextureOptions::LINEAR);
-                } else {
-                    self.board_3d_texture = Some(ui.ctx().load_texture(
-                        "board_3d_depth",
-                        image,
-                        egui::TextureOptions::LINEAR,
+                if self.board_3d_gpu_key != key || self.board_3d_gpu_scene.is_none() {
+                    self.board_3d_gpu_scene_id = self.board_3d_gpu_scene_id.wrapping_add(1);
+                    self.board_3d_gpu_scene = Some(crate::board3d::gpu::scene(
+                        &self.board, rect, self.flipped, view, self.selected,
+                        &self.legal_targets, self.last_move, background,
+                        ui.ctx().pixels_per_point(), target_format, self.board_3d_gpu_scene_id,
+                    ));
+                    self.board_3d_gpu_key = key;
+                    self.board_3d_rendered_distance = view.distance;
+                }
+                if let Some(scene) = &self.board_3d_gpu_scene {
+                    ui.painter().add(eframe::egui_wgpu::Callback::new_paint_callback(
+                        rect, scene.clone().at_distance(
+                            view.distance - self.board_3d_rendered_distance,
+                            self.board_3d_appearance as f32 / 100.0,
+                        ),
                     ));
                 }
-                self.board_3d_render_key = render_key;
-                self.board_3d_rendered_distance = view.distance;
-            }
-            if let Some(texture) = &self.board_3d_texture {
-                let mut preview_rect = rect;
-                if zooming {
-                    let mut rendered_view = crate::board3d::View::default();
-                    rendered_view.distance = self.board_3d_rendered_distance;
-                    let a4 = Square::make_square(Rank::Fourth, File::A);
-                    let h4 = Square::make_square(Rank::Fourth, File::H);
-                    if let (Some(old_left), Some(old_right), Some(new_left), Some(new_right)) = (
-                        crate::board3d::square_center(a4, rect, self.flipped, rendered_view),
-                        crate::board3d::square_center(h4, rect, self.flipped, rendered_view),
-                        crate::board3d::square_center(a4, rect, self.flipped, view),
-                        crate::board3d::square_center(h4, rect, self.flipped, view),
-                    ) {
-                        let old_pivot = old_left + (old_right - old_left) * 0.5;
-                        let new_pivot = new_left + (new_right - new_left) * 0.5;
-                        let scale = (new_right - new_left).length()
-                            / (old_right - old_left).length();
-                        preview_rect = egui::Rect::from_min_max(
-                            new_pivot + (rect.min - old_pivot) * scale,
-                            new_pivot + (rect.max - old_pivot) * scale,
-                        );
-                    }
-                }
-                ui.painter().with_clip_rect(rect).image(
-                    texture.id(),
-                    preview_rect,
-                    egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
-                    Color32::WHITE,
+            } else {
+                let scale = (ui.ctx().pixels_per_point() * 1.5).min(2048.0 / size.x.max(size.y));
+                let render_key = format!(
+                    "{}:{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{}",
+                    self.board,
+                    size.x.to_bits(),
+                    size.y.to_bits(),
+                    view.distance.to_bits(),
+                    self.flipped,
+                    self.selected,
+                    self.legal_targets,
+                    self.last_move,
+                    background,
+                    scale.to_bits(),
+                    self.board_3d_appearance,
                 );
+                if self.board_3d_render_key != render_key
+                    && (!zooming || self.board_3d_texture.is_none())
+                {
+                    let image = crate::board3d::image(
+                        &self.board,
+                        rect,
+                        self.flipped,
+                        view,
+                        self.selected,
+                        &self.legal_targets,
+                        self.last_move,
+                        background,
+                        scale,
+                        self.board_3d_appearance as f32 / 100.0,
+                    );
+                    if let Some(texture) = &mut self.board_3d_texture {
+                        texture.set(image, egui::TextureOptions::LINEAR);
+                    } else {
+                        self.board_3d_texture = Some(ui.ctx().load_texture(
+                            "board_3d_depth",
+                            image,
+                            egui::TextureOptions::LINEAR,
+                        ));
+                    }
+                    self.board_3d_render_key = render_key;
+                    self.board_3d_rendered_distance = view.distance;
+                }
+                if let Some(texture) = &self.board_3d_texture {
+                    let preview_rect = if zooming { self.board_3d_preview_rect(rect, view) } else { rect };
+                    ui.painter().with_clip_rect(rect).image(
+                        texture.id(),
+                        preview_rect,
+                        egui::Rect::from_min_max(egui::Pos2::ZERO, egui::Pos2::new(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                }
+            }
+            if self.show_coordinates {
+                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view);
+                let file_spacing = labels.get(0).zip(labels.get(1))
+                    .map(|((_, a), (_, b))| a.distance(*b))
+                    .unwrap_or(48.0);
+                let font = FontId::proportional((file_spacing * 0.22).clamp(10.0, 18.0));
+                let painter = ui.painter().with_clip_rect(rect);
+                for (label, position) in labels {
+                    painter.text(
+                        position + Vec2::new(1.0, 1.0),
+                        Align2::CENTER_CENTER,
+                        label,
+                        font.clone(),
+                        Color32::from_rgb(20, 22, 23),
+                    );
+                    painter.text(
+                        position,
+                        Align2::CENTER_CENTER,
+                        label,
+                        font.clone(),
+                        Color32::from_rgb(220, 189, 128),
+                    );
+                }
             }
             if response.clicked()
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(square) =
-                    crate::board3d::square_at(pos, rect, self.flipped, view, &self.board)
+                    crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets)
             {
                 self.select(square);
             }
@@ -8816,6 +8900,14 @@ impl ChessApp {
                                         {
                                             self.flipped = !self.flipped;
                                             self.save_game();
+                                        }
+                                        if ui.add_sized(
+                                            [29.0, 22.0],
+                                            egui::Button::new(if self.board_3d_active { "2D" } else { "3D" }),
+                                        )
+                                        .on_hover_text(if self.board_3d_active { "Switch to 2D board" } else { "Switch to 3D board" })
+                                        .clicked() {
+                                            self.toggle_board_dimension(ui.ctx());
                                         }
                                     });
                                 },
@@ -10013,15 +10105,44 @@ impl ChessApp {
         ui.separator();
         if ui.button("Copy Board to Clipboard").clicked() {
             #[cfg(target_arch = "wasm32")]
-            copy_board_image(
-                &self.position_fen_for_copy(index),
-                &serde_json::json!({
-                    "flipped": self.flipped, "frame": self.show_board_frame,
-                    "coordinates": self.show_coordinates, "shadows": self.piece_shadows,
-                    "pieceSet": self.piece_set
-                })
-                .to_string(),
-            );
+            if self.board_3d_active {
+                if begin_board_png_copy() {
+                    let board = self.review_positions.get(index).unwrap_or(&self.board);
+                    match self.board_3d_png(board, ui.ctx()) {
+                        Ok(png) => {
+                            let coordinates = if self.show_coordinates {
+                                let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(1200.0));
+                                let mut view = crate::board3d::View::default();
+                                view.distance = self.board_3d_distance;
+                                let labels = crate::board3d::coordinate_labels(rect, self.flipped, view);
+                                let spacing = labels.get(0).zip(labels.get(1))
+                                    .map(|((_, a), (_, b))| a.distance(*b))
+                                    .unwrap_or(48.0);
+                                serde_json::json!({
+                                    "fontSize": (spacing * 0.22).clamp(10.0, 18.0),
+                                    "labels": labels.iter().map(|(text, point)| serde_json::json!({
+                                        "text": text.to_string(), "x": point.x, "y": point.y,
+                                    })).collect::<Vec<_>>(),
+                                }).to_string()
+                            } else {
+                                String::new()
+                            };
+                            finish_board_png_copy(&js_sys::Uint8Array::from(png.as_slice()), &coordinates);
+                        }
+                        Err(error) => fail_board_png_copy(&format!("Could not render 3D board: {error:?}")),
+                    }
+                }
+            } else {
+                copy_board_image(
+                    &self.position_fen_for_copy(index),
+                    &serde_json::json!({
+                        "flipped": self.flipped, "frame": self.show_board_frame,
+                        "coordinates": self.show_coordinates, "shadows": self.piece_shadows,
+                        "pieceSet": self.piece_set
+                    })
+                    .to_string(),
+                );
+            }
             ui.close();
         }
         if ui.button("Copy FEN to Clipboard").clicked() {
@@ -10525,6 +10646,55 @@ impl ChessApp {
                 accent,
             );
         }
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    }
+
+    fn promotion_piece_card(
+        ui: &mut egui::Ui,
+        piece_set: PieceSet,
+        color: Color,
+        piece: Piece,
+        name: &str,
+    ) -> egui::Response {
+        let (rect, response) = ui.allocate_exact_size(Vec2::new(86.0, 108.0), Sense::click());
+        let gold = Color32::from_rgb(211, 173, 98);
+        let hovering = response.hovered();
+        ui.painter().rect_filled(
+            rect,
+            CornerRadius::same(8),
+            if hovering {
+                Color32::from_rgb(48, 45, 36)
+            } else {
+                Color32::from_rgb(31, 36, 41)
+            },
+        );
+        ui.painter().rect_stroke(
+            rect,
+            CornerRadius::same(8),
+            Stroke::new(if hovering { 2.0 } else { 1.0 }, if hovering { gold } else { gold.gamma_multiply(0.45) }),
+            egui::StrokeKind::Inside,
+        );
+        let piece_rect = egui::Rect::from_center_size(
+            egui::pos2(rect.center().x, rect.top() + 41.0),
+            Vec2::splat(62.0),
+        );
+        ui.painter().rect_filled(
+            piece_rect,
+            CornerRadius::same(6),
+            if color == Color::White {
+                Color32::from_rgb(64, 77, 67)
+            } else {
+                Color32::from_rgb(192, 203, 184)
+            },
+        );
+        Self::paint_piece(ui, piece_rect, 62.0, piece_set, color, piece);
+        ui.painter().text(
+            egui::pos2(rect.center().x, rect.bottom() - 16.0),
+            Align2::CENTER_CENTER,
+            name,
+            FontId::proportional(14.0),
+            if hovering { gold } else { ui.visuals().text_color() },
+        );
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 
@@ -11616,6 +11786,11 @@ impl eframe::App for ChessApp {
                 });
                 ui.menu_button("View", |ui| {
                     Self::set_menu_item_font(ui);
+                    if ui.button(if self.board_3d_active { "Show 2D board" } else { "Show 3D board" }).clicked() {
+                        self.toggle_board_dimension(ui.ctx());
+                        ui.close();
+                    }
+                    ui.separator();
                     ui.menu_button("Workspace", |ui| {
                         Self::set_menu_item_font(ui);
                         for (mode, label) in [
@@ -11650,6 +11825,18 @@ impl eframe::App for ChessApp {
                     });
                     ui.menu_button("Board", |ui| {
                         Self::set_menu_item_font(ui);
+                        if self.board_3d_active {
+                            ui.set_min_width(245.0);
+                            let appearance = ui.add(
+                                egui::Slider::new(&mut self.board_3d_appearance, 0..=100)
+                                    .text("3D appearance"),
+                            ).on_hover_text("Adjusts gloss, brightness, and contrast together. 50 is the original look.");
+                            if appearance.changed() {
+                                self.board_3d_appearance_customized = true;
+                                self.save_preferences();
+                            }
+                            ui.separator();
+                        }
                         if ui
                             .checkbox(&mut self.piece_shadows, "Piece shadows")
                             .changed()
@@ -11722,26 +11909,6 @@ impl eframe::App for ChessApp {
                 ui.menu_button("Tools", |ui| {
                     Self::set_menu_item_font(ui);
                     ui.set_min_width(170.0);
-                    if ui
-                        .button(if self.board_3d_active {
-                            "Show 2D board"
-                        } else {
-                            "Show 3D board"
-                        })
-                        .clicked()
-                    {
-                        self.board_3d_active = !self.board_3d_active;
-                        self.move_animation = None;
-                        ui.ctx().request_repaint();
-                        ui.close();
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    if self.board_3d_active && ui.button("Save 3D board PNG").clicked() {
-                        if let Err(error) = self.save_3d_board_png(ui.ctx()) {
-                            self.engine_status = format!("Could not save board image: {error:?}");
-                        }
-                        ui.close();
-                    }
                     if ui.button("Position Editor…").clicked() {
                         #[cfg(target_arch = "wasm32")]
                         if let Err(error) = open_position_editor(&self.board.to_string()) {
@@ -13819,18 +13986,37 @@ impl eframe::App for ChessApp {
 
         if let Some((from, to)) = self.promotion {
             egui::Window::new("Choose promotion")
+                .title_bar(false)
                 .collapsible(false)
                 .resizable(false)
+                .movable(false)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .frame(
+                    Frame::window(&ctx.style())
+                        .fill(Color32::from_rgb(24, 28, 33))
+                        .stroke(Stroke::new(2.0, Color32::from_rgb(211, 173, 98)))
+                        .corner_radius(CornerRadius::same(10))
+                        .inner_margin(Margin::symmetric(18, 16)),
+                )
                 .show(ctx, |ui| {
+                    ui.label(
+                        RichText::new("Choose promotion")
+                            .size(22.0)
+                            .strong()
+                            .color(Color32::from_rgb(211, 173, 98)),
+                    );
+                    ui.label(format!("Pawn reaches {to}. Choose a piece."));
+                    ui.add_space(12.0);
+                    let color = self.board.color_on(from).unwrap_or(self.board.side_to_move());
                     ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
                         for (piece, name) in [
                             (Piece::Queen, "Queen"),
                             (Piece::Rook, "Rook"),
                             (Piece::Bishop, "Bishop"),
                             (Piece::Knight, "Knight"),
                         ] {
-                            if ui.button(name).clicked() {
+                            if Self::promotion_piece_card(ui, self.piece_set, color, piece, name).clicked() {
                                 self.promotion = None;
                                 let chess_move = ChessMove::new(from, to, Some(piece));
                                 if self.best_move_attempt.is_some() {

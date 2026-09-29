@@ -29,6 +29,9 @@ env_logger = "0.11"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wgpu = { version = "25", default-features = false, features = ["webgpu"] }
 
+[dev-dependencies]
+naga = { version = "25", features = ["wgsl-in"] }
+
 [profile.release]
 lto = "thin"
 opt-level = 2

@@ -1,9 +1,9 @@
 # Ironwood 3D board
 
-Ironwood's **Tools → Show 3D board** switches the in-game board inside egui.
+Ironwood's **View → Show 3D board** switches the in-game board inside egui.
 The Rust game supplies the same legal moves and position updates as the 2D view,
-including Stockfish and online-game paths. The in-game renderer rasterizes the
-board on the CPU, then displays it through egui's wgpu renderer. The models and
+including Stockfish and online-game paths. The in-game renderer draws the board
+with wgpu inside egui; the CPU renderer handles PNG export and fallback. The models and
 renderer are included in the existing PWA offline shell.
 
 Run `npm run dev:3d`, then open <http://127.0.0.1:8080/3d/>. The build goes

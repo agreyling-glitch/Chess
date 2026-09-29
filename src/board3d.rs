@@ -1,5 +1,6 @@
-//! The Poly Haven glTF pieces, projected into an egui mesh. Eframe sends the
-//! mesh through its wgpu renderer, in the same canvas and layout as the UI.
+//! Poly Haven chess geometry and the shared CPU/GPU scene description.
+//! The CPU rasterizer remains available for PNG export and renderer fallback.
+pub mod gpu;
 use chess::{Board, Color, File, Piece, Rank, Square};
 use egui::{Color32, ColorImage, Pos2, Rect, Vec2};
 use image::{ImageFormat, RgbImage};
@@ -98,7 +99,7 @@ struct Models {
 }
 static MODELS: OnceLock<Models> = OnceLock::new();
 struct BoardBase {
-    key: (usize, usize, bool, u32, u32, u32, Color32, u32),
+    key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32),
     image: ColorImage,
     depth: Vec<f32>,
 }
@@ -679,8 +680,13 @@ pub fn square_at(
     flipped: bool,
     view: View,
     board: &Board,
+    legal_targets: &[Square],
 ) -> Option<Square> {
     let camera = Camera::new(flipped, view);
+    let board_square = camera.square_at(pos, rect);
+    if board_square.is_some_and(|square| legal_targets.contains(&square)) {
+        return board_square;
+    }
     let mut nearest = None;
     let radius = rect.width() * 0.043;
     for rank in 0..8 {
@@ -705,7 +711,7 @@ pub fn square_at(
     }
     nearest
         .map(|(_, square)| square)
-        .or_else(|| camera.square_at(pos, rect))
+        .or(board_square)
 }
 
 pub fn square_center(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Pos2> {
@@ -726,6 +732,7 @@ pub fn image(
     last_move: Option<chess::ChessMove>,
     background: Color32,
     scale: f32,
+    appearance: f32,
 ) -> ColorImage {
     let camera = Camera::new(flipped, view);
     let width = (rect.width() * scale).ceil().max(1.0) as usize;
@@ -739,6 +746,7 @@ pub fn image(
         view.distance.to_bits(),
         background,
         scale.to_bits(),
+        appearance.to_bits(),
     );
     let (mut image, mut depth_buffer) = BOARD_BASE.with(|base| {
         let mut base = base.borrow_mut();
@@ -761,7 +769,7 @@ pub fn image(
                     Some(normals),
                 );
             }
-            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale);
+            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale, appearance);
             *base = Some(BoardBase {
                 key,
                 image,
@@ -771,6 +779,16 @@ pub fn image(
         let cached = base.as_ref().unwrap();
         (cached.image.clone(), cached.depth.clone())
     });
+    let triangles = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move);
+    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale, appearance);
+    image
+}
+
+fn dynamic_triangles(
+    board: &Board, rect: Rect, flipped: bool, view: View,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
+) -> Vec<Triangle> {
+    let camera = Camera::new(flipped, view);
     let mut triangles = Vec::with_capacity(40000);
     let mut piece_triangles = Vec::with_capacity(40000);
     for rank in 0..8 {
@@ -847,8 +865,39 @@ pub fn image(
         }
     }
     triangles.extend(piece_triangles);
-    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale);
-    image
+    triangles
+}
+
+fn appearance_color(color: Color32, appearance: f32) -> Color32 {
+    if appearance == 0.5 {
+        return color;
+    }
+    let strength = ((appearance - 0.5) * 2.0).clamp(-1.0, 1.0);
+    let contrast = 1.0 + 0.2 * strength;
+    let brightness = 0.08 * strength;
+    let adjust = |channel: u8| {
+        (((channel as f32 / 255.0 - 0.42) * contrast + 0.42 + brightness)
+            .clamp(0.0, 1.0) * 255.0) as u8
+    };
+    Color32::from_rgb(adjust(color.r()), adjust(color.g()), adjust(color.b()))
+}
+
+pub fn coordinate_labels(rect: Rect, flipped: bool, view: View) -> Vec<(char, Pos2)> {
+    let camera = Camera::new(flipped, view);
+    let front_z = if flipped { -4.22 } else { 4.22 };
+    let left_x = if flipped { 4.22 } else { -4.22 };
+    let mut labels = Vec::with_capacity(16);
+    for file in 0..8 {
+        if let Some((point, _)) = camera.project(V3::new(file as f32 - 3.5, 0.07, front_z), rect) {
+            labels.push(((b'a' + file as u8) as char, point));
+        }
+    }
+    for rank in 0..8 {
+        if let Some((point, _)) = camera.project(V3::new(left_x, 0.07, 3.5 - rank as f32), rect) {
+            labels.push(((b'1' + rank as u8) as char, point));
+        }
+    }
+    labels
 }
 
 fn rasterize(
@@ -858,6 +907,7 @@ fn rasterize(
     camera: Camera,
     rect: Rect,
     scale: f32,
+    appearance: f32,
 ) {
     let [width, height] = image.size;
     for tri in triangles {
@@ -953,7 +1003,8 @@ fn rasterize(
                                 };
                                 (interpolate(0), interpolate(1))
                             });
-                        if let Some(side) = side {
+                        let gloss = 1.0 + 0.75 * ((appearance - 0.5) * 2.0).clamp(-1.0, 1.0);
+                        let surface_color = if let Some(side) = side {
                             let texture = if side == Color::White {
                                 &textures().0
                             } else {
@@ -983,6 +1034,7 @@ fn rasterize(
                                     )
                                 },
                             );
+                            let specular = specular * gloss;
                             let reference = if side == Color::White { 210.0 } else { 48.0 };
                             let detail =
                                 (texture_brightness(texture, [u, v]) / reference).clamp(0.0, 1.35);
@@ -1016,12 +1068,14 @@ fn rasterize(
                                     )
                                 },
                             );
+                            let specular = specular * gloss;
                             Color32::from_rgb(
                                 (marble[0] * diffuse + specular).min(230.0) as u8,
                                 (marble[1] * diffuse + specular).min(230.0) as u8,
                                 (marble[2] * diffuse + specular).min(230.0) as u8,
                             )
-                        }
+                        };
+                        appearance_color(surface_color, appearance)
                     } else {
                         let alpha = tri.color.a() as f32 / 255.0;
                         let previous = image.pixels[index];
@@ -1089,6 +1143,60 @@ mod tests {
         }
     }
     #[test]
+    fn coordinate_labels_follow_board_flip() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(840.0, 600.0));
+        let normal = coordinate_labels(rect, false, View::default());
+        let flipped = coordinate_labels(rect, true, View::default());
+        assert_eq!(normal.len(), 16);
+        assert_eq!(flipped.len(), 16);
+        assert_eq!(normal[0].0, 'a');
+        assert_eq!(normal[7].0, 'h');
+        assert!(normal[0].1.x < normal[7].1.x);
+        assert!(flipped[0].1.x > flipped[7].1.x);
+        assert!(normal.iter().all(|(_, point)| rect.contains(*point)));
+        assert!(flipped.iter().all(|(_, point)| rect.contains(*point)));
+    }
+    #[test]
+    fn promotion_square_is_pickable_and_all_promoted_models_render() {
+        let before: Board = "7k/P7/8/8/8/8/8/K7 w - - 0 1".parse().unwrap();
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(840.0, 600.0));
+        let view = View::default();
+        let destination = square_center(Square::A8, rect, false, view).unwrap();
+        assert_eq!(square_at(destination, rect, false, view, &before, &[Square::A8]), Some(Square::A8));
+        let black_before: Board = "7k/8/8/8/8/8/p7/7K b - - 0 1".parse().unwrap();
+        let black_destination = square_center(Square::A1, rect, true, view).unwrap();
+        assert_eq!(
+            square_at(black_destination, rect, true, view, &black_before, &[Square::A1]),
+            Some(Square::A1)
+        );
+
+        let mut images = Vec::new();
+        for piece in [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight] {
+            let chess_move = chess::ChessMove::new(Square::A7, Square::A8, Some(piece));
+            assert!(chess::MoveGen::new_legal(&before).any(|candidate| candidate == chess_move));
+            let after = before.make_move_new(chess_move);
+            assert_eq!(after.piece_on(Square::A8), Some(piece));
+            let rendered = image(
+                &after,
+                Rect::from_min_size(Pos2::ZERO, Vec2::new(320.0, 240.0)),
+                false,
+                view,
+                None,
+                &[],
+                Some(chess_move),
+                Color32::BLACK,
+                1.0,
+                0.85,
+            );
+            images.push(rendered.pixels);
+        }
+        for first in 0..images.len() {
+            for second in first + 1..images.len() {
+                assert!(images[first] != images[second]);
+            }
+        }
+    }
+    #[test]
     fn default_board_highlights_leave_capture_headroom() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(600.0));
         let rendered = image(
@@ -1101,6 +1209,7 @@ mod tests {
             None,
             Color32::BLACK,
             1.0,
+            0.5,
         );
         assert!(
             rendered
@@ -1155,7 +1264,8 @@ mod tests {
             rect,
             false,
             View::default(),
-            &Board::default()
+            &Board::default(),
+            &[]
         )
         .is_some());
     }
@@ -1193,8 +1303,8 @@ mod tests {
         let e4 = Square::make_square(Rank::Fourth, File::E);
         let pawn = camera.project(V3::new(0.5, 0.43, 2.5), rect).unwrap().0;
         let target = camera.project(V3::new(0.5, 0.075, 0.5), rect).unwrap().0;
-        assert_eq!(square_at(pawn, rect, false, view, &board), Some(e2));
-        assert_eq!(square_at(target, rect, false, view, &board), Some(e4));
+        assert_eq!(square_at(pawn, rect, false, view, &board, &[]), Some(e2));
+        assert_eq!(square_at(target, rect, false, view, &board, &[e4]), Some(e4));
     }
     #[test]
     fn wide_canvas_fits_board_and_picks_squares() {
@@ -1210,7 +1320,7 @@ mod tests {
         }
         let e4 = Square::make_square(Rank::Fourth, File::E);
         let target = camera.project(V3::new(0.5, 0.075, 0.5), rect).unwrap().0;
-        assert_eq!(square_at(target, rect, false, view, &board), Some(e4));
+        assert_eq!(square_at(target, rect, false, view, &board, &[e4]), Some(e4));
     }
     #[test]
     fn arrow_anchor_tracks_square_when_board_flips_or_zooms() {
@@ -1240,6 +1350,7 @@ mod tests {
                 None,
                 Color32::BLACK,
                 1.0,
+                0.5,
             )
             .pixels
         };
@@ -1276,6 +1387,7 @@ mod tests {
                 None,
                 Color32::BLACK,
                 1.0,
+                0.5,
             )
         };
         let plain = render(None);
