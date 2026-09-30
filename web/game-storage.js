@@ -16,6 +16,71 @@ let fingerprintIndexPromise;
 let batchImport = null;
 let storageStatus = 'Checking browser storage…';
 
+let lichessBusy = false;
+let lichessRetryAt = 0;
+let lichessStatus = '';
+let lichessPgn = '';
+
+export function lichessExportUrl(input) {
+  const value = input.trim();
+  let path;
+  if (/^https?:\/\//i.test(value)) {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.hostname !== 'lichess.org' || url.port) {
+      throw new Error('Use an https://lichess.org game link.');
+    }
+    const match = url.pathname.match(/^\/([a-zA-Z0-9]{8})(?:[a-zA-Z0-9]{4})?(?:\/(?:white|black))?\/?$/);
+    if (!match) throw new Error('Paste a Lichess game link, or enter a username.');
+    path = `/game/export/${match[1]}`;
+  } else {
+    if (!/^[a-zA-Z0-9_-]{2,30}$/.test(value)) throw new Error('Enter a valid Lichess username or game link.');
+    path = `/api/games/user/${encodeURIComponent(value)}`;
+  }
+  const url = new URL(path, 'https://lichess.org');
+  url.search = new URLSearchParams({ max: '20', ongoing: 'false', finished: 'true',
+    moves: 'true', tags: 'true', clocks: 'true', opening: 'true', evals: 'false' });
+  return url.href;
+}
+
+window.ironwoodLichessStatus = () => lichessStatus;
+window.ironwoodPollLichess = () => {
+  const pgn = lichessPgn;
+  lichessPgn = '';
+  return pgn;
+};
+window.ironwoodFetchLichess = async input => {
+  if (lichessBusy || lichessPgn) return;
+  if (Date.now() < lichessRetryAt) {
+    lichessStatus = 'Lichess rate limit: wait a full minute before trying again.';
+    return;
+  }
+  lichessBusy = true;
+  lichessStatus = 'Fetching completed games from Lichess…';
+  try {
+    const response = await fetch(lichessExportUrl(input), {
+      headers: { Accept: 'application/x-chess-pgn' }, credentials: 'omit',
+      signal: AbortSignal.timeout(30000), cache: 'no-store',
+    });
+    if (response.status === 429) {
+      lichessRetryAt = Date.now() + 60000;
+      throw new Error('Lichess rate limit: wait a full minute before trying again.');
+    }
+    if (response.status === 404) throw new Error('Lichess user or game not found.');
+    if (!response.ok) throw new Error(`Lichess request failed (${response.status}). Try again later.`);
+    const pgn = await response.text();
+    if (!pgn.trim()) throw new Error('No completed games found for this user.');
+    if (!/^\[Event\s/m.test(pgn)) throw new Error('Lichess returned an unexpected game format.');
+    if (/^\[Result "\*"\]/m.test(pgn)) throw new Error('This game is still in progress. Import it after it finishes.');
+    lichessPgn = pgn;
+    lichessStatus = 'Games fetched. Continue to choose games to import.';
+  } catch (error) {
+    lichessStatus = error.name === 'TimeoutError' ? 'Lichess request timed out. Try again.' :
+      error instanceof TypeError ? 'Could not reach Lichess. Check your connection and try again.' : error.message;
+  } finally {
+    lichessBusy = false;
+  }
+};
+
 async function refreshStorageStatus() {
   if (!navigator.storage?.estimate) {
     storageStatus = 'Browser storage estimate unavailable';
@@ -602,8 +667,29 @@ export function gameDetails(json) {
   const moves = game.live_moves?.length || pgnMoveCount(game.review_pgn) || Math.max(0, (game.game_analysis?.length || 1) - 1);
   const analyzed = game.game_analysis?.filter(Boolean).length || 0;
   const analysisStatus = analyzed === 0 ? 'Not analyzed' : analyzed >= moves + 1 ? 'Complete' : 'Partial';
-  return { analysisStatus, title: `${white} vs ${black}`, white, black, playedAt, venue, result, moves, analyzed,
+  const whiteFideId = pgnTag(game.review_pgn, 'WhiteFideId') || null;
+  const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
+  return { analysisStatus, title: `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
     finalFen: game.final_board || game.board, category: imported ? 'imported' : 'mine' };
+}
+
+export function fideProfileUrl(id) {
+  const value = typeof id === 'string' ? id.trim() : '';
+  return /^\d+$/.test(value) && /[1-9]/.test(value)
+    ? `https://ratings.fide.com/profile/${value}` : null;
+}
+
+export function playerNameElement(player, fideId) {
+  const url = fideProfileUrl(fideId);
+  const element = document.createElement(url ? 'a' : 'span');
+  element.textContent = player || 'Unknown';
+  if (url) {
+    element.href = url;
+    element.target = '_blank';
+    element.rel = 'noopener noreferrer';
+    element.title = `Open FIDE profile (${fideId.trim()})`;
+  }
+  return element;
 }
 
 export function gameMatchesCategory(game, category) {
@@ -1073,12 +1159,15 @@ window.ironwoodOpenGameLibrary = async () => {
         const main = document.createElement('div');
         main.className = 'game-library-main';
         const name = document.createElement('strong');
-        name.textContent = `${game.favorite ? '★ ' : ''}${game.title}`;
+        // listGames reads these from the original PGN, including older saved records.
+        const fide = game;
+        name.append(game.favorite ? '★ ' : '', playerNameElement(game.white, fide.whiteFideId),
+          ' vs ', playerNameElement(game.black, fide.blackFideId));
         const players = document.createElement('div');
         players.className = 'game-library-players';
-        for (const [side, player] of [['White', game.white], ['Black', game.black]]) {
+        for (const [side, player, fideId] of [['White', game.white, fide.whiteFideId], ['Black', game.black, fide.blackFideId]]) {
           const label = document.createElement('span');
-          label.textContent = `${side}: ${player || 'Unknown'}`;
+          label.append(`${side}: `, playerNameElement(player, fideId));
           players.append(label);
         }
         const result = document.createElement('span');

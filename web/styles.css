@@ -55,6 +55,9 @@ canvas { display:block; }
 .game-library-main span { color:#abb0b3; font-size:13px; }
 .game-library-players { display:flex; flex-wrap:wrap; gap:4px 12px; }
 .game-library-players span { color:#dce1dc; }
+.game-library-main a { color:#d3ad62; text-decoration:underline; text-underline-offset:3px; }
+.game-library-main a:hover { color:#f1ce83; }
+.game-library-main a:focus-visible { outline:2px solid #d3ad62; outline-offset:3px; }
 .game-library-main .game-library-result { color:#d3ad62; font-weight:600; }
 .game-library-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:3px; }
 .game-library-actions button:hover,.game-library-actions button:focus-visible { border-color:#d3ad62; }

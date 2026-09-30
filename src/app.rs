@@ -58,6 +58,7 @@ struct BatchPgnGame {
     result: String,
     date: String,
     site: String,
+    time_control: String,
 }
 
 impl BatchPgnGame {
@@ -68,6 +69,7 @@ impl BatchPgnGame {
             result: ChessApp::pgn_tag(&text, "Result").unwrap_or_else(|| "*".into()),
             date: ChessApp::pgn_tag(&text, "Date").unwrap_or_default(),
             site: ChessApp::pgn_tag(&text, "Site").unwrap_or_default(),
+            time_control: ChessApp::pgn_tag(&text, "TimeControl").unwrap_or_default(),
             text,
             selected: false,
         }
@@ -114,6 +116,12 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
+    fn fetch_lichess(input: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollLichess)]
+    fn poll_lichess() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessStatus)]
+    fn lichess_status() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCopyBoard)]
     fn copy_board_image(fen: &str, settings: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodBeginBoardPngCopy)]
@@ -1056,6 +1064,8 @@ struct PersistedGame {
 struct UserPreferences {
     workspace_mode: WorkspaceMode,
     show_coordinates: bool,
+    show_highlighted_move: bool,
+    show_radial_light: bool,
     show_board_frame: bool,
     piece_shadows: bool,
     show_best_move_arrows: bool,
@@ -1075,6 +1085,8 @@ impl Default for UserPreferences {
         Self {
             workspace_mode: WorkspaceMode::default(),
             show_coordinates: true,
+            show_highlighted_move: true,
+            show_radial_light: true,
             show_board_frame: true,
             piece_shadows: true,
             show_best_move_arrows: true,
@@ -1096,6 +1108,8 @@ impl UserPreferences {
         Self {
             workspace_mode: game.workspace_mode,
             show_coordinates: game.show_coordinates,
+            show_highlighted_move: true,
+            show_radial_light: true,
             show_board_frame: game.show_board_frame,
             piece_shadows: game.piece_shadows,
             show_best_move_arrows: game.show_best_move_arrows,
@@ -1117,6 +1131,8 @@ pub struct ChessApp {
     board_3d_active: bool,
     board_3d_theme: crate::board3d::Theme,
     board_3d_distance: f32,
+    board_3d_yaw: f32,
+    board_3d_elevation: f32,
     board_3d_appearance: u8,
     board_3d_appearance_customized: bool,
     board_3d_rendered_distance: f32,
@@ -1136,6 +1152,8 @@ pub struct ChessApp {
     workspace_mode: WorkspaceMode,
     compact_panel: CompactPanel,
     show_coordinates: bool,
+    show_highlighted_move: bool,
+    show_radial_light: bool,
     show_board_frame: bool,
     piece_shadows: bool,
     show_best_move_arrows: bool,
@@ -1240,6 +1258,7 @@ pub struct ChessApp {
     batch_pgn_stopped: bool,
     pgn_analyze_after_import: bool,
     import_input: String,
+    lichess_input: String,
     pgn_input: String,
     pgn_error: Option<String>,
     print_confirm_open: bool,
@@ -2164,6 +2183,8 @@ impl ChessApp {
         });
         let workspace_mode = preferences.workspace_mode;
         let show_coordinates = preferences.show_coordinates;
+        let show_highlighted_move = preferences.show_highlighted_move;
+        let show_radial_light = preferences.show_radial_light;
         let show_board_frame = preferences.show_board_frame;
         let piece_shadows = preferences.piece_shadows;
         let show_best_move_arrows = preferences.show_best_move_arrows;
@@ -2224,6 +2245,8 @@ impl ChessApp {
             board_3d_active: preferences.board_3d_active,
             board_3d_theme: preferences.board_3d_theme,
             board_3d_distance: crate::board3d::View::default().distance,
+            board_3d_yaw: 0.0,
+            board_3d_elevation: crate::board3d::View::default().elevation,
             board_3d_appearance,
             board_3d_appearance_customized: preferences.board_3d_appearance_customized,
             board_3d_rendered_distance: crate::board3d::View::default().distance,
@@ -2243,6 +2266,8 @@ impl ChessApp {
             workspace_mode,
             compact_panel: CompactPanel::default(),
             show_coordinates,
+            show_highlighted_move,
+            show_radial_light,
             show_board_frame,
             piece_shadows,
             show_best_move_arrows,
@@ -2357,6 +2382,7 @@ impl ChessApp {
             batch_pgn_stopped: false,
             pgn_analyze_after_import: false,
             import_input: String::new(),
+            lichess_input: String::new(),
             pgn_input: saved
                 .as_ref()
                 .and_then(|game| game.review_pgn.clone())
@@ -2918,35 +2944,92 @@ impl ChessApp {
         if !self.pgn_dialog_open {
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let pgn = poll_lichess();
+            if !pgn.is_empty() {
+                self.import_input = pgn;
+                self.pgn_error = None;
+            }
+        }
         let mut import = false;
         let mut cancel = false;
         let response = egui::Modal::new(egui::Id::new("import_pgn"))
             .frame(
                 Frame::popup(&ctx.style_of(ctx.theme()))
+                    .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
                     .corner_radius(CornerRadius::same(12))
                     .inner_margin(Margin::same(24)),
             )
             .show(ctx, |ui| {
-                ui.set_width((ctx.screen_rect().width() - 48.0).clamp(320.0, 620.0));
-                ui.label(RichText::new("Import game(s)").size(30.0).strong());
-                ui.label(
-                    RichText::new("Paste PGN or Ironwood analysis JSON below, or drag a .pgn or .json file onto the app. JSON restores saved analysis without rerunning Stockfish.")
-                        .color(ui.visuals().weak_text_color()),
-                );
-                ui.add_space(14.0);
+                let gold = Color32::from_rgb(211, 173, 98);
+                ui.set_width((ctx.screen_rect().width() - 72.0).clamp(240.0, 620.0));
+                ui.spacing_mut().item_spacing.y = 8.0;
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Import Games").size(28.0).strong());
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        cancel = ui.add_sized([30.0, 30.0],
+                            egui::Button::new(RichText::new("×").size(24.0).color(gold))
+                                .frame(false))
+                            .on_hover_text("Close Import Games")
+                            .clicked();
+                    });
+                });
+                ui.label(RichText::new("Bring your games into Ironwood for review and analysis.").weak());
+                ui.add_space(8.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("import_options")
+                    .max_height((ctx.screen_rect().height() - 200.0).max(150.0))
+                    .show_gold(ui, |ui| {
+                #[cfg(target_arch = "wasm32")]
+                Frame::new()
+                    .fill(ui.visuals().faint_bg_color)
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(90, 77, 51)))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Margin::same(14))
+                    .show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    ui.label(RichText::new("From Lichess").size(17.0).strong().color(gold));
+                    ui.label(RichText::new("Your latest 20 completed games, or a single game link. No login needed.").size(13.0).weak());
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut self.lichess_input)
+                            .hint_text("Lichess username or game URL")
+                            .desired_width((ui.available_width() - 100.0).max(80.0)));
+                        if ui.add_enabled(!self.lichess_input.trim().is_empty(), egui::Button::new("Fetch games")
+                            .stroke(Stroke::new(1.0, gold))).clicked() {
+                            ensure_imported_index();
+                            fetch_lichess(&self.lichess_input);
+                        }
+                    });
+                    let status = lichess_status();
+                    if !status.is_empty() { ui.label(RichText::new(status).size(13.0).weak()); }
+                    ctx.request_repaint_after(std::time::Duration::from_millis(200));
+                });
+                ui.add_space(4.0);
+                Frame::new()
+                    .fill(ui.visuals().faint_bg_color)
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(90, 77, 51)))
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Margin::same(14))
+                    .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.label(RichText::new("Paste a game or collection").size(17.0).strong().color(gold));
+                ui.label(RichText::new("Paste PGN or analysis JSON, or drag a .pgn or .json file onto the app.").size(13.0).weak());
                 egui::ScrollArea::vertical()
                     .id_salt("import_game_text")
-                    .max_height(300.0)
-                    .auto_shrink([false, false])
+                    .max_height(180.0)
+                    .auto_shrink([false, true])
                     .show_gold(ui, |ui| {
                         ui.add(
                             egui::TextEdit::multiline(&mut self.import_input)
                                 .desired_width(ui.available_width())
-                                .desired_rows(14)
-                                .hint_text("[Event \"Example\"]\n\n1. e4 e5 2. Nf3 Nc6 ...\n\nor { \"schema\": \"ironwood.analyzed-game/v1\", ... }")
+                                .desired_rows(7)
+                                .hint_text("[Event \"Example\"]\n[White \"Player 1\"]\n[Black \"Player 2\"]\n\n1. e4 e5 2. Nf3 Nc6 ...")
                                 .font(egui::TextStyle::Monospace),
                         );
                     });
+                ui.label(RichText::new("Analysis JSON restores your saved analysis immediately.").size(12.0).weak());
+                });
                 if let Some(error) = &self.pgn_error {
                     ui.label(RichText::new(error).color(Color32::from_rgb(232, 112, 112)));
                 }
@@ -2957,12 +3040,14 @@ impl ChessApp {
                 );
                 ui.label(
                     RichText::new(
-                        "Uses the Full game quality setting for every position. You can pause or stop it.",
+                        "Uses your Full game quality setting. You can pause or stop analysis.",
                     )
                     .size(13.0)
                     .color(ui.visuals().weak_text_color()),
                 );
+                });
                 ui.add_space(10.0);
+                ui.separator();
                 ui.horizontal(|ui| {
                     if ui.button("Clear").clicked() {
                         self.import_input.clear();
@@ -2970,9 +3055,9 @@ impl ChessApp {
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         import = ui
-                            .add_enabled(!self.import_input.trim().is_empty(), egui::Button::new("Continue"))
+                            .add_enabled(!self.import_input.trim().is_empty(), egui::Button::new(RichText::new("Continue").strong().color(Color32::from_rgb(30, 26, 20)))
+                                .fill(gold).min_size(Vec2::new(110.0, 34.0)))
                             .clicked();
-                        cancel = ui.button("Cancel").clicked();
                     });
                 });
         });
@@ -2981,6 +3066,26 @@ impl ChessApp {
         } else if cancel || response.should_close() {
             self.pgn_dialog_open = false;
             self.pgn_error = None;
+        }
+    }
+
+    fn fide_profile_url(pgn: &str, white: bool) -> Option<String> {
+        let id = Self::pgn_tag(pgn, if white { "WhiteFideId" } else { "BlackFideId" })?;
+        let id = id.trim();
+        (id.bytes().all(|ch| ch.is_ascii_digit()) && id.bytes().any(|ch| ch != b'0'))
+            .then(|| format!("https://ratings.fide.com/profile/{id}"))
+    }
+
+    fn player_name_ui(&self, ui: &mut egui::Ui, name: &str, white: bool) {
+        let text = RichText::new(name).size(17.0).strong();
+        if let Some(url) = Self::fide_profile_url(&self.pgn_input, white) {
+            let response = ui.link(text.color(Color32::from_rgb(211, 173, 98)))
+                .on_hover_text("Open FIDE profile in a new tab");
+            if response.clicked() {
+                ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            }
+        } else {
+            ui.label(text);
         }
     }
 
@@ -3230,7 +3335,7 @@ impl ChessApp {
                                     );
                                     ui.label(&game.result);
                                 });
-                                let details = [&game.date, &game.site]
+                                let details = [&game.date, &game.time_control, &game.site]
                                     .into_iter()
                                     .filter(|s| !s.is_empty() && *s != "?")
                                     .map(String::as_str)
@@ -4252,7 +4357,8 @@ impl ChessApp {
             }
         }
         let response = if let Some(index) = hover_index {
-            response.on_hover_ui(|ui| {
+            let show_details = |ui: &mut egui::Ui| {
+                ui.set_max_width(290.0);
                 let position = self.graph_position_label(index, true);
                 ui.label(RichText::new(position).strong());
                 if !self.note_at(index).is_empty() {
@@ -4285,7 +4391,12 @@ impl ChessApp {
                         .small()
                         .weak(),
                 );
-            })
+            };
+            if expanded {
+                response.on_hover_ui_at_pointer(show_details)
+            } else {
+                response.on_hover_ui(show_details)
+            }
         } else {
             response
         };
@@ -4490,7 +4601,7 @@ impl ChessApp {
                         } else {
                             Color32::from_rgb(76, 116, 92)
                         };
-                        if last_move.is_some_and(|chess_move| chess_move.get_source() == square || chess_move.get_dest() == square) {
+                        if self.show_highlighted_move && last_move.is_some_and(|chess_move| chess_move.get_source() == square || chess_move.get_dest() == square) {
                             color = Self::blend_color(color, Color32::from_rgb(211, 173, 98), 0.42);
                         }
                         ui.painter().rect_filled(square_rect, 0.0, color);
@@ -7293,6 +7404,8 @@ impl ChessApp {
             let preferences = UserPreferences {
                 workspace_mode: self.workspace_mode,
                 show_coordinates: self.show_coordinates,
+                show_highlighted_move: self.show_highlighted_move,
+                show_radial_light: self.show_radial_light,
                 show_board_frame: self.show_board_frame,
                 piece_shadows: self.piece_shadows,
                 show_best_move_arrows: self.show_best_move_arrows,
@@ -8575,10 +8688,8 @@ impl ChessApp {
         board_rect: egui::Rect,
         chess_move: ChessMove,
         flipped: bool,
-        distance: f32,
+        view: crate::board3d::View,
     ) {
-        let mut view = crate::board3d::View::default();
-        view.distance = distance;
         let Some(source) =
             crate::board3d::square_center(chess_move.get_source(), board_rect, flipped, view)
         else {
@@ -8632,9 +8743,8 @@ impl ChessApp {
 
         let size = 1200.0;
         let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(size));
-        let mut view = crate::board3d::View::default();
-        view.distance = self.board_3d_distance;
-        let image = crate::board3d::image_with_theme(
+        let view = self.board_3d_view();
+        let image = crate::board3d::image_with_options(
             board,
             rect,
             self.flipped,
@@ -8646,6 +8756,7 @@ impl ChessApp {
             1.0,
             self.board_3d_appearance as f32 / 100.0,
             self.board_3d_theme,
+            self.show_radial_light,
         );
         let mut rgba = Vec::with_capacity(image.pixels.len() * 4);
         for pixel in image.pixels {
@@ -8660,7 +8771,7 @@ impl ChessApp {
     }
 
     fn board_3d_preview_rect(&self, rect: egui::Rect, view: crate::board3d::View) -> egui::Rect {
-        let mut rendered_view = crate::board3d::View::default();
+        let mut rendered_view = self.board_3d_view();
         rendered_view.distance = self.board_3d_rendered_distance;
         let a4 = Square::make_square(Rank::Fourth, File::A);
         let h4 = Square::make_square(Rank::Fourth, File::H);
@@ -8690,9 +8801,43 @@ impl ChessApp {
         ctx.request_repaint();
     }
 
+    fn board_3d_view(&self) -> crate::board3d::View {
+        crate::board3d::View {
+            yaw: self.board_3d_yaw,
+            elevation: self.board_3d_elevation,
+            distance: self.board_3d_distance,
+        }
+    }
+
+    fn board_3d_view_rotated(&self) -> bool {
+        let view = crate::board3d::View::default();
+        self.board_3d_yaw != view.yaw || self.board_3d_elevation != view.elevation
+    }
+
+    fn reset_board_3d_view(&mut self, ctx: &egui::Context) {
+        let view = crate::board3d::View::default();
+        self.board_3d_yaw = view.yaw;
+        self.board_3d_elevation = view.elevation;
+        self.board_3d_distance = view.distance;
+        self.board_3d_zoom_until = 0.0;
+        ctx.request_repaint();
+    }
+
     fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2) -> egui::InnerResponse<()> {
         ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
-            let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+            let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            if response.double_clicked_by(egui::PointerButton::Secondary) {
+                self.reset_board_3d_view(ui.ctx());
+            } else if response.dragged_by(egui::PointerButton::Secondary) {
+                let mut view = self.board_3d_view();
+                view.orbit(ui.input(|input| input.pointer.delta()));
+                self.board_3d_yaw = view.yaw;
+                self.board_3d_elevation = view.elevation;
+                // A scaled zoom preview cannot represent a changed camera angle.
+                self.board_3d_zoom_until = 0.0;
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                ui.ctx().request_repaint();
+            }
             if response.hovered() {
                 let scroll = ui.input(|input| input.smooth_scroll_delta.y);
                 if scroll != 0.0 {
@@ -8709,23 +8854,24 @@ impl ChessApp {
                 ui.ctx()
                     .request_repaint_after(std::time::Duration::from_millis(160));
             }
-            let mut view = crate::board3d::View::default();
-            view.distance = self.board_3d_distance;
+            let view = self.board_3d_view();
+            let visible_last_move = self.last_move.filter(|_| self.show_highlighted_move);
             let background = ui.visuals().panel_fill;
             if let Some(target_format) = self.board_3d_gpu_format {
                 let key = format!(
                     "{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{:?}",
                     self.board, size.x.to_bits(), size.y.to_bits(),
-                    self.flipped, self.selected, self.legal_targets, self.last_move,
+                    self.flipped, self.selected, self.legal_targets, visible_last_move,
                     background, ui.ctx().pixels_per_point().to_bits(), self.board_3d_theme,
                 );
+                let key = format!("{key}:{}:{}:{}", view.yaw.to_bits(), view.elevation.to_bits(), self.show_radial_light);
                 if self.board_3d_gpu_key != key || self.board_3d_gpu_scene.is_none() {
                     self.board_3d_gpu_scene_id = self.board_3d_gpu_scene_id.wrapping_add(1);
                     self.board_3d_gpu_scene = Some(crate::board3d::gpu::scene(
                         &self.board, rect, self.flipped, view, self.selected,
-                        &self.legal_targets, self.last_move, background,
+                        &self.legal_targets, visible_last_move, background,
                         ui.ctx().pixels_per_point(), target_format, self.board_3d_gpu_scene_id,
-                        self.board_3d_theme,
+                        self.board_3d_theme, self.show_radial_light,
                     ));
                     self.board_3d_gpu_key = key;
                     self.board_3d_rendered_distance = view.distance;
@@ -8756,27 +8902,28 @@ impl ChessApp {
                     self.flipped,
                     self.selected,
                     self.legal_targets,
-                    self.last_move,
+                    visible_last_move,
                     background,
                     scale.to_bits(),
                     self.board_3d_appearance,
                     self.board_3d_theme,
                 );
+                let render_key = format!("{render_key}:{}:{}:{}", view.yaw.to_bits(), view.elevation.to_bits(), self.show_radial_light);
                 if self.board_3d_render_key != render_key
                     && (!zooming || self.board_3d_texture.is_none())
                 {
-                    let image = crate::board3d::image_with_theme(
+                    let image = crate::board3d::image_with_options(
                         &self.board,
                         rect,
                         self.flipped,
                         view,
                         self.selected,
                         &self.legal_targets,
-                        self.last_move,
+                        visible_last_move,
                         background,
                         scale,
                         self.board_3d_appearance as f32 / 100.0,
-                        self.board_3d_theme,
+                        self.board_3d_theme, self.show_radial_light,
                     );
                     if let Some(texture) = &mut self.board_3d_texture {
                         texture.set(image, egui::TextureOptions::LINEAR);
@@ -8800,7 +8947,7 @@ impl ChessApp {
                     );
                 }
             }
-            if self.show_coordinates {
+            if self.show_coordinates && !self.board_3d_view_rotated() {
                 let labels = crate::board3d::coordinate_labels(rect, self.flipped, view, self.board_3d_theme);
                 let file_spacing = labels.get(0).zip(labels.get(1))
                     .map(|((_, a), (_, b))| a.distance(*b))
@@ -9112,7 +9259,7 @@ impl ChessApp {
                                     ui.label(
                                         RichText::new("●").color(Color32::from_rgb(76, 116, 92)),
                                     );
-                                    ui.label(RichText::new(&top_player).size(17.0).strong());
+                                    self.player_name_ui(ui, &top_player, top_is_white);
                                     if let Some((white_time, black_time)) = fics_clocks {
                                         let (seconds, active) = if top_is_white {
                                             (white_time, clock_turn == Color::White)
@@ -9137,6 +9284,13 @@ impl ChessApp {
                                         .on_hover_text(if self.board_3d_active { "Switch to 2D board" } else { "Switch to 3D board" })
                                         .clicked() {
                                             self.toggle_board_dimension(ui.ctx());
+                                        }
+                                        if self.board_3d_active && self.board_3d_view_rotated()
+                                            && ui.add_sized([29.0, 22.0], egui::Button::new("↺"))
+                                                .on_hover_text("Reset 3D view (or double right-click the board)")
+                                                .clicked()
+                                        {
+                                            self.reset_board_3d_view(ui.ctx());
                                         }
                                     });
                                 },
@@ -9195,7 +9349,7 @@ impl ChessApp {
                                                 } else {
                                                     Color32::from_rgb(76, 116, 92)
                                                 };
-                                                if self.last_move.is_some_and(|m| {
+                                                if self.show_highlighted_move && self.last_move.is_some_and(|m| {
                                                     m.get_source() == square
                                                         || m.get_dest() == square
                                                 }) {
@@ -9266,7 +9420,7 @@ impl ChessApp {
                                                         .stroke(Stroke::NONE)
                                                         .corner_radius(0.0),
                                                 );
-                                                if self.prediction_index == 0
+                                                if self.show_highlighted_move && self.prediction_index == 0
                                                     && self
                                                         .last_move
                                                         .is_some_and(|m| m.get_dest() == square)
@@ -9470,7 +9624,7 @@ impl ChessApp {
                             board_response.response.rect,
                             best_move,
                             self.flipped,
-                            self.board_3d_distance,
+                            self.board_3d_view(),
                         );
                     } else {
                         Self::draw_best_move_arrow(
@@ -9502,7 +9656,7 @@ impl ChessApp {
                                         RichText::new("●")
                                             .color(Color32::from_rgb(230, 178, 65)),
                                     );
-                                    ui.label(RichText::new(bottom_player).size(17.0).strong());
+                                    self.player_name_ui(ui, bottom_player, bottom_is_white);
                                     if let Some((white_time, black_time)) = fics_clocks {
                                         let (seconds, active) = if bottom_is_white {
                                             (white_time, clock_turn == Color::White)
@@ -10340,10 +10494,9 @@ impl ChessApp {
                     let board = self.review_positions.get(index).unwrap_or(&self.board);
                     match self.board_3d_png(board, ui.ctx()) {
                         Ok(png) => {
-                            let coordinates = if self.show_coordinates {
+                            let coordinates = if self.show_coordinates && !self.board_3d_view_rotated() {
                                 let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(1200.0));
-                                let mut view = crate::board3d::View::default();
-                                view.distance = self.board_3d_distance;
+                                let view = self.board_3d_view();
                                 let labels = crate::board3d::coordinate_labels(rect, self.flipped, view, self.board_3d_theme);
                                 let spacing = labels.get(0).zip(labels.get(1))
                                     .map(|((_, a), (_, b))| a.distance(*b))
@@ -11005,6 +11158,26 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn board_visibility_preferences_default_on_and_preserve_off_values() {
+        let defaults: super::UserPreferences = serde_json::from_str("{}").unwrap();
+        assert!(defaults.show_highlighted_move && defaults.show_radial_light);
+        let preferences: super::UserPreferences = serde_json::from_str(
+            "{\"show_highlighted_move\":false,\"show_radial_light\":false}"
+        ).unwrap();
+        let restored: super::UserPreferences = serde_json::from_str(&serde_json::to_string(&preferences).unwrap()).unwrap();
+        assert!(!restored.show_highlighted_move && !restored.show_radial_light);
+    }
+    #[test]
+    fn fide_profile_links_use_the_correct_player_and_reject_invalid_ids() {
+        let pgn = "[WhiteFideId \"1503014\"]\n[BlackFideId \"123456\"]\n";
+        assert_eq!(super::ChessApp::fide_profile_url(pgn, true).as_deref(), Some("https://ratings.fide.com/profile/1503014"));
+        assert_eq!(super::ChessApp::fide_profile_url(pgn, false).as_deref(), Some("https://ratings.fide.com/profile/123456"));
+        for id in ["", "0", "000", "?", "-1", "12/34", "javascript:alert(1)"] {
+            assert!(super::ChessApp::fide_profile_url(&format!("[WhiteFideId \"{id}\"]"), true).is_none());
+        }
+        assert!(super::ChessApp::fide_profile_url("", false).is_none());
+    }
     #[test]
     fn elo_calculator_matches_standard_expected_score_and_changes() {
         let expected = ChessApp::elo_expected_score(1200, 1400);
@@ -12084,7 +12257,13 @@ impl eframe::App for ChessApp {
                                 self.board_3d_appearance_customized = true;
                                 self.save_preferences();
                             }
+                            if ui.checkbox(&mut self.show_radial_light, "Show radial light below board").changed() {
+                                self.save_preferences();
+                            }
                             ui.separator();
+                        }
+                        if ui.checkbox(&mut self.show_highlighted_move, "Show highlighted move").changed() {
+                            self.save_preferences();
                         }
                         if ui
                             .checkbox(&mut self.piece_shadows, "Piece shadows")

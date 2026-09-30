@@ -6,6 +6,20 @@ Stockfish 19 runs behind a dedicated worker boundary; its full NNUE WebAssembly
 build uses SharedArrayBuffer, Atomics, and pthread workers when the page is
 cross-origin isolated.
 
+## Import from Lichess
+
+In the browser app, choose **Game → Import…** and enter a Lichess username
+or an `https://lichess.org/…` game link, then click **Fetch games**. Username
+imports fetch the latest 20 completed games without requiring login. Click
+**Continue** to choose games in the existing batch importer, which skips
+duplicates. A single game opens for review; enable **Analyze the full game
+after import** to analyze it immediately. Imported games remain available in
+Saved Games for later review and analysis.
+
+Fetching requires an internet connection. Ironwood makes one Lichess request
+at a time and waits at least one minute after a rate-limit response. Live
+games cannot be imported. No additional libraries or Lichess assets are bundled.
+
 ## Run
 
 ```powershell

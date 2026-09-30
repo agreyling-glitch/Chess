@@ -1,7 +1,7 @@
 ---
 title: "Features"
-lastmod: 2026-09-29T00:00:00-05:00
-description: "Play and analyze chess in 2D or 3D, meet FICS opponents, and keep your games on your device."
+lastmod: 2026-09-30T00:00:00-05:00
+description: "Play and analyze chess in 2D or 3D, meet FICS opponents, import Lichess games, and keep your games on your device."
 layout: "features"
 url: "/features/"
 ---
@@ -37,6 +37,10 @@ Upload, paste, or drop a chessboard screenshot into the position editor. Recogni
 ## Analyze the whole game
 
 Run Stockfish 19 with its full NNUE network directly in your browser. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Add a personal note to any move or the starting position. Notes stay separate from engine analysis and appear in the expanded graph and printed report. The Game Moves right-click menu also copies the selected position as FEN or a board image, or copies a partial or full PGN. Choose letter or figurine notation for the move list.
+
+## Import games from Lichess
+
+Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch their latest 20 completed games, or paste an individual game link. No Lichess login or API token is needed. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and run Stockfish analysis, or choose immediate analysis when importing a single game. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
 
 ## Build your library
 

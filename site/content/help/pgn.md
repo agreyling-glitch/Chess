@@ -23,3 +23,5 @@ The lines in brackets are **tags** with game details. `1.` starts White's first 
 In Ironwood, you can import PGN to replay and analyze a game. Use the game's copy or export controls to share the PGN, either through the selected move or for the full game. Ironwood can include supported analysis comments in exported PGN, including evaluation, depth, nodes, CPL, and a suggested line. A PGN with those comments can restore some analysis when imported; a plain PGN supplies the moves and can be analyzed again.
 
 For a game that begins from a custom position, PGN can include `SetUp` and `FEN` tags. The FEN says where the board started; the PGN then records what happened next. For Ironwood's richer saved analysis, use its [analysis JSON](/help/saving-and-sharing/) export.
+
+For completed Lichess games, Ironwood can fetch the PGN for you. See [Import games from Lichess](/help/import-from-lichess/).

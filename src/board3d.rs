@@ -125,7 +125,7 @@ struct Models {
 static MODELS: OnceLock<Models> = OnceLock::new();
 static WOOD_MODELS: OnceLock<Models> = OnceLock::new();
 struct BoardBase {
-    key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32, Theme),
+    key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32, Theme, bool),
     image: ColorImage,
     depth: Vec<f32>,
 }
@@ -499,6 +499,14 @@ impl Default for View {
         }
     }
 }
+impl View {
+    /// Orbit in logical screen pixels, avoiding the vertical camera pole.
+    pub fn orbit(&mut self, delta: Vec2) {
+        self.yaw = (self.yaw - delta.x * 0.008).rem_euclid(std::f32::consts::TAU);
+        self.elevation = (self.elevation + delta.y * 0.008).clamp(0.20, 1.45);
+    }
+}
+
 impl Camera {
     fn new(flipped: bool, view: View) -> Self {
         let yaw = view.yaw + if flipped { std::f32::consts::PI } else { 0.0 };
@@ -588,13 +596,20 @@ fn studio_lighting_for_theme(
 ) -> (f32, f32) {
     // The Poly Haven glTF has no lights. Recreate its preview's soft studio
     // key/fill and glossy marble highlights within this CPU rasterizer.
-    let key = if theme == Theme::Wood {
+    let wood_board = theme == Theme::Wood && side.is_none();
+    let key = if wood_board {
+        V3::new(0.0, 1.0, 0.0)
+    } else if theme == Theme::Wood {
         V3::new(-0.25, 1.0, 0.05).unit()
     } else {
         V3::new(-0.55, 1.0, 0.75).unit()
     };
     let fill = V3::new(0.8, 0.55, -0.35).unit();
-    let view = camera.eye.sub(point).unit();
+    // A broad overhead reflection keeps the board's light pool centered
+    // across ranks, independent of the camera's near edge or orbit.
+    let view = if wood_board {
+        V3::new(-point.x, 18.0, -point.z).unit()
+    } else { camera.eye.sub(point).unit() };
     let black = side == Some(Color::Black);
     let center_light = if theme == Theme::Wood {
         (1.04 - 0.003 * (point.x * point.x + point.z * point.z)).clamp(0.96, 1.04)
@@ -611,7 +626,9 @@ fn studio_lighting_for_theme(
     .clamp(0.32, if black { if theme == Theme::Wood { 1.12 } else { 1.08 } } else { 0.92 });
     let key_reflection = normal.dot(key.add(view).unit()).max(0.0);
     let fill_reflection = normal.dot(fill.add(view).unit()).max(0.0);
-    let reflected = if theme == Theme::Wood {
+    let reflected = if wood_board {
+        12.0 * key_reflection.powf(8.0) + 10.0 * key_reflection.powf(24.0)
+    } else if theme == Theme::Wood {
         22.0 * key_reflection.powf(20.0)
             + 45.0 * key_reflection.powf(48.0)
             + 5.0 * fill_reflection.powf(32.0)
@@ -959,6 +976,14 @@ pub fn image_with_theme(
     selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
     background: Color32, scale: f32, appearance: f32, theme: Theme,
 ) -> ColorImage {
+    image_with_options(board, rect, flipped, view, selected, targets, last_move, background, scale, appearance, theme, true)
+}
+
+pub fn image_with_options(
+    board: &Board, rect: Rect, flipped: bool, view: View,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
+    background: Color32, scale: f32, appearance: f32, theme: Theme, show_radial_light: bool,
+) -> ColorImage {
     let camera = Camera::new(flipped, view);
     let width = (rect.width() * scale).ceil().max(1.0) as usize;
     let height = (rect.height() * scale).ceil().max(1.0) as usize;
@@ -973,13 +998,14 @@ pub fn image_with_theme(
         scale.to_bits(),
         appearance.to_bits(),
         theme,
+        show_radial_light,
     );
     let (mut image, mut depth_buffer) = BOARD_BASE.with(|base| {
         let mut base = base.borrow_mut();
         if base.as_ref().is_none_or(|cached| cached.key != key) {
             let mut image = ColorImage::filled([width, height], background);
             let mut depth = vec![0.0_f32; width * height];
-            let mut board_triangles = board_glow(camera, rect, theme);
+            let mut board_triangles = if show_radial_light { board_glow(camera, rect, theme) } else { Vec::new() };
             let board_model = &theme_models(theme).board;
             for face in board_model.indices.chunks_exact(3) {
                 let points = std::array::from_fn(|i| board_model.positions[face[i] as usize]);
@@ -1411,7 +1437,59 @@ fn rasterize(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn radial_light_toggle_updates_cached_rendering() {
+        let board = Board::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(220.0));
+        let render = |glow| image_with_options(&board, rect, false, View::default(),
+            None, &[], None, Color32::from_rgb(24, 27, 31), 1.0, 0.5, Theme::Wood, glow);
+        let on = render(true);
+        let off = render(false);
+        assert_ne!(on, off);
+        assert_eq!(on, render(true));
+    }
+    #[test]
+    fn wood_board_lighting_is_balanced_across_ranks_and_camera_views() {
+        let normal = V3::new(0.0, 1.0, 0.0);
+        let first = Camera::new(false, View::default());
+        let mut orbit = View::default();
+        orbit.orbit(Vec2::new(120.0, 30.0));
+        for camera in [first, Camera::new(true, View::default()), Camera::new(false, orbit)] {
+            for x in [-3.5, -0.5, 0.5, 3.5] {
+                for z in [0.5, 1.5, 2.5, 3.5] {
+                    let near = studio_lighting_for_theme(normal, V3::new(x, 0.06, z), camera, None, Theme::Wood);
+                    let far = studio_lighting_for_theme(normal, V3::new(x, 0.06, -z), camera, None, Theme::Wood);
+                    assert!((near.0 - far.0).abs() < 0.0001);
+                    assert!((near.1 - far.1).abs() < 0.0001);
+                    let initial = studio_lighting_for_theme(normal, V3::new(x, 0.06, z), first, None, Theme::Wood);
+                    assert!((near.1 - initial.1).abs() < 0.0001);
+                }
+            }
+        }
+    }
     use super::*;
+
+    #[test]
+    fn orbit_keeps_projection_and_picking_aligned() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(600.0));
+        let board: Board = "7k/8/8/8/8/8/8/K7 w - - 0 1".parse().unwrap();
+        for flipped in [false, true] {
+            let mut view = View::default();
+            for _ in 0..16 {
+                view.orbit(Vec2::new(60.0, 0.0));
+                for square in [Square::D4, Square::E5, Square::B3, Square::G6] {
+                    let pos = square_center(square, rect, flipped, view).unwrap();
+                    assert_eq!(square_at(pos, rect, flipped, view, &board, &[]), Some(square));
+                }
+            }
+            for delta in [Vec2::new(10000.0, -10000.0), Vec2::new(-10000.0, 10000.0)] {
+                view.orbit(delta);
+                let camera = Camera::new(flipped, view);
+                assert!(camera.right.x.is_finite() && camera.up.y.is_finite());
+            }
+        }
+    }
+
     #[test]
     fn underboard_glow_renders_outside_board_with_theme_tint() {
         let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(600.0));

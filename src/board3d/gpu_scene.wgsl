@@ -45,11 +45,12 @@ struct SceneOutput {
     return out;
 }
 
-fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool) -> vec2<f32> {
+fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool, board: bool) -> vec2<f32> {
     let wood = u32(camera_adjustment.z) == 1u;
-    let key = normalize(select(vec3<f32>(-0.55, 1.0, 0.75), vec3<f32>(-0.25, 1.0, 0.05), wood));
+    let wood_board = wood && board;
+    let key = normalize(select(select(vec3<f32>(-0.55, 1.0, 0.75), vec3<f32>(-0.25, 1.0, 0.05), wood), vec3<f32>(0.0, 1.0, 0.0), wood_board));
     let fill = normalize(vec3<f32>(0.8, 0.55, -0.35));
-    let view = normalize(vec3<f32>(0.0, 13.0, 11.0) - world);
+    let view = normalize(select(vec3<f32>(0.0, 13.0, 11.0) - world, vec3<f32>(-world.x, 18.0, -world.z), wood_board));
     let ambient = select(select(0.32, 0.39, black), select(0.50, 0.62, black), wood);
     let key_power = select(0.43, 0.25, wood);
     let fill_power = select(select(0.17, 0.29, black), 0.20, wood);
@@ -58,8 +59,9 @@ fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool) -> vec2<f32> {
     let diffuse = clamp((ambient + key_power * max(dot(normal, key), 0.0) + fill_power * max(dot(normal, fill), 0.0) + 0.08 * max(normal.y, 0.0)) * center_light, 0.32, ceiling);
     let kr = max(dot(normal, normalize(key + view)), 0.0);
     let fr = max(dot(normal, normalize(fill + view)), 0.0);
-    let reflection = select(28.0 * pow(kr, 12.0) + 36.0 * pow(kr, 48.0) + 18.0 * pow(fr, 16.0),
-        22.0 * pow(kr, 20.0) + 45.0 * pow(kr, 48.0) + 5.0 * pow(fr, 32.0), wood);
+    let reflection = select(select(28.0 * pow(kr, 12.0) + 36.0 * pow(kr, 48.0) + 18.0 * pow(fr, 16.0),
+        22.0 * pow(kr, 20.0) + 45.0 * pow(kr, 48.0) + 5.0 * pow(fr, 32.0), wood),
+        12.0 * pow(kr, 8.0) + 10.0 * pow(kr, 24.0), wood_board);
     return vec2<f32>(diffuse, reflection * center_light);
 }
 
@@ -106,7 +108,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     let theme = u32(camera_adjustment.z);
     let normal = select(normalize(base_normal * max(mapped.z, 0.1) + tangent * mapped.x * strength + bitangent * mapped.y * strength),
         base_normal, theme >= 3u && input.mode >= 2u);
-    let lit = lighting(normal, input.world, input.mode == 3u);
+    let lit = lighting(normal, input.world, input.mode == 3u, input.mode == 1u);
     if (theme == 2u && input.mode >= 2u) {
         let view = normalize(vec3<f32>(0.0, 13.0, 11.0) - input.world);
         let rim = pow(1.0 - abs(dot(base_normal, view)), 2.5);

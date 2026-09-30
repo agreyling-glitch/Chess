@@ -132,6 +132,7 @@ pub fn scene(
     target_format: wgpu::TextureFormat,
     id: u64,
     theme: Theme,
+    show_radial_light: bool,
 ) -> Scene {
     let camera = Camera::new(flipped, view);
     let mut board_triangles = Vec::new();
@@ -152,7 +153,7 @@ pub fn scene(
     }
     let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
     let mut vertices = Vec::with_capacity((board_triangles.len() + dynamic.len()) * 3 * 104);
-    let glow_count = append_triangles(&mut vertices, &board_glow(camera, rect, theme), rect);
+    let glow_count = if show_radial_light { append_triangles(&mut vertices, &board_glow(camera, rect, theme), rect) } else { 0 };
     let board_count = append_triangles(&mut vertices, &board_triangles, rect);
     let overlay_count = append_triangles(
         &mut vertices,

@@ -10,6 +10,8 @@ weight: 10
 
 Play a game in Ironwood or open one from your saved games. You can also import a PGN, the common text format for chess moves. The game review shows the move list and lets you step forward and backward through positions.
 
+For games played on Lichess, use **Game → Import…** to fetch recent games by username or one completed game by its link. See [Import games from Lichess](/help/import-from-lichess/) for the steps.
+
 ## Run game analysis
 
 Open the Analysis workspace and start full game analysis. Ironwood asks Stockfish to examine each position in turn. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply.
