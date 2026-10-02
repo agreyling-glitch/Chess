@@ -360,6 +360,20 @@ struct ImportedAnalysisGame {
     source_pgn: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct BoardMark {
+    color: char,
+    from: String,
+    to: String,
+}
+
+impl BoardMark {
+    fn valid(&self) -> bool {
+        matches!(self.color, 'G' | 'R' | 'Y' | 'B')
+            && Square::from_str(&self.from).is_ok() && Square::from_str(&self.to).is_ok()
+    }
+}
+
 #[derive(Deserialize)]
 struct ImportedAnalysisPosition {
     fen: String,
@@ -371,6 +385,10 @@ struct ImportedAnalysisPosition {
     principal_variation: Option<String>,
     #[serde(default)]
     note: String,
+    #[serde(default)]
+    annotations: Vec<u8>,
+    #[serde(default)]
+    board_marks: Vec<BoardMark>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -823,6 +841,8 @@ struct ObservedGame {
     end_message: Option<String>,
     analysis: Option<ObservedAnalysis>,
     move_notes: Vec<String>,
+    move_annotations: Vec<Vec<u8>>,
+    board_marks: Vec<Vec<BoardMark>>,
 }
 
 #[derive(Clone)]
@@ -1047,6 +1067,10 @@ struct PersistedGame {
     game_analysis: Vec<Option<PositionAnalysis>>,
     #[serde(default)]
     move_notes: Vec<String>,
+    #[serde(default)]
+    move_annotations: Vec<Vec<u8>>,
+    #[serde(default)]
+    board_marks: Vec<Vec<BoardMark>>,
     #[serde(default)]
     game_analysis_running: bool,
     #[serde(default)]
@@ -1290,6 +1314,11 @@ pub struct ChessApp {
     prediction_scroll_to_selected: bool,
     game_analysis: Vec<Option<PositionAnalysis>>,
     move_notes: Vec<String>,
+    move_annotations: Vec<Vec<u8>>,
+    board_marks: Vec<Vec<BoardMark>>,
+    board_mark_mode: bool,
+    board_mark_color: char,
+    board_mark_drag: Option<(usize, Square, char)>,
     note_editor_index: Option<usize>,
     note_editor_text: String,
     game_analysis_index: Option<usize>,
@@ -1413,6 +1442,8 @@ impl ChessApp {
                 end_message: None,
                 analysis: None,
                 move_notes: Vec::new(),
+                move_annotations: Vec::new(),
+                board_marks: Vec::new(),
             });
         }
         if !self.fics_playing && (first_observed || self.fics_game_id == Some(game)) {
@@ -1484,6 +1515,8 @@ impl ChessApp {
             {
                 previous.flipped = self.flipped;
                 previous.move_notes = self.move_notes.clone();
+                previous.move_annotations = self.move_annotations.clone();
+                previous.board_marks = self.board_marks.clone();
                 previous.analysis = Some(ObservedAnalysis {
                     results: self.game_analysis.clone(),
                     index: self.game_analysis_index,
@@ -1512,6 +1545,9 @@ impl ChessApp {
         }
         if switching {
             self.move_notes = observed.move_notes.clone();
+            self.move_annotations = observed.move_annotations.clone();
+            self.board_marks = observed.board_marks.clone();
+            self.board_mark_drag = None;
         }
         self.board = observed.board;
         self.review_positions = observed.positions.clone();
@@ -1614,8 +1650,17 @@ impl ChessApp {
             let mut notes = vec![String::new(); observed.start_ply];
             notes.append(&mut observed.move_notes);
             observed.move_notes = notes;
+            let mut annotations = vec![Vec::new(); observed.start_ply];
+            annotations.append(&mut observed.move_annotations);
+            observed.move_annotations = annotations;
+            let mut marks = vec![Vec::new(); observed.start_ply];
+            marks.append(&mut observed.board_marks);
+            observed.board_marks = marks;
             if self.fics_game_id == Some(game) {
                 self.move_notes = observed.move_notes.clone();
+                self.move_annotations = observed.move_annotations.clone();
+            self.board_marks = observed.board_marks.clone();
+            self.board_mark_drag = None;
             }
         }
         observed.start_ply = 0;
@@ -2419,6 +2464,11 @@ impl ChessApp {
                 .as_ref()
                 .map(|game| game.move_notes.clone())
                 .unwrap_or_default(),
+            move_annotations: saved.as_ref().map(|game| game.move_annotations.clone()).unwrap_or_default(),
+            board_marks: saved.as_ref().map(|game| game.board_marks.clone()).unwrap_or_default(),
+            board_mark_mode: false,
+            board_mark_color: 'G',
+            board_mark_drag: None,
             note_editor_index: None,
             note_editor_text: String::new(),
             game_analysis,
@@ -4010,6 +4060,7 @@ impl ChessApp {
         selected: bool,
         width: f32,
     ) -> egui::Response {
+        let manual: String = self.move_annotations.get(position_index).into_iter().flatten().map(|nag| Self::annotation_symbol(*nag)).collect::<Vec<_>>().join(" ");
         let display_san = self.display_san(san);
         let classification = self.move_classification(position_index);
         let evaluation = self
@@ -4056,12 +4107,18 @@ impl ChessApp {
         let quality_x = rect.left() + rect.width() * 0.57;
         let score_x = rect.left() + rect.width() * 0.80;
         ui.painter().text(
-            egui::pos2(san_x, center_y),
+            egui::pos2(san_x, if manual.is_empty() { center_y } else { rect.top() + 8.0 }),
             Align2::CENTER_CENTER,
             &display_san,
             FontId::proportional(13.0),
             ui.visuals().text_color(),
         );
+        if !manual.is_empty() {
+            ui.painter().text(
+                egui::pos2(san_x, rect.bottom() - 4.0), Align2::CENTER_BOTTOM,
+                &manual, FontId::proportional(10.0), Color32::from_rgb(211, 173, 98),
+            );
+        }
         if let Some(classification) = classification {
             ui.painter().text(
                 egui::pos2(quality_x, center_y),
@@ -4429,8 +4486,278 @@ impl ChessApp {
         painter.line_segment([point(0.23, 0.57), point(0.43, 0.77)], stroke);
     }
 
+    fn parse_pgn_board_marks(text: &str, positions: &[Board]) -> Vec<Vec<BoardMark>> {
+        let mut marks = vec![Vec::new(); positions.len()];
+        Self::visit_pgn_comments(text, positions, |comment, index| {
+            let Some(target) = marks.get_mut(index) else { return; };
+            for (name, arrow) in [("cal", true), ("csl", false)] {
+                // Multiple directives may occur in one comment.
+                let prefix = format!("[%{name} ");
+                for part in comment.split(&prefix).skip(1) {
+                    let Some((value, _)) = part.split_once(']') else { continue; };
+                    for encoded in value.split(',').map(str::trim) {
+                        if !encoded.is_ascii() || encoded.len() != if arrow { 5 } else { 3 } { continue; }
+                        let mark = BoardMark {
+                            color: encoded.as_bytes()[0] as char,
+                            from: encoded[1..3].to_owned(),
+                            to: if arrow { encoded[3..5].to_owned() } else { encoded[1..3].to_owned() },
+                        };
+                        if mark.valid() && !target.contains(&mark) { target.push(mark); }
+                    }
+                }
+            }
+        });
+        marks
+    }
+
+    fn pgn_board_marks(marks: Option<&Vec<BoardMark>>) -> String {
+        let mut output = String::new();
+        for (name, arrow) in [("cal", true), ("csl", false)] {
+            let values: Vec<String> = marks.into_iter().flatten()
+                .filter(|mark| mark.valid() && (mark.from != mark.to) == arrow)
+                .map(|mark| format!("{}{}{}", mark.color, mark.from, if arrow { &mark.to } else { "" }))
+                .collect();
+            if !values.is_empty() { output.push_str(&format!(" {{ [%{name} {}] }}", values.join(","))); }
+        }
+        output
+    }
+
+    fn toggle_board_mark(&mut self, index: usize, mark: BoardMark) {
+        if index >= self.review_positions.len() || !mark.valid() { return; }
+        self.board_marks.resize(self.review_positions.len(), Vec::new());
+        let marks = &mut self.board_marks[index];
+        if let Some(existing) = marks.iter().position(|existing| existing == &mark) {
+            marks.remove(existing);
+        } else {
+            marks.retain(|existing| existing.from != mark.from || existing.to != mark.to);
+            marks.push(mark);
+        }
+        self.save_board_marks();
+    }
+
+    fn save_board_marks(&mut self) {
+        if let Some(observed) = self.fics_observed_games.iter_mut().find(|game| Some(game.id) == self.fics_game_id) {
+            observed.board_marks = self.board_marks.clone();
+        }
+        self.save_game();
+    }
+
+    fn board_mark_controls(&mut self, ui: &mut egui::Ui, index: usize) {
+        ui.horizontal_wrapped(|ui| {
+            if ui.toggle_value(&mut self.board_mark_mode, "Draw on board").on_hover_text("Click a square to highlight it; drag between squares to draw an arrow. Repeat to remove. Alt also enables drawing temporarily.").changed() {
+                self.board_mark_drag = None;
+                self.selected = None;
+                self.legal_targets.clear();
+            }
+            for (color, label) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow")] {
+                ui.selectable_value(&mut self.board_mark_color, color, label);
+            }
+            if ui.add_enabled(self.board_marks.get(index).is_some_and(|marks| !marks.is_empty()), egui::Button::new("Clear drawings")).clicked() {
+                self.board_marks[index].clear();
+                self.save_board_marks();
+            }
+        });
+        if self.board_mark_mode { ui.label(RichText::new("Drawing mode · turn off to play moves").small().weak()); }
+    }
+
+    fn board_mark_color(color: char) -> Color32 {
+        match color {
+            'R' => Color32::from_rgb(235, 88, 82), 'Y' => Color32::from_rgb(245, 205, 72),
+            'B' => Color32::from_rgb(83, 151, 239), _ => Color32::from_rgb(74, 196, 116),
+        }
+    }
+
+    fn paint_board_marks(&self, ui: &egui::Ui, rect: egui::Rect, index: usize) {
+        if self.prediction_index != 0 { return; }
+        let center = |square| {
+            if self.board_3d_active { crate::board3d::square_center(square, rect, self.flipped, self.board_3d_view()) }
+            else { Some(rect.left_top() + Self::square_screen_offset(square, self.flipped, rect.width() / 8.0)) }
+        };
+        let mut marks = self.board_marks.get(index).cloned().unwrap_or_default();
+        if let Some((drag_index, from, color)) = self.board_mark_drag {
+            if drag_index == index && let Some(pos) = ui.input(|input| input.pointer.latest_pos())
+                && let Some(to) = self.board_mark_square(pos, rect)
+            {
+                marks.push(BoardMark { color, from: from.to_string(), to: to.to_string() });
+            }
+        }
+        let cell = rect.width() / if self.board_3d_active { 9.0 } else { 8.0 };
+        for mark in marks.iter().filter(|mark| mark.valid()) {
+            let from = Square::from_str(&mark.from).unwrap();
+            let to = Square::from_str(&mark.to).unwrap();
+            let (Some(source), Some(destination)) = (center(from), center(to)) else { continue; };
+            let color = Self::board_mark_color(mark.color);
+            if from == to {
+                // An outlined square leaves pieces and legal-move indicators visible.
+                let stroke = Stroke::new((cell * 0.06).clamp(2.0, 5.0), color);
+                if self.board_3d_active {
+                    if let Some(points) = crate::board3d::square_outline(from, rect, self.flipped, self.board_3d_view()) {
+                        ui.painter().add(egui::Shape::closed_line(points, stroke));
+                    }
+                } else {
+                    ui.painter().rect_stroke(egui::Rect::from_center_size(source, Vec2::splat(cell * 0.86)), 3.0, stroke, egui::StrokeKind::Inside);
+                }
+            } else {
+                let direction = (destination - source).normalized();
+                let perpendicular = Vec2::new(-direction.y, direction.x);
+                let tip = destination - direction * cell * 0.12;
+                let base = tip - direction * cell * 0.28;
+                ui.painter().line_segment([source, base], Stroke::new((cell * 0.07).clamp(3.0, 7.0), color));
+                ui.painter().add(egui::Shape::convex_polygon(vec![tip, base + perpendicular * cell * 0.14, base - perpendicular * cell * 0.14], color, Stroke::NONE));
+            }
+        }
+    }
+
+    fn square_screen_offset(square: Square, flipped: bool, cell: f32) -> Vec2 {
+        let file = square.get_file().to_index() as f32;
+        let rank = square.get_rank().to_index() as f32;
+        Vec2::new((if flipped { 7.0 - file } else { file } + 0.5) * cell,
+            (if flipped { rank } else { 7.0 - rank } + 0.5) * cell)
+    }
+
+    fn board_mark_square(&self, pos: egui::Pos2, rect: egui::Rect) -> Option<Square> {
+        if !rect.contains(pos) { return None; }
+        if self.board_3d_active {
+            crate::board3d::board_square_at(pos, rect, self.flipped, self.board_3d_view())
+        } else {
+            let file = ((pos.x - rect.left()) / (rect.width() / 8.0)).floor() as usize;
+            let rank = ((pos.y - rect.top()) / (rect.height() / 8.0)).floor() as usize;
+            if file > 7 || rank > 7 { return None; }
+            Some(Square::make_square(Rank::from_index(if self.flipped { rank } else { 7 - rank }),
+                File::from_index(if self.flipped { 7 - file } else { file })))
+        }
+    }
+
+    fn board_mark_input(&mut self, ui: &egui::Ui, rect: egui::Rect) {
+        let index = self.review_index.unwrap_or(self.review_moves.len());
+        let (pos, pressed, released, modifiers, escape) = ui.input(|input| (
+            input.pointer.latest_pos(), input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_released(egui::PointerButton::Primary), input.modifiers, input.key_pressed(egui::Key::Escape)));
+        if escape || self.prediction_index != 0 { self.board_mark_drag = None; return; }
+        if pressed && (self.board_mark_mode || modifiers.alt)
+            && let Some(pos) = pos && let Some(square) = self.board_mark_square(pos, rect)
+        {
+            let color = if modifiers.alt { if modifiers.shift { 'R' } else if modifiers.ctrl { 'Y' } else { 'G' } } else { self.board_mark_color };
+            self.board_mark_drag = Some((index, square, color));
+        }
+        if released && let Some((start_index, from, color)) = self.board_mark_drag.take()
+            && start_index == index && let Some(pos) = pos && let Some(to) = self.board_mark_square(pos, rect)
+        {
+            self.toggle_board_mark(index, BoardMark { color, from: from.to_string(), to: to.to_string() });
+        }
+        if self.board_mark_drag.is_some() { ui.ctx().request_repaint(); }
+    }
+
+    fn annotation_symbol(nag: u8) -> &'static str {
+        match nag {
+            1 => "!", 2 => "?", 3 => "!!", 4 => "??", 5 => "!?", 6 => "?!",
+            10 => "=", 13 => "∞", 14 => "+=", 15 => "=+", 16 => "+/-", 17 => "-/+",
+            18 => "+−", 19 => "−+", _ => "",
+        }
+    }
+
+    fn pgn_nags(annotations: Option<&Vec<u8>>) -> String {
+        annotations.into_iter().flatten().map(|nag| format!(" ${nag}")).collect()
+    }
+
+    fn annotation_menu(&mut self, ui: &mut egui::Ui, index: usize) {
+        if index >= self.review_positions.len() { return; }
+        ui.label(RichText::new("Your annotations · separate from Stockfish").weak());
+        for (heading, choices) in [
+            ("Move quality", vec![(1, "! Good move"), (3, "!! Brilliant move"), (5, "!? Interesting move"),
+                (6, "?! Dubious move"), (2, "? Mistake"), (4, "?? Blunder")]),
+            ("Position assessment", vec![(10, "= Equal"), (13, "∞ Unclear"),
+                (14, "+= Slight White advantage"), (15, "=+ Slight Black advantage"),
+                (16, "+/- Clear White advantage"), (17, "-/+ Clear Black advantage"),
+                (18, "+− Decisive White advantage"), (19, "−+ Decisive Black advantage")]),
+        ] {
+            ui.separator();
+            ui.label(RichText::new(heading).strong());
+            for (nag, label) in choices {
+                if index == 0 && nag <= 6 { continue; }
+                let selected = self.move_annotations.get(index).is_some_and(|values| values.contains(&nag));
+                if ui.selectable_label(selected, label).clicked() {
+                    self.move_annotations.resize(self.review_positions.len(), Vec::new());
+                    let values = &mut self.move_annotations[index];
+                    values.retain(|value| if nag <= 6 { *value > 6 } else { !matches!(*value, 10 | 13..=19) });
+                    if !selected { values.push(nag); }
+                    self.save_manual_annotations();
+                    ui.close();
+                }
+            }
+        }
+        ui.separator();
+        if ui.add_enabled(self.move_annotations.get(index).is_some_and(|values| !values.is_empty()), egui::Button::new("Clear annotation")).clicked() {
+            self.move_annotations[index].clear();
+            self.save_manual_annotations();
+            ui.close();
+        }
+    }
+
+    fn save_manual_annotations(&mut self) {
+        if let Some(observed) = self.fics_observed_games.iter_mut().find(|game| Some(game.id) == self.fics_game_id) {
+            observed.move_annotations = self.move_annotations.clone();
+        }
+        self.save_game();
+    }
+
     fn note_at(&self, index: usize) -> &str {
         self.move_notes.get(index).map(String::as_str).unwrap_or("")
+    }
+
+    fn starting_position_row(&mut self, ui: &mut egui::Ui, index: usize, scroll: bool) -> bool {
+        let mut selected = false;
+        ui.horizontal(|ui| {
+            let label = if self.note_at(0).is_empty() { "Starting position" } else { "Starting position · Note" };
+            let response = ui.selectable_label(index == 0, label).on_hover_text(self.note_at(0));
+            selected = response.clicked() || response.secondary_clicked();
+            self.move_context_response(&response, 0);
+            if index == 0 && scroll {
+                response.scroll_to_me(Some(Align::Min));
+            }
+            if ui.small_button(if self.note_at(0).is_empty() { "Add note…" } else { "Edit note…" }).clicked() {
+                selected = true;
+                self.edit_note(0);
+            }
+        });
+        ui.separator();
+        selected
+    }
+
+    fn position_note_ui(&mut self, ui: &mut egui::Ui) {
+        let Some(index) = self.review_index.or_else(|| self.review_positions.len().checked_sub(1)) else {
+            return;
+        };
+        ui.add_space(8.0);
+        self.board_mark_controls(ui, index);
+        ui.separator();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new(if index == 0 { "Starting position note" } else { "Your note" }).strong());
+            if ui.small_button(if self.note_at(index).is_empty() { "Add note…" } else { "Edit note…" }).clicked() {
+                self.edit_note(index);
+            }
+        });
+        ui.label(RichText::new(self.graph_position_label(index, true)).small().weak());
+        if let Some(values) = self.move_annotations.get(index).filter(|values| !values.is_empty()) {
+            let symbols = values.iter().map(|nag| Self::annotation_symbol(*nag)).collect::<Vec<_>>().join(" ");
+            ui.label(format!("Your annotation: {symbols}"));
+        }
+        if self.note_at(index).is_empty() {
+            ui.label(RichText::new("No note for this position.").weak());
+        } else {
+            egui::ScrollArea::vertical()
+                .id_salt("current_position_note")
+                .max_height(140.0)
+                .show_gold(ui, |ui| {
+                    ui.add(egui::Label::new(self.note_at(index)).wrap());
+                });
+        }
+        if index != 0 && !self.note_at(0).is_empty()
+            && ui.small_button("View starting note").on_hover_text(self.note_at(0)).clicked()
+        {
+            self.review_to(0);
+        }
+        ui.separator();
     }
 
     fn edit_note(&mut self, index: usize) {
@@ -5391,6 +5718,8 @@ impl ChessApp {
             quality_losses.push(quality_loss);
             timeline.push(serde_json::json!({
                 "note": saved.move_notes.get(index).cloned().unwrap_or_default(),
+                "annotations": saved.move_annotations.get(index).cloned().unwrap_or_default(),
+                "board_marks": saved.board_marks.get(index).cloned().unwrap_or_default(),
                 "index": index, "fen": board.to_string(), "move": index.checked_sub(1).and_then(|i| moves.get(i)),
                 "side_to_move": if board.side_to_move() == Color::White { "white" } else { "black" },
                 "evaluation_cp": value.and_then(|v| v.eval_cp), "mate": value.and_then(|v| v.mate),
@@ -5480,6 +5809,7 @@ impl ChessApp {
         {
             output.push_str(&Self::pgn_note(note));
         }
+        if format == "annotated" { output.push_str(&Self::pgn_nags(saved.move_annotations.first())); output.push_str(&Self::pgn_board_marks(saved.board_marks.first())); output.push(' '); }
         let fen = Self::pgn_tag(source, "FEN")
             .or_else(|| saved.live_positions.first().cloned())
             .unwrap_or_else(|| initial.to_string());
@@ -5498,6 +5828,7 @@ impl ChessApp {
                 output.push_str(&format!("{}... ", ply / 2 + 1));
             }
             output.push_str(san);
+            if format == "annotated" { output.push_str(&Self::pgn_nags(saved.move_annotations.get(index + 1))); output.push_str(&Self::pgn_board_marks(saved.board_marks.get(index + 1))); }
             if format == "annotated"
                 && let Some(value) = analysis(index + 1)
             {
@@ -5590,6 +5921,9 @@ impl ChessApp {
             output.push_str(&Self::pgn_note(note));
         }
 
+        output.push_str(&Self::pgn_nags(self.move_annotations.first()));
+        output.push_str(&Self::pgn_board_marks(self.board_marks.first()));
+        output.push(' ');
         for (move_index, san) in self.review_moves.iter().enumerate() {
             let before = self.review_positions.get(move_index);
             let fullmove = before
@@ -5608,6 +5942,8 @@ impl ChessApp {
                 output.push_str(&format!("{fullmove}. "));
             }
             output.push_str(san);
+            output.push_str(&Self::pgn_nags(self.move_annotations.get(move_index + 1)));
+            output.push_str(&Self::pgn_board_marks(self.board_marks.get(move_index + 1)));
             if let Some(analysis) = self
                 .game_analysis
                 .get(move_index + 1)
@@ -6202,7 +6538,27 @@ impl ChessApp {
         format!(" {{ [%note {value}] }} ")
     }
 
-    fn visit_pgn_comments(text: &str, positions: &[Board], mut visit: impl FnMut(&str, usize)) {
+    fn visit_pgn_comments(text: &str, positions: &[Board], visit: impl FnMut(&str, usize)) {
+        Self::visit_pgn_content(text, positions, visit, |_, _| {});
+    }
+
+    fn parse_pgn_nags(text: &str, positions: &[Board]) -> Vec<Vec<u8>> {
+        let mut annotations = vec![Vec::new(); positions.len()];
+        Self::visit_pgn_content(text, positions, |_, _| {}, |token, index| {
+            let nag = token.strip_prefix('$').and_then(|value| value.parse::<u8>().ok())
+                .or_else(|| match token.trim_end_matches(|c| c != '!' && c != '?') {
+                    value if value.ends_with("!!") => Some(3), value if value.ends_with("??") => Some(4),
+                    value if value.ends_with("!?") => Some(5), value if value.ends_with("?!") => Some(6),
+                    value if value.ends_with('!') => Some(1), value if value.ends_with('?') => Some(2), _ => None,
+                });
+            if let Some(nag) = nag && let Some(values) = annotations.get_mut(index) && !values.contains(&nag) {
+                values.push(nag);
+            }
+        });
+        annotations
+    }
+
+    fn visit_pgn_content(text: &str, positions: &[Board], mut visit: impl FnMut(&str, usize), mut visit_token: impl FnMut(&str, usize)) {
         let move_text = text
             .lines()
             .filter(|line| !line.trim_start().starts_with('['))
@@ -6216,7 +6572,7 @@ impl ChessApp {
         let mut token = String::new();
         let mut in_comment = false;
 
-        let consume_token = |raw: &mut String, board: &mut Board, move_count: &mut usize| {
+        let mut consume_token = |raw: &mut String, board: &mut Board, move_count: &mut usize| {
             if raw.is_empty() {
                 raw.clear();
                 return;
@@ -6234,6 +6590,7 @@ impl ChessApp {
                 *board = board.make_move_new(chess_move);
                 *move_count += 1;
             }
+            visit_token(raw, *move_count);
             raw.clear();
         };
 
@@ -6351,6 +6708,8 @@ impl ChessApp {
                 self.realtime_analysis_due_at = None;
                 self.review_positions = positions;
                 self.move_notes = Self::parse_pgn_notes(text, &self.review_positions);
+                self.move_annotations = Self::parse_pgn_nags(text, &self.review_positions);
+                self.board_marks = Self::parse_pgn_board_marks(text, &self.review_positions);
                 self.note_editor_index = None;
                 self.review_moves = moves;
                 self.game_analysis = imported_analysis;
@@ -6436,6 +6795,8 @@ impl ChessApp {
                 review_index: Some(positions.len() - 1),
                 game_analysis: Self::parse_pgn_annotations(text, &positions),
                 move_notes: Self::parse_pgn_notes(text, &positions),
+                move_annotations: Self::parse_pgn_nags(text, &positions),
+                board_marks: Self::parse_pgn_board_marks(text, &positions),
                 game_analysis_running: false,
                 game_analysis_paused: false,
                 verification_targets: Vec::new(),
@@ -6594,6 +6955,9 @@ impl ChessApp {
             .iter()
             .map(|position| position.note.clone())
             .collect();
+        self.move_annotations = imported.positions.iter().map(|position| position.annotations.clone()).collect();
+        self.board_marks = imported.positions.iter().map(|position| position.board_marks.iter().filter(|mark| mark.valid()).cloned().collect()).collect();
+        self.board_mark_drag = None;
         self.note_editor_index = None;
         self.review_moves = imported.game.moves;
         self.review_positions = positions;
@@ -6676,6 +7040,7 @@ impl ChessApp {
     }
 
     fn review_to(&mut self, index: usize) {
+        self.board_mark_drag = None;
         if self.review_positions.is_empty() {
             return;
         }
@@ -7499,6 +7864,8 @@ impl ChessApp {
             review_index: self.review_index,
             game_analysis: self.game_analysis.clone(),
             move_notes: self.move_notes.clone(),
+            move_annotations: self.move_annotations.clone(),
+            board_marks: self.board_marks.clone(),
             game_analysis_running: self.game_analysis_running,
             game_analysis_paused: self.game_analysis_paused,
             verification_targets: self.verification_targets.clone(),
@@ -7514,6 +7881,8 @@ impl ChessApp {
         } else {
             observed.move_notes.clone()
         };
+        game.move_annotations = if self.fics_game_id == Some(observed.id) { self.move_annotations.clone() } else { observed.move_annotations.clone() };
+        game.board_marks = if self.fics_game_id == Some(observed.id) { self.board_marks.clone() } else { observed.board_marks.clone() };
         let active = self.fics_game_id == Some(observed.id) && !self.fics_playing;
         let result = ["1-0", "0-1", "1/2-1/2"]
             .into_iter()
@@ -7638,6 +8007,9 @@ impl ChessApp {
         self.review_positions.clear();
         self.review_moves.clear();
         self.move_notes.clear();
+        self.move_annotations.clear();
+        self.board_marks.clear();
+        self.board_mark_drag = None;
         self.note_editor_index = None;
         self.game_analysis.clear();
         self.clear_verification();
@@ -7701,6 +8073,8 @@ impl ChessApp {
             self.review_positions.truncate(branch_index + 1);
             self.review_moves.truncate(branch_index);
             self.move_notes.truncate(branch_index + 1);
+            self.move_annotations.truncate(branch_index + 1);
+            self.board_marks.truncate(branch_index + 1);
             self.game_analysis.truncate(branch_index + 1);
             self.clear_verification();
             self.board = branch_board;
@@ -8369,6 +8743,8 @@ impl ChessApp {
             self.review_moves.pop();
             self.review_positions.pop();
             self.move_notes.truncate(self.review_positions.len());
+            self.move_annotations.truncate(self.review_positions.len());
+            self.board_marks.truncate(self.review_positions.len());
             self.clear_verification();
             if !self.game_analysis.is_empty() {
                 self.game_analysis.truncate(self.review_positions.len());
@@ -8971,7 +9347,7 @@ impl ChessApp {
                     );
                 }
             }
-            if response.clicked()
+            if response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(square) =
                     crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets)
@@ -9540,7 +9916,7 @@ impl ChessApp {
                                                         );
                                                     }
                                                 }
-                                                if response.clicked() {
+                                                if response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt) {
                                                     self.select(square);
                                                 }
                                             }
@@ -9617,6 +9993,8 @@ impl ChessApp {
                     );
                     ui.ctx().request_repaint();
                 }
+                self.board_mark_input(ui, board_response.response.rect);
+                self.paint_board_marks(ui, board_response.response.rect, self.review_index.unwrap_or(self.review_moves.len()));
                 if let Some(best_move) = best_move_arrow {
                     if self.board_3d_active {
                         Self::draw_best_move_arrow_3d(
@@ -10442,8 +10820,28 @@ impl ChessApp {
         popup.show(|ui| self.game_moves_context_menu(ui, index));
     }
 
+    fn annotated_copy_marks(&self, index: usize) -> Vec<BoardMark> {
+        let mut marks = self.board_marks.get(index).cloned().unwrap_or_default();
+        let engine_move = if let Some(attempt) = self.best_move_attempt {
+            (attempt.revealed && attempt.target_index.checked_sub(1) == Some(index)).then_some(attempt.best_move)
+        } else if self.show_best_move_arrows && matches!(self.move_classification(index),
+            Some(MoveClassification::Inaccuracy | MoveClassification::Mistake | MoveClassification::Blunder)) {
+            index.checked_sub(1).and_then(|previous| self.game_analysis.get(previous))
+                .and_then(Option::as_ref).and_then(|analysis| analysis.best_move.as_deref())
+                .and_then(Self::parse_uci_value)
+                .filter(|mv| Some(*mv) != Self::review_move_at(&self.review_positions, &self.review_moves, index))
+        } else { None };
+        if let Some(mv) = engine_move {
+            let mark = BoardMark { color: 'G', from: mv.get_source().to_string(), to: mv.get_dest().to_string() };
+            if !marks.contains(&mark) { marks.push(mark); }
+        }
+        marks.retain(BoardMark::valid);
+        marks
+    }
+
     fn game_moves_context_menu(&mut self, ui: &mut egui::Ui, index: usize) {
         Self::style_context_menu(ui);
+        ui.menu_button("Add annotation…", |ui| self.annotation_menu(ui, index));
         if ui
             .button(if self.note_at(index).is_empty() {
                 "Add note…"
@@ -10487,7 +10885,18 @@ impl ChessApp {
             });
         });
         ui.separator();
-        if ui.button("Copy Board to Clipboard").clicked() {
+        for (label, annotated) in [("Copy Board to Clipboard", false), ("Copy Annotated Board to Clipboard", true)] {
+        let copy_marks = self.annotated_copy_marks(index);
+        let drawing_count = copy_marks.len();
+        let response = ui.add_enabled(!annotated || drawing_count > 0, egui::Button::new(label));
+        let response = if annotated {
+            response.on_hover_text(if drawing_count == 0 {
+                "This position has no personal drawings or displayed Stockfish recommendation arrow. Right-click the annotated move you want to copy.".to_owned()
+            } else {
+                format!("Copy {} with {drawing_count} drawing(s), including any displayed Stockfish recommendation.", self.graph_position_label(index, true))
+            })
+        } else { response };
+        if response.clicked() {
             #[cfg(target_arch = "wasm32")]
             if self.board_3d_active {
                 if begin_board_png_copy() {
@@ -10510,6 +10919,23 @@ impl ChessApp {
                             } else {
                                 String::new()
                             };
+                            let coordinates = if annotated {
+                                let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(1200.0));
+                                let view = self.board_3d_view();
+                                let drawings: Vec<_> = copy_marks.iter().filter_map(|mark| {
+                                    let from = Square::from_str(&mark.from).ok()?;
+                                    let to = Square::from_str(&mark.to).ok()?;
+                                    let source = crate::board3d::square_center(from, rect, self.flipped, view)?;
+                                    let dest = crate::board3d::square_center(to, rect, self.flipped, view)?;
+                                    let outline = crate::board3d::square_outline(from, rect, self.flipped, view)?;
+                                    Some(serde_json::json!({ "color": mark.color.to_string(), "from": [source.x, source.y], "to": [dest.x, dest.y],
+                                        "outline": if from == to { outline.iter().map(|p| vec![p.x, p.y]).collect::<Vec<_>>() } else { Vec::new() } }))
+                                }).collect();
+                                let mut settings: serde_json::Value = serde_json::from_str(&coordinates).unwrap_or_else(|_| serde_json::json!({"labels": []}));
+                                settings["drawings"] = serde_json::json!(drawings);
+                                settings["cell"] = serde_json::json!(1200.0 / 9.0);
+                                settings.to_string()
+                            } else { coordinates };
                             finish_board_png_copy(&js_sys::Uint8Array::from(png.as_slice()), &coordinates);
                         }
                         Err(error) => fail_board_png_copy(&format!("Could not render 3D board: {error:?}")),
@@ -10521,12 +10947,14 @@ impl ChessApp {
                     &serde_json::json!({
                         "flipped": self.flipped, "frame": self.show_board_frame,
                         "coordinates": self.show_coordinates, "shadows": self.piece_shadows,
-                        "pieceSet": self.piece_set
+                        "pieceSet": self.piece_set,
+                        "boardMarks": if annotated { copy_marks.clone() } else { Vec::new() }
                     })
                     .to_string(),
                 );
             }
             ui.close();
+        }
         }
         if ui.button("Copy FEN to Clipboard").clicked() {
             ui.ctx().copy_text(self.position_fen_for_copy(index));
@@ -10818,6 +11246,7 @@ impl ChessApp {
 
         let mut jump_to = None;
         let scroll_to_selected = self.review_scroll_to_selected;
+        self.position_note_ui(ui);
         let moves_height = (ui.available_height() - 92.0).max(160.0);
         Frame::new()
             .fill(Color32::from_rgb(11, 16, 29))
@@ -10832,6 +11261,7 @@ impl ChessApp {
                     .min_scrolled_height(moves_height)
                     .auto_shrink([false, false])
                     .show_gold(ui, |ui| {
+                        if self.starting_position_row(ui, index, scroll_to_selected) { jump_to = Some(0); }
                         let first_ply = self
                             .fics_observation_start_ply
                             .unwrap_or(self.local_start_ply);
@@ -11202,6 +11632,124 @@ mod tests {
         let before = Board::from_str("7k/P7/8/8/8/8/8/K7 w - - 0 1").unwrap();
         let after = before.make_move_new(ChessMove::new(Square::A7, Square::A8, Some(Piece::Queen)));
         assert!(ChessApp::captured_pieces(&[before, after], Color::White).is_empty());
+    }
+
+    #[test]
+    fn annotated_copy_includes_stockfish_arrow_without_personal_drawings() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. f3 e5 2. g4 Qh4# 0-1");
+        app.show_best_move_arrows = true;
+        app.game_analysis.resize(app.review_positions.len(), None);
+        app.game_analysis[2] = Some(super::PositionAnalysis { eval_cp: Some(0), best_move: Some("e2e4".into()), ..Default::default() });
+        app.game_analysis[3] = Some(super::PositionAnalysis { eval_cp: Some(-900), ..Default::default() });
+        let marks = app.annotated_copy_marks(3);
+        assert_eq!(marks, vec![super::BoardMark { color: 'G', from: "e2".into(), to: "e4".into() }]);
+        assert!(app.board_marks.iter().all(Vec::is_empty));
+        app.show_best_move_arrows = false;
+        assert!(app.annotated_copy_marks(3).is_empty());
+        app.toggle_board_mark(3, super::BoardMark { color: 'R', from: "g4".into(), to: "g4".into() });
+        app.show_best_move_arrows = true;
+        assert_eq!(app.annotated_copy_marks(3).len(), 2);
+        assert!(app.annotated_copy_marks(1).is_empty());
+    }
+
+    #[test]
+    fn board_drawings_toggle_roundtrip_and_follow_retained_positions() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 e5 2. Nf3 *");
+        let arrow = super::BoardMark { color: 'G', from: "e2".into(), to: "e4".into() };
+        let square = super::BoardMark { color: 'R', from: "f6".into(), to: "f6".into() };
+        app.toggle_board_mark(0, arrow.clone());
+        app.toggle_board_mark(1, square.clone());
+        app.toggle_board_mark(3, arrow.clone());
+        let marks = app.board_marks.clone();
+        let saved = serde_json::to_string(&app.persisted_game()).unwrap();
+        let restored: super::PersistedGame = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.board_marks, marks);
+        for pgn in [app.annotated_pgn(), ChessApp::export_saved_game(&saved, "annotated").unwrap()] {
+            let (positions, _) = ChessApp::parse_pgn_mainline(&pgn).unwrap();
+            assert_eq!(ChessApp::parse_pgn_board_marks(&pgn, &positions), marks);
+            let mut imported = ChessApp::new(&context);
+            imported.load_pgn(&pgn);
+            assert_eq!(imported.board_marks, marks);
+        }
+        let json = ChessApp::export_saved_game(&saved, "json").unwrap();
+        let mut imported = ChessApp::new(&context);
+        assert!(imported.load_analysis_json(&json));
+        assert_eq!(imported.board_marks, marks);
+        assert!(!ChessApp::export_saved_game(&saved, "pgn").unwrap().contains("[%cal"));
+        app.toggle_board_mark(0, arrow.clone());
+        assert!(app.board_marks[0].is_empty());
+        app.toggle_board_mark(1, super::BoardMark { color: 'Y', ..square.clone() });
+        assert_eq!(app.board_marks[1].len(), 1);
+        assert_eq!(app.board_marks[1][0].color, 'Y');
+        app.review_to(1);
+        app.play_from_current_position();
+        assert_eq!(app.board_marks.len(), 2);
+        app.reset_for_side(super::PlayerSide::White);
+        assert!(app.board_marks.is_empty());
+        let pgn = "{ [%csl Ge4,Re9,Ze2,éa1] } 1. e4 { [%cal Ge2e4,Ga0e4] [%csl Yf6] } (1. d4 { [%csl Rd4] }) *";
+        let (positions, _) = ChessApp::parse_pgn_mainline(pgn).unwrap();
+        let parsed = ChessApp::parse_pgn_board_marks(pgn, &positions);
+        assert_eq!(parsed[0].len(), 1);
+        assert_eq!(parsed[1].len(), 2);
+    }
+
+    #[test]
+    fn board_drawing_input_maps_flipped_squares_and_preserves_board() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 *");
+        app.review_to(0);
+        let board = app.board;
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 400.0));
+        let source = rect.min + ChessApp::square_screen_offset(Square::E2, false, 50.0);
+        let dest = rect.min + ChessApp::square_screen_offset(Square::E4, false, 50.0);
+        let modifiers = egui::Modifiers { alt: true, shift: true, ..Default::default() };
+        for (pos, pressed) in [(source, true), (dest, false)] {
+            let input = egui::RawInput { modifiers, events: vec![egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers }], ..Default::default() };
+            let _ = context.egui_ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.board_mark_input(ui, rect));
+            });
+        }
+        assert_eq!(app.board_marks[0], vec![super::BoardMark { color: 'R', from: "e2".into(), to: "e4".into() }]);
+        assert_eq!(app.board, board);
+        app.flipped = true;
+        let pos = rect.min + ChessApp::square_screen_offset(Square::E2, true, 50.0);
+        assert_eq!(app.board_mark_square(pos, rect), Some(Square::E2));
+        assert!(app.board_mark_square(egui::pos2(-1.0, 0.0), rect).is_none());
+    }
+
+    #[test]
+    fn manual_annotations_roundtrip_and_ignore_variations_and_comments() {
+        let pgn = "[Result \"*\"]\n\n$10 1. e4! $14 { $4 } (1. d4?? $19) e5?! 2. Nf3 $3 $16 *";
+        let (positions, _) = super::ChessApp::parse_pgn_mainline(pgn).unwrap();
+        let nags = super::ChessApp::parse_pgn_nags(pgn, &positions);
+        assert_eq!(nags, vec![vec![10], vec![1, 14], vec![6], vec![3, 16]]);
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn(pgn);
+        assert_eq!(app.move_annotations, nags);
+        let saved = serde_json::to_string(&app.persisted_game()).unwrap();
+        let restored: super::PersistedGame = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.move_annotations, nags);
+        let annotated = app.annotated_pgn();
+        let (boards, _) = super::ChessApp::parse_pgn_mainline(&annotated).unwrap();
+        assert_eq!(super::ChessApp::parse_pgn_nags(&annotated, &boards), nags);
+        let exported = super::ChessApp::export_saved_game(&saved, "annotated").unwrap();
+        assert_eq!(super::ChessApp::parse_pgn_nags(&exported, &boards), nags);
+        let json = super::ChessApp::export_saved_game(&saved, "json").unwrap();
+        let mut imported = ChessApp::new(&context);
+        assert!(imported.load_analysis_json(&json));
+        assert_eq!(imported.move_annotations, nags);
+        let plain = super::ChessApp::export_saved_game(&saved, "pgn").unwrap();
+        assert!(!plain.contains('$'));
+        app.play_from_current_position();
+        app.reset_for_side(super::PlayerSide::White);
+        assert!(app.move_annotations.is_empty());
     }
 
     #[test]
@@ -12631,6 +13179,7 @@ impl eframe::App for ChessApp {
                     });
                     ui.separator();
                 }
+                if compact { self.position_note_ui(ui); }
                 if show_moves {
                     ui.add_space(6.0);
                     self.game_moves_status_ui(ui);
@@ -12662,6 +13211,7 @@ impl eframe::App for ChessApp {
                                 .min_scrolled_height(160.0)
                                 .auto_shrink([false, false])
                                 .show_gold(ui, |ui| {
+                                    if self.starting_position_row(ui, index, scroll_to_selected) { jump_to = Some(0); }
                                     let first_ply = self.fics_observation_start_ply.unwrap_or(self.local_start_ply);
                                     let end_pair = if self.review_moves.is_empty() {
                                         first_ply / 2

@@ -1,10 +1,26 @@
 ---
 title: "Features"
-lastmod: 2026-09-30T00:00:00-05:00
+lastmod: 2026-10-02T00:00:00-05:00
 description: "Play and analyze chess in 2D or 3D, meet FICS opponents, import Lichess games, and keep your games on your device."
 layout: "features"
 url: "/features/"
 ---
+
+## Analyze without limits
+
+**No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Use **Print analysis report** to open a printable report with player accuracy, move quality, game phases, critical-position diagrams, engine lines, and your written notes. Choose **Save as PDF** in your browser's Print dialog to keep or share the analysis.
+
+## Take notes and annotate positions
+
+Record your plans, questions, and lessons with a personal note on any move or the starting position, without needing to run analysis. Read, add, edit, or delete the displayed position's note beside the live board in Compact or Expanded view. Notes follow the board as you step through moves, with markers in Game Moves and the evaluation graph. Long notes scroll within the panel. Select the **Starting position** row or **View starting note** to revisit the game's initial context. Notes also appear beside analysis details in the expanded graph and in the printed report.
+
+Add your own move-quality symbols—`!`, `!!`, `!?`, `?!`, `?`, or `??`—and position assessments from **Add annotation…** in the move's right-click menu. Choose one symbol from each group, change the selection, or clear it. Your gold symbols stay separate from Stockfish's assessments, so you can explain your own reasoning in a note. See [Taking notes and adding annotations](/help/taking-notes/) for instructions.
+
+## Illustrate plans on the board
+
+Draw green, red, or yellow arrows and outline important squares on either the 2D or 3D board. Use **Draw on board** and its color controls, or Alt-click and Alt-drag shortcuts. Repeat a drawing to remove it, change its color, or use **Clear drawings** for the displayed position. Drawings belong to individual positions, including the starting position, and reappear when you return to them. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for shortcuts and touch controls.
+
+Notes, manual symbols, and drawings remain attached to saved games and are preserved in annotated PGN and Analysis JSON. Annotated PGN uses standard numeric codes for symbols and arrow/square comment extensions for drawings; support for the drawing extensions varies between chess programs. Plain PGN omits personal annotations.
 
 ## Play your way
 
@@ -34,9 +50,6 @@ Play from the standard starting position, try a random Chess960 setup, or enter 
 
 Upload, paste, or drop a chessboard screenshot into the position editor. Recognition runs on your device and produces an editable position. Crop closely to the board for the best results, then check the pieces, orientation, and game-state details before using it. You can correct the board manually; screenshot recognition is a starting point for review.
 
-## Analyze the whole game
-
-Run Stockfish 19 with its full NNUE network directly in your browser. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Add a personal note to any move or the starting position. Notes stay separate from engine analysis and appear in the expanded graph and printed report. The Game Moves right-click menu also copies the selected position as FEN or a board image, or copies a partial or full PGN. Choose letter or figurine notation for the move list.
 
 ## Import games from Lichess
 
@@ -44,7 +57,7 @@ Bring your Lichess games into Ironwood for review and analysis. Enter a player's
 
 ## Build your library
 
-Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Maximize the library or click a board preview for a larger view. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note beneath the final board. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
 
 ## Keep control of your data
 

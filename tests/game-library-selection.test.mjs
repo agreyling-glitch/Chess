@@ -13,7 +13,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   };
   const records = new Map(Array.from({ length: 12 }, (_, i) => [String(i), {
     id: String(i), category: i === 11 ? 'imported' : 'mine', updatedAt: 100 - i,
-    json: JSON.stringify({ review_pgn: `[White "Player${i}"]\n[Black "Opponent"]\n[Date "2026.09.27"]\n\n1. e4 *` }),
+    json: JSON.stringify({ move_notes: i === 0 ? ['Opening plan\n<img src=x onerror=alert(1)>'] : [], board: '8/8/8/8/8/8/8/8 w - - 0 1', review_pgn: `[White "Player${i}"]\n[Black "Opponent"]\n[Date "2026.09.27"]\n\n1. e4 *` }),
   }]));
   let failDelete = false;
   let deletes = [];
@@ -49,6 +49,15 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   const click = text => { const b = button(text); assert.ok(b, text); b.click(); };
   const settle = () => new Promise(resolve => setTimeout(resolve, 15));
   assert.equal(document.querySelectorAll('.game-library-select').length, 10);
+  const notePreview = document.querySelector('.game-starting-note-preview');
+  assert.equal(notePreview.textContent, 'Opening plan\n<img src=x onerror=alert(1)>');
+  assert.equal(document.querySelectorAll('.game-starting-note-preview').length, 1);
+  assert.equal(notePreview.querySelector('img'), null);
+  document.querySelector('.game-library-preview').click();
+  const fullNote = document.querySelector('#game-preview-dialog .game-starting-note-full');
+  assert.equal(fullNote.textContent, notePreview.textContent);
+  assert.equal(fullNote.querySelector('img'), null);
+  document.querySelector('#game-preview-dialog').close();
   assert.equal(button('Clear selection'), undefined);
   assert.equal(button('Export ▾').disabled, true);
   const samples = [{json:'first'}, {json:'second'}];

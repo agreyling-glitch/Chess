@@ -669,7 +669,8 @@ export function gameDetails(json) {
   const analysisStatus = analyzed === 0 ? 'Not analyzed' : analyzed >= moves + 1 ? 'Complete' : 'Partial';
   const whiteFideId = pgnTag(game.review_pgn, 'WhiteFideId') || null;
   const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
-  return { analysisStatus, title: `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
+  const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
+  return { startingNote, analysisStatus, title: `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
     finalFen: game.final_board || game.board, category: imported ? 'imported' : 'mine' };
 }
 
@@ -807,6 +808,41 @@ function finalBoard(fen) {
   return board;
 }
 
+async function openSavedGame(game, startingPosition = false) {
+  await pendingWrite;
+  const selected = await readGame(game.id);
+  if (!selected?.json) throw new Error('Saved game was not found');
+  const saved = JSON.parse(selected.json);
+  if (startingPosition) saved.review_index = 0;
+  localStorage.setItem(ACTIVE_ID_KEY, game.id);
+  localStorage.setItem(ACTIVE_CATEGORY_KEY, game.category);
+  localStorage.setItem(CURRENT_GAME_KEY, JSON.stringify(saved));
+  location.reload();
+}
+
+function startingNoteElement(game, compact = false) {
+  if (!game.startingNote) return null;
+  const section = document.createElement('section');
+  section.className = 'game-starting-note';
+  const heading = document.createElement('strong');
+  heading.textContent = 'Starting note';
+  const text = document.createElement(compact ? 'button' : 'p');
+  text.textContent = game.startingNote;
+  if (compact) {
+    text.type = 'button';
+    text.className = 'game-starting-note-preview';
+    text.title = 'Open game at the starting position';
+    text.addEventListener('click', async () => {
+      try { await openSavedGame(game, true); }
+      catch (error) { alert(`Could not open game: ${error.message}`); }
+    });
+  } else {
+    text.className = 'game-starting-note-full';
+  }
+  section.append(heading, text);
+  return section;
+}
+
 function showGamePreview(game, trigger) {
   const dialog = document.createElement('dialog');
   dialog.id = 'game-preview-dialog';
@@ -826,6 +862,8 @@ function showGamePreview(game, trigger) {
   const board = finalBoard(game.finalFen);
   board.setAttribute('aria-label', `Final position: ${game.title}`);
   dialog.append(heading, caption, board);
+  const note = startingNoteElement(game);
+  if (note) dialog.append(note);
   dialog.addEventListener('close', () => {
     dialog.remove();
     if (trigger.isConnected) trigger.focus();
@@ -1184,13 +1222,7 @@ window.ironwoodOpenGameLibrary = async () => {
         open.textContent = 'Open game';
         open.addEventListener('click', async () => {
           try {
-            await pendingWrite;
-            const selected = await readGame(game.id);
-            if (!selected?.json) throw new Error('Saved game was not found');
-            localStorage.setItem(ACTIVE_ID_KEY, game.id);
-            localStorage.setItem(ACTIVE_CATEGORY_KEY, game.category);
-            localStorage.setItem(CURRENT_GAME_KEY, selected.json);
-            location.reload();
+            await openSavedGame(game);
           } catch (error) {
             list.textContent = `Could not open game: ${error.message}`;
           }
@@ -1237,7 +1269,10 @@ window.ironwoodOpenGameLibrary = async () => {
         remove.textContent = 'Delete';
         remove.addEventListener('click', () => removeGames([game]));
         actions.append(open, favorite, move, remove);
-        main.append(name, players, result, details, actions);
+        main.append(name, players, result, details);
+        const note = startingNoteElement(game, true);
+        if (note) main.append(note);
+        main.append(actions);
         entry.append(main);
         list.append(entry);
       }

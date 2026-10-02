@@ -13,3 +13,7 @@ An **Ironwood analysis JSON** file stores Ironwood's richer analysis data so you
 The **printable analysis report** summarizes scores, move quality, phases, and critical positions. Use your browser's Print dialog to save the report as a PDF if you want a document to keep or share.
 
 Analysis runs on your device. Online games and public help pages need an internet connection; saved games and already cached game resources may be available offline.
+
+For instructions on Starting notes, move notes, and manual symbols, see [Taking notes and adding annotations](/help/taking-notes/). Annotated PGN and Analysis JSON preserve them; plain PGN omits them.
+
+[Board drawings](/help/drawing-on-the-board/) also travel with annotated PGN and Analysis JSON. Annotated PGN uses arrow and square comment extensions (`[%cal ...]` and `[%csl ...]`); support in other chess programs varies. Plain PGN omits personal drawings.

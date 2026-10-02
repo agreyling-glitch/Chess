@@ -56,3 +56,7 @@ footer { padding:30px clamp(24px,6vw,92px); display:flex; flex-wrap:wrap; justif
 @media(max-width:560px){.brand{gap:10px;font-size:.72rem}.brand-logo{width:56px;height:56px}}
 
 @media(max-width:560px){.hero h1{font-size:clamp(3.6rem,15vw,5rem)}.hero{padding-block:42px;gap:36px}.nav-actions{flex-direction:row;flex-wrap:wrap;gap:14px}.hero-art{width:220px}}
+
+.available-today a { color:inherit; text-decoration:underline; text-underline-offset:3px; }
+.available-today a:hover { color:var(--gold); }
+.available-today a:focus-visible { outline:2px solid var(--gold); outline-offset:4px; }

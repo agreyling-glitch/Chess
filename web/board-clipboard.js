@@ -1,3 +1,37 @@
+// Paint personal board markings above the pieces, independently of engine arrows.
+export function paintDrawings(context, drawings = [], cell = 128) {
+  const colors = { G: '#4ac474', R: '#eb5852', Y: '#f5cd48', B: '#5397ef' };
+  for (const drawing of drawings) {
+    const color = colors[drawing.color];
+    if (!color || ![drawing.from, drawing.to].every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))) continue;
+    const [x1, y1] = drawing.from, [x2, y2] = drawing.to;
+    context.save();
+    context.strokeStyle = context.fillStyle = color;
+    context.lineWidth = Math.max(3, cell * .06);
+    context.lineJoin = 'round';
+    context.beginPath();
+    if (x1 === x2 && y1 === y2) {
+      const points = drawing.outline;
+      if (points?.length === 4 && points.every(p => p.length === 2 && p.every(Number.isFinite))) {
+        context.moveTo(...points[0]);
+        for (const point of points.slice(1)) context.lineTo(...point);
+        context.closePath(); context.stroke();
+      } else context.strokeRect(x1 - cell * .43, y1 - cell * .43, cell * .86, cell * .86);
+    } else {
+      const length = Math.hypot(x2 - x1, y2 - y1);
+      const dx = (x2 - x1) / length, dy = (y2 - y1) / length;
+      const tip = [x2 - dx * cell * .12, y2 - dy * cell * .12];
+      const base = [tip[0] - dx * cell * .28, tip[1] - dy * cell * .28];
+      context.moveTo(x1, y1); context.lineTo(...base); context.stroke();
+      context.beginPath(); context.moveTo(...tip);
+      context.lineTo(base[0] - dy * cell * .14, base[1] + dx * cell * .14);
+      context.lineTo(base[0] + dy * cell * .14, base[1] - dx * cell * .14);
+      context.closePath(); context.fill();
+    }
+    context.restore();
+  }
+}
+
 // Render a selected position independently of the visible board and menus.
 export async function boardImage(fen, options = {}) {
   const ranks = fen.split(' ')[0].split('/');
@@ -66,6 +100,14 @@ export async function boardImage(fen, options = {}) {
       }
     }
   }
+  const center = square => {
+    if (typeof square !== 'string' || !/^[a-h][1-8]$/.test(square)) return null;
+    const file = square.charCodeAt(0) - 97, rank = Number(square[1]) - 1;
+    return [margin + ((options.flipped ? 7 - file : file) + .5) * cell,
+      margin + ((options.flipped ? rank : 7 - rank) + .5) * cell];
+  };
+  const drawings = (options.boardMarks || []).map(mark => ({ color: mark.color, from: center(mark.from), to: center(mark.to) }));
+  if (drawings.length) paintDrawings(context, drawings, cell);
   return new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the board image')), 'image/png'));
 }
 
@@ -83,7 +125,8 @@ window.ironwoodCopyBoard = async (fen, settings) => {
     const image = boardImage(fen, JSON.parse(settings));
     // Supply a promise so the clipboard request starts before artwork loading finishes.
     await navigator.clipboard.write([new ClipboardItem({'image/png':image})]);
-    showStatus('Board image copied to clipboard');
+    const count = JSON.parse(settings).boardMarks?.length || 0;
+    showStatus(count ? `Annotated board copied with ${count} drawing${count === 1 ? '' : 's'}` : 'Board image copied to clipboard');
   } catch (error) { showStatus(`Could not copy board: ${error.message}`); }
 };
 
@@ -97,13 +140,14 @@ window.ironwoodBeginBoardPngCopy = () => {
     showStatus('A board image is already being copied');
     return false;
   }
+  const details = { drawings: 0 };
   const image = new Promise((resolve, reject) => {
-    pendingPngCopy = { resolve, reject };
+    pendingPngCopy = { resolve, reject, details };
   });
   // Start the clipboard write during the click, before 3D rendering takes time.
   try {
     navigator.clipboard.write([new ClipboardItem({ 'image/png': image })])
-      .then(() => showStatus('3D board image copied to clipboard'))
+      .then(() => showStatus(details.drawings ? `Annotated 3D board copied with ${details.drawings} drawing${details.drawings === 1 ? '' : 's'}` : '3D board image copied to clipboard'))
       .catch(error => showStatus(`Could not copy board: ${error.message}`));
     return true;
   } catch (error) {
@@ -122,7 +166,8 @@ window.ironwoodFinishBoardPngCopy = async (png, coordinates) => {
     return;
   }
   try {
-    const { fontSize, labels } = JSON.parse(coordinates);
+    const { fontSize = 16, labels = [], drawings = [], cell = 128 } = JSON.parse(coordinates);
+    copy.details.drawings = drawings.length;
     const bitmap = await createImageBitmap(image);
     const canvas = document.createElement('canvas');
     canvas.width = bitmap.width;
@@ -140,6 +185,7 @@ window.ironwoodFinishBoardPngCopy = async (png, coordinates) => {
       context.fillStyle = '#dcbd80';
       context.fillText(text, x, y);
     }
+    if (drawings.length) paintDrawings(context, drawings, cell);
     canvas.toBlob(blob => blob
       ? copy.resolve(blob)
       : copy.reject(new Error('Could not create the board image')), 'image/png');

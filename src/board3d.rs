@@ -947,6 +947,19 @@ pub fn square_at(
         .or(board_square)
 }
 
+pub fn board_square_at(pos: Pos2, rect: Rect, flipped: bool, view: View) -> Option<Square> {
+    Camera::new(flipped, view).square_at(pos, rect)
+}
+
+pub fn square_outline(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Vec<Pos2>> {
+    let x = square.get_file().to_index() as f32 - 3.5;
+    let z = 3.5 - square.get_rank().to_index() as f32;
+    let camera = Camera::new(flipped, view);
+    [(-0.43, -0.43), (0.43, -0.43), (0.43, 0.43), (-0.43, 0.43)]
+        .into_iter().map(|(dx, dz)| camera.project(V3::new(x + dx, 0.075, z + dz), rect).map(|(point, _)| point))
+        .collect()
+}
+
 pub fn square_center(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Pos2> {
     let file = square.get_file().to_index() as f32;
     let rank = square.get_rank().to_index() as f32;

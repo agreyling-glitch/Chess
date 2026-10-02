@@ -99,3 +99,11 @@ canvas { display:block; }
 .game-preview-heading button:focus-visible { outline:2px solid #d3ad62; }
 #game-preview-dialog p { margin:4px 0 16px; color:#abb0b3; font-size:15px; }
 #game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 72px),calc(100dvh - 190px)); height:auto; aspect-ratio:1; }
+
+.game-starting-note { min-width:0; margin-top:10px; }
+.game-starting-note > strong { display:block; color:#d3ad62; font-size:13px; margin-bottom:5px; }
+.game-starting-note-preview { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; width:100%; padding:0; border:0; background:transparent; color:#ecebe4; text-align:left; font:inherit; line-height:1.4; white-space:pre-wrap; overflow-wrap:anywhere; cursor:pointer; }
+.game-starting-note-preview:hover { color:#f1ce83; }
+.game-starting-note-preview:focus-visible { outline:2px solid #d3ad62; outline-offset:3px; }
+#game-preview-dialog .game-starting-note { max-width:min(640px,calc(100vw - 72px),calc(100dvh - 190px)); }
+#game-preview-dialog .game-starting-note-full { margin:0; max-height:180px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:#ecebe4; }

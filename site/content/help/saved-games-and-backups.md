@@ -15,3 +15,5 @@ You can also [import completed games from Lichess](/help/import-from-lichess/) u
 For a copy you control, use **Storage → Backup all data** and keep the downloaded backup file somewhere safe. **Storage → Restore backup** imports it later. **Storage information** shows what is stored. The **Clear saved games** and **Reset all local data** commands remove data, so use the backup first if you may want it again.
 
 To share one game with chess software, export or copy its [PGN](/help/pgn/). To preserve Ironwood's richer analysis of one game, use [analysis JSON](/help/saving-and-sharing/).
+
+Games with a Starting note show a short preview in the library. Click that note to open the starting position, or enlarge the board preview to read the full note beneath the final board. See [Taking notes and adding annotations](/help/taking-notes/) for more.

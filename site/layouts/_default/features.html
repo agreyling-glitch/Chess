@@ -5,7 +5,21 @@
   <p class="lede">{{ .Description }}</p>
   <a class="features-cta" href="/play/">Play now <span aria-hidden="true">→</span></a>
 </section>
-<article class="features-content prose">{{ .Content }}</article>
+<article class="features-content prose">
+  {{ range split .Content "<h2" }}
+    {{ if strings.TrimSpace . }}
+      {{ $parts := split . "</h2>" }}
+      {{ if gt (len $parts) 1 }}
+        <section class="feature-section">
+          {{ printf "<h2%s</h2>" (index $parts 0) | safeHTML }}
+          <div class="feature-description">{{ delimit (after 1 $parts) "</h2>" | safeHTML }}</div>
+        </section>
+      {{ else }}
+        {{ . | safeHTML }}
+      {{ end }}
+    {{ end }}
+  {{ end }}
+</article>
 <div class="features-finish">
   <p>Ready to put it to work?</p>
   <a class="features-cta" href="/play/">Open Ironwood <span aria-hidden="true">→</span></a>
