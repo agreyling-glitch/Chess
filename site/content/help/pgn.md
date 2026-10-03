@@ -25,3 +25,5 @@ In Ironwood, you can import PGN to replay and analyze a game. Use the game's cop
 For a game that begins from a custom position, PGN can include `SetUp` and `FEN` tags. The FEN says where the board started; the PGN then records what happened next. For Ironwood's richer saved analysis, use its [analysis JSON](/help/saving-and-sharing/) export.
 
 For completed Lichess games, Ironwood can fetch the PGN for you. See [Import games from Lichess](/help/import-from-lichess/).
+
+For handwritten scoresheets, use **Game → Import → Enter scoresheet** to enter and validate moves beside a reference photo, then import or download the PGN. See [Import a game from a scoresheet](/help/import-a-scoresheet/).

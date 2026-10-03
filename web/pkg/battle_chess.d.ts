@@ -3,19 +3,28 @@
 
 export function export_saved_game(json: string, format: string): string;
 
+export function preview_scoresheet(entries: string): string;
+
 export function start(): Promise<void>;
+
+/**
+ * Checks scoresheet moves without changing the current game or saving anything.
+ */
+export function validate_scoresheet_pgn(pgn: string): number;
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly preview_scoresheet: (a: number, b: number) => [number, number, number, number];
     readonly start: () => void;
+    readonly validate_scoresheet_pgn: (a: number, b: number) => [number, number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h9c1e3b016b26ab54: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h0bc566e440eb3467: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h0bc566e440eb3467_6: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h0bc566e440eb3467_8: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h287a157c8aed60ca: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h287a157c8aed60ca_5: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h287a157c8aed60ca_7: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h39ac8b04fb21a08a: (a: number, b: number) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__haa984b5180f8184f: (a: number, b: number, c: any) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

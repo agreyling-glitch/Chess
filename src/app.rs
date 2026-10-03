@@ -116,6 +116,10 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenScoresheet)]
+    fn open_scoresheet();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollScoresheet)]
+    fn poll_scoresheet() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
     fn fetch_lichess(input: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollLichess)]
@@ -3001,6 +3005,11 @@ impl ChessApp {
                 self.import_input = pgn;
                 self.pgn_error = None;
             }
+            let scoresheet = poll_scoresheet();
+            if !scoresheet.is_empty() {
+                self.import_input = scoresheet;
+                self.pgn_error = None;
+            }
         }
         let mut import = false;
         let mut cancel = false;
@@ -3056,6 +3065,18 @@ impl ChessApp {
                     ctx.request_repaint_after(std::time::Duration::from_millis(200));
                 });
                 ui.add_space(4.0);
+                #[cfg(target_arch = "wasm32")]
+                Frame::new()
+                    .fill(ui.visuals().faint_bg_color)
+                    .corner_radius(CornerRadius::same(8))
+                    .inner_margin(Margin::same(14))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("From a scoresheet").size(17.0).strong().color(gold));
+                        ui.label(RichText::new("Enter moves beside your scoresheet photo, with a board preview and live validation.").size(13.0).weak());
+                        if ui.button("Enter scoresheet").clicked() {
+                            open_scoresheet();
+                        }
+                    });
                 Frame::new()
                     .fill(ui.visuals().faint_bg_color)
                     .stroke(Stroke::new(1.0, Color32::from_rgb(90, 77, 51)))
@@ -6383,6 +6404,45 @@ impl ChessApp {
         Ok(())
     }
 
+    pub(crate) fn scoresheet_preview(entries: &[String]) -> serde_json::Value {
+        let mut board = Board::default();
+        let mut positions = vec![board.to_string()];
+        let mut moves = Vec::new();
+        let mut highlights = Vec::new();
+        let mut statuses = Vec::new();
+        let mut stopped = false;
+        for (index, entry) in entries.iter().enumerate() {
+            let token = entry.trim().replace('0', "O");
+            if stopped {
+                statuses.push(if token.is_empty() { "empty" } else { "blocked" });
+                continue;
+            }
+            if token.is_empty() {
+                let gap = entries[index + 1..].iter().any(|value| !value.trim().is_empty());
+                statuses.push(if gap { "missing" } else { "empty" });
+                stopped = true;
+            } else if let Some(mv) = Self::parse_san_move(&board, &token).or_else(|| {
+                let mut candidates = MoveGen::new_legal(&board).filter(|mv| {
+                    Self::san_for_move(&board, *mv).trim_end_matches(['+', '#'])
+                        .eq_ignore_ascii_case(token.trim_end_matches(['+', '#']))
+                });
+                let found = candidates.next()?;
+                candidates.next().is_none().then_some(found)
+            }) {
+                moves.push(Self::san_for_move(&board, mv));
+                highlights.push(serde_json::json!({"from": mv.get_source().to_string(), "to": mv.get_dest().to_string()}));
+                board = board.make_move_new(mv);
+                positions.push(board.to_string());
+                statuses.push("valid");
+            } else {
+                let incomplete = MoveGen::new_legal(&board).any(|mv| Self::san_for_move(&board, mv).to_ascii_lowercase().starts_with(&token.to_ascii_lowercase()));
+                statuses.push(if incomplete { "incomplete" } else { "invalid" });
+                stopped = true;
+            }
+        }
+        serde_json::json!({"positions": positions, "moves": moves, "statuses": statuses, "highlights": highlights})
+    }
+
     fn parse_san_move(board: &Board, san: &str) -> Option<ChessMove> {
         if let Ok(chess_move) = ChessMove::from_san(board, san) {
             return Some(chess_move);
@@ -6395,7 +6455,7 @@ impl ChessApp {
         matches.next().is_none().then_some(found)
     }
 
-    fn parse_pgn_mainline(text: &str) -> Result<(Vec<Board>, Vec<String>), String> {
+    pub(crate) fn parse_pgn_mainline(text: &str) -> Result<(Vec<Board>, Vec<String>), String> {
         let initial_fen = Self::pgn_tag(text, "FEN");
         let mut board = initial_fen
             .as_deref()

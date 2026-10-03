@@ -1,0 +1,50 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {readFileSync} from 'node:fs';
+import {JSDOM} from 'jsdom';
+const pgn = readFileSync(new URL('../web/scoresheet-pgn.js',import.meta.url),'utf8');
+const draftModule=`export function draftStore(){return {read:async()=>globalThis.testDraft,write:async value=>{globalThis.testDraft=structuredClone(value);},clear:async()=>{globalThis.testDraft=undefined;}}}`;
+const source = readFileSync(new URL('../web/scoresheet-import.js',import.meta.url),'utf8').replace("'./scoresheet-pgn.js'",JSON.stringify(`data:text/javascript,${encodeURIComponent(pgn)}`)).replace("'./scoresheet-draft.js'",JSON.stringify(`data:text/javascript,${encodeURIComponent(draftModule)}`));
+test('manual entry preserves a blocked continuation, updates preview, and hands off PGN once',async()=>{
+ const dom=new JSDOM('<body></body>',{url:'http://localhost'});
+ globalThis.window=dom.window;globalThis.document=dom.window.document;
+ dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
+ const start='8/8/8/8/8/8/8/8 w - - 0 1';
+ window.ironwoodPreviewScoresheet=json=>{const entries=JSON.parse(json),moves=[],positions=[start],statuses=[];let stop=false;
+ for(const value of entries){if(stop){statuses.push(value?'blocked':'empty');continue;}if(!value){statuses.push('empty');stop=true;}else if(value==='Nf'){statuses.push('incomplete');stop=true;}else if(['e4','e5','Nf3'].includes(value)){statuses.push('valid');moves.push(value);positions.push(start);}else{statuses.push('invalid');stop=true;}}
+ return JSON.stringify({moves,positions,statuses,highlights:moves.map(move=>({e4:{from:"e2",to:"e4"},e5:{from:"e7",to:"e5"},Nf3:{from:"g1",to:"f3"}}[move]))});};
+ await import(`data:text/javascript,${encodeURIComponent(source)}`);window.ironwoodOpenScoresheet();await new Promise(resolve=>setTimeout(resolve,0));
+ const input=index=>document.querySelector(`[data-index="${index}"]`);
+ const enter=(index,text)=>{input(index).value=text;input(index).dispatchEvent(new window.Event('input'));};
+ assert.equal(document.querySelectorAll('#ss-board>div').length,64);
+ enter(0,'e4');enter(1,'e5');enter(2,'Nf');assert.equal(input(2).dataset.state,'incomplete');
+ const list=document.querySelector('#ss-list');list.getBoundingClientRect=()=>({top:0,bottom:100});
+ const originalBounds=window.HTMLElement.prototype.getBoundingClientRect;window.HTMLElement.prototype.getBoundingClientRect=function(){return this.matches('#ss-list .selected')?{top:120,bottom:150}:originalBounds.call(this);};
+ enter(2,'Nf3');assert.equal(list.scrollTop,50);window.HTMLElement.prototype.getBoundingClientRect=originalBounds;
+ assert.equal(document.querySelector('#ss-use').disabled,false);
+ enter(1,'bad');assert.equal(input(2).value,'Nf3');assert.equal(input(2).dataset.state,'blocked');assert.equal(document.querySelector('#ss-use').disabled,true);
+ enter(1,'e5');assert.equal(input(2).dataset.state,'valid');
+ assert.equal(document.querySelectorAll('#ss-board .last-move').length,2);assert.match(document.querySelector('#ss-board .last-move').getAttribute('aria-label'),/f3/);
+ document.querySelector('#ss-list button').click();assert.equal(document.querySelectorAll('#ss-board .last-move').length,0);
+ document.querySelector('#ss-date').value='2012-07-09';document.querySelector('#ss-date').dispatchEvent(new window.Event('input'));await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(globalThis.testDraft.entries[2],'Nf3');assert.equal(globalThis.testDraft.details.date,'2012-07-09');document.querySelector('#ss-use').click();
+ const game=window.ironwoodPollScoresheet();assert.match(game,/1\. e4 e5 2\. Nf3 \*/);assert.match(game,/\[Date "2012\.07\.09"\]/);assert.equal(window.ironwoodPollScoresheet(),'');
+ dom.window.close();
+ const restored=new JSDOM('<body></body>',{url:'http://localhost'});const validator=window.ironwoodPreviewScoresheet;
+ globalThis.window=restored.window;globalThis.document=restored.window.document;
+ window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;};window.ironwoodPreviewScoresheet=validator;
+ await import(`data:text/javascript,${encodeURIComponent(source+'\n// restored instance')}`);window.ironwoodOpenScoresheet();await new Promise(resolve=>setTimeout(resolve,0));
+ assert.equal(input(2).value,'Nf3');assert.equal(document.querySelector('#ss-date').value,'2012-07-09');assert.equal(document.querySelector('#ss-use').disabled,false);
+ window.confirm=()=>false;document.querySelector('#ss-new').click();assert.equal(input(0).value,'e4');
+ window.confirm=()=>true;document.querySelector('#ss-new').click();await new Promise(resolve=>setTimeout(resolve,0));assert.equal(globalThis.testDraft,undefined);assert.equal(input(0).value,'');assert.equal(document.querySelector('#ss-photo').hidden,true);
+ restored.window.close();
+});
+
+ test('unavailable browser storage reports failure instead of claiming a save',async()=>{
+ const storageSource=readFileSync(new URL('../web/scoresheet-draft.js',import.meta.url),'utf8');
+ const {draftStore}=await import(`data:text/javascript,${encodeURIComponent(storageSource)}`);
+ const storage=draftStore(null);
+ await assert.rejects(storage.write({entries:['nc']}),/Local storage unavailable/);
+ await assert.rejects(storage.read(),/Local storage unavailable/);
+ });

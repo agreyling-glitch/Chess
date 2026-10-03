@@ -12,6 +12,8 @@ Play a game in Ironwood or open one from your saved games. You can also import a
 
 For games played on Lichess, use **Game → Import…** to fetch recent games by username or one completed game by its link. See [Import games from Lichess](/help/import-from-lichess/) for the steps.
 
+For a handwritten game, choose **Game → Import → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
+
 ## Run game analysis
 
 Open the Analysis workspace and start full game analysis. Ironwood asks Stockfish to examine each position in turn. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply.

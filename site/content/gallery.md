@@ -1,7 +1,7 @@
 ---
 title: "Gallery"
-description: "Explore the 3D board, Ironwood Chess screenshots, and a sample full-game analysis report."
+description: "Explore the 3D board, scoresheet import, Ironwood Chess screenshots, and a sample full-game analysis report."
 layout: "gallery"
 url: "/gallery/"
-lastmod: 2026-09-30T00:00:00-05:00
+lastmod: 2026-10-03T00:00:00-05:00
 ---

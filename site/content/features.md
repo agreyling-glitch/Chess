@@ -1,7 +1,7 @@
 ---
 title: "Features"
-lastmod: 2026-10-02T00:00:00-05:00
-description: "Play and analyze chess in 2D or 3D, meet FICS opponents, import Lichess games, and keep your games on your device."
+lastmod: 2026-10-03T00:00:00-05:00
+description: "Play and analyze chess in 2D or 3D, meet FICS opponents, import Lichess games and handwritten scoresheets, and keep your games on your device."
 layout: "features"
 url: "/features/"
 ---
@@ -54,6 +54,12 @@ Upload, paste, or drop a chessboard screenshot into the position editor. Recogni
 ## Import games from Lichess
 
 Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch their latest 20 completed games, or paste an individual game link. No Lichess login or API token is needed. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and run Stockfish analysis, or choose immediate analysis when importing a single game. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
+
+## Import handwritten scoresheets
+
+Turn a handwritten game into PGN with **Game → Import → Enter scoresheet**. Type White's and Black's moves beside a photo of the sheet while a board preview and validated move list follow your entries. Zoom and drag the photo to read the handwriting. Live validation catches illegal or missing moves, accepts lowercase piece letters, and adds check and checkmate notation automatically. Correct an earlier move without losing the continuation; gold board highlights and an automatically scrolling move list help you follow the game.
+
+Moves, game details, and the photo save locally so you can stop and return to the unfinished sheet later. Enter the players, event, date, and result, then download PGN or pass the game into Ironwood's existing import flow for review and analysis. See [Import a game from a scoresheet](/help/import-a-scoresheet/) for instructions or [the gallery](/gallery/) for a preview.
 
 ## Build your library
 
