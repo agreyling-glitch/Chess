@@ -15,7 +15,21 @@ function stop(code = 0) {
   if (!wrangler.killed) wrangler.kill();
   process.exit(code);
 }
-engine.on('exit', code => { if (code) stop(code); });
-wrangler.on('exit', code => stop(code || 0));
+engine.on('error', error => {
+  console.error('Engine preview server failed:', error);
+  stop(1);
+});
+wrangler.on('error', error => {
+  console.error('Wrangler failed to start:', error);
+  stop(1);
+});
+engine.on('exit', (code, signal) => {
+  console.error(`Engine preview server exited (code=${code}, signal=${signal || 'none'}).`);
+  stop(code || 1);
+});
+wrangler.on('exit', (code, signal) => {
+  console.error(`Wrangler exited (code=${code}, signal=${signal || 'none'}).`);
+  stop(code || (signal ? 1 : 0));
+});
 process.on('SIGINT', () => stop(0));
 process.on('SIGTERM', () => stop(0));

@@ -41,7 +41,7 @@ test('backup validation summarizes restorable data', () => {
       { id: 'two', category: 'imported', favorite: false, json },
     ],
   });
-  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, observed: 0, favorites: 1, hasPreferences: true });
+  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, observed: 0, training: 0, profiles: 0, favorites: 1, hasPreferences: true });
 });
 
 test('backup validation rejects unknown formats and incomplete games', () => {

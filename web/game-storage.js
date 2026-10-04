@@ -4,6 +4,8 @@ const ACTIVE_ID_KEY = 'ironwood.chess.active-game-id.v1';
 const ACTIVE_CATEGORY_KEY = 'ironwood.chess.active-game-category.v1';
 const CURRENT_GAME_KEY = 'ironwood.chess.game.v1';
 const PREFERENCES_KEY = 'ironwood.chess.preferences.v1';
+const TRAINING_KEY = 'ironwood.chess.training.v1';
+const LIBRARY_RETURN_KEY = 'ironwood.chess.library-return.v1';
 const BACKUP_FORMAT = 'ironwood-backup';
 const BACKUP_VERSION = 1;
 
@@ -201,7 +203,7 @@ async function listGames() {
       }
       const { json, ...summary } = cursor.value;
       const details = gameDetails(json);
-      games.push({ ...summary, ...details, category: summary.category || details.category, source: summary.source, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
+      games.push({ ...summary, ...details, category: details.trainingProfileId ? 'training' : summary.category || details.category, source: summary.source, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
       cursor.continue();
     };
     request.onerror = () => reject(request.error || new Error('Could not list saved games'));
@@ -218,6 +220,61 @@ async function readAllGameRecords() {
   });
 }
 
+export function validateTrainingProfiles(value) {
+  if (!value || !Array.isArray(value.profiles) || typeof value.selected_id !== 'string') throw new Error('Invalid training profiles');
+  const ids = new Set();
+  for (const profile of value.profiles) {
+    if (!profile || typeof profile.id !== 'string' || !profile.id || ids.has(profile.id) ||
+        typeof profile.name !== 'string' || !profile.name.trim() || !Array.isArray(profile.results)) throw new Error('Invalid training profile');
+    ids.add(profile.id);
+    const sessions = new Set();
+    for (const entry of profile.results) {
+      const s = entry?.session;
+      const expectedScore = entry?.result === '1/2-1/2' ? 0.5 :
+        (entry?.result === '1-0' && s?.side === 'White') || (entry?.result === '0-1' && s?.side === 'Black') ? 1 : 0;
+      if (!s || typeof s.id !== 'string' || !s.id || sessions.has(s.id) || s.profile_id !== profile.id ||
+          typeof s.profile_name !== 'string' || !['White','Black'].includes(s.side) ||
+          !Number.isInteger(s.opponent_elo) || s.opponent_elo < 1320 || s.opponent_elo > 3190 ||
+          !Number.isInteger(s.rating_before) || !Number.isInteger(s.rating_after) ||
+          typeof s.started_at !== 'string' || typeof s.completed_at !== 'string' ||
+          !['1-0','0-1','1/2-1/2'].includes(entry.result) || entry.score !== expectedScore || typeof entry.timed_out !== 'boolean') throw new Error('Invalid training result');
+      sessions.add(s.id);
+      const a = entry.analysis;
+      if (a && (!Array.isArray(a.phases) || a.phases.length !== 3 ||
+          ![a.total_player_moves,a.missed_mates,a.allowed_mates,...a.phases.flatMap(p => [p.moves,p.cp_moves ?? 0,p.loss_cp,p.mistakes,p.blunders])].every(n => Number.isSafeInteger(n) && n >= 0))) throw new Error('Invalid training analysis');
+    }
+  }
+  return structuredClone(value);
+}
+
+export function mergeTrainingProfiles(current, incoming) {
+  const result = current ? validateTrainingProfiles(current) : { selected_id: '', profiles: [] };
+  const backup = validateTrainingProfiles(incoming);
+  for (const p of backup.profiles) {
+    let target = result.profiles.find(q => q.id === p.id);
+    if (!target) { target = { ...p, results: [] }; result.profiles.push(target); }
+    for (const entry of p.results) {
+      const existing = target.results.find(r => r.session.id === entry.session.id);
+      if (!existing) target.results.push(entry);
+      else if ((entry.analysis?.phases.reduce((n,p) => n+p.moves,0) || 0) >
+               (existing.analysis?.phases.reduce((n,p) => n+p.moves,0) || 0)) existing.analysis = entry.analysis;
+    }
+    target.results.sort((a,b) => a.session.completed_at.localeCompare(b.session.completed_at) || a.session.id.localeCompare(b.session.id));
+    const ratings = { White: 1320, Black: 1320 };
+    for (const entry of target.results) {
+      const s = entry.session;
+      s.rating_before = ratings[s.side];
+      const expected = 1/(1+10**((s.opponent_elo-s.rating_before)/400));
+      const delta = 32*(entry.score-expected);
+      // Rust rounds negative half-points away from zero.
+      s.rating_after = s.rating_before + Math.sign(delta)*Math.round(Math.abs(delta));
+      ratings[s.side] = s.rating_after;
+    }
+  }
+  if (!result.profiles.some(p => p.id === result.selected_id)) result.selected_id = backup.selected_id;
+  return result;
+}
+
 function validateBackup(value) {
   if (!value || value.format !== BACKUP_FORMAT || value.version !== BACKUP_VERSION || !Array.isArray(value.games)) {
     throw new Error('This is not a supported Ironwood backup');
@@ -230,7 +287,7 @@ function validateBackup(value) {
     return {
       ...record,
       id: record.id,
-      category: ['imported', 'observed'].includes(record.category) ? record.category : 'mine',
+      category: gameDetails(record.json).trainingProfileId ? 'training' : ['imported', 'observed'].includes(record.category) ? record.category : 'mine',
       favorite: Boolean(record.favorite),
       updatedAt: Number(record.updatedAt) || Date.now(),
     };
@@ -239,7 +296,8 @@ function validateBackup(value) {
       (typeof value.preferences !== 'object' || Array.isArray(value.preferences))) {
     throw new Error('The backup preferences are invalid');
   }
-  return { games, preferences: value.preferences ?? null };
+  const trainingProfiles = value.training_profiles == null ? null : validateTrainingProfiles(value.training_profiles);
+  return { games, preferences: value.preferences ?? null, trainingProfiles };
 }
 
 export function backupSummary(value) {
@@ -249,6 +307,8 @@ export function backupSummary(value) {
     mine: backup.games.filter(game => game.category === 'mine').length,
     imported: backup.games.filter(game => game.category === 'imported').length,
     observed: backup.games.filter(game => game.category === 'observed').length,
+    training: backup.games.filter(game => game.category === 'training').length,
+    profiles: backup.trainingProfiles?.profiles.length || 0,
     favorites: backup.games.filter(game => game.favorite).length,
     hasPreferences: Boolean(backup.preferences),
   };
@@ -397,21 +457,7 @@ function storageDialog(titleText) {
   close.addEventListener('click', () => dialog.close());
   const windowControls = document.createElement('div');
   windowControls.className = 'game-library-window-controls';
-  const maximize = document.createElement('button');
-  maximize.type = 'button';
-  const updateMaximize = () => {
-    const maximized = dialog.classList.contains('maximized');
-    maximize.textContent = maximized ? '❐' : '□';
-    maximize.title = maximized ? 'Restore saved games window' : 'Maximize saved games window';
-    maximize.setAttribute('aria-label', maximize.title);
-    maximize.setAttribute('aria-pressed', String(maximized));
-  };
-  maximize.addEventListener('click', () => {
-    dialog.classList.toggle('maximized');
-    updateMaximize();
-  });
-  updateMaximize();
-  windowControls.append(maximize, close);
+  windowControls.append(close);
   heading.append(title, windowControls);
   dialog.append(heading);
   return dialog;
@@ -429,6 +475,7 @@ window.ironwoodBackupStorage = async () => {
       app: { name: 'Ironwood Chess', version: document.querySelector('meta[name="application-version"]')?.content || null },
       games,
       preferences,
+      training_profiles: JSON.parse(localStorage.getItem(TRAINING_KEY) || 'null'),
     };
     const date = new Date().toISOString().slice(0, 10);
     downloadJson(`ironwood-backup-${date}.json`, backup);
@@ -450,10 +497,10 @@ window.ironwoodRestoreStorage = () => {
       const summary = backupSummary(raw);
       const dialog = storageDialog('Restore backup');
       const message = document.createElement('p');
-      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.observed} observed, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
+      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.observed} observed, ${summary.training} training, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
       const guidance = document.createElement('p');
       guidance.className = 'storage-guidance';
-      guidance.textContent = 'Merge keeps existing games and adds the backup. Replace removes existing games first. Both options restore included preferences.';
+      guidance.textContent = `Merge keeps existing games and adds the backup. Replace removes existing games first. Both options restore included preferences and training profiles (${summary.profiles}). Training results are merged by game ID so ratings are not counted twice.`;
       const actions = document.createElement('div');
       actions.className = 'storage-actions';
       for (const [label, replace, danger] of [['Cancel', null, false], ['Merge', false, false], ['Replace existing', true, true]]) {
@@ -466,7 +513,11 @@ window.ironwoodRestoreStorage = () => {
           for (const child of actions.children) child.disabled = true;
           message.textContent = 'Restoring backup…';
           try {
+            const profiles = backup.trainingProfiles ? mergeTrainingProfiles(
+              replace ? null : JSON.parse(localStorage.getItem(TRAINING_KEY) || 'null'), backup.trainingProfiles) : null;
             await replaceOrMergeGames(backup.games, replace);
+            if (profiles) localStorage.setItem(TRAINING_KEY, JSON.stringify(profiles));
+            else if (replace) localStorage.removeItem(TRAINING_KEY);
             if (backup.preferences) localStorage.setItem(PREFERENCES_KEY, JSON.stringify(backup.preferences));
             localStorage.removeItem(CURRENT_GAME_KEY);
             localStorage.removeItem(ACTIVE_ID_KEY);
@@ -505,6 +556,7 @@ window.ironwoodOpenStorageInfo = async () => {
       ['My games', String(games.filter(game => game.category === 'mine').length)],
       ['Imported games', String(games.filter(game => game.category === 'imported').length)],
       ['Observed games', String(games.filter(game => game.category === 'observed').length)],
+      ['Training games', String(games.filter(game => game.category === 'training').length)],
       ['Favorites', String(games.filter(game => game.favorite).length)],
       ['Browser usage', format(estimate?.usage)],
       ['Browser quota', format(estimate?.quota)],
@@ -654,12 +706,21 @@ export function gameDetails(json) {
   const game = JSON.parse(json);
   const imported = Boolean(game.review_pgn);
   // Preserve historical opponent names for games saved before the engine was removed.
-  const opponent = game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
+  const training = game.training;
+  const opponent = training ? `Stockfish ${training.opponent_elo} Elo` : game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
+  let profileName = training?.profile_name || null;
+  if (training?.profile_id) {
+    try {
+      const profiles = JSON.parse(localStorage.getItem(TRAINING_KEY) || 'null');
+      profileName = profiles?.profiles?.find(profile => profile.id === training.profile_id)?.name || profileName;
+    } catch { /* Keep the recorded name if profile storage is unavailable. */ }
+  }
+  const human = profileName || 'You';
   const bothSides = game.engine_enabled === false;
-  const white = imported ? pgnTag(game.review_pgn, 'White') || 'Unknown' : bothSides ? 'White' : game.player_side === 'Black' ? opponent : 'You';
-  const black = imported ? pgnTag(game.review_pgn, 'Black') || 'Unknown' : bothSides ? 'Black' : game.player_side === 'Black' ? 'You' : opponent;
+  const white = training ? (training.side === 'Black' ? opponent : human) : imported ? pgnTag(game.review_pgn, 'White') || 'Unknown' : bothSides ? 'White' : game.player_side === 'Black' ? opponent : human;
+  const black = training ? (training.side === 'Black' ? human : opponent) : imported ? pgnTag(game.review_pgn, 'Black') || 'Unknown' : bothSides ? 'Black' : game.player_side === 'Black' ? human : opponent;
   const rawDate = pgnTag(game.review_pgn, 'Date');
-  const playedAt = rawDate && rawDate !== '????.??.??' ? rawDate : null;
+  const playedAt = training?.started_at?.slice(0, 10) || (rawDate && rawDate !== '????.??.??' ? rawDate : null);
   const rawSite = pgnTag(game.review_pgn, 'Site');
   const venue = rawSite && rawSite !== '-' && rawSite !== '?' ? rawSite : null;
   const recordedResult = pgnTag(game.review_pgn, 'Result') || game.result;
@@ -671,7 +732,9 @@ export function gameDetails(json) {
   const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
   const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
   return { startingNote, analysisStatus, title: `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
-    finalFen: game.final_board || game.board, category: imported ? 'imported' : 'mine' };
+    trainingProfileId: training?.profile_id || null, trainingProfileName: profileName, trainingSide: training?.side || null,
+    trainingOpponentElo: training?.opponent_elo, ratingBefore: training?.rating_before, ratingAfter: training?.rating_after,
+    finalFen: game.final_board || game.board, category: training ? 'training' : imported ? 'imported' : 'mine' };
 }
 
 export function fideProfileUrl(id) {
@@ -725,7 +788,8 @@ function queueGameRecord(json, id, category, trackBatch = false, source) {
 
 window.ironwoodStoreCurrentGame = json => {
   try {
-    queueGameRecord(json, activeId(), localStorage.getItem(ACTIVE_CATEGORY_KEY) || gameDetails(json).category);
+    const details = gameDetails(json);
+    queueGameRecord(json, activeId(), details.trainingProfileId ? 'training' : localStorage.getItem(ACTIVE_CATEGORY_KEY) || details.category);
   } catch (error) {
     console.warn('Ironwood game library save failed:', error);
   }
@@ -742,7 +806,7 @@ window.ironwoodStoreImportedGame = json => {
 window.ironwoodStartNewStoredGame = category => {
   try {
     localStorage.setItem(ACTIVE_ID_KEY, newId());
-    localStorage.setItem(ACTIVE_CATEGORY_KEY, ['imported', 'observed'].includes(category) ? category : 'mine');
+    localStorage.setItem(ACTIVE_CATEGORY_KEY, ['imported', 'observed', 'training'].includes(category) ? category : 'mine');
   } catch (error) {
     console.warn('Ironwood could not start a new saved game:', error);
   }
@@ -843,7 +907,7 @@ function startingNoteElement(game, compact = false) {
   return section;
 }
 
-function showGamePreview(game, trigger) {
+async function showGamePreview(game, trigger) {
   const dialog = document.createElement('dialog');
   dialog.id = 'game-preview-dialog';
   dialog.setAttribute('aria-labelledby', 'game-preview-title');
@@ -858,19 +922,86 @@ function showGamePreview(game, trigger) {
   close.addEventListener('click', () => dialog.close());
   heading.append(title, close);
   const caption = document.createElement('p');
-  caption.textContent = `Final position · ${game.result || '*'}${game.playedAt ? ` · ${game.playedAt}` : ''}`;
-  const board = finalBoard(game.finalFen);
-  board.setAttribute('aria-label', `Final position: ${game.title}`);
-  dialog.append(heading, caption, board);
+  const boardHost = document.createElement('div');
+  const controls = document.createElement('div');
+  controls.className = 'game-preview-controls';
+  let positions = [game.finalFen];
+  let moves = [];
+  let index = 0;
+  let timer = null;
+  const stop = () => {
+    if (timer !== null) clearInterval(timer);
+    timer = null;
+    autoplay.textContent = 'Auto play';
+    autoplay.setAttribute('aria-pressed', 'false');
+  };
+  const button = (label, action) => {
+    const element = document.createElement('button');
+    element.type = 'button'; element.textContent = label;
+    element.addEventListener('click', action); controls.append(element);
+    return element;
+  };
+  const first = button('First', () => { stop(); index = 0; render(); });
+  const previous = button('Previous', () => { stop(); index = Math.max(0, index - 1); render(); });
+  const autoplay = button('Auto play', () => {
+    if (timer !== null) { stop(); return; }
+    if (index === positions.length - 1) index = 0;
+    autoplay.textContent = 'Pause'; autoplay.setAttribute('aria-pressed', 'true');
+    render();
+    timer = setInterval(() => {
+      index = Math.min(index + 1, positions.length - 1);
+      if (index === positions.length - 1) stop();
+      render();
+    }, 500);
+  });
+  autoplay.setAttribute('aria-pressed', 'false');
+  const next = button('Next', () => { stop(); index = Math.min(positions.length - 1, index + 1); render(); });
+  const last = button('Last', () => { stop(); index = positions.length - 1; render(); });
+  dialog.addEventListener('keydown', event => {
+    if (event.altKey || event.ctrlKey || event.metaKey || !['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    stop();
+    index = Math.max(0, Math.min(positions.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)));
+    render();
+  });
+  const render = () => {
+    const board = finalBoard(positions[index]);
+    board.setAttribute('aria-label', `Position ${index} of ${positions.length - 1}: ${game.title}`);
+    boardHost.replaceChildren(board);
+    caption.textContent = `${positions.length > 1 ? index === 0 ? 'Starting position' : `Move ${index} of ${positions.length - 1} · ${moves[index - 1] || ''}` : 'Final position'} · ${game.result || '*'}${game.playedAt ? ` · ${game.playedAt}` : ''}`;
+    first.disabled = previous.disabled = index === 0;
+    next.disabled = last.disabled = index === positions.length - 1;
+    autoplay.disabled = positions.length < 2;
+  };
+  render();
+  dialog.append(heading, caption, boardHost, controls);
   const note = startingNoteElement(game);
   if (note) dialog.append(note);
   dialog.addEventListener('close', () => {
+    stop();
     dialog.remove();
     if (trigger.isConnected) trigger.focus();
   }, { once: true });
   document.body.append(dialog);
   dialog.showModal();
   close.focus();
+  try {
+    const stored = await readGame(game.id);
+    if (!dialog.open) return;
+    if (!stored?.json) throw new Error('Saved game was not found');
+    const saved = JSON.parse(stored.json);
+    const preview = window.ironwoodExportSavedGame
+      ? JSON.parse(window.ironwoodExportSavedGame(stored.json, 'preview'))
+      : { positions: saved.live_positions, moves: saved.live_moves };
+    if (Array.isArray(preview.positions) && preview.positions.length) {
+      positions = preview.positions; moves = preview.moves || [];
+      index = positions.length - 1;
+      render();
+    }
+  } catch (error) {
+    caption.textContent += ` · Move preview unavailable: ${error.message}`;
+  }
 }
 
 function confirmDeleteGames(games, active) {
@@ -911,13 +1042,14 @@ function confirmDeleteGames(games, active) {
   });
 }
 
-window.ironwoodOpenGameLibrary = async () => {
+window.ironwoodOpenGameLibrary = async (restore = null) => {
   let dialog = document.getElementById('game-library-dialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
     dialog.id = 'game-library-dialog';
     document.body.append(dialog);
   }
+  if (restore) dialog.classList.toggle('maximized', Boolean(restore.maximized));
   dialog.replaceChildren();
   const heading = document.createElement('div');
   heading.className = 'game-library-heading';
@@ -961,11 +1093,12 @@ window.ironwoodOpenGameLibrary = async () => {
   dialog.showModal();
   try {
     const games = await listGames();
-    let category = 'all';
-    let playerFilter = '*';
-    let searchQuery = '';
-    let analysisFilter = '*';
-    let page = 0;
+    let category = restore?.category || 'all';
+    let profileFilter = restore?.profileFilter || '*';
+    let playerFilter = restore?.playerFilter || '*';
+    let searchQuery = restore?.searchQuery || '';
+    let analysisFilter = restore?.analysisFilter || '*';
+    let page = Number.isSafeInteger(restore?.page) ? Math.max(0, restore.page) : 0;
     const pageSize = 10;
     const selectedIds = new Set();
     let deleting = false;
@@ -986,6 +1119,10 @@ window.ironwoodOpenGameLibrary = async () => {
           localStorage.removeItem(CURRENT_GAME_KEY);
           localStorage.removeItem(ACTIVE_ID_KEY);
           localStorage.removeItem(ACTIVE_CATEGORY_KEY);
+          sessionStorage.setItem(LIBRARY_RETURN_KEY, JSON.stringify({
+            category, profileFilter, playerFilter, searchQuery, analysisFilter, page,
+            maximized: dialog.classList.contains('maximized'),
+          }));
           location.reload();
         } else render();
       } catch (error) {
@@ -1000,6 +1137,7 @@ window.ironwoodOpenGameLibrary = async () => {
       for (const [value, label] of [
         ['all', 'All Games'],
         ['mine', 'My Games'],
+        ['training', 'Training'],
         ['observed', 'Observed'],
         ['imported', 'Imported Games'],
         ['favorites', 'Favorites'],
@@ -1008,7 +1146,7 @@ window.ironwoodOpenGameLibrary = async () => {
         tab.type = 'button';
         tab.textContent = `${label} (${games.filter(game => gameMatchesCategory(game, value)).length})`;
         tab.className = category === value ? 'selected' : '';
-        tab.addEventListener('click', () => { category = value; playerFilter = '*'; selectedIds.clear(); page = 0; render(); });
+        tab.addEventListener('click', () => { category = value; playerFilter = '*'; profileFilter = '*'; selectedIds.clear(); page = 0; render(); });
         tabs.append(tab);
       }
       filters.replaceChildren();
@@ -1028,6 +1166,16 @@ window.ironwoodOpenGameLibrary = async () => {
         replacement.setSelectionRange(cursor, cursor);
       });
       filters.append(search);
+      if (category === 'training') {
+        const label = document.createElement('label'); label.textContent = 'Profile ';
+        const select = document.createElement('select'); select.setAttribute('aria-label', 'Training profile');
+        for (const [id, name] of [['*', 'All profiles'], ...new Map(games.filter(g => g.trainingProfileId).map(g => [g.trainingProfileId, g.trainingProfileName])).entries()]) {
+          const option = document.createElement('option'); option.value = id; option.textContent = name; select.append(option);
+        }
+        select.value = profileFilter;
+        select.addEventListener('change', () => { profileFilter = select.value; selectedIds.clear(); page = 0; render(); });
+        label.append(select); filters.append(label);
+      }
       {
         const label = document.createElement('label');
         label.textContent = 'Player ';
@@ -1060,7 +1208,7 @@ window.ironwoodOpenGameLibrary = async () => {
       filters.append(analysisLabel);
       list.replaceChildren();
       pager.replaceChildren();
-      const visible = games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (playerFilter === '*' ||
+      const visible = games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
@@ -1148,6 +1296,7 @@ window.ironwoodOpenGameLibrary = async () => {
       if (!visible.length) {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
           category === 'all' ? 'No saved games yet.' :
+          category === 'training' ? 'Start Training vs AI from New game to add games under a profile.' :
           category === 'observed' ? 'Finished games you watch are saved here automatically.' :
           category === 'mine' ? 'No games here yet. Finished online games and games against Stockfish are saved automatically.' :
             category === 'imported' ? 'No imported games here yet. Import a PGN or analysis JSON to add one.' :
@@ -1215,6 +1364,10 @@ window.ironwoodOpenGameLibrary = async () => {
           game.result === '1/2-1/2' ? 'Draw' : 'Result unknown / unfinished';
         const details = document.createElement('span');
         details.textContent = `${game.playedAt ? `Played ${game.playedAt}` : 'Date played unknown'} · ${game.venue ? `Venue: ${game.venue}` : 'Venue unknown'} · Saved ${new Date(game.updatedAt).toLocaleString()} · ${game.moves} moves · ${game.analysisStatus} · ${game.analyzed} positions analyzed${game.source ? ` · ${game.source}` : ''}`;
+        if (game.trainingProfileId) {
+          details.textContent += ` · Training: ${game.trainingProfileName} · ${game.trainingSide} · Elo ${game.ratingBefore}`;
+          if (Number.isFinite(game.ratingAfter)) details.textContent += ` → ${game.ratingAfter} (${game.ratingAfter-game.ratingBefore >= 0 ? '+' : ''}${game.ratingAfter-game.ratingBefore})`;
+        }
         const actions = document.createElement('div');
         actions.className = 'game-library-actions';
         const open = document.createElement('button');
@@ -1229,7 +1382,7 @@ window.ironwoodOpenGameLibrary = async () => {
         });
         const move = document.createElement('button');
         move.type = 'button';
-        move.hidden = game.category === 'observed';
+        move.hidden = game.category === 'observed' || game.category === 'training';
         move.textContent = game.category === 'mine' ? 'Move to Imported' : 'Move to My Games';
         move.addEventListener('click', async () => {
           const oldCategory = game.category;
@@ -1282,3 +1435,19 @@ window.ironwoodOpenGameLibrary = async () => {
     list.textContent = `Saved games are unavailable: ${error.message}`;
   }
 };
+
+
+// Deleting the active game resets the WASM board via reload. Return to the library
+// once that reset is complete, consuming the marker so later visits stay normal.
+if (typeof document !== 'undefined') {
+  const returnToLibrary = () => {
+    try {
+      const saved = sessionStorage.getItem(LIBRARY_RETURN_KEY);
+      if (!saved) return;
+      sessionStorage.removeItem(LIBRARY_RETURN_KEY);
+      window.ironwoodOpenGameLibrary(JSON.parse(saved));
+    } catch { /* An unavailable session store should not block app startup. */ }
+  };
+  if (document.readyState === 'complete') returnToLibrary();
+  else window.addEventListener('load', returnToLibrary, { once: true });
+}

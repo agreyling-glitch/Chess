@@ -17,3 +17,15 @@ For a copy you control, use **Storage → Backup all data** and keep the downloa
 To share one game with chess software, export or copy its [PGN](/help/pgn/). To preserve Ironwood's richer analysis of one game, use [analysis JSON](/help/saving-and-sharing/).
 
 Games with a Starting note show a short preview in the library. Click that note to open the starting position, or enlarge the board preview to read the full note beneath the final board. See [Taking notes and adding annotations](/help/taking-notes/) for more.
+
+## Larger board preview
+
+Click a game's small board to open the larger preview. Use **First**, **Previous**, **Next**, and **Last** beneath the board to browse its positions. **Left Arrow** and **Right Arrow** also move backward and forward.
+
+Select **Auto play** to advance one move every **0.5 seconds**. If the preview is already at the final position, autoplay starts from the beginning. **Pause**, a navigation button, or an arrow key stops autoplay. It also stops at the last move and when you close the preview. Previewing does not change the current game.
+
+After confirming a deletion, you return to Saved Games. Deleting the currently loaded game resets the board and reopens the library with your filters, page, and maximized state preserved.
+
+## Training profiles in backups
+
+**Backup all data** includes [training profiles](/help/training-vs-ai/), their completed results, per-color rating history, and progress statistics. Merge restores combine results by unique game ID so a repeated backup does not count the same result twice. Keep backups before clearing browser data or switching devices.

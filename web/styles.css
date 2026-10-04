@@ -107,3 +107,33 @@ canvas { display:block; }
 .game-starting-note-preview:focus-visible { outline:2px solid #d3ad62; outline-offset:3px; }
 #game-preview-dialog .game-starting-note { max-width:min(640px,calc(100vw - 72px),calc(100dvh - 190px)); }
 #game-preview-dialog .game-starting-note-full { margin:0; max-height:180px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; color:#ecebe4; }
+
+/* Window chrome follows Enter Scoresheet; dialog dimensions stay task-specific. */
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog):is(dialog) {
+  box-sizing:border-box; padding:18px; border:1px solid #d3ad62; border-radius:12px;
+  background:#171a1e; color:#eee; font:14px system-ui,sans-serif; color-scheme:dark; box-shadow:none;
+}
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog)::backdrop { background:#000b; }
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog):is(dialog) :is(header,.game-library-heading,.game-preview-heading) {
+  display:flex; align-items:center; justify-content:space-between; padding:0; border:0; gap:12px;
+}
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog):is(dialog) :is(header,.game-library-heading,.game-preview-heading) h2 {
+  margin:0 0 10px; font:700 21px system-ui,sans-serif;
+}
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog):is(dialog) :is(header,.game-library-heading,.game-preview-heading) button {
+  width:auto; height:auto; flex:none; padding:8px 12px; border:1px solid #d3ad62; border-radius:6px;
+  background:#292820; color:#f4ddb0; font:400 13.3333px Arial,sans-serif; line-height:normal; cursor:pointer;
+}
+:is(#ironwood-scoresheet,#ironwood-position-editor,#game-library-dialog,#storage-management-dialog,#game-preview-dialog):is(dialog) :is(header,.game-library-heading,.game-preview-heading) button:focus-visible {
+  outline:2px solid #e7bc65; outline-offset:2px;
+}
+#ironwood-position-editor .pe-body { padding:20px 0; }
+#ironwood-position-editor footer { padding:0; }
+#game-library-dialog.maximized { border-radius:0; }
+
+.game-preview-controls { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin:16px 0; }
+.game-preview-controls button { padding:10px 14px; border:1px solid #776440; border-radius:6px; background:#292820; color:#eeddbb; font-size:15px; cursor:pointer; }
+.game-preview-controls button:disabled { opacity:.4; cursor:default; }
+.game-preview-controls button[aria-pressed="true"] { background:#d3ad62; color:#171a1e; }
+.game-preview-controls button:focus-visible { outline:2px solid #d3ad62; outline-offset:2px; }
+#game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 72px),calc(100dvh - 260px)); }

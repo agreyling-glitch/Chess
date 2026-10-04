@@ -1,4 +1,8 @@
 use crate::rules::{Board, MoveGen};
+#[path = "training_ui.rs"]
+mod training_ui;
+
+use crate::training::{self, Profiles, Profile, Session, Side as TrainingSide, AnalysisStats};
 use chess::{BoardStatus, ChessMove, Color, File, Piece, Rank, Square};
 use eframe::egui::{
     self, Align, Align2, Color32, CornerRadius, FontFamily, FontId, Frame, Layout, Margin,
@@ -1003,8 +1007,8 @@ fn fics_game_pgn(white: &str, black: &str, result: &str, moves: &[String]) -> St
 #[derive(Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 enum WorkspaceMode {
     #[default]
+    #[serde(alias = "Expanded")]
     Compact,
-    Expanded,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -1016,6 +1020,8 @@ enum CompactPanel {
 
 #[derive(Serialize, Deserialize)]
 struct PersistedGame {
+    #[serde(default)]
+    training: Option<Session>,
     #[serde(default)]
     local_clock: Option<LocalClock>,
     #[serde(default)]
@@ -1155,6 +1161,14 @@ impl UserPreferences {
 }
 
 pub struct ChessApp {
+    training: Option<Session>,
+    training_profiles: Profiles,
+    training_dialog_open: bool,
+    training_dialog_maximized: bool,
+    training_profile_name: String,
+    training_profile_rename: Option<String>,
+    training_error: Option<String>,
+    new_game_training: bool,
     board: Board,
     board_3d_active: bool,
     board_3d_theme: crate::board3d::Theme,
@@ -1176,6 +1190,9 @@ pub struct ChessApp {
     history: Vec<Board>,
     last_move: Option<ChessMove>,
     promotion: Option<(Square, Square)>,
+    typed_move: String,
+    typed_move_error: bool,
+    typed_move_board: Option<Board>,
     flipped: bool,
     workspace_mode: WorkspaceMode,
     compact_panel: CompactPanel,
@@ -1241,6 +1258,8 @@ pub struct ChessApp {
     new_game_online: bool,
     new_game_both_sides: bool,
     new_game_opponent: OpponentEngine,
+    new_game_limit_strength: bool,
+    new_game_elo: u32,
     new_game_time: usize,
     new_game_minutes: u32,
     new_game_increment: u32,
@@ -1347,6 +1366,7 @@ pub struct ChessApp {
 
 impl ChessApp {
     fn tick_local_clock(&mut self) {
+        if self.training.is_some() && self.game_result() != "*" { return; }
         if self.fics_active || self.local_resigned_white.is_some() {
             return;
         }
@@ -1701,6 +1721,9 @@ impl ChessApp {
     }
 
     fn start_fics(&mut self) {
+        self.settle_training();
+        self.training = None;
+        self.new_game_training = false;
         #[cfg(target_arch = "wasm32")]
         {
             if let Some(engine) = &self.engine {
@@ -2100,7 +2123,7 @@ impl ChessApp {
             .and_then(|game| game.review_pgn.as_deref())
             .and_then(|pgn| Self::parse_pgn_mainline(pgn).ok());
         let restored_live_review = saved.as_ref().and_then(|game| {
-            if game.review_pgn.is_some() || game.live_moves.is_empty() {
+            if game.review_pgn.is_some() || (game.live_moves.is_empty() && game.training.is_none()) {
                 return None;
             }
             let positions = game
@@ -2120,8 +2143,8 @@ impl ChessApp {
             .as_ref()
             .map(|game| game.player_side)
             .unwrap_or_default();
-        let review_white_player = review_pgn
-            .and_then(|pgn| Self::pgn_tag(pgn, "White"))
+        let review_white_player = saved.as_ref().and_then(|g| g.training.as_ref()).map(|t| if t.side == TrainingSide::White { t.profile_name.clone() } else { format!("Stockfish {} Elo", t.opponent_elo) }).or_else(|| review_pgn
+            .and_then(|pgn| Self::pgn_tag(pgn, "White")))
             .unwrap_or_else(|| {
                 if saved.as_ref().is_some_and(|game| !game.engine_enabled) {
                     "White".to_owned()
@@ -2136,8 +2159,8 @@ impl ChessApp {
                         .to_owned()
                 }
             });
-        let review_black_player = review_pgn
-            .and_then(|pgn| Self::pgn_tag(pgn, "Black"))
+        let review_black_player = saved.as_ref().and_then(|g| g.training.as_ref()).map(|t| if t.side == TrainingSide::Black { t.profile_name.clone() } else { format!("Stockfish {} Elo", t.opponent_elo) }).or_else(|| review_pgn
+            .and_then(|pgn| Self::pgn_tag(pgn, "Black")))
             .unwrap_or_else(|| {
                 if saved.as_ref().is_some_and(|game| !game.engine_enabled) {
                     "Black".to_owned()
@@ -2289,7 +2312,19 @@ impl ChessApp {
         );
 
         #[allow(unused_mut)]
+        let (training_profiles, training_error) = match Self::read_training_profiles() {
+            Ok(profiles) => (profiles, None),
+            Err(error) => (Profiles::default(), Some(error)),
+        };
         let app = Self {
+            training: saved.as_ref().and_then(|game| game.training.clone()),
+            training_profiles,
+            training_dialog_open: false,
+            training_dialog_maximized: false,
+            training_profile_name: String::new(),
+            training_profile_rename: None,
+            training_error,
+            new_game_training: false,
             board,
             board_3d_active: preferences.board_3d_active,
             board_3d_theme: preferences.board_3d_theme,
@@ -2311,6 +2346,9 @@ impl ChessApp {
             history,
             last_move,
             promotion: None,
+            typed_move: String::new(),
+            typed_move_error: false,
+            typed_move_board: None,
             flipped,
             workspace_mode,
             compact_panel: CompactPanel::default(),
@@ -2376,6 +2414,8 @@ impl ChessApp {
             new_game_online: false,
             new_game_both_sides: false,
             new_game_opponent: engine_config.opponent,
+            new_game_limit_strength: engine_config.limit_strength,
+            new_game_elo: engine_config.elo.clamp(1320, 3190),
             new_game_time: 1,
             new_game_minutes: 5,
             new_game_increment: 0,
@@ -2610,6 +2650,49 @@ impl ChessApp {
         1.0 / (1.0 + 10.0_f64.powf((opponent_rating - your_rating) as f64 / 400.0))
     }
 
+    fn dialog_frame() -> Frame {
+        Frame::new()
+            .fill(Color32::from_rgb(23, 26, 30))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)))
+            .corner_radius(CornerRadius::same(12))
+            .inner_margin(Margin::same(18))
+    }
+
+    fn dialog_header(ui: &mut egui::Ui, title: &str) -> bool {
+        Self::dialog_header_with_maximize(ui, title, None)
+    }
+
+    fn dialog_header_with_maximize(ui: &mut egui::Ui, title: &str, maximized: Option<&mut bool>) -> bool {
+        // Dialog chrome follows the dark Scoresheet palette in either app theme.
+        *ui.visuals_mut() = egui::Visuals::dark();
+        let mut close = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(title).size(21.0).strong().color(Color32::from_rgb(238, 238, 238)));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let gold = Color32::from_rgb(211, 173, 98);
+                ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
+                close = ui.add(egui::Button::new(RichText::new("×").size(14.0)
+                    .color(Color32::from_rgb(244, 221, 176)))
+                    .fill(Color32::from_rgb(41, 40, 32))
+                    .stroke(Stroke::new(1.0, gold))
+                    .corner_radius(CornerRadius::same(6)))
+                    .on_hover_text(format!("Close {title}")).clicked();
+                if let Some(maximized) = maximized {
+                    if ui.add(egui::Button::new(RichText::new(if *maximized { "❐" } else { "□" }).size(14.0)
+                        .color(Color32::from_rgb(244, 221, 176)))
+                        .fill(Color32::from_rgb(41, 40, 32))
+                        .stroke(Stroke::new(1.0, gold))
+                        .corner_radius(CornerRadius::same(6)))
+                        .on_hover_text(if *maximized { "Restore window" } else { "Maximize window" }).clicked() {
+                        *maximized = !*maximized;
+                    }
+                }
+            });
+        });
+        ui.add_space(10.0);
+        close
+    }
+
     fn elo_calculator_dialog(&mut self, ctx: &egui::Context) {
         if !self.elo_calculator_open {
             return;
@@ -2617,18 +2700,10 @@ impl ChessApp {
         let mut close = false;
         let width = (ctx.screen_rect().width() - 64.0).clamp(280.0, 540.0);
         let response = egui::Modal::new(egui::Id::new("elo_calculator"))
-            .frame(Frame::popup(&ctx.style_of(ctx.theme()))
-                .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
-                .corner_radius(CornerRadius::same(10))
-                .inner_margin(Margin::same(22)))
+            .frame(Self::dialog_frame())
             .show(ctx, |ui| {
                 ui.set_width(width);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Elo calculator").size(25.0).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        close = ui.button("×").on_hover_text("Close calculator").clicked();
-                    });
-                });
+                close = Self::dialog_header(ui, "Elo calculator");
                 ui.label("Estimate your expected score and rating change for one game.");
                 ui.add_space(12.0);
 
@@ -3014,26 +3089,12 @@ impl ChessApp {
         let mut import = false;
         let mut cancel = false;
         let response = egui::Modal::new(egui::Id::new("import_pgn"))
-            .frame(
-                Frame::popup(&ctx.style_of(ctx.theme()))
-                    .stroke(Stroke::new(1.5, Color32::from_rgb(211, 173, 98)))
-                    .corner_radius(CornerRadius::same(12))
-                    .inner_margin(Margin::same(24)),
-            )
+            .frame(Self::dialog_frame())
             .show(ctx, |ui| {
                 let gold = Color32::from_rgb(211, 173, 98);
                 ui.set_width((ctx.screen_rect().width() - 72.0).clamp(240.0, 620.0));
                 ui.spacing_mut().item_spacing.y = 8.0;
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Import Games").size(28.0).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        cancel = ui.add_sized([30.0, 30.0],
-                            egui::Button::new(RichText::new("×").size(24.0).color(gold))
-                                .frame(false))
-                            .on_hover_text("Close Import Games")
-                            .clicked();
-                    });
-                });
+                cancel = Self::dialog_header(ui, "Import Games");
                 ui.label(RichText::new("Bring your games into Ironwood for review and analysis.").weak());
                 ui.add_space(8.0);
                 egui::ScrollArea::vertical()
@@ -4815,15 +4876,10 @@ impl ChessApp {
         let mut save = false;
         let mut delete = false;
         let response = egui::Modal::new(egui::Id::new("move_note_editor"))
-            .frame(Frame::popup(&ctx.style()).inner_margin(Margin::same(22)))
+            .frame(Self::dialog_frame())
             .show(ctx, |ui| {
                 ui.set_width((ctx.screen_rect().width() - 64.0).clamp(240.0, 560.0));
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Your note").size(24.0).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        close = ui.add_sized([36.0, 36.0], egui::Button::new("×")).clicked();
-                    });
-                });
+                close = Self::dialog_header(ui, "Your note");
                 ui.label(RichText::new(self.graph_position_label(index, true)).size(18.0));
                 ui.add_space(12.0);
                 egui::ScrollArea::vertical()
@@ -4970,18 +5026,12 @@ impl ChessApp {
         self.expanded_graph_hover_index = None;
         let mut close = false;
         let response = egui::Modal::new(egui::Id::new("expanded_analysis_graph"))
-            .frame(Frame::new().fill(Color32::from_rgb(18,21,25)).inner_margin(Margin::same(24)))
+            .frame(Self::dialog_frame())
             .show(ctx, |ui| {
                 let size = ctx.screen_rect().size() - Vec2::splat(48.0);
                 ui.set_min_size(size);
                 ui.set_max_size(size);
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new("Game Analysis").size(26.0).strong());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        close = ui.add_sized([42.0,42.0],egui::Button::new(RichText::new("×").size(26.0)))
-                            .on_hover_text("Close expanded graph (Esc)").clicked();
-                    });
-                });
+                close = Self::dialog_header(ui, "Game Analysis");
                     ui.label(RichText::new(format!("{}  vs  {}",self.review_white_player,self.review_black_player)).size(20.0));
                     let completed = self.game_analysis.iter().filter(|value| value.is_some()).count();
                     ui.label(format!("Stockfish 19 · {completed}/{} positions analyzed · White perspective · Nonlinear pawn scale; mates reach the edges",
@@ -5250,7 +5300,7 @@ impl ChessApp {
         }
     }
 
-    fn settings_tab_bar(ui: &mut egui::Ui, label: &str, tabs: &[&str], selected: usize) -> usize {
+    fn settings_tab_bar(ui: &mut egui::Ui, tabs: &[&str], selected: usize) -> usize {
         let mut chosen = selected;
         let border = ui.visuals().widgets.noninteractive.bg_stroke.color;
         let active_fill = ui.visuals().window_fill();
@@ -5260,17 +5310,13 @@ impl ChessApp {
         let bottom = start.y + 34.0;
         ui.painter().line_segment(
             [
-                egui::pos2(start.x + 84.0, bottom),
+                egui::pos2(start.x, bottom),
                 egui::pos2(start.x + width, bottom),
             ],
             Stroke::new(1.0, border),
         );
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            ui.add_sized(
-                [84.0, 34.0],
-                egui::Label::new(RichText::new(label).size(18.0)).halign(Align::Min),
-            );
             for (index, text) in tabs.iter().enumerate() {
                 let active = index == selected;
                 let text_width = ui
@@ -5326,6 +5372,7 @@ impl ChessApp {
     }
 
     fn strength_dialog(&mut self, ctx: &egui::Context) {
+        if self.training_live() { self.strength_dialog_open = false; return; }
         if !self.strength_dialog_open {
             return;
         }
@@ -5345,21 +5392,12 @@ impl ChessApp {
         let table_height = row_height * 10.0;
         let response =
             egui::Modal::new(egui::Id::new("stockfish_strength_settings"))
-                .frame(
-                    Frame::popup(&ctx.style_of(ctx.theme()))
-                        .corner_radius(CornerRadius::same(12))
-                        .inner_margin(Margin::same(24)),
-                )
+                .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
                     ui.set_width(width);
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Engine settings").size(28.0).strong());
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            close = ui.add_sized([30.0, 30.0], egui::Button::new("×")).clicked();
-                        });
-                    });
+                    close = Self::dialog_header(ui, "Engine settings");
                     ui.add_space(4.0);
-                    Self::settings_tab_bar(ui, "Engine", &["Stockfish"], 0);
+                    Self::settings_tab_bar(ui, &["Stockfish"], 0);
                     let context_index = match self.engine_settings_tab {
                         EngineSettingsTab::Play => 0,
                         EngineSettingsTab::Analysis => 1,
@@ -5367,7 +5405,6 @@ impl ChessApp {
                     };
                     let selected_context = Self::settings_tab_bar(
                         ui,
-                        "Context",
                         &["Play", "Realtime Analysis", "Full game Analysis"],
                         context_index,
                     );
@@ -5615,6 +5652,7 @@ impl ChessApp {
         {
             return result;
         }
+        if self.training.is_some() && self.training_draw() { return "1/2-1/2".into(); }
         let board = self.review_positions.last().copied().unwrap_or(self.board);
         match board.status() {
             BoardStatus::Ongoing => "*".into(),
@@ -5653,6 +5691,13 @@ impl ChessApp {
                 Vec::new(),
             )
         };
+        if format == "preview" {
+            return Ok(serde_json::json!({
+                "positions": positions.iter().map(ToString::to_string).collect::<Vec<_>>(),
+                "moves": moves,
+            }).to_string());
+        }
+
         if positions.len() != moves.len() + 1 {
             return Err("Saved move timeline is incomplete".into());
         }
@@ -5663,6 +5708,9 @@ impl ChessApp {
             }
         }
         let player = |white: bool| {
+            if let Some(t) = &saved.training {
+                return if (t.side == TrainingSide::White) == white { t.profile_name.clone() } else { format!("Stockfish {} Elo", t.opponent_elo) };
+            }
             Self::pgn_tag(source, if white { "White" } else { "Black" }).unwrap_or_else(|| {
                 if !saved.engine_enabled {
                     if white { "White" } else { "Black" }.into()
@@ -6749,6 +6797,9 @@ impl ChessApp {
     fn load_pgn(&mut self, text: &str) -> bool {
         match Self::parse_pgn_mainline(text) {
             Ok((positions, moves)) => {
+                self.settle_training();
+                self.training = None;
+                self.new_game_training = false;
                 self.local_clock = None;
                 self.local_resigned_white = None;
                 self.local_start_ply = 0;
@@ -6825,6 +6876,7 @@ impl ChessApp {
             let last_move = Self::review_move_at(&positions, &moves, positions.len() - 1)
                 .map(|chess_move| chess_move.to_string());
             let game = PersistedGame {
+                training: None,
                 local_clock: None,
                 local_resigned_white: None,
                 local_start_ply: 0,
@@ -7100,6 +7152,7 @@ impl ChessApp {
     }
 
     fn review_to(&mut self, index: usize) {
+        if self.training_live() { return; }
         self.board_mark_drag = None;
         if self.review_positions.is_empty() {
             return;
@@ -7501,6 +7554,7 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     fn start_analysis(&mut self) {
+        if self.training_live() { return; }
         if self.fics_active && !self.fics_game_finished {
             return;
         }
@@ -7564,6 +7618,7 @@ impl ChessApp {
     }
 
     fn schedule_realtime_analysis(&mut self) {
+        if self.training_live() { self.realtime_analysis_due_at = None; return; }
         let engine_move_pending = self.engine_enabled
             && self.review_index.is_none()
             && self.board.side_to_move() != self.player_side.color()
@@ -7575,6 +7630,7 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     fn start_game_analysis(&mut self) {
+        if self.training_live() { return; }
         if self.fics_active && !self.fics_game_finished {
             return;
         }
@@ -7879,6 +7935,7 @@ impl ChessApp {
 
     fn persisted_game(&self) -> PersistedGame {
         PersistedGame {
+            training: self.training.clone(),
             local_clock: self.local_clock.clone(),
             local_resigned_white: self.local_resigned_white,
             local_start_ply: self.local_start_ply,
@@ -7936,6 +7993,7 @@ impl ChessApp {
 
     fn observed_saved_game(&self, observed: &ObservedGame) -> PersistedGame {
         let mut game = self.persisted_game();
+        game.training = None;
         game.move_notes = if self.fics_game_id == Some(observed.id) {
             self.move_notes.clone()
         } else {
@@ -8041,6 +8099,11 @@ impl ChessApp {
     }
 
     fn reset_for_side(&mut self, player_side: PlayerSide) {
+        self.settle_training();
+        self.training = None;
+        self.settle_training();
+        self.training = None;
+        self.new_game_training = false;
         self.local_clock = None;
         self.local_resigned_white = None;
         self.local_start_ply = 0;
@@ -8106,9 +8169,9 @@ impl ChessApp {
         Self::set_page_title(false, "", "");
         #[cfg(target_arch = "wasm32")]
         if !self.fics_active {
-            start_new_stored_game("mine");
+            start_new_stored_game(if self.new_game_training { "training" } else { "mine" });
         }
-        if !self.fics_observing {
+        if !self.fics_observing && !self.new_game_training {
             self.save_game();
         }
         #[cfg(target_arch = "wasm32")]
@@ -8118,6 +8181,12 @@ impl ChessApp {
     }
 
     fn play_from_current_position(&mut self) {
+        if self.training_live() { return; }
+        self.settle_training();
+        self.training = None;
+        self.new_game_training = false;
+        #[cfg(target_arch = "wasm32")]
+        start_new_stored_game("mine");
         self.local_clock = None;
         self.local_resigned_white = None;
         if self.fics_active {
@@ -8236,7 +8305,90 @@ impl ChessApp {
         }
     }
 
+    fn keyboard_move_ui(&mut self, ctx: &egui::Context) {
+        let blocked = ctx.wants_keyboard_input()
+            || self.new_game_dialog_open || self.training_dialog_open || self.elo_calculator_open
+            || self.pgn_dialog_open || self.strength_dialog_open || self.about_dialog_open
+            || self.batch_pgn_dialog_open || self.batch_pgn_result_open || self.print_confirm_open
+            || self.expanded_graph_open || self.fics_console_open || self.fics_challenge_open
+            || self.fics_sign_in_open || self.fics_resign_dialog_open;
+        let playable = !blocked && self.review_index.is_none() && self.best_move_attempt.is_none()
+            && self.promotion.is_none() && self.game_result() == "*"
+            && (!self.engine_enabled || self.board.side_to_move() == self.player_side.color())
+            && (!self.fics_active || (self.fics_playing && !self.fics_pending_move
+                && self.board.side_to_move() == self.player_side.color()));
+        if !playable || self.typed_move_board.is_some_and(|board| board != self.board) {
+            self.typed_move.clear();
+            self.typed_move_error = false;
+            self.typed_move_board = None;
+        }
+        if !playable { return; }
+        let events = ctx.input(|input| if input.modifiers.command || input.modifiers.ctrl || input.modifiers.alt { vec![] } else { input.events.clone() });
+        for event in events {
+            match event {
+                egui::Event::Text(text) => {
+                    for ch in text.chars() {
+                        if self.typed_move.len() >= 16 { break; }
+                        if self.typed_move.is_empty() && !"abcdefghABCDEFGHNnRrQqKkOo0".contains(ch) { continue; }
+                        if ch.is_ascii_alphanumeric() || "=+#-".contains(ch) {
+                            self.typed_move.push(ch);
+                            self.typed_move_board = Some(self.board);
+                            self.typed_move_error = false;
+                        }
+                    }
+                }
+                egui::Event::Key { key: egui::Key::Backspace, pressed: true, .. } => {
+                    self.typed_move.pop(); self.typed_move_error = false;
+                }
+                egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } => {
+                    self.typed_move.clear(); self.typed_move_error = false;
+                }
+                egui::Event::Key { key: egui::Key::Enter, pressed: true, .. } if !self.typed_move.is_empty() => {
+                    if let Some(mv) = Self::parse_keyboard_move(&self.board, &self.typed_move) {
+                        self.typed_move.clear(); self.typed_move_board = None;
+                        self.play(mv);
+                    } else { self.typed_move_error = true; }
+                }
+                _ => {}
+            }
+        }
+        if self.typed_move.is_empty() { return; }
+        egui::Area::new(egui::Id::new("typed_move_overlay"))
+            .order(egui::Order::Foreground).anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                egui::Frame::new().fill(Color32::from_rgba_unmultiplied(23, 26, 30, 225))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)))
+                    .corner_radius(12.0).inner_margin(20.0).show(ui, |ui| {
+                        ui.set_min_width(260.0);
+                        ui.label(RichText::new("TYPE YOUR MOVE").size(14.0).color(Color32::from_rgb(211, 173, 98)));
+                        ui.label(RichText::new(&self.typed_move).size(36.0).strong().color(Color32::WHITE));
+                        if self.typed_move_error {
+                            ui.label(RichText::new("Not a legal move. Edit and try again.").color(Color32::from_rgb(240, 150, 130)));
+                        }
+                        ui.label(RichText::new("Enter to play · Backspace to edit · Escape to cancel").size(14.0).color(Color32::LIGHT_GRAY));
+                    });
+            });
+    }
+
+    fn parse_keyboard_move(board: &Board, text: &str) -> Option<ChessMove> {
+        let san = text.replace('0', "O").replace('o', "O");
+        Self::parse_san_move(board, &san).or_else(|| {
+            // Try the pawn/file spelling first so b4 remains a pawn move.
+            let mut normalized = san.clone();
+            if matches!(normalized.chars().next(), Some('n' | 'b' | 'r' | 'q' | 'k')) {
+                normalized.replace_range(..1, &normalized[..1].to_ascii_uppercase());
+            }
+            if let Some(index) = normalized.find('=') {
+                normalized[index + 1..].make_ascii_uppercase();
+            }
+            Self::parse_san_move(board, &normalized)
+        }).or_else(|| {
+            Self::parse_uci_value(text).filter(|mv| MoveGen::new_legal(board).any(|legal| legal == *mv))
+        })
+    }
+
     fn start_best_move_attempt(&mut self, target_index: usize) {
+        if self.training_live() { return; }
         let Some(root_index) = target_index.checked_sub(1) else {
             return;
         };
@@ -8326,6 +8478,7 @@ impl ChessApp {
     }
 
     fn play(&mut self, mv: ChessMove) {
+        if self.training.is_some() && self.game_result() != "*" { return; }
         if self.fics_active && !self.fics_applying_update {
             if self.fics_playing
                 && !self.fics_pending_move
@@ -8435,6 +8588,11 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     fn request_engine_move(&mut self) {
+        if self.training.is_some() && self.game_result() != "*" { return; }
+        if let Some(session) = &self.training {
+            self.engine_config.limit_strength = true;
+            self.engine_config.elo = session.opponent_elo as u32;
+        }
         if self.local_resigned_white.is_some() && !self.fics_active {
             return;
         }
@@ -8480,7 +8638,10 @@ impl ChessApp {
                     self.board.is_chess960()
                 ));
                 engine.command(&format!("position fen {}", self.board));
-                let search = if let Some(clock) = &self.local_clock {
+                let search = if self.training_live() {
+                    let remaining = self.local_clock.as_ref().map(|c| if self.board.side_to_move() == Color::White { c.white } else { c.black }).unwrap_or(1.0);
+                    format!("go movetime {}", (remaining * 1000.0).clamp(1.0, 1000.0) as u64)
+                } else if let Some(clock) = &self.local_clock {
                     format!(
                         "go wtime {} btime {} winc {} binc {}",
                         (clock.white * 1000.0) as u64,
@@ -8786,6 +8947,7 @@ impl ChessApp {
     }
 
     fn undo(&mut self) {
+        if self.training.is_some() { return; }
         if self.local_resigned_white.is_some() {
             return;
         }
@@ -9603,7 +9765,7 @@ impl ChessApp {
             .map(|attempt| attempt.best_move)
             .or_else(|| {
                 self.best_move_attempt.is_none().then_some(())?;
-                self.show_best_move_arrows
+                (self.show_best_move_arrows && !self.training_live())
                     .then_some(())
                     .and(highlighted_position_index)
                     .filter(|_| {
@@ -10179,6 +10341,11 @@ impl ChessApp {
     }
 
     fn engine_analysis_dock_ui(&mut self, ui: &mut egui::Ui) {
+        if self.training_live() {
+            ui.label(RichText::new("Training vs AI").size(19.0).strong().color(Color32::from_rgb(238, 238, 238)));
+            ui.label(RichText::new("Play without hints or takebacks. Analyze the game after it finishes.").color(Color32::LIGHT_GRAY));
+            return;
+        }
         ui.horizontal(|ui| {
             let marker = if self.engine_analysis_dock_collapsed {
                 "▶"
@@ -10925,7 +11092,7 @@ impl ChessApp {
             self.save_game();
         }
         ui.separator();
-        let playable = !self.fics_active
+        let playable = !self.fics_active && !self.training_live()
             && self
                 .review_positions
                 .get(index)
@@ -11285,151 +11452,6 @@ impl ChessApp {
         ui.separator();
     }
 
-    fn game_moves_column_ui(&mut self, ui: &mut egui::Ui) {
-        ui.add_space(14.0);
-        ui.label(RichText::new("Game Moves").size(19.0).strong());
-        self.game_moves_status_ui(ui);
-        let Some(index) = self.review_index.or_else(|| {
-            (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
-        }) else {
-            ui.label(RichText::new("Moves will appear here as the game develops.").weak());
-            return;
-        };
-
-        let position_label = if self.fics_observation_start_ply.unwrap_or(0) > 0 {
-            format!("Moves seen since joining: {}", self.review_moves.len())
-        } else {
-            format!("Position {index} of {}", self.review_moves.len())
-        };
-        ui.label(RichText::new(position_label).weak());
-        ui.add_space(8.0);
-
-        let mut jump_to = None;
-        let scroll_to_selected = self.review_scroll_to_selected;
-        self.position_note_ui(ui);
-        let moves_height = (ui.available_height() - 92.0).max(160.0);
-        Frame::new()
-            .fill(Color32::from_rgb(11, 16, 29))
-            .stroke(Stroke::new(1.0, Color32::from_white_alpha(24)))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::same(8))
-            .show(ui, |ui| {
-                Self::game_moves_header_ui(ui, 62.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("game_moves_column")
-                    .max_height(moves_height)
-                    .min_scrolled_height(moves_height)
-                    .auto_shrink([false, false])
-                    .show_gold(ui, |ui| {
-                        if self.starting_position_row(ui, index, scroll_to_selected) { jump_to = Some(0); }
-                        let first_ply = self
-                            .fics_observation_start_ply
-                            .unwrap_or(self.local_start_ply);
-                        let end_pair = if self.review_moves.is_empty() {
-                            first_ply / 2
-                        } else {
-                            (first_ply + self.review_moves.len()).div_ceil(2)
-                        };
-                        for pair in first_ply / 2..end_pair {
-                            let white_ply = (pair * 2).checked_sub(first_ply);
-                            let black_ply = (pair * 2 + 1).checked_sub(first_ply);
-                            ui.horizontal(|ui| {
-                                let move_number = ui.add_sized(
-                                    [30.0, 28.0],
-                                    egui::Label::new(format!("{}.", pair + 1)),
-                                );
-                                if pair == first_ply / 2 && index == 0 && scroll_to_selected {
-                                    move_number.scroll_to_me(Some(Align::Min));
-                                }
-                                let move_width =
-                                    ((ui.available_width() - ui.spacing().item_spacing.x) / 2.0)
-                                        .max(62.0);
-                                if let Some((white_ply, san)) = white_ply.and_then(|ply| {
-                                    self.review_moves.get(ply).cloned().map(|san| (ply, san))
-                                }) {
-                                    let selected = index == white_ply + 1;
-                                    let response = self.analyzed_move_button(
-                                        ui,
-                                        &san,
-                                        white_ply + 1,
-                                        selected,
-                                        move_width,
-                                    );
-                                    self.move_context_response(&response, white_ply + 1);
-                                    if response.clicked() || response.secondary_clicked() {
-                                        jump_to = Some(white_ply + 1);
-                                    }
-                                    if selected && scroll_to_selected {
-                                        response.scroll_to_me(Some(Align::Center));
-                                    }
-                                }
-                                if let Some((black_ply, san)) = black_ply.and_then(|ply| {
-                                    self.review_moves.get(ply).cloned().map(|san| (ply, san))
-                                }) {
-                                    let selected = index == black_ply + 1;
-                                    let response = self.analyzed_move_button(
-                                        ui,
-                                        &san,
-                                        black_ply + 1,
-                                        selected,
-                                        move_width,
-                                    );
-                                    self.move_context_response(&response, black_ply + 1);
-                                    if response.clicked() || response.secondary_clicked() {
-                                        jump_to = Some(black_ply + 1);
-                                    }
-                                    if selected && scroll_to_selected {
-                                        response.scroll_to_me(Some(Align::Center));
-                                    }
-                                }
-                            });
-                        }
-                    });
-                ui.separator();
-                ui.horizontal(|ui| {
-                    let gaps = ui.spacing().item_spacing.x * 3.0;
-                    let button_width = ((ui.available_width() - gaps) / 4.0).max(32.0);
-                    for (label, destination, enabled, hint) in [
-                        ("|◀", 0, index > 0, "First position (Home)"),
-                        (
-                            "◀",
-                            index.saturating_sub(1),
-                            index > 0,
-                            "Previous move (Left arrow)",
-                        ),
-                        (
-                            "▶",
-                            (index + 1).min(self.review_moves.len()),
-                            index < self.review_moves.len(),
-                            "Next move (Right arrow)",
-                        ),
-                        (
-                            "▶|",
-                            self.review_moves.len(),
-                            index < self.review_moves.len(),
-                            "Last position (End)",
-                        ),
-                    ] {
-                        if ui
-                            .add_enabled(
-                                enabled,
-                                egui::Button::new(label).min_size(Vec2::new(button_width, 30.0)),
-                            )
-                            .on_hover_text(hint)
-                            .clicked()
-                        {
-                            jump_to = Some(destination);
-                        }
-                    }
-                });
-            });
-
-        self.review_scroll_to_selected = false;
-        if let Some(destination) = jump_to {
-            self.review_to(destination);
-        }
-    }
-
     fn new_game_color_card(
         ui: &mut egui::Ui,
         piece_set: PieceSet,
@@ -11648,6 +11670,25 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keyboard_moves_validate_notation_and_legality() {
+        let board = Board::default();
+        assert_eq!(ChessApp::parse_keyboard_move(&board, "e4"), Some(ChessMove::new(Square::E2, Square::E4, None)));
+        assert_eq!(ChessApp::parse_keyboard_move(&board, "e2e4"), ChessApp::parse_keyboard_move(&board, "e4"));
+        assert!(ChessApp::parse_keyboard_move(&board, "Nf3").is_some());
+        assert_eq!(ChessApp::parse_keyboard_move(&board, "nc3"), ChessApp::parse_keyboard_move(&board, "Nc3"));
+        assert!(ChessApp::parse_keyboard_move(&board, "nc3").is_some());
+        assert_eq!(ChessApp::parse_keyboard_move(&board, "b4"), Some(ChessMove::new(Square::B2, Square::B4, None)));
+        assert!(ChessApp::parse_keyboard_move(&board, "e5").is_none());
+        assert!(ChessApp::parse_keyboard_move(&board, "e2e5").is_none());
+        let castle = Board::from_str("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
+        assert_eq!(ChessApp::parse_keyboard_move(&castle, "0-0"), ChessApp::parse_keyboard_move(&castle, "O-O"));
+        assert!(ChessApp::parse_keyboard_move(&castle, "O-O").is_some());
+        let promotion = Board::from_str("7k/P7/8/8/8/8/8/K7 w - - 0 1").unwrap();
+        assert_eq!(ChessApp::parse_keyboard_move(&promotion, "a8=N").unwrap().get_promotion(), Some(Piece::Knight));
+        assert_eq!(ChessApp::parse_keyboard_move(&promotion, "a8=n"), ChessApp::parse_keyboard_move(&promotion, "a8=N"));
+    }
+
     #[test]
     fn board_visibility_preferences_default_on_and_preserve_off_values() {
         let defaults: super::UserPreferences = serde_json::from_str("{}").unwrap();
@@ -12515,6 +12556,7 @@ impl eframe::App for ChessApp {
         {
             let fen = poll_position_editor();
             if !fen.is_empty() {
+                self.new_game_training = false;
                 self.new_game_fen = fen;
                 self.new_game_position = 2;
                 self.new_game_online = false;
@@ -12714,9 +12756,12 @@ impl eframe::App for ChessApp {
                 Self::gold_menu_button(ui, "Game", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("New game").clicked() {
+                        self.new_game_training = self.training.is_some();
                         self.new_game_online = self.fics_active;
                         self.new_game_both_sides = !self.engine_enabled && !self.fics_active;
                         self.new_game_opponent = self.engine_config.opponent;
+                        self.new_game_limit_strength = self.engine_config.limit_strength;
+                        self.new_game_elo = self.engine_config.elo.clamp(1320, 3190);
                         self.new_game_color = match self.player_side {
                             PlayerSide::White => NewGameColor::White,
                             PlayerSide::Black => NewGameColor::Black,
@@ -12733,6 +12778,11 @@ impl eframe::App for ChessApp {
                     {
                         self.save_game();
                         self.engine_status = "Game saved on this device".into();
+                        ui.close();
+                    }
+                    if ui.button("Training profiles…").clicked() {
+                        self.settle_training();
+                        self.training_dialog_open = true;
                         ui.close();
                     }
                     if ui.button("Load saved game…").clicked() {
@@ -12764,7 +12814,7 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                     if ui
-                        .add_enabled(local_playing, egui::Button::new("Take back"))
+                        .add_enabled(local_playing && self.training.is_none(), egui::Button::new("Take back"))
                         .on_disabled_hover_text(
                             "Available during local games after a move has been played",
                         )
@@ -12811,24 +12861,6 @@ impl eframe::App for ChessApp {
                         self.toggle_board_dimension(ui.ctx());
                         ui.close();
                     }
-                    ui.separator();
-                    ui.menu_button("Workspace", |ui| {
-                        Self::set_menu_item_font(ui);
-                        for (mode, label) in [
-                            (WorkspaceMode::Compact, "Compact"),
-                            (WorkspaceMode::Expanded, "Expanded"),
-                        ] {
-                            if ui
-                                .selectable_value(&mut self.workspace_mode, mode, label)
-                                .changed()
-                            {
-                                self.save_game();
-                                ui.close();
-                            }
-                        }
-                        ui.separator();
-                        ui.label(RichText::new("Expanded needs a wide window").small().weak());
-                    });
                     ui.separator();
                     ui.menu_button("Move notation", |ui| {
                         Self::set_menu_item_font(ui);
@@ -13121,7 +13153,7 @@ impl eframe::App for ChessApp {
                         format!("Play · {}", Self::strength_summary(&self.engine_config))
                     };
                     let engine_settings_locked =
-                        self.game_analysis_running || self.game_analysis_paused;
+                        self.game_analysis_running || self.game_analysis_paused || self.training_live();
                     let strength_clicked = ui
                         .scope(|ui| {
                             let gold = Color32::from_rgb(211, 173, 98);
@@ -13212,11 +13244,8 @@ impl eframe::App for ChessApp {
                 }
             });
 
-        let separate_moves_panel = self.workspace_mode == WorkspaceMode::Expanded
-            && ctx.available_rect().width() >= 1180.0;
-        let compact = !separate_moves_panel;
-        let show_moves = compact && self.compact_panel == CompactPanel::Moves;
-        let show_analysis = !compact || self.compact_panel == CompactPanel::Analysis;
+        let show_moves = self.compact_panel == CompactPanel::Moves;
+        let show_analysis = self.compact_panel == CompactPanel::Analysis;
 
         egui::SidePanel::right("game_panel")
             .default_width(340.0)
@@ -13224,24 +13253,28 @@ impl eframe::App for ChessApp {
             .max_width(640.0)
             .resizable(true)
             .show(ctx, |ui| {
+                let panel_bottom = ui.max_rect().bottom();
                 egui::ScrollArea::vertical()
                     .id_salt("game_panel_scroll")
                     .max_height((ui.available_height() - if show_analysis { 64.0 } else { 0.0 }).max(0.0))
                     .auto_shrink([false, false])
                     .show_gold(ui, |ui| {
-                if compact {
+                {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.compact_panel, CompactPanel::Moves, "Game Moves");
+                        ui.selectable_value(&mut self.compact_panel, CompactPanel::Moves, RichText::new("Game Moves").size(19.0).strong());
                         if !self.fics_active || self.fics_game_finished {
-                            ui.selectable_value(&mut self.compact_panel, CompactPanel::Analysis, "Game Analysis");
+                            ui.add_enabled_ui(!self.training_live(), |ui| {
+                                ui.selectable_value(&mut self.compact_panel, CompactPanel::Analysis, RichText::new("Game Analysis").size(19.0).strong());
+                            }).response.on_disabled_hover_text("Finish the training game to unlock analysis.");
                         }
                     });
                     ui.separator();
                 }
-                if compact { self.position_note_ui(ui); }
+                self.position_note_ui(ui);
                 if show_moves {
                     ui.add_space(6.0);
+                    self.training_game_summary_ui(ui);
                     self.game_moves_status_ui(ui);
                 } else if show_analysis {
                     ui.add_space(18.0);
@@ -13265,10 +13298,12 @@ impl eframe::App for ChessApp {
                         .inner_margin(Margin::same(8))
                         .show(ui, |ui| {
                             Self::game_moves_header_ui(ui, 78.0);
+                            // Leave room for navigation and the frame's bottom margin.
+                            let moves_height = (panel_bottom - ui.cursor().top() - 56.0).max(0.0);
                             egui::ScrollArea::vertical()
                                 .id_salt("game_moves")
-                                .max_height(210.0)
-                                .min_scrolled_height(160.0)
+                                .max_height(moves_height)
+                                .min_scrolled_height(moves_height)
                                 .auto_shrink([false, false])
                                 .show_gold(ui, |ui| {
                                     if self.starting_position_row(ui, index, scroll_to_selected) { jump_to = Some(0); }
@@ -13388,7 +13423,6 @@ impl eframe::App for ChessApp {
                     if let Some(destination) = jump_to {
                         self.review_to(destination);
                     }
-                    ui.add_space(12.0);
                     }
                     if show_analysis {
                     let completed = self
@@ -14137,7 +14171,7 @@ impl eframe::App for ChessApp {
                     ui.add_space(12.0);
                     }
                 }
-                ui.add_space(18.0);
+                if show_analysis { ui.add_space(18.0); }
                 if self.review_positions.is_empty() && show_moves {
                     ui.label(RichText::new("Moves").strong());
                     if self.fics_active {
@@ -14196,21 +14230,6 @@ impl eframe::App for ChessApp {
                 .show(ctx, |ui| self.engine_analysis_dock_ui(ui));
         }
 
-        if separate_moves_panel {
-            egui::SidePanel::right("game_moves_panel")
-                .default_width(270.0)
-                .min_width(220.0)
-                .max_width(420.0)
-                .resizable(true)
-                .frame(
-                    Frame::new()
-                        .fill(Color32::from_rgb(18, 21, 25))
-                        .stroke(Stroke::new(1.0, Color32::from_white_alpha(28)))
-                        .inner_margin(Margin::symmetric(10, 0)),
-                )
-                .show(ctx, |ui| self.game_moves_column_ui(ui));
-        }
-
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.centered_and_justified(|ui| self.board_ui(ui));
         });
@@ -14266,13 +14285,12 @@ impl eframe::App for ChessApp {
                 .id(egui::Id::new("print_preview_confirmation"))
                 .collapsible(false)
                 .resizable(false)
-                .frame(Frame::window(&ctx.style())
-                    .inner_margin(Margin::same(22))
-                    .corner_radius(CornerRadius::same(10)))
+                .frame(Self::dialog_frame())
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .open(&mut open)
+                .title_bar(false)
                 .show(ctx, |ui| {
                     ui.set_width(width);
+                    if Self::dialog_header(ui, "Open print preview?") { open = false; }
                     ui.add_space(8.0);
                     ui.label(RichText::new("Print your analysis or save it as a PDF.").size(19.0).strong());
                     ui.add_space(12.0);
@@ -14309,13 +14327,15 @@ impl eframe::App for ChessApp {
             let mut open = true;
             let mut sent = false;
             egui::Window::new("Challenge a player")
-                .open(&mut open)
+                .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
                 .default_width(390.0)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                 .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
                     ui.set_min_width(380.0);
+                    if Self::dialog_header(ui, "Challenge a player") { open = false; }
                     Frame::new()
                         .inner_margin(Margin::symmetric(16, 14))
                         .show(ui, |ui| {
@@ -14394,13 +14414,15 @@ impl eframe::App for ChessApp {
             let mut open = true;
             let mut signed_in = false;
             egui::Window::new("FICS account")
-                .open(&mut open)
+                .title_bar(false)
                 .resizable(false)
                 .collapsible(false)
                 .default_width(390.0)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                 .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
                     ui.set_min_width(380.0);
+                    if Self::dialog_header(ui, "FICS account") { open = false; }
                     Frame::new()
                         .inner_margin(Margin::symmetric(16, 14))
                         .show(ui, |ui| {
@@ -14494,12 +14516,14 @@ impl eframe::App for ChessApp {
         if self.fics_console_open {
             let mut open = self.fics_console_open;
             egui::Window::new("FICS console")
-                .open(&mut open)
+                .title_bar(false)
                 .resizable(true)
                 .default_size(Vec2::new(560.0, 340.0))
                 .min_size(Vec2::new(360.0, 180.0))
                 .default_pos(egui::pos2(80.0, 90.0))
+                 .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
+                    if Self::dialog_header(ui, "FICS console") { open = false; }
                     ui.label(RichText::new(&self.fics_status).weak());
                     if self.fics_chat_tabs(ui) {
                         return;
@@ -14800,32 +14824,33 @@ impl eframe::App for ChessApp {
                 .resizable(false)
                 .fixed_size(Vec2::new(500.0, 540.0))
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .open(&mut open)
-                .frame(Frame::window(&ctx.style()).inner_margin(Margin {
-                    left: 22,
-                    right: 22,
-                    top: 14,
-                    bottom: 24,
-                }))
+                .title_bar(false)
+                .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
                     ui.set_min_size(Vec2::new(500.0, 540.0));
-                    ui.horizontal(|ui| {
-                        if ui.selectable_label(!self.new_game_online && !self.new_game_both_sides, RichText::new("You vs Engine").size(18.0)).clicked() {
-                            self.new_game_online = false; self.new_game_both_sides = false;
+                    if Self::dialog_header(ui, "New game") { open = false; }
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.selectable_label(!self.new_game_training && !self.new_game_online && !self.new_game_both_sides, RichText::new("You vs Engine").size(18.0)).clicked() {
+                            self.new_game_training = false; self.new_game_online = false; self.new_game_both_sides = false;
                         }
-                        if ui.selectable_label(!self.new_game_online && self.new_game_both_sides, RichText::new("Play Both Sides").size(18.0)).clicked() {
-                            self.new_game_online = false; self.new_game_both_sides = true;
+                        if ui.selectable_label(!self.new_game_training && !self.new_game_online && self.new_game_both_sides, RichText::new("Play Both Sides").size(18.0)).clicked() {
+                            self.new_game_training = false; self.new_game_online = false; self.new_game_both_sides = true;
                         }
-                        if ui.selectable_label(self.new_game_online, RichText::new("Online").size(18.0)).clicked() { self.new_game_online = true; }
+                        if ui.selectable_label(self.new_game_training, RichText::new("Training vs AI").size(18.0)).clicked() {
+                            self.new_game_training = true; self.new_game_online = false; self.new_game_both_sides = false;
+                        }
+                        if ui.selectable_label(self.new_game_online, RichText::new("Online").size(18.0)).clicked() { self.new_game_training = false; self.new_game_online = true; }
                     });
                     ui.separator();
                     ui.add_space(10.0);
                     egui::ScrollArea::vertical()
                         .id_salt("new_game_mode_content")
-                        .max_height(400.0).min_scrolled_height(400.0)
+                        .max_height(if self.new_game_training { 440.0 } else { 400.0 }).min_scrolled_height(400.0)
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
-                    if !self.new_game_online {
+                    if self.new_game_training {
+                        self.training_setup_ui(ui);
+                    } else if !self.new_game_online {
                     if !self.new_game_both_sides {
                     ui.horizontal(|ui| {
                         const CARDS_WIDTH: f32 = 466.0;
@@ -14848,18 +14873,33 @@ impl eframe::App for ChessApp {
                         ui.label("Move White and Black yourself. No automatic engine moves.");
                     }
                     ui.add_space(12.0);
+                    ui.horizontal(|ui| {
+                    let card_width = ui.available_width().min(420.0);
+                    ui.add_space(((ui.available_width() - card_width) / 2.0).max(0.0));
+                    ui.allocate_ui_with_layout(Vec2::new(card_width, 0.0), Layout::top_down(Align::Min), |ui| {
                     Frame::new()
                         .fill(Color32::from_rgb(29, 35, 41))
                         .stroke(Stroke::new(1.0, Color32::from_rgb(57, 65, 72)))
                         .corner_radius(CornerRadius::same(8))
                         .inner_margin(Margin::same(16))
                         .show(ui, |ui| {
+                    ui.set_width(card_width - 32.0);
                     ui.spacing_mut().interact_size.y = 30.0;
                     ui.spacing_mut().button_padding = Vec2::new(10.0, 6.0);
                     egui::Grid::new("new_game_settings").spacing([24.0, 12.0]).show(ui, |ui| {
                         if !self.new_game_both_sides {
                             ui.label("Engine");
                             ui.label("Stockfish 19");
+                            ui.end_row();
+                            ui.label(RichText::new("Engine strength").size(14.0));
+                            ui.vertical(|ui| {
+                                ui.checkbox(&mut self.new_game_limit_strength, "Limit to Elo rating");
+                                ui.add_enabled(self.new_game_limit_strength,
+                                    egui::Slider::new(&mut self.new_game_elo, 1320..=3190).suffix(" Elo"));
+                                if !self.new_game_limit_strength {
+                                    ui.label(RichText::new("Uses your current skill-level setting").small().weak());
+                                }
+                            });
                             ui.end_row();
                         }
 
@@ -14935,6 +14975,8 @@ impl eframe::App for ChessApp {
                         }
                     }
                     });
+                    });
+                    });
                     } else {
                     ui.vertical_centered(|ui| {
                         let selected = true;
@@ -14965,16 +15007,22 @@ impl eframe::App for ChessApp {
                     });
                     ui.add_space(18.0);
                     ui.vertical_centered(|ui| {
-                        let valid = self.new_game_online || self.new_game_position != 2 || Board::from_str(self.new_game_fen.trim()).is_ok();
-                        if ui.add_enabled_ui(valid, |ui| Self::start_battle_button(
-                            ui,
-                            self.piece_set,
-                            self.new_game_online,
-                        )).inner
+                        let valid = if self.new_game_training { self.training_profiles.selected().is_some() && self.training_error.is_none() } else { self.new_game_online || self.new_game_position != 2 || Board::from_str(self.new_game_fen.trim()).is_ok() };
+                        if ui.add_enabled_ui(valid, |ui| {
+                            if self.new_game_training {
+                                let label = self.training_profiles.selected().map(|p| format!("Start {} training", p.next_side().label())).unwrap_or_else(|| "Create a profile to start".to_owned());
+                                ui.add_sized([ui.available_width(), 52.0], egui::Button::new(RichText::new(label).size(19.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                                    .fill(Color32::from_rgb(211, 173, 98)).corner_radius(8.0))
+                            } else {
+                                Self::start_battle_button(ui, self.piece_set, self.new_game_online)
+                            }
+                        }).inner
                         .clicked()
                         {
                             self.new_game_dialog_open = false;
-                            if self.new_game_online {
+                            if self.new_game_training {
+                                self.start_training_game();
+                            } else if self.new_game_online {
                                 if self.fics_active {
 
                                     if self.fics_connected && !self.fics_playing {
@@ -15002,6 +15050,11 @@ impl eframe::App for ChessApp {
                                 } };
                                 self.engine_enabled = !self.new_game_both_sides;
                                 self.engine_config.opponent = self.new_game_opponent;
+                                if !self.new_game_both_sides {
+                                    self.engine_config.limit_strength = self.new_game_limit_strength;
+                                    self.engine_config.elo = self.new_game_elo.clamp(1320, 3190);
+                                    self.strength_draft = self.engine_config.clone();
+                                }
                                 self.reset_for_side(side);
                                 self.board = match self.new_game_position {
                                     1 => { let mut bytes = [0u8; 2]; let _ = getrandom::fill(&mut bytes); Board::chess960(u16::from_le_bytes(bytes) % 960) },
@@ -15077,12 +15130,15 @@ impl eframe::App for ChessApp {
                 });
         }
 
+        self.settle_training();
+        self.training_dialog(ctx);
         self.elo_calculator_dialog(ctx);
         self.about_dialog(ctx);
         self.strength_dialog(ctx);
         self.pgn_dialog(ctx);
         self.batch_pgn_dialog(ctx);
         self.batch_pgn_progress_dialog(ctx);
+        self.keyboard_move_ui(ctx);
 
         // Moves are made while drawing the central panel, so arm the delayed
         // repaint after all UI interaction for this frame has completed.

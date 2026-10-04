@@ -37,7 +37,7 @@ Notes stay separate from engine analysis. Running or rerunning Stockfish does no
 - **Main board:** the note panel shows the displayed position's note in either workspace layout.
 - **Expanded analysis graph:** select a position to read its note alongside the analysis details.
 - **Saved Games:** games with a Starting note show a two-line preview. Click the note preview to open the game at its starting position.
-- **Larger saved-game board preview:** click the small board to enlarge it and read the full Starting note beneath it. The board is labeled **Final position**; the Starting note still describes the initial position.
+- **Larger saved-game board preview:** click the small board to enlarge it and read the full Starting note beneath it. The preview initially shows the final position; its move controls and autoplay let you browse the game. The Starting note still describes the initial position.
 
 Move notes become visible when you open the game and select their moves. The Saved Games note preview shows the Starting note.
 

@@ -1,7 +1,7 @@
 ---
 title: "Features"
-lastmod: 2026-10-03T00:00:00-05:00
-description: "Play and analyze chess in 2D or 3D, meet FICS opponents, import Lichess games and handwritten scoresheets, and keep your games on your device."
+lastmod: 2026-10-04T00:00:00-05:00
+description: "Train against Stockfish with personal Elo profiles, type your moves, review games in 2D or 3D, and keep your chess data on your device."
 layout: "features"
 url: "/features/"
 ---
@@ -10,9 +10,13 @@ url: "/features/"
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Use **Print analysis report** to open a printable report with player accuracy, move quality, game phases, critical-position diagrams, engine lines, and your written notes. Choose **Save as PDF** in your browser's Print dialog to keep or share the analysis.
 
+## Train against an adaptive opponent
+
+Create a local profile in **Training vs AI** and start at a 1320 training rating. Alternate White and Black games against Stockfish, whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, maximize the dashboard, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
+
 ## Take notes and annotate positions
 
-Record your plans, questions, and lessons with a personal note on any move or the starting position, without needing to run analysis. Read, add, edit, or delete the displayed position's note beside the live board in Compact or Expanded view. Notes follow the board as you step through moves, with markers in Game Moves and the evaluation graph. Long notes scroll within the panel. Select the **Starting position** row or **View starting note** to revisit the game's initial context. Notes also appear beside analysis details in the expanded graph and in the printed report.
+Record your plans, questions, and lessons with a personal note on any move or the starting position, without needing to run analysis. Read, add, edit, or delete the displayed position's note beside the live board in the Compact workspace. Notes follow the board as you step through moves, with markers in Game Moves and the evaluation graph. Long notes scroll within the panel. Select the **Starting position** row or **View starting note** to revisit the game's initial context. Notes also appear beside analysis details in the expanded graph and in the printed report.
 
 Add your own move-quality symbols—`!`, `!!`, `!?`, `?!`, `?`, or `??`—and position assessments from **Add annotation…** in the move's right-click menu. Choose one symbol from each group, change the selection, or clear it. Your gold symbols stay separate from Stockfish's assessments, so you can explain your own reasoning in a note. See [Taking notes and adding annotations](/help/taking-notes/) for instructions.
 
@@ -24,7 +28,13 @@ Notes, manual symbols, and drawings remain attached to saved games and are prese
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine** or **Play Both Sides** in a fixed-size New Game window. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. A dark board frame with gold coordinates and piece shadows are on by default; move animation and sounds add feedback for moves, captures, and checks.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. A dark board frame with gold coordinates and piece shadows are on by default; move animation and sounds add feedback for moves, captures, and checks.
+
+## Type your moves
+
+Start typing during your turn and a translucent overlay shows the move. Enter plays it, Backspace edits, and Escape cancels. Type `e4`, `nc3`, captures, castling, or promotions; lowercase piece letters and coordinate notation such as `e2e4` work too. Illegal moves stay visible for correction. Keyboard entry follows normal turn and clock rules and works in local, training, and online games. [Keyboard move input and shortcuts](/help/keyboard-input/).
+
+The Compact workspace gives Game Moves the available vertical space, with larger top tabs for moving between the game and its analysis.
 
 ## Choose a 2D or 3D board
 
@@ -63,7 +73,7 @@ Moves, game details, and the photo save locally so you can stop and return to th
 
 ## Build your library
 
-Saved Games keeps My Games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note beneath the final board. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+Saved Games keeps My Games, Training games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
 
 ## Keep control of your data
 
