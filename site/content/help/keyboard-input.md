@@ -36,4 +36,10 @@ Move entry works in local games, [Training vs AI](/help/training-vs-ai/), and on
 
 Use **Left Arrow** and **Right Arrow** to move backward and forward through game positions. In a [larger Saved Games preview](/help/saved-games-and-backups/), these keys select the previous or next move and pause autoplay.
 
+## Drawing shortcuts
+
+With the **Draw on board** window open, **Ctrl+Z** undoes the last drawing change for the displayed position. It covers additions, edits, deletions, and Clear. Active text fields keep their own text undo behavior.
+
+**Alt-click / Alt-drag** draws a green square or arrow without enabling drawing mode. Add **Shift** for red or **Ctrl** for yellow. While dragging an arrow with the graphical tools, hold left-click and tap right-click to toggle solid/dashed or left/right curve styles. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for the full controls.
+
 Voice move entry is not currently built into Ironwood.

@@ -16,4 +16,6 @@ Analysis runs on your device. Online games and public help pages need an interne
 
 For instructions on Starting notes, move notes, and manual symbols, see [Taking notes and adding annotations](/help/taking-notes/). Annotated PGN and Analysis JSON preserve them; plain PGN omits them.
 
-[Board drawings](/help/drawing-on-the-board/) also travel with annotated PGN and Analysis JSON. Annotated PGN uses arrow and square comment extensions (`[%cal ...]` and `[%csl ...]`); support in other chess programs varies. Plain PGN omits personal drawings.
+[Board drawings](/help/drawing-on-the-board/) also travel with annotated PGN and Analysis JSON. Saved games and Analysis JSON preserve colors, endpoints, solid/dotted squares and circles, and solid/dashed/curved arrows. Annotated PGN uses arrow and square comments (`[%cal ...]` and `[%csl ...]`) plus Ironwood’s `[%iw_arrow_styles ...]` extension. Other chess programs may ignore the style extension and display solid arrows and square outlines instead. Plain PGN omits personal drawings.
+
+[Tactical Map](/help/tactical-map/) findings are generated from the position rather than saved as personal annotations. Drawing undo history is temporary and is not included in exports.

@@ -11,21 +11,35 @@ export function paintDrawings(context, drawings = [], cell = 128) {
     context.lineJoin = 'round';
     context.beginPath();
     if (x1 === x2 && y1 === y2) {
+      const dotted = drawing.style?.startsWith('dotted');
+      if (dotted) { context.lineCap = 'round'; context.setLineDash([0, context.lineWidth * 2.8]); }
       const points = drawing.outline;
-      if (points?.length === 4 && points.every(p => p.length === 2 && p.every(Number.isFinite))) {
+      if (points?.length >= 4 && points.every(p => p.length === 2 && p.every(Number.isFinite))) {
         context.moveTo(...points[0]);
         for (const point of points.slice(1)) context.lineTo(...point);
         context.closePath(); context.stroke();
+      } else if (drawing.style?.includes('circle')) {
+        context.arc(x1, y1, cell * .43, 0, Math.PI * 2); context.stroke();
       } else context.strokeRect(x1 - cell * .43, y1 - cell * .43, cell * .86, cell * .86);
+      if (dotted) context.setLineDash([]);
     } else {
       const length = Math.hypot(x2 - x1, y2 - y1);
       const dx = (x2 - x1) / length, dy = (y2 - y1) / length;
-      const tip = [x2 - dx * cell * .12, y2 - dy * cell * .12];
-      const base = [tip[0] - dx * cell * .28, tip[1] - dy * cell * .28];
-      context.moveTo(x1, y1); context.lineTo(...base); context.stroke();
+      const bend = drawing.style === 'curve-left' ? .35 : drawing.style === 'curve-right' ? -.35 : 0;
+      const control = [(x1+x2)/2 - dy*length*bend, (y1+y2)/2 + dx*length*bend];
+      const tangentLength = Math.hypot(x2-control[0], y2-control[1]);
+      const tx = (x2-control[0])/tangentLength, ty = (y2-control[1])/tangentLength;
+      const tip = [x2 - tx * cell * .12, y2 - ty * cell * .12];
+      const base = [tip[0] - tx * cell * .28, tip[1] - ty * cell * .28];
+      if (drawing.style === 'dashed') context.setLineDash([cell*.20,cell*.13]);
+      context.moveTo(x1, y1);
+      if (bend) context.quadraticCurveTo(...control,...base);
+      else context.lineTo(...base);
+      context.stroke();
+      if (drawing.style === 'dashed') context.setLineDash([]);
       context.beginPath(); context.moveTo(...tip);
-      context.lineTo(base[0] - dy * cell * .14, base[1] + dx * cell * .14);
-      context.lineTo(base[0] + dy * cell * .14, base[1] - dx * cell * .14);
+      context.lineTo(base[0] - ty * cell * .14, base[1] + tx * cell * .14);
+      context.lineTo(base[0] + ty * cell * .14, base[1] - tx * cell * .14);
       context.closePath(); context.fill();
     }
     context.restore();
@@ -106,7 +120,7 @@ export async function boardImage(fen, options = {}) {
     return [margin + ((options.flipped ? 7 - file : file) + .5) * cell,
       margin + ((options.flipped ? rank : 7 - rank) + .5) * cell];
   };
-  const drawings = (options.boardMarks || []).map(mark => ({ color: mark.color, from: center(mark.from), to: center(mark.to) }));
+  const drawings = (options.boardMarks || []).map(mark => ({ color: mark.color, style: mark.style, from: center(mark.from), to: center(mark.to) }));
   if (drawings.length) paintDrawings(context, drawings, cell);
   return new Promise((resolve,reject) => canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not create the board image')), 'image/png'));
 }

@@ -34,7 +34,10 @@ struct SceneOutput {
     // x/y numerator stays fixed; only perspective depth changes.
     let depth = original_depth + camera_adjustment.x;
     let ndc = vec2<f32>(input.screen_depth_mode.x * 2.0 - 1.0, 1.0 - input.screen_depth_mode.y * 2.0);
-    out.clip = vec4<f32>(ndc * original_depth, depth - 0.1, depth);
+    // Match Camera::screen_center, including its upward board offset.
+    // Only the displacement from this pivot scales with perspective depth.
+    let pivot = vec2<f32>(0.0, camera_adjustment.w);
+    out.clip = vec4<f32>((ndc - pivot) * original_depth + pivot * depth, depth - 0.1, depth);
     out.uv = input.uv;
     out.color = input.color;
     out.normal = input.normal.xyz;

@@ -584,6 +584,7 @@ impl CallbackTrait for Scene {
             Theme::Egyptian => 4.0,
         };
         adjustment[8..12].copy_from_slice(&theme_code.to_le_bytes());
+        adjustment[12..16].copy_from_slice(&(2.0 * SCREEN_CENTER_LIFT).to_le_bytes());
         queue.write_buffer(&gpu.distance_buffer, 0, &adjustment);
         if changed_scene {
             gpu.vertex_buffer = Some(device.create_buffer_init(
@@ -687,8 +688,14 @@ mod tests {
                 for point in [V3::new(-3.5, 0.075, 3.5), V3::new(3.5, 1.5, -3.5)] {
                     let (old, old_depth) = initial.project(point, rect).unwrap();
                     let (new, new_depth) = target.project(point, rect).unwrap();
-                    let projected = initial.screen_center(rect)
-                        + (old - initial.screen_center(rect)) * old_depth / (old_depth + delta);
+                    // Exercise the vertex shader's clip-space expression, rather
+                    // than assuming its zoom pivot matches the CPU camera.
+                    let ndc = Vec2::new(old.x / rect.width() * 2.0 - 1.0, 1.0 - old.y / rect.height() * 2.0);
+                    let pivot = Vec2::new(0.0, 2.0 * SCREEN_CENTER_LIFT);
+                    let clip_xy = (ndc - pivot) * old_depth + pivot * (old_depth + delta);
+                    let zoomed_ndc = clip_xy / (old_depth + delta);
+                    let projected = Pos2::new((zoomed_ndc.x + 1.0) * rect.width() * 0.5,
+                        (1.0 - zoomed_ndc.y) * rect.height() * 0.5);
                     assert!((new_depth - old_depth - delta).abs() < 0.0001);
                     assert!(new.distance(projected) < 0.001);
                 }

@@ -484,6 +484,9 @@ struct Camera {
     forward: V3,
     focal: f32,
 }
+// Shared with GPU zoom so annotations and scene geometry use the same pivot.
+const SCREEN_CENTER_LIFT: f32 = 0.08;
+
 #[derive(Clone, Copy)]
 pub struct View {
     pub yaw: f32,
@@ -529,7 +532,7 @@ impl Camera {
     }
     fn screen_center(self, rect: Rect) -> Pos2 {
         // Lift the projected board within its egui canvas.
-        rect.center() - Vec2::new(0.0, rect.height() * 0.08)
+        rect.center() - Vec2::new(0.0, rect.height() * SCREEN_CENTER_LIFT)
     }
     fn project(self, p: V3, rect: Rect) -> Option<(Pos2, f32)> {
         let delta = p.sub(self.eye);
@@ -958,6 +961,16 @@ pub fn square_outline(square: Square, rect: Rect, flipped: bool, view: View) -> 
     [(-0.43, -0.43), (0.43, -0.43), (0.43, 0.43), (-0.43, 0.43)]
         .into_iter().map(|(dx, dz)| camera.project(V3::new(x + dx, 0.075, z + dz), rect).map(|(point, _)| point))
         .collect()
+}
+
+pub fn circle_outline(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Vec<Pos2>> {
+    let x = square.get_file().to_index() as f32 - 3.5;
+    let z = 3.5 - square.get_rank().to_index() as f32;
+    let camera = Camera::new(flipped, view);
+    (0..64).map(|i| {
+        let angle = i as f32 * std::f32::consts::TAU / 64.0;
+        camera.project(V3::new(x + angle.cos() * 0.43, 0.075, z + angle.sin() * 0.43), rect).map(|(point, _)| point)
+    }).collect()
 }
 
 pub fn square_center(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Pos2> {

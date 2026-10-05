@@ -1,6 +1,12 @@
 use crate::rules::{Board, MoveGen};
 #[path = "training_ui.rs"]
 mod training_ui;
+#[path = "tactical_ui.rs"]
+mod tactical_ui;
+#[path = "notes_ui.rs"]
+mod notes_ui;
+#[path = "draw_ui.rs"]
+mod draw_ui;
 
 use crate::training::{self, Profiles, Profile, Session, Side as TrainingSide, AnalysisStats};
 use chess::{BoardStatus, ChessMove, Color, File, Piece, Rank, Square};
@@ -370,6 +376,8 @@ struct ImportedAnalysisGame {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct BoardMark {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    style: String,
     color: char,
     from: String,
     to: String,
@@ -377,7 +385,8 @@ struct BoardMark {
 
 impl BoardMark {
     fn valid(&self) -> bool {
-        matches!(self.color, 'G' | 'R' | 'Y' | 'B')
+        (self.style.is_empty() || matches!(self.style.as_str(), "dashed" | "curve-left" | "curve-right" | "circle" | "dotted-square" | "dotted-circle"))
+            && matches!(self.color, 'G' | 'R' | 'Y' | 'B')
             && Square::from_str(&self.from).is_ok() && Square::from_str(&self.to).is_ok()
     }
 }
@@ -487,6 +496,14 @@ enum GamePhase {
 }
 
 impl GamePhase {
+    fn color(self) -> Color32 {
+        match self {
+            Self::Opening => Color32::from_rgb(97, 181, 211),
+            Self::Middlegame => Color32::from_rgb(191, 153, 224),
+            Self::Endgame => Color32::from_rgb(108, 192, 143),
+        }
+    }
+
     fn label(self) -> &'static str {
         match self {
             Self::Opening => "Opening",
@@ -1339,6 +1356,7 @@ pub struct ChessApp {
     move_notes: Vec<String>,
     move_annotations: Vec<Vec<u8>>,
     board_marks: Vec<Vec<BoardMark>>,
+    drawing_undo: Vec<(usize, Vec<BoardMark>)>,
     board_mark_mode: bool,
     board_mark_color: char,
     board_mark_drag: Option<(usize, Square, char)>,
@@ -1570,6 +1588,7 @@ impl ChessApp {
         if switching {
             self.move_notes = observed.move_notes.clone();
             self.move_annotations = observed.move_annotations.clone();
+            self.drawing_undo.clear();
             self.board_marks = observed.board_marks.clone();
             self.board_mark_drag = None;
         }
@@ -1683,6 +1702,7 @@ impl ChessApp {
             if self.fics_game_id == Some(game) {
                 self.move_notes = observed.move_notes.clone();
                 self.move_annotations = observed.move_annotations.clone();
+            self.drawing_undo.clear();
             self.board_marks = observed.board_marks.clone();
             self.board_mark_drag = None;
             }
@@ -2510,6 +2530,7 @@ impl ChessApp {
                 .unwrap_or_default(),
             move_annotations: saved.as_ref().map(|game| game.move_annotations.clone()).unwrap_or_default(),
             board_marks: saved.as_ref().map(|game| game.board_marks.clone()).unwrap_or_default(),
+            drawing_undo: Vec::new(),
             board_mark_mode: false,
             board_mark_color: 'G',
             board_mark_drag: None,
@@ -3885,6 +3906,17 @@ impl ChessApp {
         })
     }
 
+    fn graph_phase_ranges(&self, count: usize) -> Vec<(GamePhase, usize, usize)> {
+        let mut ranges: Vec<(GamePhase, usize, usize)> = Vec::new();
+        for index in 0..count.min(self.review_positions.len()) {
+            let Some(phase) = self.game_phase_for_move(index.max(1)) else { continue; };
+            if let Some((previous, _, end)) = ranges.last_mut() && *previous == phase {
+                *end = index;
+            } else { ranges.push((phase, index, index)); }
+        }
+        ranges
+    }
+
     fn phase_stats(&self, phase: GamePhase) -> Option<(usize, f32, Option<f32>)> {
         let indices = (1..self.review_positions.len())
             .filter(|index| self.game_phase_for_move(*index) == Some(phase))
@@ -4352,7 +4384,7 @@ impl ChessApp {
         }
         let plot = if expanded {
             egui::Rect::from_min_max(
-                rect.min + Vec2::new(62.0, 20.0),
+                rect.min + Vec2::new(62.0, 34.0),
                 rect.max - Vec2::new(24.0, 38.0),
             )
         } else {
@@ -4373,6 +4405,22 @@ impl ChessApp {
             egui::pos2(x, center_y - normalized * plot.height() * 0.46)
         };
         if expanded {
+            for (phase, start, end) in self.graph_phase_ranges(self.game_analysis.len()) {
+                let left = plot.left() + plot.width() * (start as f32 - 0.5).max(0.0) / denominator;
+                let right = plot.left() + plot.width() * (end as f32 + 0.5).min(denominator) / denominator;
+                let band = egui::Rect::from_min_max(egui::pos2(left, plot.top()), egui::pos2(right, plot.bottom()));
+                let color = phase.color();
+                ui.painter().rect_filled(band, 0.0, color.gamma_multiply(0.10));
+                ui.painter().rect_filled(egui::Rect::from_min_max(egui::pos2(left, plot.top() - 5.0), egui::pos2(right, plot.top() - 2.0)), 0.0, color);
+                if start > 0 {
+                    ui.painter().line_segment([band.left_top(), band.left_bottom()], Stroke::new(1.0, color.gamma_multiply(0.45)));
+                }
+                if band.width() >= 76.0 {
+                    ui.painter().with_clip_rect(egui::Rect::from_min_max(egui::pos2(left, rect.top()), egui::pos2(right, plot.top())))
+                        .text(egui::pos2(band.center().x, plot.top() - 17.0), Align2::CENTER_CENTER,
+                            phase.label(), FontId::proportional(13.0), color);
+                }
+            }
             for cp in [-1000, -500, -200, -100, 0, 100, 200, 500, 1000] {
                 let y = point_for(0, cp).y;
                 ui.painter().line_segment(
@@ -4500,6 +4548,9 @@ impl ChessApp {
                 ui.set_max_width(290.0);
                 let position = self.graph_position_label(index, true);
                 ui.label(RichText::new(position).strong());
+                if expanded && let Some(phase) = self.game_phase_for_move(index.max(1)) {
+                    ui.label(RichText::new(phase.label()).color(phase.color()));
+                }
                 if !self.note_at(index).is_empty() {
                     ui.label(format!("Your note: {}", self.note_at(index)));
                 }
@@ -4580,11 +4631,22 @@ impl ChessApp {
                     for encoded in value.split(',').map(str::trim) {
                         if !encoded.is_ascii() || encoded.len() != if arrow { 5 } else { 3 } { continue; }
                         let mark = BoardMark {
+                            style: String::new(),
                             color: encoded.as_bytes()[0] as char,
                             from: encoded[1..3].to_owned(),
                             to: if arrow { encoded[3..5].to_owned() } else { encoded[1..3].to_owned() },
                         };
                         if mark.valid() && !target.contains(&mark) { target.push(mark); }
+                    }
+                }
+            }
+            for part in comment.split("[%iw_arrow_styles ").skip(1) {
+                let Some((value, _)) = part.split_once(']') else { continue; };
+                for item in value.split(',') {
+                    let Some((encoded, style)) = item.trim().split_once(':') else { continue; };
+                    if !encoded.is_ascii() || encoded.len() != 5 { continue; }
+                    if let Some(mark) = target.iter_mut().find(|m| m.color == encoded.as_bytes()[0] as char && m.from == encoded[1..3] && m.to == encoded[3..5]) {
+                        if matches!(style, "dashed" | "curve-left" | "curve-right" | "circle" | "dotted-square" | "dotted-circle") { mark.style = style.to_owned(); }
                     }
                 }
             }
@@ -4601,12 +4663,16 @@ impl ChessApp {
                 .collect();
             if !values.is_empty() { output.push_str(&format!(" {{ [%{name} {}] }}", values.join(","))); }
         }
+        let styles: Vec<_> = marks.into_iter().flatten().filter(|m| m.valid() && !m.style.is_empty())
+            .map(|m| format!("{}{}{}:{}", m.color, m.from, m.to, m.style)).collect();
+        if !styles.is_empty() { output.push_str(&format!(" {{ [%iw_arrow_styles {}] }}", styles.join(","))); }
         output
     }
 
     fn toggle_board_mark(&mut self, index: usize, mark: BoardMark) {
         if index >= self.review_positions.len() || !mark.valid() { return; }
         self.board_marks.resize(self.review_positions.len(), Vec::new());
+        self.record_drawing_undo(index);
         let marks = &mut self.board_marks[index];
         if let Some(existing) = marks.iter().position(|existing| existing == &mark) {
             marks.remove(existing);
@@ -4622,24 +4688,6 @@ impl ChessApp {
             observed.board_marks = self.board_marks.clone();
         }
         self.save_game();
-    }
-
-    fn board_mark_controls(&mut self, ui: &mut egui::Ui, index: usize) {
-        ui.horizontal_wrapped(|ui| {
-            if ui.toggle_value(&mut self.board_mark_mode, "Draw on board").on_hover_text("Click a square to highlight it; drag between squares to draw an arrow. Repeat to remove. Alt also enables drawing temporarily.").changed() {
-                self.board_mark_drag = None;
-                self.selected = None;
-                self.legal_targets.clear();
-            }
-            for (color, label) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow")] {
-                ui.selectable_value(&mut self.board_mark_color, color, label);
-            }
-            if ui.add_enabled(self.board_marks.get(index).is_some_and(|marks| !marks.is_empty()), egui::Button::new("Clear drawings")).clicked() {
-                self.board_marks[index].clear();
-                self.save_board_marks();
-            }
-        });
-        if self.board_mark_mode { ui.label(RichText::new("Drawing mode · turn off to play moves").small().weak()); }
     }
 
     fn board_mark_color(color: char) -> Color32 {
@@ -4660,7 +4708,11 @@ impl ChessApp {
             if drag_index == index && let Some(pos) = ui.input(|input| input.pointer.latest_pos())
                 && let Some(to) = self.board_mark_square(pos, rect)
             {
-                marks.push(BoardMark { color, from: from.to_string(), to: to.to_string() });
+                let square_tool = self.board_mark_mode
+                    && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_window_open"))).unwrap_or(false)
+                    && !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_tool_arrow"))).unwrap_or(false)
+                    && !ui.input(|i| i.modifiers.alt);
+                marks.push(BoardMark { style: if ui.input(|i| i.modifiers.alt) { String::new() } else if square_tool { Self::drawing_shape_style(ui.ctx()) } else { Self::drawing_arrow_style(ui.ctx()) }, color, from: from.to_string(), to: if square_tool { from } else { to }.to_string() });
             }
         }
         let cell = rect.width() / if self.board_3d_active { 9.0 } else { 8.0 };
@@ -4670,22 +4722,15 @@ impl ChessApp {
             let (Some(source), Some(destination)) = (center(from), center(to)) else { continue; };
             let color = Self::board_mark_color(mark.color);
             if from == to {
-                // An outlined square leaves pieces and legal-move indicators visible.
                 let stroke = Stroke::new((cell * 0.06).clamp(2.0, 5.0), color);
-                if self.board_3d_active {
-                    if let Some(points) = crate::board3d::square_outline(from, rect, self.flipped, self.board_3d_view()) {
-                        ui.painter().add(egui::Shape::closed_line(points, stroke));
-                    }
-                } else {
-                    ui.painter().rect_stroke(egui::Rect::from_center_size(source, Vec2::splat(cell * 0.86)), 3.0, stroke, egui::StrokeKind::Inside);
-                }
+                let circle = mark.style.contains("circle");
+                let points = if self.board_3d_active {
+                    if circle { crate::board3d::circle_outline(from, rect, self.flipped, self.board_3d_view()) }
+                    else { crate::board3d::square_outline(from, rect, self.flipped, self.board_3d_view()) }
+                } else { Some(Self::shape_points(source, cell, circle)) };
+                if let Some(points) = points { Self::paint_shape_outline(ui.painter(), points, stroke, mark.style.starts_with("dotted")); }
             } else {
-                let direction = (destination - source).normalized();
-                let perpendicular = Vec2::new(-direction.y, direction.x);
-                let tip = destination - direction * cell * 0.12;
-                let base = tip - direction * cell * 0.28;
-                ui.painter().line_segment([source, base], Stroke::new((cell * 0.07).clamp(3.0, 7.0), color));
-                ui.painter().add(egui::Shape::convex_polygon(vec![tip, base + perpendicular * cell * 0.14, base - perpendicular * cell * 0.14], color, Stroke::NONE));
+                Self::paint_styled_arrow(ui.painter(), source, destination, cell, color, &mark.style);
             }
         }
     }
@@ -4716,16 +4761,39 @@ impl ChessApp {
             input.pointer.latest_pos(), input.pointer.button_pressed(egui::PointerButton::Primary),
             input.pointer.button_released(egui::PointerButton::Primary), input.modifiers, input.key_pressed(egui::Key::Escape)));
         if escape || self.prediction_index != 0 { self.board_mark_drag = None; return; }
-        if pressed && (self.board_mark_mode || modifiers.alt)
+        if pressed && (self.board_mark_mode || modifiers.alt) && ui.rect_contains_pointer(rect)
             && let Some(pos) = pos && let Some(square) = self.board_mark_square(pos, rect)
         {
             let color = if modifiers.alt { if modifiers.shift { 'R' } else if modifiers.ctrl { 'Y' } else { 'G' } } else { self.board_mark_color };
             self.board_mark_drag = Some((index, square, color));
         }
-        if released && let Some((start_index, from, color)) = self.board_mark_drag.take()
-            && start_index == index && let Some(pos) = pos && let Some(to) = self.board_mark_square(pos, rect)
+        if self.board_mark_drag.is_some_and(|(start_index, _, _)| start_index == index)
+            && !modifiers.alt
+            && ui.input(|input| input.pointer.button_pressed(egui::PointerButton::Secondary))
+            && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_tool_arrow"))).unwrap_or(false)
         {
-            self.toggle_board_mark(index, BoardMark { color, from: from.to_string(), to: to.to_string() });
+            let style = Self::drawing_arrow_style(ui.ctx());
+            let opposite = match style.as_str() {
+                "" => Some("dashed"),
+                "dashed" => Some(""),
+                "curve-left" => Some("curve-right"),
+                "curve-right" => Some("curve-left"),
+                _ => None,
+            };
+            if let Some(opposite) = opposite {
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("drawing_arrow_style"), opposite.to_owned()));
+                ui.ctx().request_repaint();
+            }
+        }
+        if released && let Some((start_index, from, color)) = self.board_mark_drag.take()
+            && ui.rect_contains_pointer(rect) && start_index == index && let Some(pos) = pos && let Some(to) = self.board_mark_square(pos, rect)
+        {
+            let tool_active = !modifiers.alt && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_window_open"))).unwrap_or(false);
+            let arrow = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_tool_arrow"))).unwrap_or(false);
+            if !tool_active || !arrow || from != to {
+                let to = if tool_active && !arrow { from } else { to };
+                self.toggle_board_mark(index, BoardMark { style: if !tool_active { String::new() } else if arrow { Self::drawing_arrow_style(ui.ctx()) } else { Self::drawing_shape_style(ui.ctx()) }, color, from: from.to_string(), to: to.to_string() });
+            }
         }
         if self.board_mark_drag.is_some() { ui.ctx().request_repaint(); }
     }
@@ -4787,61 +4855,6 @@ impl ChessApp {
         self.move_notes.get(index).map(String::as_str).unwrap_or("")
     }
 
-    fn starting_position_row(&mut self, ui: &mut egui::Ui, index: usize, scroll: bool) -> bool {
-        let mut selected = false;
-        ui.horizontal(|ui| {
-            let label = if self.note_at(0).is_empty() { "Starting position" } else { "Starting position · Note" };
-            let response = ui.selectable_label(index == 0, label).on_hover_text(self.note_at(0));
-            selected = response.clicked() || response.secondary_clicked();
-            self.move_context_response(&response, 0);
-            if index == 0 && scroll {
-                response.scroll_to_me(Some(Align::Min));
-            }
-            if ui.small_button(if self.note_at(0).is_empty() { "Add note…" } else { "Edit note…" }).clicked() {
-                selected = true;
-                self.edit_note(0);
-            }
-        });
-        ui.separator();
-        selected
-    }
-
-    fn position_note_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(index) = self.review_index.or_else(|| self.review_positions.len().checked_sub(1)) else {
-            return;
-        };
-        ui.add_space(8.0);
-        self.board_mark_controls(ui, index);
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new(if index == 0 { "Starting position note" } else { "Your note" }).strong());
-            if ui.small_button(if self.note_at(index).is_empty() { "Add note…" } else { "Edit note…" }).clicked() {
-                self.edit_note(index);
-            }
-        });
-        ui.label(RichText::new(self.graph_position_label(index, true)).small().weak());
-        if let Some(values) = self.move_annotations.get(index).filter(|values| !values.is_empty()) {
-            let symbols = values.iter().map(|nag| Self::annotation_symbol(*nag)).collect::<Vec<_>>().join(" ");
-            ui.label(format!("Your annotation: {symbols}"));
-        }
-        if self.note_at(index).is_empty() {
-            ui.label(RichText::new("No note for this position.").weak());
-        } else {
-            egui::ScrollArea::vertical()
-                .id_salt("current_position_note")
-                .max_height(140.0)
-                .show_gold(ui, |ui| {
-                    ui.add(egui::Label::new(self.note_at(index)).wrap());
-                });
-        }
-        if index != 0 && !self.note_at(0).is_empty()
-            && ui.small_button("View starting note").on_hover_text(self.note_at(0)).clicked()
-        {
-            self.review_to(0);
-        }
-        ui.separator();
-    }
-
     fn edit_note(&mut self, index: usize) {
         self.note_editor_text = self.note_at(index).to_owned();
         self.note_editor_index = Some(index);
@@ -4879,8 +4892,7 @@ impl ChessApp {
             .frame(Self::dialog_frame())
             .show(ctx, |ui| {
                 ui.set_width((ctx.screen_rect().width() - 64.0).clamp(240.0, 560.0));
-                close = Self::dialog_header(ui, "Your note");
-                ui.label(RichText::new(self.graph_position_label(index, true)).size(18.0));
+                close = Self::notes_header(ui, &self.notes_title(index));
                 ui.add_space(12.0);
                 egui::ScrollArea::vertical()
                     .max_height((ctx.screen_rect().height() - 250.0).clamp(80.0, 300.0))
@@ -5054,6 +5066,13 @@ impl ChessApp {
                         Self::paint_note_icon(ui.painter(),icon,Color32::from_rgb(145,198,224));
                         ui.label("Your notes · Gaps are unanalyzed positions. Click or drag to inspect.");
                     });
+                    ui.horizontal_wrapped(|ui| {
+                        for phase in [GamePhase::Opening, GamePhase::Middlegame, GamePhase::Endgame] {
+                            let (swatch, _) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), Sense::hover());
+                            ui.painter().rect_filled(swatch, 2.0, phase.color());
+                            ui.label(RichText::new(phase.label()).color(phase.color()));
+                        }
+                    }).response.on_hover_text("Approximate phases: first 10 full moves are opening; after that, endgame begins at 26 or fewer non-pawn material points. These match the phase summaries.");
                     ui.add_space(12.0);
                     let last = self.review_moves.len();
                     let mut index = self.review_index.unwrap_or(last).min(last);
@@ -5065,6 +5084,9 @@ impl ChessApp {
                     if Some(index) != self.review_index { self.review_to(index); }
                     ui.add_space(8.0);
                     ui.label(RichText::new(self.graph_position_label(index,true)).size(22.0).strong());
+                    if let Some(phase) = self.game_phase_for_move(index.max(1)) {
+                        ui.label(RichText::new(format!("Game phase: {}", phase.label())).color(phase.color()).size(17.0));
+                    }
                     if let Some(value) = self.game_analysis.get(index).and_then(Option::as_ref) {
                         let evaluation = value.mate.map(|mate| format!("Mate {mate:+}"))
                             .or_else(|| value.eval_cp.map(|cp| format!("{:+.2} pawns",cp as f32 / 100.0)))
@@ -6820,6 +6842,7 @@ impl ChessApp {
                 self.review_positions = positions;
                 self.move_notes = Self::parse_pgn_notes(text, &self.review_positions);
                 self.move_annotations = Self::parse_pgn_nags(text, &self.review_positions);
+                self.drawing_undo.clear();
                 self.board_marks = Self::parse_pgn_board_marks(text, &self.review_positions);
                 self.note_editor_index = None;
                 self.review_moves = moves;
@@ -7068,6 +7091,7 @@ impl ChessApp {
             .map(|position| position.note.clone())
             .collect();
         self.move_annotations = imported.positions.iter().map(|position| position.annotations.clone()).collect();
+        self.drawing_undo.clear();
         self.board_marks = imported.positions.iter().map(|position| position.board_marks.iter().filter(|mark| mark.valid()).cloned().collect()).collect();
         self.board_mark_drag = None;
         self.note_editor_index = None;
@@ -8131,6 +8155,7 @@ impl ChessApp {
         self.review_moves.clear();
         self.move_notes.clear();
         self.move_annotations.clear();
+        self.drawing_undo.clear();
         self.board_marks.clear();
         self.board_mark_drag = None;
         self.note_editor_index = None;
@@ -8203,6 +8228,7 @@ impl ChessApp {
             self.review_moves.truncate(branch_index);
             self.move_notes.truncate(branch_index + 1);
             self.move_annotations.truncate(branch_index + 1);
+            self.drawing_undo.clear();
             self.board_marks.truncate(branch_index + 1);
             self.game_analysis.truncate(branch_index + 1);
             self.clear_verification();
@@ -8966,6 +8992,7 @@ impl ChessApp {
             self.review_positions.pop();
             self.move_notes.truncate(self.review_positions.len());
             self.move_annotations.truncate(self.review_positions.len());
+            self.drawing_undo.clear();
             self.board_marks.truncate(self.review_positions.len());
             self.clear_verification();
             if !self.game_analysis.is_empty() {
@@ -9424,9 +9451,9 @@ impl ChessApp {
     fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2) -> egui::InnerResponse<()> {
         ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
-            if response.double_clicked_by(egui::PointerButton::Secondary) {
+            if self.board_mark_drag.is_none() && response.double_clicked_by(egui::PointerButton::Secondary) {
                 self.reset_board_3d_view(ui.ctx());
-            } else if response.dragged_by(egui::PointerButton::Secondary) {
+            } else if self.board_mark_drag.is_none() && response.dragged_by(egui::PointerButton::Secondary) {
                 let mut view = self.board_3d_view();
                 view.orbit(ui.input(|input| input.pointer.delta()));
                 self.board_3d_yaw = view.yaw;
@@ -9883,6 +9910,9 @@ impl ChessApp {
                                         .clicked() {
                                             self.toggle_board_dimension(ui.ctx());
                                         }
+                                        self.tactical_toggle_ui(ui);
+                                        self.notes_toggle_ui(ui);
+                                        self.draw_toggle_ui(ui);
                                         if self.board_3d_active && self.board_3d_view_rotated()
                                             && ui.add_sized([29.0, 22.0], egui::Button::new("↺"))
                                                 .on_hover_text("Reset 3D view (or double right-click the board)")
@@ -10216,6 +10246,7 @@ impl ChessApp {
                     ui.ctx().request_repaint();
                 }
                 self.board_mark_input(ui, board_response.response.rect);
+                self.paint_tactical_map(ui, board_response.response.rect);
                 self.paint_board_marks(ui, board_response.response.rect, self.review_index.unwrap_or(self.review_moves.len()));
                 if let Some(best_move) = best_move_arrow {
                     if self.board_3d_active {
@@ -11030,6 +11061,7 @@ impl ChessApp {
     }
 
     fn move_context_response(&mut self, response: &egui::Response, index: usize) {
+        if response.double_clicked() { self.edit_note(index); }
         let selected = self.review_index.unwrap_or(self.review_moves.len()) == index;
         let keyboard_open = selected
             && !self.new_game_dialog_open
@@ -11059,7 +11091,7 @@ impl ChessApp {
                 .filter(|mv| Some(*mv) != Self::review_move_at(&self.review_positions, &self.review_moves, index))
         } else { None };
         if let Some(mv) = engine_move {
-            let mark = BoardMark { color: 'G', from: mv.get_source().to_string(), to: mv.get_dest().to_string() };
+            let mark = BoardMark { style: String::new(), color: 'G', from: mv.get_source().to_string(), to: mv.get_dest().to_string() };
             if !marks.contains(&mark) { marks.push(mark); }
         }
         marks.retain(BoardMark::valid);
@@ -11154,8 +11186,8 @@ impl ChessApp {
                                     let to = Square::from_str(&mark.to).ok()?;
                                     let source = crate::board3d::square_center(from, rect, self.flipped, view)?;
                                     let dest = crate::board3d::square_center(to, rect, self.flipped, view)?;
-                                    let outline = crate::board3d::square_outline(from, rect, self.flipped, view)?;
-                                    Some(serde_json::json!({ "color": mark.color.to_string(), "from": [source.x, source.y], "to": [dest.x, dest.y],
+                                    let outline = if mark.style.contains("circle") { crate::board3d::circle_outline(from, rect, self.flipped, view)? } else { crate::board3d::square_outline(from, rect, self.flipped, view)? };
+                                    Some(serde_json::json!({ "color": mark.color.to_string(), "style": mark.style, "from": [source.x, source.y], "to": [dest.x, dest.y],
                                         "outline": if from == to { outline.iter().map(|p| vec![p.x, p.y]).collect::<Vec<_>>() } else { Vec::new() } }))
                                 }).collect();
                                 let mut settings: serde_json::Value = serde_json::from_str(&coordinates).unwrap_or_else(|_| serde_json::json!({"labels": []}));
@@ -11670,6 +11702,22 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn graph_phase_ranges_cover_positions_and_follow_phase_summaries() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.review_positions = vec![Board::default(); 26];
+        let endgame = Board::from_str("4k3/8/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        for board in &mut app.review_positions[22..] { *board = endgame; }
+        let ranges = app.graph_phase_ranges(26);
+        assert!(ranges == vec![(GamePhase::Opening, 0, 20), (GamePhase::Middlegame, 21, 22), (GamePhase::Endgame, 23, 25)]);
+        assert!(app.graph_phase_ranges(12) == vec![(GamePhase::Opening, 0, 11)]);
+        assert!(app.graph_phase_ranges(0).is_empty());
+        assert!(app.graph_phase_ranges(100) == ranges);
+        app.review_positions[24] = Board::default();
+        assert!(app.graph_phase_ranges(26).last() == Some(&(GamePhase::Middlegame, 25, 25)));
+    }
     #[test]
     fn keyboard_moves_validate_notation_and_legality() {
         let board = Board::default();
@@ -11745,11 +11793,11 @@ mod tests {
         app.game_analysis[2] = Some(super::PositionAnalysis { eval_cp: Some(0), best_move: Some("e2e4".into()), ..Default::default() });
         app.game_analysis[3] = Some(super::PositionAnalysis { eval_cp: Some(-900), ..Default::default() });
         let marks = app.annotated_copy_marks(3);
-        assert_eq!(marks, vec![super::BoardMark { color: 'G', from: "e2".into(), to: "e4".into() }]);
+        assert_eq!(marks, vec![super::BoardMark { style: String::new(), color: 'G', from: "e2".into(), to: "e4".into() }]);
         assert!(app.board_marks.iter().all(Vec::is_empty));
         app.show_best_move_arrows = false;
         assert!(app.annotated_copy_marks(3).is_empty());
-        app.toggle_board_mark(3, super::BoardMark { color: 'R', from: "g4".into(), to: "g4".into() });
+        app.toggle_board_mark(3, super::BoardMark { style: String::new(), color: 'R', from: "g4".into(), to: "g4".into() });
         app.show_best_move_arrows = true;
         assert_eq!(app.annotated_copy_marks(3).len(), 2);
         assert!(app.annotated_copy_marks(1).is_empty());
@@ -11760,8 +11808,8 @@ mod tests {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
         app.load_pgn("1. e4 e5 2. Nf3 *");
-        let arrow = super::BoardMark { color: 'G', from: "e2".into(), to: "e4".into() };
-        let square = super::BoardMark { color: 'R', from: "f6".into(), to: "f6".into() };
+        let arrow = super::BoardMark { style: String::new(), color: 'G', from: "e2".into(), to: "e4".into() };
+        let square = super::BoardMark { style: String::new(), color: 'R', from: "f6".into(), to: "f6".into() };
         app.toggle_board_mark(0, arrow.clone());
         app.toggle_board_mark(1, square.clone());
         app.toggle_board_mark(3, arrow.clone());
@@ -11816,7 +11864,7 @@ mod tests {
                 egui::CentralPanel::default().show(ctx, |ui| app.board_mark_input(ui, rect));
             });
         }
-        assert_eq!(app.board_marks[0], vec![super::BoardMark { color: 'R', from: "e2".into(), to: "e4".into() }]);
+        assert_eq!(app.board_marks[0], vec![super::BoardMark { style: String::new(), color: 'R', from: "e2".into(), to: "e4".into() }]);
         assert_eq!(app.board, board);
         app.flipped = true;
         let pos = rect.min + ChessApp::square_screen_offset(Square::E2, true, 50.0);
@@ -13271,7 +13319,6 @@ impl eframe::App for ChessApp {
                     });
                     ui.separator();
                 }
-                self.position_note_ui(ui);
                 if show_moves {
                     ui.add_space(6.0);
                     self.training_game_summary_ui(ui);
@@ -13306,7 +13353,6 @@ impl eframe::App for ChessApp {
                                 .min_scrolled_height(moves_height)
                                 .auto_shrink([false, false])
                                 .show_gold(ui, |ui| {
-                                    if self.starting_position_row(ui, index, scroll_to_selected) { jump_to = Some(0); }
                                     let first_ply = self.fics_observation_start_ply.unwrap_or(self.local_start_ply);
                                     let end_pair = if self.review_moves.is_empty() {
                                         first_ply / 2
@@ -14275,7 +14321,10 @@ impl eframe::App for ChessApp {
         }
 
         self.expanded_analysis_graph(ctx);
+        self.draw_window(ctx);
+        self.notes_window(ctx);
         self.move_note_dialog(ctx);
+        self.tactical_window(ctx);
 
         if self.print_confirm_open {
             let mut open = true;

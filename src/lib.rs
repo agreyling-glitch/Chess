@@ -5,6 +5,7 @@ mod board3d;
 mod fics_chat;
 mod rules;
 mod training;
+mod tactical;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

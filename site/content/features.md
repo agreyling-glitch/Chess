@@ -1,14 +1,14 @@
 ---
 title: "Features"
 lastmod: 2026-10-04T00:00:00-05:00
-description: "Train against Stockfish with personal Elo profiles, type your moves, review games in 2D or 3D, and keep your chess data on your device."
+description: "Analyze with Stockfish, explore tactical patterns, annotate positions with notes and drawings, and play in 2D or 3D."
 layout: "features"
 url: "/features/"
 ---
 
 ## Analyze without limits
 
-**No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Use **Print analysis report** to open a printable report with player accuracy, move quality, game phases, critical-position diagrams, engine lines, and your written notes. Choose **Save as PDF** in your browser's Print dialog to keep or share the analysis.
+**No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries. Use **Print analysis report** to open a printable report with player accuracy, move quality, game phases, critical-position diagrams, engine lines, and your written notes. Choose **Save as PDF** in your browser's Print dialog to keep or share the analysis.
 
 ## Train against an adaptive opponent
 
@@ -16,15 +16,27 @@ Create a local profile in **Training vs AI** and start at a 1320 training rating
 
 ## Take notes and annotate positions
 
-Record your plans, questions, and lessons with a personal note on any move or the starting position, without needing to run analysis. Read, add, edit, or delete the displayed position's note beside the live board in the Compact workspace. Notes follow the board as you step through moves, with markers in Game Moves and the evaluation graph. Long notes scroll within the panel. Select the **Starting position** row or **View starting note** to revisit the game's initial context. Notes also appear beside analysis details in the expanded graph and in the printed report.
+Record your plans, questions, and lessons with a personal note on any move or the starting position, without running analysis. Open the translucent **Notes** window from the document icon above the board. The **Note** tab follows the displayed position; **Start** shows the starting note while you keep the board on the current move. The title identifies the move in notation and plain language, such as **Notes: Nxb5 (Knight to B5)**.
+
+Double-click the note text to edit, or double-click **No note for this position.** to add a note. You can also double-click a move in **Game Moves** to open its note editor directly. Expand **All notes** to browse every note in the game; click an entry to view it or double-click to edit. Drag the window by its title and resize it to suit your workspace. Notes also appear beside analysis details in the expanded graph and in printed reports.
 
 Add your own move-quality symbols—`!`, `!!`, `!?`, `?!`, `?`, or `??`—and position assessments from **Add annotation…** in the move's right-click menu. Choose one symbol from each group, change the selection, or clear it. Your gold symbols stay separate from Stockfish's assessments, so you can explain your own reasoning in a note. See [Taking notes and adding annotations](/help/taking-notes/) for instructions.
 
 ## Illustrate plans on the board
 
-Draw green, red, or yellow arrows and outline important squares on either the 2D or 3D board. Use **Draw on board** and its color controls, or Alt-click and Alt-drag shortcuts. Repeat a drawing to remove it, change its color, or use **Clear drawings** for the displayed position. Drawings belong to individual positions, including the starting position, and reappear when you return to them. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for shortcuts and touch controls.
+Open **Draw on board** with the pencil icon above the board, to the left of Notes. Its translucent floating window keeps drawing tools out of Game Moves. Choose green, red, yellow, or blue, then mark squares or circles with solid or dotted outlines, or draw solid, dashed, and curved arrows on either board view.
 
-Notes, manual symbols, and drawings remain attached to saved games and are preserved in annotated PGN and Analysis JSON. Annotated PGN uses standard numeric codes for symbols and arrow/square comment extensions for drawings; support for the drawing extensions varies between chess programs. Plain PGN omits personal annotations.
+While holding left-click to draw an arrow, tap right-click to switch between solid and dashed lines or reverse a curve’s direction. Expand **Drawings** to change an individual drawing’s color or starting and ending squares, or delete it. Use **Clear** to remove the position’s drawings, and the undo icon or **Ctrl+Z** to undo additions, edits, deletions, or Clear. Drawings belong to individual positions and reappear when you return to them.
+
+The header’s slide control enables or disables drawing; closing the window returns to playing moves. Drag the title to reposition the window and resize it vertically to give the scrolling list more room. Alt-click and Alt-drag shortcuts remain available. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for the full controls.
+
+Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood preserves drawing styles with its own PGN extension; other chess programs may display simpler arrows or square outlines. **Copy Annotated Board to Clipboard** captures personal drawings and their styles in the active 2D or 3D view. Plain PGN omits personal annotations.
+
+## Explore tactical patterns
+
+Open **Tactical Map** from the bullseye beside the **2D/3D** button. Its translucent floating window lists newly exposed pieces, absolute pins, and legal fork candidates, with color-coded **Danger**, **Pins**, and **Forks** filters and counts. Select a finding to highlight its squares and trace attack lines on the board; select it again to clear the overlay. Drag its title to reposition the map, or resize the window alongside your notes and drawing tools.
+
+The map provides geometric clues without requiring an engine analysis run. A candidate is not a proven material win: use Stockfish to check the opponent’s replies. Tactical Map is available for review and analysis and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for its scope and controls.
 
 ## Play your way
 
@@ -38,7 +50,7 @@ The Compact workspace gives Game Moves the available vertical space, with larger
 
 ## Choose a 2D or 3D board
 
-Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with a fixed perspective and scroll-wheel zoom. Choose Marble, Wood, or Glass from **View > Board > 3D theme**. Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Choose Marble, Wood, or Glass from **View > Board > 3D theme**. Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
 ## Meet opponents online
 

@@ -14,9 +14,15 @@ Under **View → Board**, you can change the 3D theme and appearance, choose a 2
 
 These are display preferences. They do not change the legality of a move or the engine's evaluation.
 
-## Draw on the board
+## Floating board tools
 
-You can add your own colored arrows and square outlines to illustrate the current position in either 2D or 3D. Use **Draw on board** above the note panel, or hold Alt while clicking or dragging. These personal drawings belong to their positions and are separate from Stockfish's best-move arrows. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for instructions and shortcuts.
+Above the board, the tools appear in this order: **Draw on board** (pencil), **Notes** (document), **Tactical Map** (bullseye), then **2D/3D**. Click a tool icon to open or close its translucent floating window. Drag a window to reposition it; its controls no longer take up space in Game Moves.
+
+- **Draw on board:** add colored squares, circles, and solid, dashed, or curved arrows. Edit or delete individual drawings in its collapsible list; use Undo or Ctrl+Z to restore drawing changes. This window resizes vertically and keeps a fixed width. Opening it enables drawing; its slide control or closing the window returns to playing moves. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/).
+- **Notes:** read or edit the current position’s note in the Note tab, or the starting note in Start. Double-click note text or a move in Game Moves to edit; expand All notes to browse the game’s notes. See [Taking notes and adding annotations](/help/taking-notes/).
+- **Tactical Map:** filter automatic Danger, Pins, and Forks findings and select one to trace its squares and attack lines. See [Tactical Map](/help/tactical-map/) for what the findings mean and when the map is available.
+
+Notes and Tactical Map windows can be resized. Personal drawings, written notes, and automatic tactical findings have separate controls and work with either board view.
 
 ## Type a move
 
