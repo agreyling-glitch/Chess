@@ -1,3 +1,9 @@
+import { isMobileDevice } from './device-support.js';
+if (isMobileDevice()) {
+  for (const button of document.querySelectorAll('[data-install-app], [data-offline-engine]')) button.hidden = true;
+  const status = document.querySelector('[data-offline-status]');
+  if (status) status.textContent = 'App installation and offline play require a desktop or laptop computer.';
+} else {
 const installButton = document.querySelector('[data-install-app]');
 const offlineButton = document.querySelector('[data-offline-engine]');
 const offlineProgress = document.querySelector('[data-offline-progress]');
@@ -311,4 +317,5 @@ if ('serviceWorker' in navigator && !isLocalhost) {
   }).catch(error => {
     if (offlineStatus) offlineStatus.textContent = `Offline support is unavailable: ${error.message}`;
   });
+}
 }

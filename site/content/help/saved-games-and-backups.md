@@ -10,7 +10,7 @@ Use **Game → Save current game** to keep the current game, and **Game → Load
 
 Saved games live in this browser's storage on this device. A different browser, private window, or device will not automatically share that library. Clearing browser site data can remove it.
 
-You can also [import completed games from Lichess](/help/import-from-lichess/) using a username or game link. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
+Use [Import Games](/help/import-games/) to paste PGN or Analysis JSON, fetch completed games from Lichess or Chess.com, or enter a scoresheet. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
 
 For a copy you control, use **Storage → Backup all data** and keep the downloaded backup file somewhere safe. **Storage → Restore backup** imports it later. **Storage information** shows what is stored. The **Clear saved games** and **Reset all local data** commands remove data, so use the backup first if you may want it again.
 

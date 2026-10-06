@@ -10,7 +10,9 @@ Use **View → Show 2D board** or **Show 3D board** to switch the board display.
 
 The Compact workspace uses tabs for Game Moves and Game Analysis. **View → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
 
-Under **View → Board**, you can change the 3D theme and appearance, choose a 2D piece set, and toggle shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
+Open **View → Board → Theme…** for a full-size chooser with 2D and 3D board previews side by side. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
+
+The **3D appearance** slider and **Show radial light below board** remain under **View → Board** when a 3D board is active. The same menu also controls move highlights, piece shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
 
 These are display preferences. They do not change the legality of a move or the engine's evaluation.
 
@@ -27,3 +29,7 @@ Notes and Tactical Map windows can be resized. Personal drawings, written notes,
 ## Type a move
 
 Start typing during your turn to open the translucent move-entry overlay. Enter plays the move, Backspace edits, and Escape cancels. Lowercase piece letters work, including `nc3`. See [Keyboard move input](/help/keyboard-input/) for notation examples and navigation shortcuts.
+
+## Resize the analysis panel
+
+Drag the left edge of the right panel to widen it; the panel can use roughly three quarters of the window width on a large screen. Scroll down to inspect lower content. Under **Game Analysis**, use **Summary**, **Pawn Structure**, **Piece Mobility**, and **King Safety** to switch between review and positional insights. See [Positional insights](/help/positional-insights/) for details.

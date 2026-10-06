@@ -1,4 +1,46 @@
 const DB_NAME = 'ironwood-chess';
+// Public Lichess API access; no Lichess code or artwork is bundled.
+const explorerCache = new Map();
+let explorerBusy = false, explorerRetryAt = 0, explorerToken = '', explorerGeneration = 0;
+window.ironwoodExplorerToken = token => {
+  explorerToken = token.trim(); explorerGeneration++; explorerCache.clear(); explorerRetryAt = 0;
+};
+export function openingExplorerUrl(fen, source, speed = '', ratings = '') {
+  if (!['masters','lichess'].includes(source)) throw new Error('Invalid explorer source');
+  if (speed && !['bullet','blitz','rapid','classical','correspondence'].includes(speed)) throw new Error('Invalid explorer speed');
+  if (ratings && !ratings.split(',').every(r => ['0','1000','1200','1400','1600','1800','2000','2200','2500'].includes(r))) throw new Error('Invalid rating groups');
+  const url = new URL(`https://explorer.lichess.org/${source}`);
+  url.search = new URLSearchParams({fen,moves:'12',topGames:'0',recentGames:'0'});
+  if (source === 'lichess') {
+    url.searchParams.set('variant','standard');
+    url.searchParams.set('speeds',speed || 'bullet,blitz,rapid,classical,correspondence');
+    url.searchParams.set('ratings',ratings || '0,1000,1200,1400,1600,1800,2000,2200,2500');
+  }
+  return url.href;
+}
+window.ironwoodExplorer = (fen,source,speed,ratings) => {
+  if (!explorerToken) return JSON.stringify({error:'Lichess requires an API token for Opening Explorer. Connect above to load statistics.'});
+  const key = openingExplorerUrl(fen,source,speed,ratings);
+  if (explorerCache.has(key)) return explorerCache.get(key);
+  if (Date.now() < explorerRetryAt) return JSON.stringify({error:'Rate limited. Try again in one minute.'});
+  if (!explorerBusy) {
+    explorerBusy = true;
+    const generation = explorerGeneration;
+    void fetch(key,{credentials:'omit',headers:{Authorization:`Bearer ${explorerToken}`},signal:AbortSignal.timeout(20000)}).then(async response => {
+      if (response.status === 401 || response.status === 403) throw new Error('Lichess rejected the API token. Check it or create a new token.');
+      if (response.status === 429) { explorerRetryAt = Date.now()+60000; throw new Error('Rate limited. Try again in one minute.'); }
+      if (!response.ok) throw new Error(`Opening database request failed (${response.status}).`);
+      const data = await response.json();
+      if (!Array.isArray(data.moves)) throw new Error('Unexpected opening database response.');
+      if (explorerCache.size >= 100) explorerCache.delete(explorerCache.keys().next().value);
+      if (generation === explorerGeneration) explorerCache.set(key,JSON.stringify(data));
+    }).catch(error => {
+      if (generation === explorerGeneration && (!explorerRetryAt || Date.now() >= explorerRetryAt)) explorerCache.set(key,JSON.stringify({error:error.name==='TimeoutError'?'Request timed out. Retry when ready.':error instanceof TypeError?'Could not load opening data. Check your connection and retry.':error.message}));
+    }).finally(()=>{explorerBusy=false;});
+  }
+  return '';
+};
+window.ironwoodExplorerRetry = () => { for (const [key,value] of explorerCache) if (JSON.parse(value).error) explorerCache.delete(key); };
 const STORE_NAME = 'games';
 const ACTIVE_ID_KEY = 'ironwood.chess.active-game-id.v1';
 const ACTIVE_CATEGORY_KEY = 'ironwood.chess.active-game-category.v1';
@@ -23,7 +65,25 @@ let lichessRetryAt = 0;
 let lichessStatus = '';
 let lichessPgn = '';
 
-export function lichessExportUrl(input) {
+export function importFilters(options = {}) {
+  if (typeof options === 'string') options = JSON.parse(options);
+  const limit = Number(options.limit ?? 20);
+  if (![20,50,100,200].includes(limit)) throw new Error('Choose 20, 50, 100, or 200 games.');
+  const speed = options.speed || '';
+  if (!['','bullet','blitz','rapid','classical','correspondence','daily'].includes(speed)) throw new Error('Choose a valid time control.');
+  const date = (value, end) => {
+    if (!value) return null;
+    const time = Date.parse(`${value}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(time)
+      || new Date(time).toISOString().slice(0,10) !== value) throw new Error('Use valid dates in YYYY-MM-DD format.');
+    return time + (end ? 86400000 - 1 : 0);
+  };
+  const since = date(options.from, false), until = date(options.to, true);
+  if (since !== null && until !== null && since > until) throw new Error('The start date must be on or before the end date.');
+  return {limit,speed,since,until};
+}
+
+export function lichessExportUrl(input, options = {}) {
   const value = input.trim();
   let path;
   if (/^https?:\/\//i.test(value)) {
@@ -41,6 +101,13 @@ export function lichessExportUrl(input) {
   const url = new URL(path, 'https://lichess.org');
   url.search = new URLSearchParams({ max: '20', ongoing: 'false', finished: 'true',
     moves: 'true', tags: 'true', clocks: 'true', opening: 'true', evals: 'false' });
+  if (path.startsWith('/api/games/user/')) {
+    const filters = importFilters(options);
+    url.searchParams.set('max', String(filters.limit));
+    url.searchParams.set('perfType', filters.speed || 'ultraBullet,bullet,blitz,rapid,classical,correspondence,chess960');
+    if (filters.since !== null) url.searchParams.set('since', String(filters.since));
+    if (filters.until !== null) url.searchParams.set('until', String(filters.until));
+  }
   return url.href;
 }
 
@@ -50,7 +117,7 @@ window.ironwoodPollLichess = () => {
   lichessPgn = '';
   return pgn;
 };
-window.ironwoodFetchLichess = async input => {
+window.ironwoodFetchLichess = async (input, options = {}) => {
   if (lichessBusy || lichessPgn) return;
   if (Date.now() < lichessRetryAt) {
     lichessStatus = 'Lichess rate limit: wait a full minute before trying again.';
@@ -59,7 +126,7 @@ window.ironwoodFetchLichess = async input => {
   lichessBusy = true;
   lichessStatus = 'Fetching completed games from Lichess…';
   try {
-    const response = await fetch(lichessExportUrl(input), {
+    const response = await fetch(lichessExportUrl(input, options), {
       headers: { Accept: 'application/x-chess-pgn' }, credentials: 'omit',
       signal: AbortSignal.timeout(30000), cache: 'no-store',
     });
@@ -70,7 +137,7 @@ window.ironwoodFetchLichess = async input => {
     if (response.status === 404) throw new Error('Lichess user or game not found.');
     if (!response.ok) throw new Error(`Lichess request failed (${response.status}). Try again later.`);
     const pgn = await response.text();
-    if (!pgn.trim()) throw new Error('No completed games found for this user.');
+    if (!pgn.trim()) throw new Error('No completed games match these filters. Try a wider date range or another time control.');
     if (!/^\[Event\s/m.test(pgn)) throw new Error('Lichess returned an unexpected game format.');
     if (/^\[Result "\*"\]/m.test(pgn)) throw new Error('This game is still in progress. Import it after it finishes.');
     lichessPgn = pgn;
@@ -81,6 +148,80 @@ window.ironwoodFetchLichess = async input => {
   } finally {
     lichessBusy = false;
   }
+};
+
+let chessComBusy = false;
+let chessComRetryAt = 0;
+let chessComStatus = '';
+let chessComPgn = '';
+
+export function chessComUsername(input) {
+  const value = input.trim();
+  if (!/^[a-zA-Z0-9_-]{2,30}$/.test(value)) throw new Error('Enter a Chess.com username, rather than a game link.');
+  return value.toLowerCase();
+}
+
+export async function fetchChessComGames(input, request = fetch, options = {}) {
+  const filters = importFilters(options);
+  const username = chessComUsername(input);
+  const base = `https://api.chess.com/pub/player/${encodeURIComponent(username)}/games`;
+  const get = async url => {
+    const response = await request(url, { headers: { Accept: 'application/json' }, credentials: 'omit', signal: AbortSignal.timeout(30000) });
+    if (response.status === 429) throw new Error('Chess.com rate limit: wait a full minute before trying again.');
+    if (response.status === 404) throw new Error('Chess.com user or game archive not found.');
+    if (!response.ok) throw new Error(`Chess.com request failed (${response.status}). Try again later.`);
+    return response.json();
+  };
+  const listing = await get(`${base}/archives`);
+  if (!Array.isArray(listing.archives)) throw new Error('Chess.com returned an unexpected archive format.');
+  // Never follow arbitrary URLs from a remote response.
+  const archives = [...new Set(listing.archives)].filter(url => typeof url === 'string' && url.startsWith(`${base}/`)
+    && /^\d{4}\/(?:0[1-9]|1[0-2])$/.test(url.slice(base.length + 1))).sort().reverse();
+  const games = [];
+  const seen = new Set();
+  for (const archive of archives) {
+    const monthStart = Date.parse(`${archive.slice(-7).replace('/','-')}-01T00:00:00Z`);
+    const nextMonth = new Date(monthStart); nextMonth.setUTCMonth(nextMonth.getUTCMonth()+1);
+    if (filters.until !== null && monthStart > filters.until) continue;
+    if (filters.since !== null && nextMonth.getTime() <= filters.since) break;
+    const month = await get(archive); // Serial requests respect the Published Data API guidance.
+    if (!Array.isArray(month.games)) throw new Error('Chess.com returned an unexpected game format.');
+    for (const game of month.games) {
+      if (!['chess', 'chess960'].includes(game.rules) || typeof game.pgn !== 'string'
+        || !Number.isFinite(game.end_time) || !/^\[Event\s/m.test(game.pgn)
+        || !/^\[Result "(?:1-0|0-1|1\/2-1\/2)"\]/m.test(game.pgn)
+        || (filters.since !== null && game.end_time*1000 < filters.since)
+        || (filters.until !== null && game.end_time*1000 > filters.until)
+        || (filters.speed && game.time_class !== filters.speed)) continue;
+      const key = typeof game.url === 'string' ? game.url : game.pgn;
+      if (!seen.has(key)) { seen.add(key); games.push(game); }
+    }
+    games.sort((a,b) => b.end_time - a.end_time);
+    if (games.length >= filters.limit) break;
+  }
+  if (!games.length) throw new Error('No completed standard chess or Chess960 games match these filters.');
+  return games.slice(0,filters.limit).map(game => game.pgn.trim()).join('\n\n');
+}
+
+window.ironwoodChessComStatus = () => chessComStatus;
+window.ironwoodPollChessCom = () => {
+  const pgn = chessComPgn;
+  chessComPgn = '';
+  return pgn;
+};
+window.ironwoodFetchChessCom = async (input, options = {}) => {
+  if (chessComBusy || chessComPgn) return;
+  if (Date.now() < chessComRetryAt) { chessComStatus = 'Chess.com rate limit: wait a full minute before trying again.'; return; }
+  chessComBusy = true;
+  chessComStatus = 'Fetching latest completed games from Chess.com…';
+  try {
+    chessComPgn = await fetchChessComGames(input, fetch, options);
+    chessComStatus = 'Games fetched. Continue to choose games to import.';
+  } catch (error) {
+    if (error.message?.includes('rate limit')) chessComRetryAt = Date.now() + 60000;
+    chessComStatus = error.name === 'TimeoutError' ? 'Chess.com request timed out. Try again.' :
+      error instanceof TypeError ? 'Could not reach Chess.com. Check your connection and try again.' : error.message;
+  } finally { chessComBusy = false; }
 };
 
 async function refreshStorageStatus() {

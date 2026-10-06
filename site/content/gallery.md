@@ -1,7 +1,7 @@
 ---
 title: "Gallery"
-description: "Explore the 3D board, scoresheet import, Ironwood Chess screenshots, and a sample full-game analysis report."
+description: "Explore Ironwood’s game tools, pawn structure, piece mobility, king safety, and a sample full-game analysis report."
 layout: "gallery"
 url: "/gallery/"
-lastmod: 2026-10-04T00:00:00-05:00
+lastmod: 2026-10-06T00:00:00-05:00
 ---

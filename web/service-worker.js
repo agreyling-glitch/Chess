@@ -14,6 +14,7 @@ const ENGINE_URLS = [
   '/engine/stockfish-19.wasm',
 ];
 const SHELL_URLS = [
+  '/device-support.js',
   '/',
   '/play/',
   '/3d/',

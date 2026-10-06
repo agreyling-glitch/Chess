@@ -6,7 +6,7 @@ keywords: [scoresheet, handwritten, manual, photo, PGN, import, validation, draf
 weight: 34
 ---
 
-Open **Game → Import → Enter scoresheet**. The workspace has four panels: a board preview and validated move list at the top, with your scoresheet photo and manual entry table below. On narrow screens the panels stack, with buttons to jump between the photo and entry table.
+Open **Game → Import… → Scoresheet → Enter scoresheet**. The workspace has four panels: a board preview and validated move list at the top, with your scoresheet photo and manual entry table below. On narrow screens the panels stack, with buttons to jump between the photo and entry table.
 
 Choose, paste, or drop a JPG, PNG, or WebP photo. Zoom in and drag the photo to read the handwriting. Photos stay on your device. You can also enter moves without a photo.
 
@@ -20,7 +20,7 @@ The board starts in the standard starting position and follows valid entries. Cl
 
 Gold highlights show the starting and ending squares of the displayed move. The move list scrolls to the latest validated move as you type, and follows the position selected by an entry cell.
 
-Enter the players, event, date, and result above the panels. Once all entered moves are legal, **Download PGN** saves a file. **Import game** places the PGN in the existing Import Games screen; choose **Continue** there to finish importing and optionally analyze it.
+Enter the players, event, date, and result above the panels. Once all entered moves are legal, **Download PGN** saves a file. **Import game** opens **Paste a game or collection** with the PGN; choose **Continue** to finish importing. Start full-game analysis afterward from **Game Analysis**. Importing does not automatically start analysis.
 
 Do not enter resignation or a result in a move cell. If Black resigns, leave the next Black cell empty and select **White won** in the **Result** dropdown; the PGN ends with `1-0`. If White resigns, select **Black won** (`0-1`). Select **Draw** for `1/2-1/2`, or **Unknown / unfinished** for `*`.
 

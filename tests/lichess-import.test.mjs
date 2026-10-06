@@ -3,7 +3,17 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 globalThis.window = globalThis;
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const { lichessExportUrl } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { lichessExportUrl, importFilters } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+
+test('filters validate dates and generate inclusive UTC bounds', () => {
+  const url = new URL(lichessExportUrl('Ada',{limit:100,speed:'blitz',from:'2026-09-01',to:'2026-09-30'}));
+  assert.equal(url.searchParams.get('max'),'100');
+  assert.equal(url.searchParams.get('perfType'),'blitz');
+  assert.equal(Number(url.searchParams.get('since')),Date.parse('2026-09-01T00:00:00Z'));
+  assert.equal(Number(url.searchParams.get('until')),Date.parse('2026-10-01T00:00:00Z')-1);
+  for (const bad of [{from:'2026-02-30'},{from:'2026-10-01',to:'2026-09-01'},{limit:999},{speed:'invalid'}]) assert.throws(()=>importFilters(bad));
+  assert.doesNotThrow(()=>lichessExportUrl('https://lichess.org/abcd1234',{from:'invalid'}));
+});
 
 test('username exports are bounded to completed games', () => {
   const url = new URL(lichessExportUrl(' Ada '));

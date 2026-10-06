@@ -77,6 +77,20 @@
     })();
   </script>
   <script type="module">
+    import { isMobileDevice } from '/device-support.js';
+    if (isMobileDevice()) {
+      document.getElementById('chess_canvas').hidden = true;
+      const message = document.getElementById('loading');
+      message.replaceChildren();
+      const title = document.createElement('h1');
+      title.textContent = 'Ironwood is for desktop and laptop computers';
+      const description = document.createElement('p');
+      description.textContent = 'The chess app is unavailable on phones and tablets. Open Ironwood on a desktop or laptop to play and analyze. You can still browse Help, Features, and the gallery on this device.';
+      const link = document.createElement('a');
+      link.href = '/'; link.textContent = 'Back to Ironwood';
+      message.append(title, description, link);
+      message.style.cssText = 'box-sizing:border-box;position:relative;inset:auto;transform:none;max-width:620px;margin:12vh auto;padding:24px;font:16px/1.6 system-ui;color:#eee;white-space:normal;text-align:left';
+    } else {
     const loading = document.getElementById('loading');
     window.ironwoodStoreCurrentGame = () => {};
     window.ironwoodStoreImportedGame = () => {};
@@ -128,12 +142,14 @@
       console.error('Ironwood could not start:', error);
       if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
     }
+    }
   </script>
   <script type="module">
+    import { isMobileDevice } from '/device-support.js';
     const pwaUrl = ['localhost', '127.0.0.1'].includes(location.hostname)
       ? `/pwa.js?v=${Date.now()}`
       : '/pwa.js';
-    import(pwaUrl);
+    if (!isMobileDevice()) import(pwaUrl);
   </script>
 </body>
 </html>

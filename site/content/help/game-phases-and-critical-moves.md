@@ -36,7 +36,7 @@ These are approximate study categories, shared by the expanded graph, phase summ
 
 ## Phases on the expanded graph
 
-Right-click the analysis graph and choose **Expand analysis graph**. Colored background bands mark the phases across the move timeline: **blue** for opening, **purple** for middlegame, and **green** for endgame. A colored strip and boundary lines show where each phase starts and ends; phase names appear above bands when there is room. The legend remains visible even for a short phase.
+Click **Expand** above the analysis graph, or right-click the graph and choose **Expand analysis graph**. Colored background bands mark the phases across the move timeline: **blue** for opening, **purple** for middlegame, and **green** for endgame. A colored strip and boundary lines show where each phase starts and ends; phase names appear above bands when there is room. The legend remains visible even for a short phase.
 
 Hover a position to see its phase in the tooltip, or click it to see **Game phase** in the details below. Phase shading also covers unanalyzed positions; gaps in the evaluation line still mean those positions have not been analyzed. The graph uses the same phase classification as the summaries and report. These are approximate study categories, so their boundaries may differ from how you would describe the game yourself.
 

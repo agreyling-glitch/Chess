@@ -21,3 +21,9 @@ The graph can move when the engine searches deeper. A flat graph also does not m
 ## Mate scores
 
 **Mate in 3** means Stockfish sees a forced checkmate in three moves with best play. Mate scores are separate from pawn scores. A mate score is more decisive than a large numerical evaluation, and Ironwood treats mate-related moves separately when judging move quality.
+
+## Analysis controls and positional tabs
+
+Use **Expand** above the graph to open the full-screen evaluation view. **Print analysis**, the gold button beside it, opens the printable report prompt when engine results are available and analysis is paused or stopped.
+
+Below the graph, **Summary** contains the game-review details. **Pawn Structure**, **Piece Mobility**, and **King Safety** explore the position and how its patterns change through the game. They work without a completed engine analysis; see [Positional insights](/help/positional-insights/) for controls and how to read each view.

@@ -4,6 +4,10 @@ mod app;
 mod board3d;
 mod fics_chat;
 mod rules;
+mod pawn_structure;
+mod mobility;
+mod king_safety;
+mod opening_explorer;
 mod training;
 mod tactical;
 

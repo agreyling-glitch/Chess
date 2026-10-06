@@ -10,9 +10,9 @@ weight: 10
 
 Play a game in Ironwood or open one from your saved games. You can also import a PGN, the common text format for chess moves. The game review shows the move list and lets you step forward and backward through positions.
 
-For games played on Lichess, use **Game → Import…** to fetch recent games by username or one completed game by its link. See [Import games from Lichess](/help/import-from-lichess/) for the steps.
+Open **Game → Import…** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
 
-For a handwritten game, choose **Game → Import → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
+For a handwritten game, choose **Game → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
 
 ## Run game analysis
 
