@@ -34,6 +34,8 @@ const SHELL_URLS = [
   '/fics/',
   '/fics/bridge.js',
   '/fics/protocol.js',
+  '/lichess/bridge.js',
+  '/lichess/client.js',
   '/features/',
   '/blog/',
   '/blog/stockfish-in-your-browser/',
@@ -137,6 +139,11 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // OAuth callbacks contain one-use credentials and must never enter a shell cache.
+  if (url.pathname === '/play/' && (url.searchParams.has('code') || url.searchParams.has('error'))) {
+    event.respondWith(fetch(request, { cache: 'no-store' }));
+    return;
+  }
   if (url.pathname === '/service-worker.js') return;
 
   if (url.pathname === '/site.webmanifest') {

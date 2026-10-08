@@ -9,11 +9,11 @@ extern "C" {
     fn lookup(fen: &str, source: &str, speed: &str, ratings: &str) -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodExplorerRetry)]
     fn retry();
-    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodExplorerToken)]
-    fn set_token(token: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodExplorerSignedIn)]
+    fn signed_in() -> bool;
 }
 #[derive(Clone, Default)]
-struct State { root: String, path: Vec<Board>, labels: Vec<String>, source: usize, speed: String, rating: usize, token: String, connected: bool }
+struct State { root: String, path: Vec<Board>, labels: Vec<String>, source: usize, speed: String, rating: usize }
 #[derive(Deserialize)]
 struct Data { #[serde(default)] moves: Vec<Entry>, error: Option<String>, opening: Option<Opening> }
 #[derive(Deserialize)]
@@ -40,23 +40,11 @@ pub fn panel(ui: &mut egui::Ui, root: Board) {
     ui.label(RichText::new("Explore the moves played from this position.").size(13.0).weak());
     ui.add_space(4.0);
     #[cfg(target_arch = "wasm32")]
-    egui::Frame::new().fill(ui.visuals().faint_bg_color).corner_radius(6.0)
-        .inner_margin(10.0).show(ui, |ui| {
-    ui.set_width(ui.available_width());
-    egui::CollapsingHeader::new(if state.connected { "Lichess · token set" } else { "Connect to Lichess" })
-        .id_salt("explorer_connection").default_open(!state.connected).show(ui, |ui| {
-        ui.label("Opening Explorer requires a Lichess API token. Create a token with no permissions selected.");
-        ui.hyperlink_to("Create a Lichess API token", "https://lichess.org/account/oauth/token/create");
-        ui.add(egui::TextEdit::singleline(&mut state.token).password(true).hint_text("Paste token here").desired_width(ui.available_width()));
-        ui.horizontal(|ui| {
-            if ui.add_enabled(!state.token.trim().is_empty(),egui::Button::new("Connect")).clicked() {
-                set_token(&state.token); state.token.clear(); state.connected = true;
-            }
-            if state.connected && ui.button("Disconnect").clicked() { set_token(""); state.connected = false; state.token.clear(); }
-        });
-        ui.label(RichText::new("Kept only for this app session and sent directly to Lichess. Reloading clears it.").small().weak());
-    });
-    });
+    if signed_in() {
+        ui.label(RichText::new("Using your Lichess sign-in session").size(14.0).color(Color32::from_rgb(136,194,151)));
+    } else {
+        ui.label("Sign in from the Lichess-Online menu to use Opening Explorer.");
+    }
     ui.add_space(4.0);
     ui.horizontal_wrapped(|ui| {
         for (index,label) in ["Masters","Lichess games"].iter().enumerate() {

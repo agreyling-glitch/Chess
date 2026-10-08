@@ -10,7 +10,9 @@ weight: 20
 
 **Read about [ECO code] on ChessCodex** opens the matching opening category, such as **A04** for the Zukertort Opening. The link appears when Lichess supplies an ECO code and follows recognized openings as you explore. An ECO category may cover several variations.
 
-Lichess now requires authentication for Opening Explorer. Expand **Connect to Lichess**, use **Create a Lichess API token**, and create a token with no permissions selected. Paste it into the masked field in Ironwood and click **Connect**. The token stays in memory for this app session and is sent directly to Lichess; reloading clears it. **Disconnect** clears the token and cached results. A rejected token shows an authentication error rather than a connection error.
+Opening Explorer uses your existing Ironwood Lichess sign-in session. Sign in through **Lichess-Online**; no separate API token is needed. Signing out clears access and cached results. If your session is rejected, sign out and sign in again.
+
+Opening Explorer is available for local review while your account is connected. Engine assistance and exploration are unavailable while an online game is engaged; finish the game or put a correspondence game aside before reviewing another game.
 
 Open a game and select **Game Analysis → Opening Explorer** below the evaluation graph. Choose **Masters** or **Lichess games**. Lichess games can be filtered by speed and rating group. An internet connection is required; statistics come from Lichess's public Opening Explorer service.
 

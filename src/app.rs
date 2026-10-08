@@ -208,7 +208,23 @@ extern "C" {
     fn fics_send_command(command: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFicsPoll)]
     fn fics_poll() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessConnect)]
+    fn lichess_connect();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessSignIn)]
+    fn lichess_sign_in();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessSignOut)]
+    fn lichess_sign_out();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessDisconnect)]
+    fn lichess_disconnect();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessPoll)]
+    fn lichess_play_poll() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessMove)]
+    fn lichess_play_move(uci: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLichessCommand)]
+    fn lichess_send_command(command: &str);
 }
+
+include!("lichess_ui.rs");
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 #[derive(Deserialize)]
@@ -1232,6 +1248,8 @@ pub struct ChessApp {
     move_animation: Option<MoveAnimation>,
     piece_set: PieceSet,
     engine_enabled: bool,
+    lichess: LichessSession,
+    new_game_lichess: bool,
     fics_active: bool,
     fics_available_was_open: bool,
     fics_available_open_this_frame: bool,
@@ -1752,6 +1770,7 @@ impl ChessApp {
     }
 
     fn start_fics(&mut self) {
+        if self.lichess.active { self.stop_fics(); }
         self.settle_training();
         self.training = None;
         self.new_game_training = false;
@@ -1801,6 +1820,12 @@ impl ChessApp {
     }
 
     fn stop_fics(&mut self) {
+        let clear_lichess_board = self.lichess.active && self.fics_active && !self.fics_game_finished;
+        if self.lichess.active {
+            #[cfg(target_arch = "wasm32")]
+            lichess_disconnect();
+            self.lichess.active = false;
+        }
         #[cfg(target_arch = "wasm32")]
         fics_disconnect();
         self.fics_active = false;
@@ -1827,12 +1852,15 @@ impl ChessApp {
         self.fics_sign_in_open = false;
         self.fics_password.clear();
         self.workspace_mode = self.fics_previous_workspace_mode;
-        self.engine_status = "FICS disconnected · start a new game to play locally".into();
+        if clear_lichess_board {
+            self.reset_for_side(PlayerSide::White);
+        }
+        self.engine_status = "Online play disconnected · start a new game to play locally".into();
     }
 
     #[cfg(target_arch = "wasm32")]
     fn poll_fics(&mut self, ctx: &egui::Context) {
-        if !self.fics_active {
+        if !self.fics_active || self.lichess.active {
             return;
         }
         for _ in 0..32 {
@@ -2396,6 +2424,8 @@ impl ChessApp {
             move_animation: None,
             piece_set,
             engine_enabled,
+            lichess: LichessSession::new(),
+            new_game_lichess: true,
             fics_active: false,
             fics_available_was_open: false,
             fics_available_open_this_frame: false,
@@ -8340,6 +8370,7 @@ impl ChessApp {
     }
 
     fn reset_for_side(&mut self, player_side: PlayerSide) {
+        self.lichess.pending_preview = None;
         self.settle_training();
         self.training = None;
         self.settle_training();
@@ -8516,6 +8547,7 @@ impl ChessApp {
     }
 
     fn select(&mut self, square: Square) {
+        if self.lichess.active && !self.lichess.connected() { return; }
         if self.fics_active
             && (!self.fics_playing
                 || self.fics_pending_move
@@ -8737,16 +8769,21 @@ impl ChessApp {
         if self.training.is_some() && self.game_result() != "*" { return; }
         if self.fics_active && !self.fics_applying_update {
             if self.fics_playing
+                && (!self.lichess.active || self.lichess.connected())
                 && !self.fics_pending_move
                 && self.board.side_to_move() == self.player_side.color()
                 && MoveGen::new_legal(&self.board).any(|candidate| candidate == mv)
             {
                 #[cfg(target_arch = "wasm32")]
-                fics_send(&mv.to_string());
+                {
+                    if self.lichess.active { lichess_play_move(&mv.to_string()); }
+                    else { fics_send(&mv.to_string()); }
+                }
                 self.fics_pending_move = true;
+                if self.lichess.active { self.lichess.pending_preview = Some(mv); }
                 self.selected = None;
                 self.legal_targets.clear();
-                self.fics_status = "Waiting for FICS to confirm move…".into();
+                self.fics_status = if self.lichess.active { "Waiting for Lichess to confirm move…" } else { "Waiting for FICS to confirm move…" }.into();
             }
             return;
         }
@@ -10008,6 +10045,7 @@ impl ChessApp {
         };
         let cell = (board_size - 2.0 * frame_width as f32) / 8.0;
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("live_board_height"),board_size));
+        let pending_preview_board = self.lichess_preview_board();
         let move_animation = self.move_animation.filter(|animation| {
             self.review_index.is_none()
                 && self.prediction_index == 0
@@ -10305,7 +10343,11 @@ impl ChessApp {
                                                     .is_some_and(|animation| {
                                                         animation.chess_move.get_dest() == square
                                                     });
-                                                if !animation_hides_piece {
+                                                let preview_hides_piece = pending_preview_board.is_some_and(|preview| {
+                                                    preview.piece_on(square) != self.board.piece_on(square)
+                                                        || preview.color_on(square) != self.board.color_on(square)
+                                                });
+                                                if !animation_hides_piece && !preview_hides_piece {
                                                     if self.piece_shadows
                                                         && let (Some(color), Some(piece)) = (
                                                             self.board.color_on(square),
@@ -10494,6 +10536,7 @@ impl ChessApp {
                     );
                     ui.ctx().request_repaint();
                 }
+                self.paint_lichess_preview(ui, board_response.response.rect, cell);
                 if ui.is_enabled() {
                     self.board_mark_input(ui, board_response.response.rect);
                     self.paint_tactical_map(ui, board_response.response.rect);
@@ -10563,7 +10606,12 @@ impl ChessApp {
                         },
                     );
                 }
-                if self.fics_active && self.fics_playing {
+                if self.lichess.active && self.fics_playing && !self.fics_game_finished {
+                    ui.add_space(8.0);
+                    ui.allocate_ui_with_layout(Vec2::new(board_width, 36.0), Layout::left_to_right(Align::Center), |ui| {
+                        ui.horizontal_wrapped(|ui| { self.lichess_game_actions(ui, true); });
+                    });
+                } else if self.fics_active && self.fics_playing {
                     ui.add_space(8.0);
                     ui.allocate_ui_with_layout(
                         Vec2::new(board_width, 36.0),
@@ -10590,8 +10638,11 @@ impl ChessApp {
                             }
                             if draw.clicked() {
                                 #[cfg(target_arch = "wasm32")]
-                                fics_send("draw");
-                                self.fics_status = "Draw offer sent to FICS".into();
+                                {
+                                    if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"draw/yes"})); }
+                                    else { fics_send("draw"); }
+                                }
+                                self.fics_status = "Draw offer sent".into();
                             }
                         },
                     );
@@ -10870,6 +10921,7 @@ impl ChessApp {
     }
 
     fn fics_connection_menu(&mut self, ui: &mut egui::Ui) {
+        if self.lichess.active { self.lichess_menu(ui); return; }
         ui.label(&self.fics_status);
         ui.separator();
         if self.fics_connected {
@@ -11033,6 +11085,19 @@ impl ChessApp {
 
     fn fics_online_menu(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
+        ui.set_min_width(280.0);
+        if self.lichess.active {
+            ui.label("FICS is offline");
+            if ui.add_enabled(!self.fics_playing, egui::Button::new("Connect to FICS as guest")).clicked() {
+                self.stop_fics();
+                self.start_fics();
+                ui.close();
+            }
+            if self.fics_playing {
+                ui.label("Finish your current game before switching services.");
+            }
+            return;
+        }
         ui.menu_button("Connection", |ui| self.fics_connection_menu(ui));
         ui.add_enabled_ui(!self.fics_playing, |ui| {
             ui.menu_button("FICS account", |ui| {
@@ -11586,6 +11651,7 @@ impl ChessApp {
     }
 
     fn fics_clock(seconds: i32) -> String {
+        if seconds >= 86400 { return format!("{}d {}h", seconds / 86400, seconds % 86400 / 3600); }
         format!("{}:{:02}", seconds.max(0) / 60, seconds.max(0) % 60)
     }
 
@@ -11894,7 +11960,7 @@ impl ChessApp {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 
-    fn start_battle_button(ui: &mut egui::Ui, piece_set: PieceSet, online: bool) -> egui::Response {
+    fn start_battle_button(ui: &mut egui::Ui, piece_set: PieceSet, online: bool, lichess: bool) -> egui::Response {
         let size = Vec2::new(310.0, 64.0);
         let (rect, response) = ui.allocate_exact_size(size, Sense::click());
         let accent = Color32::from_rgb(211, 173, 98);
@@ -11946,7 +12012,7 @@ impl ChessApp {
             egui::pos2(rect.center().x, rect.center().y - 8.0),
             Align2::CENTER_CENTER,
             if online {
-                "CONNECT TO FICS"
+                if lichess { "CONNECT TO LICHESS" } else { "CONNECT TO FICS" }
             } else {
                 "START GAME"
             },
@@ -12865,6 +12931,9 @@ mod tests {
 
 impl eframe::App for ChessApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        #[cfg(target_arch = "wasm32")]
+        self.poll_lichess_play(ctx);
+        self.lichess_ui(ctx);
         self.fics_available_was_open = self.fics_available_open_this_frame;
         self.fics_observe_was_open = self.fics_observe_open_this_frame;
         self.fics_available_open_this_frame = false;
@@ -13075,6 +13144,7 @@ impl eframe::App for ChessApp {
                     if ui.button("New game").clicked() {
                         self.new_game_training = self.training.is_some();
                         self.new_game_online = self.fics_active;
+                        self.new_game_lichess = self.lichess.active || !self.fics_active;
                         self.new_game_both_sides = !self.engine_enabled && !self.fics_active;
                         self.new_game_opponent = self.engine_config.opponent;
                         self.new_game_limit_strength = self.engine_config.limit_strength;
@@ -13102,8 +13172,14 @@ impl eframe::App for ChessApp {
                         self.training_dialog_open = true;
                         ui.close();
                     }
-                    if ui.button("Load saved game…").clicked() {
-                        if self.fics_active {
+                    let correspondence_open = self.lichess.active
+                        && self.lichess.game["speed"].as_str() == Some("correspondence");
+                    if ui.add_enabled(!correspondence_open || !self.fics_pending_move, egui::Button::new("Load saved game…")).clicked() {
+                        if correspondence_open && self.fics_playing {
+                            lichess_command(serde_json::json!({"type":"leaveCorrespondence"}));
+                        } else if self.fics_active && !self.lichess.active {
+                            self.stop_fics();
+                        } else if self.fics_active && !self.fics_game_finished {
                             self.stop_fics();
                         }
                         #[cfg(target_arch = "wasm32")]
@@ -13128,6 +13204,9 @@ impl eframe::App for ChessApp {
                         .clicked()
                     {
                         self.fics_resign_dialog_open = true;
+                        ui.close();
+                    }
+                    if self.lichess.active && online_playing && self.lichess_game_actions(ui, false) {
                         ui.close();
                     }
                     if ui
@@ -13310,7 +13389,8 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
-                Self::gold_menu_button(ui, "Online Controls", |ui| self.fics_online_menu(ui));
+                Self::gold_menu_button(ui, "FICS-Online", |ui| self.fics_online_menu(ui));
+                Self::gold_menu_button(ui, "Lichess-Online", |ui| self.lichess_menu(ui));
                 Self::gold_menu_button(ui, "Help", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("Contents…").clicked() {
@@ -13343,7 +13423,7 @@ impl eframe::App for ChessApp {
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     Self::gold_menu_button(ui,
-                        if self.fics_connected {
+                        if self.lichess.active { "Lichess" } else if self.fics_connected {
                             "FICS · Connected"
                         } else {
                             "FICS · Offline"
@@ -13351,9 +13431,35 @@ impl eframe::App for ChessApp {
                         |ui| self.fics_connection_menu(ui),
                     );
                     ui.separator();
+                    if self.lichess.active {
+                        let (indicator, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
+                        ui.painter().circle_filled(indicator.center(), 4.0, if self.fics_connected {
+                            Color32::from_rgb(102, 180, 125)
+                        } else {
+                            Color32::from_rgb(211, 173, 98)
+                        });
+                        ui.label(
+                            RichText::new(if self.fics_connected { "Connected" } else { "Offline" })
+                                .color(if self.fics_connected {
+                                    Color32::from_rgb(102, 180, 125)
+                                } else {
+                                    Color32::from_rgb(211, 173, 98)
+                                }),
+                        ).on_hover_text("Engine assistance is disabled during online play.");
+                        let status = self.fics_status.trim();
+                        if !status.is_empty() && status != "Connected to Lichess" {
+                            ui.separator();
+                            ui.label(status);
+                        }
+                        return;
+                    }
                     if self.fics_active && !self.fics_game_finished {
                         ui.label(
-                            RichText::new(if self.fics_connected {
+                            RichText::new(if self.lichess.active && self.fics_connected {
+                                "● Lichess connected"
+                            } else if self.lichess.active {
+                                "● Lichess offline"
+                            } else if self.fics_connected {
                                 "● Connected"
                             } else {
                                 "● Offline"
@@ -13365,14 +13471,18 @@ impl eframe::App for ChessApp {
                             }),
                         );
                         ui.separator();
-                        ui.label(format!("FICS · {}", self.fics_status));
+                        ui.label(format!("{} · {}", if self.lichess.active { "Lichess" } else { "FICS" }, self.fics_status));
                         ui.separator();
-                        ui.label(RichText::new("Online game · guest · unrated").weak());
+                        ui.label(RichText::new(if self.lichess.active { "Lichess Board API · engine assistance disabled" } else { "Online game · guest · unrated" }).weak());
                         return;
                     }
                     if self.fics_active {
                         ui.label(
-                            RichText::new(if self.fics_connected {
+                            RichText::new(if self.lichess.active && self.fics_connected {
+                                "● Lichess connected"
+                            } else if self.lichess.active {
+                                "● Lichess offline"
+                            } else if self.fics_connected {
                                 "● FICS connected"
                             } else {
                                 "● FICS offline"
@@ -13547,6 +13657,10 @@ impl eframe::App for ChessApp {
             else { panel.exact_width(analysis_width).resizable(false) };
         panel
             .show(ctx, |ui| {
+                if show_analysis && self.lichess.active && !self.fics_game_finished && self.lichess.game["id"].as_str().is_some() {
+                    self.lichess_chat_panel(ui);
+                    return;
+                }
                 if show_analysis && (self.training_live() || (self.fics_active && !self.fics_game_finished)) {
                     ui.heading("Game Analysis");
                     ui.label("Finish the game to unlock analysis.");
@@ -14531,7 +14645,7 @@ impl eframe::App for ChessApp {
                 if self.review_positions.is_empty() && show_moves {
                     ui.label(RichText::new("Moves").strong());
                     if self.fics_active {
-                        ui.label("FICS moves will appear when a game starts.");
+                        ui.label("Online moves will appear when a game starts.");
                     } else {
                         ui.label(format!("{} half-moves played", self.history.len()));
                         ui.label(RichText::new("Saved locally").small().weak());
@@ -15130,8 +15244,11 @@ impl eframe::App for ChessApp {
                             {
                                 if self.fics_active {
                                     #[cfg(target_arch = "wasm32")]
-                                    fics_send("resign");
-                                    self.fics_status = "Resignation sent to FICS…".into();
+                                    {
+                                        if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"resign"})); }
+                                        else { fics_send("resign"); }
+                                    }
+                                    self.fics_status = "Resignation sent…".into();
                                 } else {
                                     self.local_resigned_white = Some(if self.engine_enabled {
                                         self.player_side == PlayerSide::White
@@ -15173,12 +15290,12 @@ impl eframe::App for ChessApp {
             egui::Window::new("New game")
                 .collapsible(false)
                 .resizable(false)
-                .fixed_size(Vec2::new(500.0, 540.0))
+                .fixed_size(Vec2::new(500.0, if self.new_game_online { 350.0 } else { 540.0 }))
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .title_bar(false)
                 .frame(Self::dialog_frame())
                 .show(ctx, |ui| {
-                    ui.set_min_size(Vec2::new(500.0, 540.0));
+                    ui.set_min_size(Vec2::new(500.0, if self.new_game_online { 350.0 } else { 540.0 }));
                     if Self::dialog_header(ui, "New game") { open = false; }
                     ui.horizontal_wrapped(|ui| {
                         if ui.selectable_label(!self.new_game_training && !self.new_game_online && !self.new_game_both_sides, RichText::new("You vs Engine").size(18.0)).clicked() {
@@ -15196,7 +15313,7 @@ impl eframe::App for ChessApp {
                     ui.add_space(10.0);
                     egui::ScrollArea::vertical()
                         .id_salt("new_game_mode_content")
-                        .max_height(if self.new_game_training { 440.0 } else { 400.0 }).min_scrolled_height(400.0)
+                        .max_height(if self.new_game_online { 210.0 } else if self.new_game_training { 440.0 } else { 400.0 }).min_scrolled_height(if self.new_game_online { 210.0 } else { 400.0 })
                         .auto_shrink([false, false])
                         .show(ui, |ui| {
                     if self.new_game_training {
@@ -15329,31 +15446,29 @@ impl eframe::App for ChessApp {
                     });
                     });
                     } else {
-                    ui.vertical_centered(|ui| {
-                        let selected = true;
-                        let fill = if selected {
-                            Color32::from_rgb(43, 39, 29)
-                        } else {
-                            Color32::from_rgb(24, 28, 33)
-                        };
-                        let button = egui::Button::new(
-                            RichText::new("FICS - Free Internet Chess Server")
-                                .size(16.0),
-                        )
-                        .min_size(Vec2::new(466.0, 58.0))
-                        .fill(fill)
-                        .stroke(Stroke::new(
-                            if selected { 2.0 } else { 1.0 },
-                            if selected {
-                                Color32::from_rgb(211, 173, 98)
-                            } else {
-                                Color32::from_white_alpha(36)
-                            },
-                        ));
-                        ui.add(button);
-                        ui.add_space(8.0);
-                        ui.label(RichText::new("Play other players or observe live games.").weak());
+                    ui.horizontal(|ui| {
+                        for (lichess, title) in [(true, "Lichess"), (false, "FICS")] {
+                            let selected = self.new_game_lichess == lichess;
+                            if ui.add_sized([240.0, 38.0], egui::Button::new(RichText::new(title).size(16.0))
+                                .fill(if selected { Color32::from_rgb(58, 49, 32) } else { Color32::from_rgb(24, 28, 33) })
+                                .stroke(Stroke::new(1.0, if selected { Color32::from_rgb(211, 173, 98) } else { Color32::from_white_alpha(36) }))
+                                .corner_radius(6.0)).clicked() { self.new_game_lichess = lichess; }
+                        }
                     });
+                    ui.add_space(14.0);
+                    Frame::new().fill(Color32::from_rgb(24, 28, 33)).corner_radius(8.0)
+                        .inner_margin(16.0).show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(RichText::new(if self.new_game_lichess { "Play on Lichess" } else { "Play on FICS" }).size(21.0).strong());
+                            ui.add_space(6.0);
+                            ui.label(if self.new_game_lichess { "Find an opponent, challenge a friend, or resume a game." } else { "Play casual games or observe live matches." });
+                            ui.add_space(12.0);
+                            ui.label(RichText::new(if self.new_game_lichess {
+                                if self.lichess.connected() { "Your Lichess account is connected." } else { "Sign in securely with your Lichess account." }
+                            } else { "Join as a guest or use your FICS account." }).weak());
+                            ui.add_space(6.0);
+                            ui.label(RichText::new(if self.new_game_lichess { "Matchmaking · Challenges · Correspondence" } else { "Open challenges · Live games · Community chat" }).small().weak());
+                        });
                     }
                     });
                     ui.add_space(18.0);
@@ -15364,8 +15479,15 @@ impl eframe::App for ChessApp {
                                 let label = self.training_profiles.selected().map(|p| format!("Start {} training", p.next_side().label())).unwrap_or_else(|| "Create a profile to start".to_owned());
                                 ui.add_sized([ui.available_width(), 52.0], egui::Button::new(RichText::new(label).size(19.0).strong().color(Color32::from_rgb(24, 27, 31)))
                                     .fill(Color32::from_rgb(211, 173, 98)).corner_radius(8.0))
+                            } else if self.new_game_online {
+                                let label = if self.new_game_lichess {
+                                    if self.lichess.connected() { "Open Lichess lobby" } else { "Connect to Lichess" }
+                                } else if self.fics_connected && !self.lichess.active { "Open FICS lobby" } else { "Connect to FICS" };
+                                ui.add_sized([ui.available_width(), 46.0], egui::Button::new(
+                                    RichText::new(label).size(17.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                                    .fill(Color32::from_rgb(211, 173, 98)).corner_radius(8.0))
                             } else {
-                                Self::start_battle_button(ui, self.piece_set, self.new_game_online)
+                                Self::start_battle_button(ui, self.piece_set, self.new_game_online, self.new_game_lichess)
                             }
                         }).inner
                         .clicked()
@@ -15374,7 +15496,10 @@ impl eframe::App for ChessApp {
                             if self.new_game_training {
                                 self.start_training_game();
                             } else if self.new_game_online {
-                                if self.fics_active {
+                                if self.new_game_lichess {
+                                    if self.lichess.active && self.lichess.connected() { self.lichess.open = true; }
+                                    else { self.start_lichess(); }
+                                } else if self.fics_active && !self.lichess.active {
 
                                     if self.fics_connected && !self.fics_playing {
                                         self.fics_ads.clear();

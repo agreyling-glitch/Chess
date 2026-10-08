@@ -20,6 +20,42 @@ Fetching requires an internet connection. Ironwood makes one Lichess request
 at a time and waits at least one minute after a rate-limit response. Live
 games cannot be imported. No additional libraries or Lichess assets are bundled.
 
+## Play on Lichess
+
+Choose **Game → New game → Online → Lichess**, or open **Lichess-Online → Lichess
+lobby and game controls…**. Sign in on Lichess to grant the Board API and
+challenge permissions. Ironwood uses OAuth with PKCE; it never asks for your
+Lichess password. The token stays in session storage, separate from saved games
+and backups. **Sign out** revokes the token. **Leave online play**
+disconnects streams while preserving authorization; it does not resign or abort the game on Lichess.
+
+The lobby supports rated or casual standard chess, rapid/classical matchmaking,
+correspondence seeks, direct player challenges (including blitz), Lichess AI games, incoming
+challenge acceptance/decline, and resuming ongoing games. Unsupported variants
+have a link to play on Lichess. Correspondence seeks remain on Lichess until
+matched; the cancel button applies to real-time matchmaking.
+
+Play on Ironwood's existing 2D or 3D board. Pending moves appear immediately as
+translucent ghosts and become solid when Lichess confirms them, with streamed
+clocks and full-history recovery after a reconnect.
+The Game Analysis panel becomes Game chat during active Lichess play. Use the controls below the board, the Game menu, or the Lichess lobby for draw offers, takeback requests, aborting,
+claiming a draw/victory when permitted by Lichess, and resigning. Finished games
+are saved on this device and become available for analysis. Engine assistance
+and analysis are disabled while an online game is engaged; signing in or browsing the lobby leaves local analysis available. Leaving an unfinished online game
+clears its position from the local workspace; reconnect to resume it. Correspondence can instead be put aside without disconnecting to load a saved game or resume another game. Refreshing does not automatically engage existing ongoing games.
+
+Computer setup supports Standard, Chess960, and From Position with standard-chess FEN, Unlimited/Real time/Correspondence timing, strength 1–8, and side selection.
+
+This integration is original Ironwood code calling the [public Lichess
+API](https://lichess.org/developers). It bundles no Lichess source, SDK, artwork,
+or engine assets, and introduces no new licensing dependencies. API details and
+Board restrictions are documented at <https://lichess-org.github.io/api/>.
+
+Validate with `node --test tests/*.test.mjs`, `cargo test --lib`, and
+`cargo check --lib --target wasm32-unknown-unknown`. OAuth/stream tests use fake
+accounts and transports; a live account sign-in requires the user to approve
+the Lichess authorization screen.
+
 ## Run
 
 ```powershell

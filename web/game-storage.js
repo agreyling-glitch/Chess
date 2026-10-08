@@ -2,9 +2,14 @@ const DB_NAME = 'ironwood-chess';
 // Public Lichess API access; no Lichess code or artwork is bundled.
 const explorerCache = new Map();
 let explorerBusy = false, explorerRetryAt = 0, explorerToken = '', explorerGeneration = 0;
-window.ironwoodExplorerToken = token => {
-  explorerToken = token.trim(); explorerGeneration++; explorerCache.clear(); explorerRetryAt = 0;
-};
+function syncExplorerSession() {
+  const token = sessionStorage.getItem('ironwood.lichess.token') || '';
+  if (token !== explorerToken) {
+    explorerToken = token; explorerGeneration++; explorerCache.clear(); explorerRetryAt = 0;
+  }
+  return !!token;
+}
+window.ironwoodExplorerSignedIn = syncExplorerSession;
 export function openingExplorerUrl(fen, source, speed = '', ratings = '') {
   if (!['masters','lichess'].includes(source)) throw new Error('Invalid explorer source');
   if (speed && !['bullet','blitz','rapid','classical','correspondence'].includes(speed)) throw new Error('Invalid explorer speed');
@@ -19,7 +24,7 @@ export function openingExplorerUrl(fen, source, speed = '', ratings = '') {
   return url.href;
 }
 window.ironwoodExplorer = (fen,source,speed,ratings) => {
-  if (!explorerToken) return JSON.stringify({error:'Lichess requires an API token for Opening Explorer. Connect above to load statistics.'});
+  if (!syncExplorerSession()) return JSON.stringify({error:'Sign in through Lichess-Online to load opening statistics.'});
   const key = openingExplorerUrl(fen,source,speed,ratings);
   if (explorerCache.has(key)) return explorerCache.get(key);
   if (Date.now() < explorerRetryAt) return JSON.stringify({error:'Rate limited. Try again in one minute.'});
@@ -27,13 +32,13 @@ window.ironwoodExplorer = (fen,source,speed,ratings) => {
     explorerBusy = true;
     const generation = explorerGeneration;
     void fetch(key,{credentials:'omit',headers:{Authorization:`Bearer ${explorerToken}`},signal:AbortSignal.timeout(20000)}).then(async response => {
-      if (response.status === 401 || response.status === 403) throw new Error('Lichess rejected the API token. Check it or create a new token.');
+      if (response.status === 401 || response.status === 403) throw new Error('Lichess rejected this session. Sign out and sign in again through Lichess-Online.');
       if (response.status === 429) { explorerRetryAt = Date.now()+60000; throw new Error('Rate limited. Try again in one minute.'); }
       if (!response.ok) throw new Error(`Opening database request failed (${response.status}).`);
       const data = await response.json();
       if (!Array.isArray(data.moves)) throw new Error('Unexpected opening database response.');
       if (explorerCache.size >= 100) explorerCache.delete(explorerCache.keys().next().value);
-      if (generation === explorerGeneration) explorerCache.set(key,JSON.stringify(data));
+      if (syncExplorerSession() && generation === explorerGeneration) explorerCache.set(key,JSON.stringify(data));
     }).catch(error => {
       if (generation === explorerGeneration && (!explorerRetryAt || Date.now() >= explorerRetryAt)) explorerCache.set(key,JSON.stringify({error:error.name==='TimeoutError'?'Request timed out. Retry when ready.':error instanceof TypeError?'Could not load opening data. Check your connection and retry.':error.message}));
     }).finally(()=>{explorerBusy=false;});

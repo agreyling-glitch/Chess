@@ -16,4 +16,4 @@ The starting-position choices include **Standard** (the usual chess setup), **Ch
 
 During an ordinary local game (outside Training vs AI), **Game → Take back** undoes your last move. If Stockfish has already replied, it also undoes that reply. **Game → Resign** gives up the current game after confirmation. **Game → Flip board** changes which color appears at the bottom; it does not change whose turn it is.
 
-For an online game, choose the Online option and use the FICS lobby. See [Playing online](/help/online-play/). When a game ends, you can [analyze it](/help/getting-started/).
+For an online game, choose the Online option, then **Lichess** or **FICS**. See [Play on Lichess](/help/play-on-lichess/) or [Playing online with FICS](/help/online-play/). The **Lichess-Online** and **FICS-Online** menus provide each service's controls. Lichess computer setup offers Standard, Chess960, and From Position, with Unlimited, Real time, or Correspondence timing. See the Lichess help page for its FEN input and strength settings. When a game ends, you can [analyze it](/help/getting-started/).

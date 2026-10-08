@@ -1,6 +1,6 @@
 ---
 title: "Features"
-lastmod: 2026-10-05T00:00:00-05:00
+lastmod: 2026-10-08T00:00:00-05:00
 description: "Analyze with Stockfish, explore pawn structure, piece mobility, king safety, and tactical patterns, and play in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -12,7 +12,7 @@ url: "/features/"
 
 ## Explore opening choices
 
-Connect using a Lichess API token with no permissions selected. Opening Explorer keeps the token only for the current app session and sends it directly to Lichess; reloading or disconnecting clears it.
+Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through Lichess-Online; no separate API token is needed. Signing out clears access and cached results.
 
 Explore common continuations in **Game Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
 
@@ -72,6 +72,14 @@ Switch between 2D and 3D from the **View** menu or the button beside Flip Board.
 
 ## Meet opponents online
 
+Play with your Lichess account on Ironwood's board. Sign in through **Lichess-Online** using Lichess authorization, then use quick-pairing tiles, create a custom rapid or classical game, challenge a friend, or resume an ongoing game. Pending moves appear immediately as translucent pieces and become solid when Lichess confirms them. Live clocks and game results follow the server.
+
+Set up a casual game against the Lichess computer with **Standard**, **Chess960**, or **From Position** with a validated standard-chess FEN. Choose Unlimited, Real time, or Correspondence, strength 1–8, and White, Random, or Black. The setup uses large strength buttons, piece cards, and a gold start button.
+
+Correspondence games stay ongoing while you return to the lobby, play another game, or load a saved game for study. The ongoing-game list shows your side, turn, game mode, and available start-time and clock details. Refreshing reconnects your account without automatically replacing your local board with an existing correspondence game.
+
+During active Lichess play, **Game Analysis** becomes **Game chat**. Resign, abort, draw, takeback, and claim controls are available below the board, in the lobby, and under **Game**, subject to Lichess's rules. Analysis remains available while connected to the lobby and returns when a game ends; finished games save locally. **Leave online play** keeps your authorization for reconnecting, while **Sign out** revokes it. [Playing on Lichess](/help/play-on-lichess/).
+
 Connect to the Free Internet Chess Server (FICS) as a guest or sign in with an existing account. Browse available games, seek an unrated opponent with your chosen time and increment, challenge a specific player, and respond to incoming challenges. Live boards and clocks follow the server. Finished games are saved on this device for later review and analysis.
 
 ## Watch live games
@@ -119,7 +127,7 @@ Saved Games keeps My Games, Training games, Observed games, and Imported games t
 
 ## Keep control of your data
 
-Ironwood saves games and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
+Ironwood saves games and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
 
 ## Device and browser compatibility
 

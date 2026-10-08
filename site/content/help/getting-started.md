@@ -18,6 +18,8 @@ For a handwritten game, choose **Game → Import… → Scoresheet → Enter sco
 
 Open the Analysis workspace and start full game analysis. Ironwood asks Stockfish to examine each position in turn. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply.
 
+A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled while an online game is engaged. The Game Analysis panel becomes Game chat during Lichess play and returns to analysis when the game ends. To review a saved game while a correspondence game remains ongoing, use **Game → Load saved game**.
+
 The results are estimates from a chess engine. They can change if Stockfish searches longer or uses different settings. Wait for analysis and any critical-move verification to finish before treating the summary as final.
 
 ## Read the summary

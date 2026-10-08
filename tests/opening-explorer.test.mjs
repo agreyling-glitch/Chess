@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 globalThis.window=globalThis;
+const session = new Map();
+globalThis.sessionStorage = { getItem: key => session.get(key) ?? null, setItem: (key,value) => session.set(key,value), removeItem: key => session.delete(key) };
 const source=readFileSync(new URL('../web/game-storage.js',import.meta.url),'utf8');
 const {openingExplorerUrl}=await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const fen='rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
@@ -15,7 +17,7 @@ test('source and filters build only trusted explorer URLs',()=>{
   assert.throws(()=>openingExplorerUrl(fen,'evil'));
 });
 test('requests are serialized, cached per position, and errors can be retried',async()=>{
-  window.ironwoodExplorerToken('test-token');
+  sessionStorage.setItem('ironwood.lichess.token','test-token');
   let calls=0,resolve;
   globalThis.fetch=()=>{calls++;return new Promise(r=>{resolve=r;});};
   assert.equal(window.ironwoodExplorer(fen,'masters','',''),'');
@@ -36,9 +38,9 @@ test('requests are serialized, cached per position, and errors can be retried',a
 });
 
 test('missing and rejected credentials produce authentication guidance',async()=>{
-  window.ironwoodExplorerToken('');
-  assert.match(JSON.parse(window.ironwoodExplorer(fen,'masters','','')).error,/API token/);
-  window.ironwoodExplorerToken('test-token');
+  sessionStorage.removeItem('ironwood.lichess.token');
+  assert.match(JSON.parse(window.ironwoodExplorer(fen,'masters','','')).error,/Sign in/);
+  sessionStorage.setItem('ironwood.lichess.token','test-token');
   globalThis.fetch=async(url,options)=>{
     assert.equal(options.headers.Authorization,'Bearer test-token');
     return {ok:false,status:401};
@@ -46,4 +48,19 @@ test('missing and rejected credentials produce authentication guidance',async()=
   window.ironwoodExplorer(fen,'masters','','');
   await new Promise(r=>setTimeout(r,0));
   assert.match(JSON.parse(window.ironwoodExplorer(fen,'masters','','')).error,/rejected/);
+});
+
+test('sign-out clears cached data and session replacement uses the new credential', async()=>{
+  sessionStorage.setItem('ironwood.lichess.token','replacement-session');
+  assert.equal(window.ironwoodExplorerSignedIn(),true);
+  globalThis.fetch=async(url,options)=>{
+    assert.equal(options.headers.Authorization,'Bearer replacement-session');
+    return {ok:true,json:async()=>({moves:[]})};
+  };
+  window.ironwoodExplorer(fen,'masters','','');
+  await new Promise(r=>setTimeout(r,0));
+  assert.deepEqual(JSON.parse(window.ironwoodExplorer(fen,'masters','','')).moves,[]);
+  sessionStorage.removeItem('ironwood.lichess.token');
+  assert.equal(window.ironwoodExplorerSignedIn(),false);
+  assert.match(JSON.parse(window.ironwoodExplorer(fen,'masters','','')).error,/Sign in/);
 });

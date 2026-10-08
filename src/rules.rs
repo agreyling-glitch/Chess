@@ -92,6 +92,13 @@ impl FromStr for Board {
 }
 
 impl Board {
+    pub fn from_chess960_fen(fen: &str) -> Result<Self, String> {
+        let position: Chess = Fen::from_ascii(fen.as_bytes())
+            .map_err(|e| e.to_string())?.into_position(CastlingMode::Chess960)
+            .map_err(|e| e.to_string())?;
+        Self::from_960_position(&position)
+    }
+
     pub fn is_chess960(&self) -> bool {
         self.chess960
     }
