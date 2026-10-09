@@ -8,6 +8,40 @@ use serde_json::Value;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct PieceAppearance {
+    pub size: u8,
+    pub height: u8,
+    pub custom_colors: bool,
+    pub white: [u8; 3],
+    pub black: [u8; 3],
+    pub finish: u8,
+    pub outline: bool,
+    pub inner_shading: u8,
+    pub gradient: bool,
+    pub gradient_direction: u8,
+    pub white_end: [u8;3],
+    pub black_end: [u8;3],
+    pub shadow_strength: u8,
+    pub shadow_softness: u8,
+    pub shadows: bool,
+    pub board_appearance: Option<u8>,
+    pub radial_light: Option<bool>,
+}
+impl Default for PieceAppearance {
+    fn default() -> Self { Self { size:100,height:100,custom_colors:false,white:[235,232,225],black:[62,73,68],finish:0,outline:false,inner_shading:0,gradient:false,gradient_direction:0,white_end:[168,143,91],black_end:[12,20,32],shadow_strength:100,shadow_softness:50,shadows:true,board_appearance:None,radial_light:None } }
+}
+impl PieceAppearance {
+    pub fn normalized(mut self) -> Self {
+        self.gradient_direction=self.gradient_direction.min(3);
+        self.inner_shading = self.inner_shading.min(100);
+        self.board_appearance = self.board_appearance.map(|value| value.min(100));
+        self.size = self.size.clamp(65,115); self.height = self.height.clamp(75,125);
+        self.finish = self.finish.min(5); self.shadow_strength = self.shadow_strength.min(150); self.shadow_softness = self.shadow_softness.min(100); self
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
@@ -1010,6 +1044,14 @@ pub fn image_with_options(
     selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
     background: Color32, scale: f32, appearance: f32, theme: Theme, show_radial_light: bool,
 ) -> ColorImage {
+    image_with_adjustments(board,rect,flipped,view,selected,targets,last_move,background,scale,appearance,theme,show_radial_light,PieceAppearance::default())
+}
+pub fn image_with_adjustments(
+    board: &Board, rect: Rect, flipped: bool, view: View,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>,
+    background: Color32, scale: f32, appearance: f32, theme: Theme, show_radial_light: bool, adjustments: PieceAppearance,
+) -> ColorImage {
+    let adjustments = adjustments.normalized();
     let camera = Camera::new(flipped, view);
     let width = (rect.width() * scale).ceil().max(1.0) as usize;
     let height = (rect.height() * scale).ceil().max(1.0) as usize;
@@ -1047,7 +1089,7 @@ pub fn image_with_options(
                     Some(normals),
                 );
             }
-            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale, appearance, theme);
+            rasterize(&mut image, &mut depth, board_triangles, camera, rect, scale, appearance, theme, PieceAppearance::default());
             *base = Some(BoardBase {
                 key,
                 image,
@@ -1057,14 +1099,14 @@ pub fn image_with_options(
         let cached = base.as_ref().unwrap();
         (cached.image.clone(), cached.depth.clone())
     });
-    let triangles = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
-    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale, appearance, theme);
+    let triangles = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme, adjustments);
+    rasterize(&mut image, &mut depth_buffer, triangles, camera, rect, scale, appearance, theme, adjustments);
     image
 }
 
 fn dynamic_triangles(
     board: &Board, rect: Rect, flipped: bool, view: View,
-    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme, adjustments: PieceAppearance,
 ) -> Vec<Triangle> {
     let camera = Camera::new(flipped, view);
     let mut triangles = Vec::with_capacity(40000);
@@ -1112,13 +1154,13 @@ fn dynamic_triangles(
                 let shadow_center = if theme == Theme::Wood {
                     center.add(V3::new(-0.055, 0.0, 0.06))
                 } else { center };
-                contact_shadow(
+                if adjustments.shadows && adjustments.shadow_strength > 0 { contact_shadow(
                     &mut piece_triangles,
                     camera,
                     rect,
                     shadow_center,
-                    if piece == Piece::Pawn { 0.45 } else { 0.54 },
-                );
+                    (if piece == Piece::Pawn { 0.45 } else { 0.54 }) * adjustments.size as f32 / 100.0 * (0.75 + adjustments.shadow_softness as f32 / 200.0),
+                ); }
                 let color = if side == Color::White {
                     [235, 232, 225]
                 } else {
@@ -1128,7 +1170,7 @@ fn dynamic_triangles(
                     let mut pts = [V3::default(); 3];
                     for (n, &i) in face.iter().enumerate() {
                         let p = turn_y(model.positions[i as usize], sin, cos);
-                        pts[n] = center.add(p);
+                        pts[n] = center.add(V3::new(p.x * adjustments.size as f32 / 100.0, p.y * adjustments.size as f32 / 100.0 * adjustments.height as f32 / 100.0, p.z * adjustments.size as f32 / 100.0));
                     }
                     let uv = [
                         model.texcoords[face[0] as usize],
@@ -1136,7 +1178,7 @@ fn dynamic_triangles(
                         model.texcoords[face[2] as usize],
                     ];
                     let normals = std::array::from_fn(|i| {
-                        turn_y(model.normals[face[i] as usize], sin, cos)
+                        { let n = turn_y(model.normals[face[i] as usize], sin, cos); V3::new(n.x,n.y*100.0/adjustments.height as f32,n.z).unit() }
                     });
                     push_triangle(
                         &mut piece_triangles,
@@ -1215,8 +1257,10 @@ fn rasterize(
     scale: f32,
     appearance: f32,
     theme: Theme,
+    adjustments: PieceAppearance,
 ) {
     let [width, height] = image.size;
+    let mut silhouettes = if adjustments.outline { vec![None; width*height] } else { Vec::new() };
     for tri in triangles {
         let p = tri.points.map(|point| (point - rect.min) * scale);
         let min_x = p
@@ -1287,7 +1331,7 @@ fn rasterize(
                             + w2 * reciprocal[2] * uv[2][1])
                             / near;
                         let radius_sq = (2.0 * u - 1.0).powi(2) + (2.0 * v - 1.0).powi(2);
-                        let alpha = 0.34 * (1.0 - radius_sq).max(0.0).powi(2);
+                        let alpha = (0.34 * adjustments.shadow_strength as f32 / 100.0 * (1.0 - radius_sq).max(0.0).powf(1.0 + (100.0-adjustments.shadow_softness as f32)/50.0)).min(0.85);
                         if alpha <= 0.001 {
                             continue;
                         }
@@ -1441,7 +1485,20 @@ fn rasterize(
                                 (color[2] * diffuse + specular).min(230.0) as u8,
                             )
                         };
-                        appearance_color(surface_color, appearance)
+                        let surface_color = if let Some(side) = side {
+                            if adjustments.custom_colors || adjustments.finish != 0 || adjustments.outline {
+                                let base = if adjustments.custom_colors { if side == Color::White { adjustments.white } else { adjustments.black } } else { [surface_color.r(),surface_color.g(),surface_color.b()] };
+                                let factor = match adjustments.finish { 1 => 0.0, 2 => 0.35, 3 => 1.5, 4 => 2.2, 5 => 1.8, _ => 1.0 };
+                                let shade = if adjustments.custom_colors { diffuse } else { 1.0 };
+                                let channel = |c: u8| ((c as f32 - if adjustments.custom_colors { 0.0 } else { specular }).max(0.0) * shade + specular * factor).clamp(0.0,255.0) as u8;
+                                Color32::from_rgb(channel(base[0]),channel(base[1]),channel(base[2]))
+                            } else { surface_color }
+                        } else { surface_color };
+                        let adjusted = appearance_color(surface_color, appearance);
+                        if side.is_some() && adjustments.finish == 5 {
+                            let previous = image.pixels[index];
+                            Color32::from_rgb((adjusted.r() as f32*0.78+previous.r() as f32*0.22) as u8,(adjusted.g() as f32*0.78+previous.g() as f32*0.22) as u8,(adjusted.b() as f32*0.78+previous.b() as f32*0.22) as u8)
+                        } else { adjusted }
                     } else {
                         let alpha = tri.color.a() as f32 / 255.0;
                         let previous = image.pixels[index];
@@ -1454,15 +1511,67 @@ fn rasterize(
                                 as u8,
                         )
                     };
+                    if adjustments.outline { silhouettes[index] = tri.texture.and_then(|(_,side)| side); }
                     depth_buffer[index] = near;
                 }
             }
         }
     }
+    if adjustments.outline {
+        paint_silhouette_outline(image, &silhouettes, depth_buffer, adjustments);
+    }
+
+}
+
+// A screen-space dilation touches only pixels outside the visible pieces.
+fn paint_silhouette_outline(image: &mut ColorImage, mask: &[Option<Color>], depths: &[f32], settings: PieceAppearance) {
+    let [width,height] = image.size;
+    for y in 1..height.saturating_sub(1) { for x in 1..width.saturating_sub(1) {
+        let index = y*width+x;
+        if mask[index].is_some() { continue; }
+        for neighbor in [index-1,index+1,index-width,index+width] {
+            if let Some(side) = mask[neighbor] {
+                if depths[neighbor] < depths[index] { continue; }
+                let base = if settings.custom_colors { if side == Color::White { settings.white } else { settings.black } } else if side == Color::White { [240;3] } else { [25;3] };
+                image.pixels[index] = if base.iter().map(|v| *v as u16).sum::<u16>() < 380 { Color32::from_gray(235) } else { Color32::from_gray(10) };
+                break;
+            }
+        }
+    }}
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn silhouette_outline_preserves_interior_and_respects_occlusion() {
+        let original = Color32::from_rgb(110,80,50);
+        let mut image = ColorImage::new([7,7], vec![original;49]);
+        let mut mask = vec![None;49];
+        let mut depths = vec![1.0;49];
+        for y in 2..5 { for x in 2..5 { mask[y*7+x] = Some(Color::White); depths[y*7+x] = 2.0; }}
+        depths[1*7+3] = 3.0; // A foreground surface blocks the outline.
+        paint_silhouette_outline(&mut image,&mask,&depths,PieceAppearance::default());
+        for y in 2..5 { for x in 2..5 { assert_eq!(image.pixels[y*7+x],original); }}
+        assert_eq!(image.pixels[1*7+3],original);
+        assert_eq!(image.pixels[0],original);
+        assert_ne!(image.pixels[3*7+1],original);
+    }
+    #[test]
+    fn appearance_adjustments_update_cached_rendering() {
+        let board = Board::default();
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(220.0));
+        let render = |settings| image_with_adjustments(&board, rect, false, View::default(),
+            None, &[], None, Color32::from_rgb(24,27,31), 1.0, 0.5, Theme::Wood, true, settings);
+        let defaults = PieceAppearance::default();
+        let baseline = render(defaults);
+        for changed in [PieceAppearance { size:75, ..defaults }, PieceAppearance { height:125, ..defaults },
+            PieceAppearance { custom_colors:true, white:[230,40,80], ..defaults },
+            PieceAppearance { outline:true, ..defaults }, PieceAppearance { finish:5, ..defaults },
+            PieceAppearance { shadow_strength:0, ..defaults }] {
+            assert_ne!(baseline, render(changed));
+            assert_eq!(baseline, render(defaults));
+        }
+    }
     #[test]
     fn radial_light_toggle_updates_cached_rendering() {
         let board = Board::default();
@@ -1526,7 +1635,7 @@ mod tests {
             assert_eq!(glow.len(), 2);
             let mut halo = ColorImage::filled([600, 600], background);
             let mut depth = vec![0.0; 600 * 600];
-            rasterize(&mut halo, &mut depth, glow, camera, rect, 1.0, 0.5, theme);
+            rasterize(&mut halo, &mut depth, glow, camera, rect, 1.0, 0.5, theme, PieceAppearance::default());
             assert!(halo.pixels.iter().any(|p| p != &background));
             let rendered = image_with_theme(&Board::default(), rect, false, View::default(),
                 None, &[], None, background, 1.0, 0.5, theme);

@@ -36,3 +36,11 @@ export function parseFicsMoveRow(line) {
   if (!tokens[0] || /^(?:\{|\*|1-0|0-1|1\/2-1\/2)/.test(tokens[0])) return null;
   return tokens.slice(0, 2).filter(token => token && !/^(?:\{|\*|1-0|0-1|1\/2-1\/2)/.test(token));
 }
+
+
+// Original parser for the documented FICS finger rating table.
+export function parseFicsRating(line) {
+  const match = line.match(/^\s*(Lightning|Blitz|Standard)\s+(\d+[PpEe*]?|----|\+\+\+\+)\s+(\d+(?:\.\d+)?)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)(?:\s+(\d+))?/i);
+  if (!match) return null;
+  return {category:match[1].toLowerCase(),rating:match[2],rd:Number(match[3]),wins:Number(match[4]),losses:Number(match[5]),draws:Number(match[6]),total:Number(match[7]),best:match[8] ? Number(match[8]) : null};
+}

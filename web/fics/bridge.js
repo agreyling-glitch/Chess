@@ -1,4 +1,4 @@
-import { parseStyle12, parseFicsChunk, parseFicsMoveRow } from './protocol.js';
+import { parseStyle12, parseFicsChunk, parseFicsMoveRow, parseFicsRating } from './protocol.js';
 
 let socket = null;
 let buffer = '';
@@ -14,6 +14,7 @@ let guestName = '';
 let loginMode = 'guest';
 let pendingPassword = '';
 let loginError = '';
+let profileRows = [], readingProfile = false;
 const events = [];
 
 function emit(event) {
@@ -112,6 +113,22 @@ function handleLine(line) {
     return;
   }
   if (!ready && /fics%/i.test(line)) finishLogin();
+  if (/^\s*fics%/i.test(line)) readingProfile = false;
+  const profileLine = line.replace(/^\s*fics%\s*/i, '');
+  const profileHeader = profileLine.match(/^\s*Statistics for ([A-Za-z]+)/i);
+  if (profileHeader) {
+    readingProfile = loginMode === 'registered' && profileHeader[1].toLowerCase() === guestName.toLowerCase();
+    if (readingProfile) profileRows = [];
+  }
+  if (readingProfile) {
+    const row = parseFicsRating(profileLine);
+    if (row) {
+      profileRows = profileRows.filter(item=>item.category !== row.category); profileRows.push(row);
+      const summary = [guestName, ...profileRows.map(item=>`${item.category[0].toUpperCase()+item.category.slice(1)} ${item.rating === '----' || item.rating === '++++' ? '—' : item.rating}`)].join(' · ');
+      const details = profileRows.map(item=>`${item.category}: ${item.wins} wins / ${item.draws} draws / ${item.losses} losses · ${item.total} rated games · RD ${item.rd}${item.best === null ? '' : ` · best ${item.best}`}`).join('\n');
+      emit({type:'profile',summary,details:details+'\nFICS rated records by category. Refreshed at sign-in and after your games.'});
+    }
+  }
   const promptPrefixed = /^\s*fics%\s*/i.test(line);
   if (promptPrefixed) line = line.replace(/^\s*fics%\s*/i, '');
   if (!line.trim()) return;
@@ -157,6 +174,7 @@ function handleLine(line) {
   const ended = line.match(/^\{Game (\d+) .*\} (?:1-0|0-1|1\/2-1\/2|\*)/);
   if (ended && Number(ended[1]) === currentGame) {
     currentGame = null;
+    if (loginMode === 'registered') send(JSON.stringify({type:'command',value:`finger ${guestName} /bls r`}));
     emit({ type: 'end', message: line.trim() });
   } else if (ended && observedGames.has(Number(ended[1]))) {
     const game = Number(ended[1]);
@@ -181,12 +199,15 @@ function finishLogin() {
   send('set style 12');
   send('set seek 0');
   send('sought');
+  if (loginMode === 'registered') send(JSON.stringify({type:'command',value:`finger ${guestName} /bls r`}));
+  else emit({type:'profile',summary:`${guestName || 'Guest'} · Guest`,details:'Guest accounts have no permanent FICS ratings or game records.'});
   emit({ type: 'status', message: guestName ? `Connected as ${guestName}` : 'Connected as FICS guest', connected: true, registered: loginMode === 'registered' });
 }
 
 function connect(mode, username = '', password = '') {
   if (socket) socket.close();
   events.length = 0;
+  profileRows = []; readingProfile = false;
   buffer = ''; loginSent = guestConfirmed = passwordSent = ready = false;
   currentGame = null; observedGames.clear(); moveRequests.length = 0; activeMoveRequest = null; guestName = username; loginMode = mode;
   pendingPassword = password; loginError = '';

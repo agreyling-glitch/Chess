@@ -66,12 +66,17 @@ export async function boardImage(fen, options = {}) {
   if (!context) throw new Error('Image rendering is unavailable');
   const margin = options.frame ? 36 : 0;
   const cell = (1024 - margin * 2) / 8;
-  context.fillStyle = '#1c2c25'; context.fillRect(0, 0, 1024, 1024);
+  const palette = ({
+    ClassicStaunton: ['#efe0c2','#8d6744','#31241b','#e8cb9b'],
+    NeonGeometric: ['#233151','#18233b','#0c1221','#67e1f3'],
+    ArtDecoFaceted: ['#d5dac5','#375b58','#162b2b','#e8c66f'],
+  })[options.pieceSet] || ['#cdd6c1','#4c745c','#1c2c25','#d3ad62'];
+  context.fillStyle = palette[2]; context.fillRect(0, 0, 1024, 1024);
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
-    context.fillStyle = (row + col) % 2 ? '#4c745c' : '#cdd6c1';
+    context.fillStyle = (row + col) % 2 ? palette[1] : palette[0];
     context.fillRect(margin + col * cell, margin + row * cell, cell, cell);
   }
-  const sets = { Cburnett: 'cburnett', Merida: 'merida', RoyalRascals: 'royal-rascals', UndeadCourt: 'undead-court' };
+  const sets = { Cburnett: 'cburnett', Merida: 'merida', RoyalRascals: 'royal-rascals', UndeadCourt: 'undead-court', ClassicStaunton: 'classic-staunton', NeonGeometric: 'neon-geometric', ArtDecoFaceted: 'art-deco-faceted' };
   const set = sets[options.pieceSet] || 'merida';
   const assets = new Map();
   if (options.pieceSet !== 'System') {
@@ -103,13 +108,13 @@ export async function boardImage(fen, options = {}) {
       const file = 'abcdefgh'[options.flipped ? 7-i : i];
       const rank = String(options.flipped ? i+1 : 8-i);
       if (options.frame) {
-        context.fillStyle = '#d3ad62'; context.textAlign = 'center'; context.textBaseline = 'middle';
+        context.fillStyle = palette[3]; context.textAlign = 'center'; context.textBaseline = 'middle';
         context.fillText(file,margin+(i+.5)*cell,18); context.fillText(file,margin+(i+.5)*cell,1006);
         context.fillText(rank,18,margin+(i+.5)*cell); context.fillText(rank,1006,margin+(i+.5)*cell);
       } else {
-        context.textAlign = 'left'; context.textBaseline = 'top'; context.fillStyle = i%2 ? '#cdd6c1' : '#4c745c';
+        context.textAlign = 'left'; context.textBaseline = 'top'; context.fillStyle = i%2 ? palette[0] : palette[1];
         context.fillText(rank,5,i*cell+4);
-        context.textAlign = 'right'; context.textBaseline = 'bottom'; context.fillStyle = i%2 ? '#4c745c' : '#cdd6c1';
+        context.textAlign = 'right'; context.textBaseline = 'bottom'; context.fillStyle = i%2 ? palette[1] : palette[0];
         context.fillText(file,(i+1)*cell-5,1020);
       }
     }

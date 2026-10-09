@@ -22,6 +22,7 @@ pub struct Scene {
     distance_delta: f32,
     appearance: f32,
     theme: Theme,
+    adjustments: PieceAppearance,
 }
 
 impl Scene {
@@ -133,6 +134,7 @@ pub fn scene(
     id: u64,
     theme: Theme,
     show_radial_light: bool,
+    adjustments: PieceAppearance,
 ) -> Scene {
     let camera = Camera::new(flipped, view);
     let mut board_triangles = Vec::new();
@@ -151,7 +153,7 @@ pub fn scene(
             Some(normals),
         );
     }
-    let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme);
+    let dynamic = dynamic_triangles(board, rect, flipped, view, selected, targets, last_move, theme, adjustments);
     let mut vertices = Vec::with_capacity((board_triangles.len() + dynamic.len()) * 3 * 104);
     let glow_count = if show_radial_light { append_triangles(&mut vertices, &board_glow(camera, rect, theme), rect) } else { 0 };
     let board_count = append_triangles(&mut vertices, &board_triangles, rect);
@@ -196,6 +198,7 @@ pub fn scene(
         target_format,
         distance_delta: 0.0,
         appearance: 0.5,
+        adjustments,
         theme,
     }
 }
@@ -203,6 +206,7 @@ pub fn scene(
 struct Gpu {
     theme: Theme,
     scene_pipeline: wgpu::RenderPipeline,
+    outline_pipeline: wgpu::RenderPipeline,
     translucent_pipeline: wgpu::RenderPipeline,
     blit_pipeline: wgpu::RenderPipeline,
     textures_group: wgpu::BindGroup,
@@ -365,7 +369,7 @@ impl Gpu {
         });
         let distance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("3D chess camera distance"),
-            size: 16,
+            size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -384,13 +388,13 @@ impl Gpu {
             push_constant_ranges: &[],
         });
         let vertex_attributes = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x2, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4];
-        let make_pipeline = |depth_write_enabled, blend: Option<wgpu::BlendState>| {
+        let make_pipeline = |depth_write_enabled, blend: Option<wgpu::BlendState>, vertex_entry| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some("3D chess scene"),
                 layout: Some(&scene_layout),
                 vertex: wgpu::VertexState {
                     module: &shader,
-                    entry_point: Some("scene_vertex"),
+                    entry_point: Some(vertex_entry),
                     compilation_options: Default::default(),
                     buffers: &[wgpu::VertexBufferLayout {
                         array_stride: 104,
@@ -424,8 +428,9 @@ impl Gpu {
                 cache: None,
             })
         };
-        let scene_pipeline = make_pipeline(true, None);
-        let translucent_pipeline = make_pipeline(false, Some(wgpu::BlendState::ALPHA_BLENDING));
+        let outline_pipeline = make_pipeline(false, None, "outline_vertex");
+        let scene_pipeline = make_pipeline(true, None, "scene_vertex");
+        let translucent_pipeline = make_pipeline(false, Some(wgpu::BlendState::ALPHA_BLENDING), "scene_vertex");
         let blit_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("3D chess blit layout"),
             entries: &[
@@ -501,6 +506,7 @@ impl Gpu {
         Self {
             theme: scene.theme,
             scene_pipeline,
+            outline_pipeline,
             translucent_pipeline,
             blit_pipeline,
             textures_group,
@@ -575,7 +581,7 @@ impl CallbackTrait for Scene {
             && gpu.rendered_appearance == Some(appearance_bits) {
             return Vec::new();
         }
-        let mut adjustment = [0_u8; 16];
+        let mut adjustment = [0_u8; 64];
         adjustment[..4].copy_from_slice(&self.distance_delta.to_le_bytes());
         adjustment[4..8].copy_from_slice(&self.appearance.to_le_bytes());
         let theme_code = match self.theme {
@@ -585,6 +591,11 @@ impl CallbackTrait for Scene {
         };
         adjustment[8..12].copy_from_slice(&theme_code.to_le_bytes());
         adjustment[12..16].copy_from_slice(&(2.0 * SCREEN_CENTER_LIFT).to_le_bytes());
+        let a = self.adjustments;
+        let extra = [a.white[0] as f32/255.0,a.white[1] as f32/255.0,a.white[2] as f32/255.0,if a.custom_colors { 1.0 } else { 0.0 },
+            a.black[0] as f32/255.0,a.black[1] as f32/255.0,a.black[2] as f32/255.0,if a.outline { 1.0 } else { 0.0 },
+            a.finish as f32,a.shadow_strength as f32/100.0,a.shadow_softness as f32/100.0,2.5/self.size[0].max(self.size[1]) as f32];
+        for (i,value) in extra.iter().enumerate() { adjustment[16+i*4..20+i*4].copy_from_slice(&value.to_le_bytes()); }
         queue.write_buffer(&gpu.distance_buffer, 0, &adjustment);
         if changed_scene {
             gpu.vertex_buffer = Some(device.create_buffer_init(
@@ -635,6 +646,11 @@ impl CallbackTrait for Scene {
         pass.draw(start..start + self.shadow_count, 0..1);
         start += self.shadow_count;
         pass.set_pipeline(&gpu.scene_pipeline);
+        if self.adjustments.outline {
+            pass.set_pipeline(&gpu.outline_pipeline);
+            pass.draw(start..start + self.piece_count, 0..8);
+            pass.set_pipeline(&gpu.scene_pipeline);
+        }
         pass.draw(start..start + self.piece_count, 0..1);
         drop(pass);
         gpu.rendered_scene_id = Some(self.id);

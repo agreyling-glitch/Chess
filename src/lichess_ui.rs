@@ -1109,3 +1109,32 @@ mod lichess_tests {
     }
 
 }
+
+
+fn lichess_profile_summary(lobby: &serde_json::Value) -> Option<(String, String)> {
+    let profile = lobby.get("profile")?.as_object()?;
+    let username = lobby["account"].as_str()?;
+    let count = profile.get("count");
+    let number = |key: &str| count.and_then(|c| c[key].as_u64());
+    let mut parts = vec![username.to_owned()];
+    if let Some(all) = number("all") { parts.push(format!("{all} games")); }
+    if let (Some(wins), Some(draws), Some(losses)) = (number("win"), number("draw"), number("loss")) {
+        parts.push(format!("{wins}W / {draws}D / {losses}L"));
+    }
+    let mut details = vec!["Lichess profile · overall record includes casual games.".to_owned()];
+    if let Some(rated) = number("rated") { details.push(format!("Rated games: {rated}")); }
+    for (key,label) in [("bullet","Bullet"),("blitz","Blitz"),("rapid","Rapid"),("classical","Classical"),("correspondence","Correspondence"),("puzzle","Puzzles")] {
+        let perf = profile.get("perfs").and_then(|p| p.get(key));
+        let games = perf.and_then(|p| p["games"].as_u64()).unwrap_or(0);
+        let rating = if games > 0 {
+            perf.and_then(|p| p["rating"].as_u64()).map(|rating| format!("{rating}{}", if perf.is_some_and(|p| p["prov"].as_bool() == Some(true)) { "?" } else { "" })).unwrap_or_else(|| "—".into())
+        } else { "—".into() };
+        if key != "puzzle" { parts.push(format!("{label} {rating}")); }
+        details.push(format!("{label}: {rating} · {games} rated games/attempts"));
+    }
+    if let Some(seconds) = profile.get("playTime").and_then(|p| p["total"].as_u64()) {
+        details.push(format!("Playing time: {}h {}m", seconds / 3600, seconds % 3600 / 60));
+    }
+    details.push("? = provisional rating · — = no rating established. Profile fetched at sign-in/reconnect.".into());
+    Some((parts.join(" · "), details.join("\n")))
+}

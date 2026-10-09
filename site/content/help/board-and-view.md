@@ -1,4 +1,5 @@
 ---
+lastmod: 2026-10-09T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -12,7 +13,7 @@ The Compact workspace uses tabs for Game Moves and Game Analysis. **View → Mov
 
 Open **View → Board → Theme…** for a full-size chooser with 2D and 3D board previews side by side. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
 
-The **3D appearance** slider and **Show radial light below board** remain under **View → Board** when a 3D board is active. The same menu also controls move highlights, piece shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
+The **3D appearance** slider and **Show radial light below board** are in **View → Board → Theme adjustments…** when a 3D board is active. Click a theme card’s gear to open its own adjustments. See [Board themes and appearance](/help/board-themes/) for gradients, shading, and per-theme settings. The same menu also controls move highlights, piece shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
 
 These are display preferences. They do not change the legality of a move or the engine's evaluation.
 

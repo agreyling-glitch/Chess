@@ -1,4 +1,5 @@
 ---
+lastmod: 2026-10-09T00:00:00-05:00
 title: "Keyboard move input"
 description: "Type chess moves with a translucent input overlay, and navigate game positions with arrow keys."
 category: "using-ironwood"
@@ -43,3 +44,8 @@ With the **Draw on board** window open, **Ctrl+Z** undoes the last drawing chang
 **Alt-click / Alt-drag** draws a green square or arrow without enabling drawing mode. Add **Shift** for red or **Ctrl** for yellow. While dragging an arrow with the graphical tools, hold left-click and tap right-click to toggle solid/dashed or left/right curve styles. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for the full controls.
 
 Voice move entry is not currently built into Ironwood.
+
+
+## Focus mode
+
+**Shift+Enter** toggles focus mode when you are not editing a text field. **Escape** exits focus mode. The board toolbar’s focus icon provides the same toggle. See [Focus on the board](/help/playing-a-game/#focus-on-the-board).

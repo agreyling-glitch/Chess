@@ -6,8 +6,9 @@
   <meta name="theme-color" content="#111418">
   <meta name="description" content="{{ with .Description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
   <meta name="robots" content="index,follow,max-image-preview:large">
-  <title>{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}</title>
+  <title>{{ with .Params.seo_title }}{{ . }}{{ else }}{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}{{ end }}</title>
   <link rel="canonical" href="{{ .Permalink }}">
+  {{ partial "seo.html" . }}
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" href="/favicon-32x32.png" type="image/png" sizes="32x32">
   <link rel="icon" href="/favicon-16x16.png" type="image/png" sizes="16x16">
@@ -38,6 +39,9 @@
     <a href="/changelog/">Changelog</a>
     <a href="/open-source-notices.html">Open-source notices</a>
   </footer>
+  <div class="site-badge">
+    <a href="https://twelve.tools" target="_blank" rel="noopener noreferrer"><img src="https://twelve.tools/badge0-dark.svg" crossorigin="anonymous" alt="Featured on Twelve Tools" width="200" height="54" loading="lazy" decoding="async"></a>
+  </div>
   <script type="module" src="/pwa.js"></script>
 </body>
 </html>

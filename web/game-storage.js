@@ -2,16 +2,18 @@ const DB_NAME = 'ironwood-chess';
 // Public Lichess API access; no Lichess code or artwork is bundled.
 const explorerCache = new Map();
 let explorerBusy = false, explorerRetryAt = 0, explorerToken = '', explorerGeneration = 0;
+let explorerController, explorerActiveKey = '';
 function syncExplorerSession() {
   const token = sessionStorage.getItem('ironwood.lichess.token') || '';
   if (token !== explorerToken) {
+    explorerController?.abort();
     explorerToken = token; explorerGeneration++; explorerCache.clear(); explorerRetryAt = 0;
   }
   return !!token;
 }
 window.ironwoodExplorerSignedIn = syncExplorerSession;
-export function openingExplorerUrl(fen, source, speed = '', ratings = '') {
-  if (!['masters','lichess'].includes(source)) throw new Error('Invalid explorer source');
+export function openingExplorerUrl(fen, source, speed = '', ratings = '', player = '', color = 'white', since = '', until = '') {
+  if (!['masters','lichess','player'].includes(source)) throw new Error('Invalid explorer source');
   if (speed && !['bullet','blitz','rapid','classical','correspondence'].includes(speed)) throw new Error('Invalid explorer speed');
   if (ratings && !ratings.split(',').every(r => ['0','1000','1200','1400','1600','1800','2000','2200','2500'].includes(r))) throw new Error('Invalid rating groups');
   const url = new URL(`https://explorer.lichess.org/${source}`);
@@ -21,29 +23,77 @@ export function openingExplorerUrl(fen, source, speed = '', ratings = '') {
     url.searchParams.set('speeds',speed || 'bullet,blitz,rapid,classical,correspondence');
     url.searchParams.set('ratings',ratings || '0,1000,1200,1400,1600,1800,2000,2200,2500');
   }
+  if (source === 'player') {
+    if (!/^[a-zA-Z0-9_-]{2,30}$/.test(player)) throw new Error('Enter a valid Lichess username.');
+    if (!['white','black'].includes(color)) throw new Error('Choose White or Black.');
+    for (const month of [since, until]) if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new Error('Use YYYY-MM for dates.');
+    if (since && until && since > until) throw new Error('Start month must precede end month.');
+    for (const [key,value] of Object.entries({player,color,variant:'standard',recentGames:'8',speeds:speed,since,until}))
+      if (value) url.searchParams.set(key,value);
+  }
   return url.href;
 }
-window.ironwoodExplorer = (fen,source,speed,ratings) => {
+export async function readExplorerStream(response, publish) {
+  const reader = response.body.getReader(), decoder = new TextDecoder();
+  let buffer = '', latest;
+  const consume = line => {
+    if (!line.trim()) return;
+    const data = JSON.parse(line);
+    if (!Array.isArray(data.moves)) throw new Error('Unexpected opening database response.');
+    latest = data; publish({...data, indexing:true});
+  };
+  try {
+    while (true) {
+      const {value,done} = await reader.read();
+      buffer += decoder.decode(value,{stream:!done});
+      if (buffer.length > 1048576) throw new Error('Opening database response is too large.');
+      let end;
+      while ((end = buffer.indexOf('\n')) >= 0) { consume(buffer.slice(0,end)); buffer = buffer.slice(end+1); }
+      if (done) { consume(buffer); break; }
+    }
+    if (!latest) throw new Error('No opening statistics received. Retry when ready.');
+    return latest;
+  } finally { await reader.cancel().catch(()=>{}); reader.releaseLock(); }
+}
+window.ironwoodExplorer = (fen,source,speed,ratings,player,color,since,until) => {
   if (!syncExplorerSession()) return JSON.stringify({error:'Sign in through Lichess-Online to load opening statistics.'});
-  const key = openingExplorerUrl(fen,source,speed,ratings);
+  let key;
+  try { key = openingExplorerUrl(fen,source,speed,ratings,player,color,since,until); }
+  catch (error) { return JSON.stringify({error:error.message}); }
+  if (explorerBusy && explorerActiveKey !== key && new URL(explorerActiveKey).pathname === '/player') explorerController?.abort();
   if (explorerCache.has(key)) return explorerCache.get(key);
   if (Date.now() < explorerRetryAt) return JSON.stringify({error:'Rate limited. Try again in one minute.'});
   if (!explorerBusy) {
     explorerBusy = true;
+    explorerActiveKey = key;
+    explorerController = new AbortController();
     const generation = explorerGeneration;
-    void fetch(key,{credentials:'omit',headers:{Authorization:`Bearer ${explorerToken}`},signal:AbortSignal.timeout(20000)}).then(async response => {
+    void fetch(key,{credentials:'omit',cache:'no-store',headers:{Authorization:`Bearer ${explorerToken}`},signal:AbortSignal.any([explorerController.signal,AbortSignal.timeout(source === 'player' ? 120000 : 20000)])}).then(async response => {
       if (response.status === 401 || response.status === 403) throw new Error('Lichess rejected this session. Sign out and sign in again through Lichess-Online.');
       if (response.status === 429) { explorerRetryAt = Date.now()+60000; throw new Error('Rate limited. Try again in one minute.'); }
       if (!response.ok) throw new Error(`Opening database request failed (${response.status}).`);
-      const data = await response.json();
+      const publish = data => {
+        if (syncExplorerSession() && generation === explorerGeneration) {
+          if (explorerCache.size >= 100 && !explorerCache.has(key)) explorerCache.delete(explorerCache.keys().next().value);
+          explorerCache.set(key,JSON.stringify(data));
+        }
+      };
+      const data = source === 'player' ? await readExplorerStream(response,publish) : await response.json();
       if (!Array.isArray(data.moves)) throw new Error('Unexpected opening database response.');
       if (explorerCache.size >= 100) explorerCache.delete(explorerCache.keys().next().value);
       if (syncExplorerSession() && generation === explorerGeneration) explorerCache.set(key,JSON.stringify(data));
     }).catch(error => {
+      if (error.name === 'AbortError') { if (generation === explorerGeneration) explorerCache.delete(key); return; }
       if (generation === explorerGeneration && (!explorerRetryAt || Date.now() >= explorerRetryAt)) explorerCache.set(key,JSON.stringify({error:error.name==='TimeoutError'?'Request timed out. Retry when ready.':error instanceof TypeError?'Could not load opening data. Check your connection and retry.':error.message}));
     }).finally(()=>{explorerBusy=false;});
   }
   return '';
+};
+window.ironwoodExplorerRefresh = () => {
+  syncExplorerSession();
+  // An active stream already receives updates; do not restart indexing while queued.
+  for (const [key,value] of explorerCache)
+    if (new URL(key).pathname === '/player' && !JSON.parse(value).indexing) explorerCache.delete(key);
 };
 window.ironwoodExplorerRetry = () => { for (const [key,value] of explorerCache) if (JSON.parse(value).error) explorerCache.delete(key); };
 const STORE_NAME = 'games';

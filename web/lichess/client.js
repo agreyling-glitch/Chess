@@ -43,7 +43,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
   let eventStream = null, gameStream = null, seekStream = null, game = null;
   let tail = Promise.resolve(), pendingMove = false, outgoing = [];
   let sessionController = new AbortController();
-  const state = { connected: false, account: '', status: 'Sign in to play on Lichess',
+  const state = { connected: false, account: '', profile: null, status: 'Sign in to play on Lichess',
     seeking: false, challenges: [], outgoing: [], games: [], chat: [], game: null };
   const publish = () => emit({ type: 'lobby', ...state, outgoing: [...outgoing] });
   const headers = () => ({ Authorization: `Bearer ${token}` });
@@ -244,7 +244,9 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     try {
       const user = await api('/api/account', null, 'GET');
       if (session !== generation) return;
-      account = user; state.account = user.username; state.status = 'Connecting to Lichess…'; publish();
+      account = user; state.account = user.username;
+      state.profile = { count: user.count || {}, perfs: user.perfs || {}, playTime: user.playTime || {} };
+      state.status = 'Connecting to Lichess…'; publish();
       const playing = await api('/api/account/playing', null, 'GET');
       if (session !== generation) return;
       state.games = playing.nowPlaying || [];
@@ -264,7 +266,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     sessionController.abort(); sessionController = new AbortController();
     eventStream = gameStream = seekStream = null; token = ''; account = null; game = null;
     pendingMove = false; outgoing = [];
-    Object.assign(state, { connected: false, account: '', seeking: false, challenges: [], outgoing: [],
+    Object.assign(state, { connected: false, account: '', profile: null, seeking: false, challenges: [], outgoing: [],
       games: [], chat: [], game: null, opponentGone: null, status: 'Disconnected from Lichess' }); publish();
   }
   async function seek(options) {

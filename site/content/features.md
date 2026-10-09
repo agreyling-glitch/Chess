@@ -1,6 +1,7 @@
 ---
+seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-08T00:00:00-05:00
+lastmod: 2026-10-09T00:00:00-05:00
 description: "Analyze with Stockfish, explore pawn structure, piece mobility, king safety, and tactical patterns, and play in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -14,7 +15,7 @@ url: "/features/"
 
 Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through Lichess-Online; no separate API token is needed. Signing out clears access and cached results.
 
-Explore common continuations in **Game Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
+Explore common continuations in **Game Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Choose **My games** or **Player** for personal opening history, filter by player color, speed, and month range, see the player’s wins, draws, and losses at the displayed position, and import matching recent completed games for local analysis. Lichess indexes player games on demand; Ironwood shows indexing progress and lets you refresh the statistics afterward. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
 
 ## Understand pawn structure
 
@@ -58,7 +59,7 @@ The map provides geometric clues without requiring an engine analysis run. A can
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among five piece sets: System, Cburnett, Merida, Royal Rascals, and Undead Court. A dark board frame with gold coordinates and piece shadows are on by default; move animation and sounds add feedback for moves, captures, and checks.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among eight 2D piece sets: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, and Art Deco Faceted. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. move animation and sounds add feedback for moves, captures, and checks.
 
 ## Type your moves
 
@@ -66,9 +67,23 @@ Start typing during your turn and a translucent overlay shows the move. Enter pl
 
 The workspace places **Game Moves** to the left of the live board, **Real-Time Analysis** immediately to its right, and **Game Analysis** on the far right. Resize the side panels to suit your display. The White/Black balance bar follows the board height, and engine predictions use a compact scrolling table with separate White and Black columns.
 
+## Focus on the board
+
+Click the focus icon beside **Flip board** or press **Shift+Enter** when you are not editing text. The board expands while menus, move lists, analysis panels, floating tools, and the status bar are hidden. Player names, clocks, results, captured pieces, coordinates, and essential board controls remain visible. Focus mode works in 2D and 3D. Real-time position analysis pauses while focused; engine play, online clocks, and full-game analysis continue. Press **Escape**, **Shift+Enter**, or the focus icon to restore the workspace. [Focus mode](/help/playing-a-game/#focus-on-the-board).
+
 ## Choose a 2D or 3D board
 
-Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with previews of all five 2D piece sets and the Marble, Wood, Glass, Art Deco, and Egyptian 3D themes. Click a card to apply it and switch board views. The 3D appearance and radial-light controls remain under Board. Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with previews of all eight 2D piece sets and the Marble, Wood, Glass, Art Deco, and Egyptian 3D themes. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+
+## Make each theme your own
+
+Classic Staunton pairs its pieces with cream and walnut squares. Neon Geometric uses navy squares and cyan coordinates; Art Deco Faceted uses jade and teal with gold accents. The palettes follow the theme in the live board, chooser previews, and copied board images.
+
+Open a theme card’s **gear** or **View → Board → Theme adjustments…** to customize it. Changes apply immediately and save separately for each theme on this device. **Reset this theme** restores only that theme’s defaults.
+
+For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
+
+The 3D dialog groups size with height, then provides side colors, material finishes, shadows, overall appearance, and radial lighting. Contrasting outlines are limited to 2D. See [Board themes and appearance](/help/board-themes/) for the available controls.
 
 ## Meet opponents online
 
@@ -80,7 +95,11 @@ Correspondence games stay ongoing while you return to the lobby, play another ga
 
 During active Lichess play, **Game Analysis** becomes **Game chat**. Resign, abort, draw, takeback, and claim controls are available below the board, in the lobby, and under **Game**, subject to Lichess's rules. Analysis remains available while connected to the lobby and returns when a game ends; finished games save locally. **Leave online play** keeps your authorization for reconnecting, while **Sign out** revokes it. [Playing on Lichess](/help/play-on-lichess/).
 
+After **Connected**, the Lichess status bar shows your username, total games, overall wins/draws/losses, and time-control ratings. Hover for rated-game counts, puzzle statistics, and playing time. Provisional ratings carry a question mark; unrated categories show a dash. [Lichess profile statistics](/help/play-on-lichess/#profile-statistics-in-the-status-bar).
+
 Connect to the Free Internet Chess Server (FICS) as a guest or sign in with an existing account. Browse available games, seek an unrated opponent with your chosen time and increment, challenge a specific player, and respond to incoming challenges. Live boards and clocks follow the server. Finished games are saved on this device for later review and analysis.
+
+The FICS status bar shows your handle and Lightning, Blitz, and Standard ratings. Hover for category records, rated-game totals, rating deviation, and best ratings when available. Statistics refresh at sign-in and after a game finishes; guest accounts are labeled separately. [FICS account statistics](/help/online-play/#fics-account-statistics).
 
 ## Watch live games
 

@@ -33,3 +33,12 @@ test('FICS move rows yield SAN without elapsed times', () => {
   assert.deepEqual(parseFicsMoveRow('  2.  Nf3     (0:03)'), ['Nf3']);
   assert.equal(parseFicsMoveRow('Move  White  Black'), null);
 });
+
+
+test('finger rating rows preserve category records, RD, and missing ratings', async()=>{
+  const {parseFicsRating} = await import('../web/fics/protocol.js');
+  assert.deepEqual(parseFicsRating('Blitz 1910 75.3 28 10 2 40 1936 (01-Jun-95)'),{category:'blitz',rating:'1910',rd:75.3,wins:28,losses:10,draws:2,total:40,best:1936});
+  assert.equal(parseFicsRating('Lightning ---- 350.0 0 0 0 0').rating,'----');
+  assert.equal(parseFicsRating('Standard 1500P 100.2 1 2 0 3').rating,'1500P');
+  assert.equal(parseFicsRating('Alice tells you: Blitz 1910 75.3 28 10 2 40'),null);
+});

@@ -1,4 +1,5 @@
 ---
+lastmod: 2026-10-09T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -93,3 +94,8 @@ Connecting your account or browsing the lobby leaves local position analysis and
 Leaving the Play page or closing the app stops that page's live connection; it does not end your game on Lichess. Live clocks and correspondence deadlines continue. When you return, open the lobby to resume an ongoing game.
 
 The [Lichess Board API documentation](https://lichess-org.github.io/api/#tag/Board) describes supported time controls and game actions.
+
+
+## Profile statistics in the status bar
+
+After **Connected**, the bottom status bar shows your username, total games, overall wins/draws/losses, and Bullet, Blitz, Rapid, Classical, and Correspondence ratings. Hover over the summary for rated-game counts, puzzle statistics, and playing time. Ratings with `?` are provisional; `—` means no rating has been established in that category. Casual games count toward your overall record but do not establish a rated time-control rating. Statistics are fetched at sign-in or account reconnect and cleared when you disconnect.

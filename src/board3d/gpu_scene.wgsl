@@ -25,18 +25,19 @@ struct SceneOutput {
 @group(0) @binding(5) var white_normal: texture_2d<f32>;
 @group(0) @binding(6) var black_normal: texture_2d<f32>;
 @group(0) @binding(7) var texture_sampler: sampler;
-@group(0) @binding(8) var<uniform> camera_adjustment: vec4<f32>;
+struct Adjustments { camera: vec4<f32>, white: vec4<f32>, black: vec4<f32>, options: vec4<f32> };
+@group(0) @binding(8) var<uniform> adjustments: Adjustments;
 
-@vertex fn scene_vertex(input: SceneInput) -> SceneOutput {
+fn project_vertex(input: SceneInput) -> SceneOutput {
     var out: SceneOutput;
     let original_depth = input.screen_depth_mode.z;
     // Zoom moves the eye along the unchanged view direction. The projected
     // x/y numerator stays fixed; only perspective depth changes.
-    let depth = original_depth + camera_adjustment.x;
+    let depth = original_depth + adjustments.camera.x;
     let ndc = vec2<f32>(input.screen_depth_mode.x * 2.0 - 1.0, 1.0 - input.screen_depth_mode.y * 2.0);
     // Match Camera::screen_center, including its upward board offset.
     // Only the displacement from this pivot scales with perspective depth.
-    let pivot = vec2<f32>(0.0, camera_adjustment.w);
+    let pivot = vec2<f32>(0.0, adjustments.camera.w);
     out.clip = vec4<f32>((ndc - pivot) * original_depth + pivot * depth, depth - 0.1, depth);
     out.uv = input.uv;
     out.color = input.color;
@@ -48,8 +49,20 @@ struct SceneOutput {
     return out;
 }
 
+@vertex fn scene_vertex(input: SceneInput) -> SceneOutput { return project_vertex(input); }
+
+// Expand the projected silhouette, then cover its interior with the normal pass.
+@vertex fn outline_vertex(input: SceneInput, @builtin(instance_index) instance: u32) -> SceneOutput {
+    var out = project_vertex(input);
+    let directions = array<vec2<f32>,8>(vec2<f32>(1.,0.),vec2<f32>(-1.,0.),vec2<f32>(0.,1.),vec2<f32>(0.,-1.),vec2<f32>(0.707,0.707),vec2<f32>(-0.707,0.707),vec2<f32>(0.707,-0.707),vec2<f32>(-0.707,-0.707));
+    out.clip.x += directions[instance].x * adjustments.options.w * out.clip.w;
+    out.clip.y += directions[instance].y * adjustments.options.w * out.clip.w;
+    out.mode += 4u;
+    return out;
+}
+
 fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool, board: bool) -> vec2<f32> {
-    let wood = u32(camera_adjustment.z) == 1u;
+    let wood = u32(adjustments.camera.z) == 1u;
     let wood_board = wood && board;
     let key = normalize(select(select(vec3<f32>(-0.55, 1.0, 0.75), vec3<f32>(-0.25, 1.0, 0.05), wood), vec3<f32>(0.0, 1.0, 0.0), wood_board));
     let fill = normalize(vec3<f32>(0.8, 0.55, -0.35));
@@ -69,7 +82,7 @@ fn lighting(normal: vec3<f32>, world: vec3<f32>, black: bool, board: bool) -> ve
 }
 
 fn appearance_strength() -> f32 {
-    return clamp((camera_adjustment.y - 0.5) * 2.0, -1.0, 1.0);
+    return clamp((adjustments.camera.y - 0.5) * 2.0, -1.0, 1.0);
 }
 
 fn appearance_color(color: vec3<f32>) -> vec3<f32> {
@@ -79,7 +92,37 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     return clamp((color - vec3<f32>(0.42)) * contrast + vec3<f32>(0.42 + brightness), vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn piece_look(original: vec3<f32>, input: SceneOutput, lit: vec2<f32>) -> vec3<f32> {
+    if (input.mode < 2u || input.mode > 3u) { return original; }
+    let custom = adjustments.white.w > 0.5;
+    var color = original;
+    if (custom) { color = select(adjustments.white.rgb,adjustments.black.rgb,input.mode == 3u) * lit.x; }
+    let finish = u32(adjustments.options.x);
+    if (finish > 0u || custom) {
+        var factor = 1.0;
+        if (finish == 1u) { factor = 0.0; }
+        if (finish == 2u) { factor = 0.35; }
+        if (finish == 3u) { factor = 1.5; }
+        if (finish == 4u) { factor = 2.2; }
+        if (finish == 5u) { factor = 1.8; }
+        if (!custom) { color = max(color - vec3<f32>(lit.y/255.0),vec3<f32>(0.0)); }
+        color += vec3<f32>(lit.y*factor/255.0);
+        if (finish == 4u) { color = mix(color, color*color*1.3, 0.25); }
+        if (finish == 5u) {
+            let view = normalize(vec3<f32>(0.0,13.0,11.0)-input.world);
+            let rim = pow(1.0-abs(dot(normalize(input.normal),view)),2.5);
+            color = color*0.8 + vec3<f32>(rim*0.25);
+        }
+    }
+    return clamp(color,vec3<f32>(0.0),vec3<f32>(1.0));
+}
+
 @fragment fn scene_fragment(input: SceneOutput) -> @location(0) vec4<f32> {
+    if (input.mode == 6u || input.mode == 7u) {
+        let base = select(select(vec3<f32>(0.95),vec3<f32>(0.1),input.mode == 7u),select(adjustments.white.rgb,adjustments.black.rgb,input.mode == 7u),adjustments.white.w > 0.5);
+        let color = select(vec3<f32>(0.04),vec3<f32>(0.92),dot(base,vec3<f32>(0.2126,0.7152,0.0722)) < 0.5);
+        return vec4<f32>(color,1.0);
+    }
     if (input.mode == 5u) {
         let radial = 2.0 * input.uv - vec2<f32>(1.0);
         let alpha = 0.55 * pow(max(1.0 - dot(radial, radial), 0.0), 2.0);
@@ -88,7 +131,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     }
     if (input.mode == 4u) {
         let radius_sq = dot(2.0 * input.uv - vec2<f32>(1.0), 2.0 * input.uv - vec2<f32>(1.0));
-        let alpha = 0.34 * pow(max(1.0 - radius_sq, 0.0), 2.0);
+        let alpha = min(0.85, 0.34 * adjustments.options.y * pow(max(1.0 - radius_sq, 0.0), 1.0 + (1.0-adjustments.options.z)*2.0));
         if (alpha <= 0.001) { discard; }
         return vec4<f32>(0.0, 0.0, 0.0, alpha);
     }
@@ -108,7 +151,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         map = textureSampleLevel(black_normal, texture_sampler, input.uv, 0.0).rgb;
     }
     let mapped = map * 2.0 - vec3<f32>(1.0);
-    let theme = u32(camera_adjustment.z);
+    let theme = u32(adjustments.camera.z);
     let normal = select(normalize(base_normal * max(mapped.z, 0.1) + tangent * mapped.x * strength + bitangent * mapped.y * strength),
         base_normal, theme >= 3u && input.mode >= 2u);
     let lit = lighting(normal, input.world, input.mode == 3u, input.mode == 1u);
@@ -119,7 +162,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         let rim_color = select(vec3<f32>(0.48, 0.52, 0.54), vec3<f32>(0.50, 0.24, 0.41), input.mode == 3u);
         let color = min(tint * (0.42 + 0.25 * lit.x) + rim_color * rim
             + vec3<f32>(lit.y * 1.5 / 255.0), vec3<f32>(0.98));
-        return vec4<f32>(appearance_color(color), 1.0);
+        return vec4<f32>(appearance_color(piece_look(color,input,lit)), select(1.0,0.78,adjustments.options.x == 5.0 && input.mode >= 2u));
     }
     if (input.mode == 1u) {
         let marble = textureSampleLevel(board_diff, texture_sampler, input.uv, 0.0).rgb;
@@ -131,13 +174,13 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         let base = select(select(marble, quiet_wood, theme == 1u),
             marble * vec3<f32>(0.40, 0.52, 0.63) + vec3<f32>(0.08, 0.14, 0.19), theme == 2u);
         let color = min(base * lit.x + vec3<f32>(lit.y * gloss / 255.0), vec3<f32>(230.0 / 255.0));
-        return vec4<f32>(appearance_color(color), 1.0);
+        return vec4<f32>(appearance_color(piece_look(color,input,lit)), select(1.0,0.78,adjustments.options.x == 5.0 && input.mode >= 2u));
     }
     if (theme >= 3u) {
         let paint = select(textureSampleLevel(white_diff, texture_sampler, input.uv, 0.0).rgb,
             textureSampleLevel(black_diff, texture_sampler, input.uv, 0.0).rgb, input.mode == 3u);
         let color = min(paint * lit.x + vec3<f32>(lit.y * 0.6 / 255.0), vec3<f32>(0.98));
-        return vec4<f32>(appearance_color(color), 1.0);
+        return vec4<f32>(appearance_color(piece_look(color,input,lit)), select(1.0,0.78,adjustments.options.x == 5.0 && input.mode >= 2u));
     }
     if (theme == 1u) {
         let wood = select(textureSampleLevel(white_diff, texture_sampler, input.uv, 0.0).rgb,
@@ -145,7 +188,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
         let scale = select(vec3<f32>(0.99, 0.98, 0.96), vec3<f32>(0.72, 0.74, 0.76), input.mode == 3u);
         let lift = select(6.0, 3.0, input.mode == 3u) / 255.0;
         let color = min((wood * scale + vec3<f32>(lift)) * lit.x + vec3<f32>(lit.y * 0.35 * (1.0 + 0.75 * appearance_strength()) / 255.0), vec3<f32>(245.0 / 255.0));
-        return vec4<f32>(appearance_color(color), 1.0);
+        return vec4<f32>(appearance_color(piece_look(color,input,lit)), select(1.0,0.78,adjustments.options.x == 5.0 && input.mode >= 2u));
     }
     var detail = 0.0;
     var ceiling = 230.0 / 255.0;
@@ -158,7 +201,7 @@ fn appearance_color(color: vec3<f32>) -> vec3<f32> {
     let brightness = (0.78 + 0.22 * clamp(detail, 0.0, 1.35)) * lit.x;
     let specular = lit.y * (1.0 + 0.75 * appearance_strength());
     let color = min(input.color.rgb * brightness + vec3<f32>(specular, specular * 0.97, specular * 0.93) / 255.0, vec3<f32>(ceiling));
-    return vec4<f32>(appearance_color(color), 1.0);
+    return vec4<f32>(appearance_color(piece_look(color,input,lit)), select(1.0,0.78,adjustments.options.x == 5.0 && input.mode >= 2u));
 }
 
 struct BlitOutput { @builtin(position) clip: vec4<f32>, @location(0) uv: vec2<f32> };

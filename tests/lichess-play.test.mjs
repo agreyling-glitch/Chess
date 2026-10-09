@@ -265,3 +265,15 @@ test('computer variants and custom FEN are sent without forcing standard or a cl
   await assert.rejects(f.client.challengeAi({ level: 2, variant: 'fromPosition' }), /FEN/);
 });
 
+
+
+test('profile statistics share the account request and are cleared on disconnect',async t=>{
+  const f = fixture(); t.after(()=>f.client.disconnect());
+  const profile = {count:{all:13,win:3,draw:0,loss:10,rated:0},perfs:{rapid:{games:0,rating:1500,prov:true}},playTime:{total:5640}};
+  f.replies.set('/api/account',()=>json({id:'alice',username:'Alice',...profile,profile:{bio:'not needed'}}));
+  await f.client.connect('secret'); await tick();
+  assert.deepEqual(f.client.snapshot().profile,profile);
+  assert.equal(f.calls.filter(c=>c.path === '/api/account').length,1);
+  f.client.disconnect();
+  assert.equal(f.client.snapshot().profile,null);
+});
