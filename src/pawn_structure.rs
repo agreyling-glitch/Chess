@@ -400,17 +400,17 @@ fn pawn_board(ui: &mut egui::Ui, sides: &[Structure; 2], feature: usize) {
 
 fn pawn_count(ui: &mut egui::Ui, title: &str, count: usize) {
     ui.allocate_ui_with_layout(
-        Vec2::new(92.0, 18.0),
+        Vec2::new(92.0, 16.0),
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
             ui.add_sized(
-                [58.0, 18.0],
-                egui::Label::new(RichText::new(title).strong()).halign(egui::Align::Min),
+                [58.0, 16.0],
+                egui::Label::new(RichText::new(title).size(13.0).strong()).halign(egui::Align::Min),
             );
             ui.add_sized(
-                [22.0, 18.0],
-                egui::Label::new(RichText::new(count.to_string()).monospace().strong())
+                [22.0, 16.0],
+                egui::Label::new(RichText::new(count.to_string()).size(13.0).monospace().strong())
                     .halign(egui::Align::Max),
             );
         },
@@ -422,11 +422,11 @@ fn pawn_details(ui: &mut egui::Ui, sides: &[Structure; 2]) {
         egui::Frame::new()
             .fill(Color32::from_rgb(25, 30, 36))
             .corner_radius(6.0)
-            .inner_margin(12.0)
+            .inner_margin(8.0)
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
                 ui.set_width(ui.available_width());
-                ui.label(RichText::new(*name).size(15.0).strong());
+                ui.label(RichText::new(*name).size(14.0).strong());
                 for (title, count, detail) in [
                     (
                         "Chains",
@@ -447,11 +447,11 @@ fn pawn_details(ui: &mut egui::Ui, sides: &[Structure; 2]) {
                 ] {
                     if ui.available_width() < 220.0 {
                         pawn_count(ui, title, count);
-                        ui.add(egui::Label::new(detail).wrap());
+                        ui.add(egui::Label::new(RichText::new(detail).size(13.0)).wrap());
                     } else {
                         ui.horizontal_top(|ui| {
                             pawn_count(ui, title, count);
-                            ui.add(egui::Label::new(detail).wrap());
+                            ui.add(egui::Label::new(RichText::new(detail).size(13.0)).wrap());
                         });
                     }
                 }

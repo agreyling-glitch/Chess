@@ -1,15 +1,21 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-09T00:00:00-05:00
-description: "Analyze with Stockfish, explore pawn structure, piece mobility, king safety, and tactical patterns, and play in 2D or 3D."
+lastmod: 2026-10-10T00:00:00-05:00
+description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
 ---
 
 ## Analyze without limits
 
-**No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries. Use **Print analysis** beside **Expand** to open a printable report with player accuracy, move quality, game phases, critical-position diagrams, engine lines, and your written notes. Choose **Save as PDF** in your browser's Print dialog to keep or share the analysis.
+**No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
+
+## Print and share a complete review
+
+Use **Print analysis** beside **Expand** to open a report with player accuracy, move quality, game phases, critical-position diagrams, and engine lines. **Your notes and drawings** brings your written notes, manual annotation symbols, and board drawings into the same report. Positions with arrows, shapes, or ghost pieces receive annotated diagrams even when they are outside the engine’s critical-position list. Starting-position annotations are included too.
+
+Pause or stop full-game analysis before printing. Choose **Save as PDF** in your browser’s Print dialog to keep or share the report. [Saving and sharing analysis](/help/saving-and-sharing/).
 
 ## Explore opening choices
 
@@ -19,7 +25,7 @@ Explore common continuations in **Game Analysis → Opening Explorer**, with Mas
 
 ## Understand pawn structure
 
-Open **Pawn Structure** below the Game Analysis graph to highlight chains, isolated pawns, and passed pawns. A pawn diagram sits beside separate White and Black counts and square lists. Follow pawn changes in an aligned evolution table with ten visible rows and click a row to inspect its position. These insights work without waiting for engine analysis. [Using Pawn Structure](/help/positional-insights/#pawn-structure).
+Open **Pawn Structure** below the Game Analysis graph to highlight chains, isolated pawns, and passed pawns. A pawn diagram sits beside compact White and Black panels with counts and square lists. Follow pawn changes in an aligned evolution table with ten visible rows and click a row to inspect its position. These insights work without waiting for engine analysis. [Using Pawn Structure](/help/positional-insights/#pawn-structure).
 
 ## Compare piece mobility
 
@@ -27,7 +33,7 @@ Open **Piece Mobility**, select a piece, and optionally compare a second. Click 
 
 ## Inspect king safety
 
-Open **King Safety** for separate White and Black assessments with explanations of pawn shelter, nearby pawn-open files, and enemy pressure. Choose a king to highlight its shelter and attacked neighborhood on the diagram, then use the ten-row safety timeline to explore changes. Low-material endgames allow for useful king activity instead of penalizing missing shelter alone. These structural assessments complement the engine evaluation. [Using King Safety](/help/positional-insights/#king-safety).
+Open **King Safety** for compact White and Black assessments with explanations of pawn shelter, nearby pawn-open files, and enemy pressure. Choose a king to highlight its shelter and attacked neighborhood on the diagram, then use the ten-row safety timeline to explore changes. Low-material endgames allow for useful king activity instead of penalizing missing shelter alone. These structural assessments complement the engine evaluation. [Using King Safety](/help/positional-insights/#king-safety).
 
 ## Train against an adaptive opponent
 
@@ -37,35 +43,39 @@ Create a local profile in **Training vs AI** and start at a 1320 training rating
 
 Record your plans, questions, and lessons with a personal note on any move or the starting position, without running analysis. Open the translucent **Notes** window from the document icon above the board. The **Note** tab follows the displayed position; **Start** shows the starting note while you keep the board on the current move. The title identifies the move in notation and plain language, such as **Notes: Nxb5 (Knight to B5)**.
 
-Double-click the note text to edit, or double-click **No note for this position.** to add a note. You can also double-click a move in **Game Moves** to open its note editor directly. Expand **All notes** to browse every note in the game; click an entry to view it or double-click to edit. Drag the window by its title and resize it to suit your workspace. Notes also appear beside analysis details in the expanded graph and in printed reports.
+Double-click the note text to edit, or double-click **No note for this position.** to add a note. You can also double-click a move in **Game Moves** to open its note editor directly. Expand **All notes** to browse every note in the game; click an entry to view it or double-click to edit. Drag the window by its title and resize it to suit your workspace. Notes also appear beside analysis details in the expanded graph and in printed reports. Game Moves marks written notes in gold and drawings in blue; moves with both show both indicators. Hover a move to see its note and drawing count.
 
 Add your own move-quality symbols—`!`, `!!`, `!?`, `?!`, `?`, or `??`—and position assessments from **Add annotation…** in the move's right-click menu. Choose one symbol from each group, change the selection, or clear it. Your gold symbols stay separate from Stockfish's assessments, so you can explain your own reasoning in a note. See [Taking notes and adding annotations](/help/taking-notes/) for instructions.
 
 ## Illustrate plans on the board
 
-Open **Draw on board** with the pencil icon above the board, to the left of Notes. Its translucent floating window keeps drawing tools out of Game Moves. Choose green, red, yellow, or blue, then mark squares or circles with solid or dotted outlines, or draw solid, dashed, and curved arrows on either board view.
+Open **Draw on board** with the pencil icon above the board, to the left of Notes. Its translucent floating window opens tall enough for the controls on a typical desktop screen, with matching button sizes and aligned columns. Choose **green, red, yellow, blue, black, or white**. Mark squares with solid or dotted outlines, circles, translucent filled squares, or crosses. Filled squares keep pieces visible; crosses can mark targets or squares to avoid.
 
-While holding left-click to draw an arrow, tap right-click to switch between solid and dashed lines or reverse a curve’s direction. Expand **Drawings** to change an individual drawing’s color or starting and ending squares, or delete it. Use **Clear** to remove the position’s drawings, and the undo icon or **Ctrl+Z** to undo additions, edits, deletions, or Clear. Drawings belong to individual positions and reappear when you return to them.
+Draw solid, dashed, or curved arrows, or choose an **L-shaped knight arrow** with a solid or dashed line. Knight arrows follow the longer leg first and keep their bend aligned with the board in 3D. While holding left-click to draw, tap right-click to switch solid/dashed straight or knight arrows, or reverse a curve’s direction.
 
-The header’s slide control enables or disables drawing; closing the window returns to playing moves. Drag the title to reposition the window and resize it vertically to give the scrolling list more room. Alt-click and Alt-drag shortcuts remain available. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for the full controls.
+Add **ghost pieces** to illustrate possible placements without changing the real position or engine analysis. Choose a White or Black piece symbol, then click a square to place a translucent ghost in the selected color. Repeat the same piece and color on that square to remove it. Ghosts work in both board views; in 3D they remain flat symbols over the square.
 
-Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood preserves drawing styles with its own PGN extension; other chess programs may display simpler arrows or square outlines. **Copy Annotated Board to Clipboard** captures personal drawings and their styles in the active 2D or 3D view. Plain PGN omits personal annotations.
+Expand **Drawings** to edit a drawing’s color and squares or delete it. **Clear**, the undo icon, and **Ctrl+Z** cover additions, replacements, edits, deletions, and clearing. Each position keeps its own drawings. The window’s slide control enables or disables drawing; closing it returns to playing moves. Alt-click and Alt-drag shortcuts remain available. [Drawing arrows and highlighting squares](/help/drawing-on-the-board/).
+
+Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood’s PGN extensions preserve shape and arrow styles and colored ghost pieces; other chess programs may simplify styles or ignore ghosts. **Copy Annotated Board to Clipboard** captures the selected position’s drawings and any displayed Stockfish recommendation arrow in the active 2D or 3D view. Printed analysis also includes personal annotations. Plain PGN omits them.
 
 ## Explore tactical patterns
 
 Open **Tactical Map** from the bullseye beside the **2D/3D** button. Its translucent floating window lists newly exposed pieces, absolute pins, and legal fork candidates, with color-coded **Danger**, **Pins**, and **Forks** filters and counts. Select a finding to highlight its squares and trace attack lines on the board; select it again to clear the overlay. Drag its title to reposition the map, or resize the window alongside your notes and drawing tools.
 
-The map provides geometric clues without requiring an engine analysis run. A candidate is not a proven material win: use Stockfish to check the opponent’s replies. Tactical Map is available for review and analysis and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for its scope and controls.
+Enable **Attack vs Defense** to see two numbered bubbles on every real piece in the **2D board**: red at the top-left counts enemy attackers, and green at the top-right counts friendly defenders. Zeros are shown, and the counts update as you review moves or flip the board. Closing Tactical Map hides the bubbles. The option is available in its window, with a prompt to switch to 2D when using a 3D board.
+
+Counts describe geometric control, including pinned pieces; pawns count diagonal attacks, sliding attacks respect blockers, and a piece does not defend itself. Ghost pieces do not affect the counts. The map provides geometric clues without requiring an engine analysis run. A candidate is not a proven material win: use Stockfish to check the opponent’s replies. Tactical Map is available for review and analysis and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for its scope and controls.
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among eight 2D piece sets: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, and Art Deco Faceted. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. move animation and sounds add feedback for moves, captures, and checks.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among eight 2D piece sets: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, and Art Deco Faceted. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
 
 ## Type your moves
 
 Start typing during your turn and a translucent overlay shows the move. Enter plays it, Backspace edits, and Escape cancels. Type `e4`, `nc3`, captures, castling, or promotions; lowercase piece letters and coordinate notation such as `e2e4` work too. Illegal moves stay visible for correction. Keyboard entry follows normal turn and clock rules and works in local, training, and online games. [Keyboard move input and shortcuts](/help/keyboard-input/).
 
-The workspace places **Game Moves** to the left of the live board, **Real-Time Analysis** immediately to its right, and **Game Analysis** on the far right. Resize the side panels to suit your display. The White/Black balance bar follows the board height, and engine predictions use a compact scrolling table with separate White and Black columns.
+The workspace places **Game Moves** to the left of the live board, **Real-Time Analysis** immediately to its right, and **Game Analysis** on the far right. Resize the side panels to suit your display. The White/Black balance bar follows the board height, and engine predictions use a black scrolling table with separate White and Black columns and navigation controls inside the table, matching Game Moves. Analysis controls sit to the left above the graph, with gold Expand and Print analysis buttons on the right.
 
 ## Focus on the board
 
@@ -84,6 +94,14 @@ Open a theme card’s **gear** or **View → Board → Theme adjustments…** to
 For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
 
 The 3D dialog groups size with height, then provides side colors, material finishes, shadows, overall appearance, and radial lighting. Contrasting outlines are limited to 2D. See [Board themes and appearance](/help/board-themes/) for the available controls.
+
+## Personalize the app background
+
+Open **View → Background…** for a dedicated settings window. Choose **Gradient Only**, the built-in **Default** Ironwood knight artwork, or **Uploaded Image**; the selected mode is highlighted in gold. Upload PNG, JPEG, or WebP images, switch between your saved uploads, and remove images you no longer want. Upload and remove controls appear for the uploaded-image option.
+
+Adjust image opacity, background gradient strength, and the 3D backdrop independently. A translucent 3D backdrop reveals the app background while the board and real pieces remain opaque. The app background has a subtle paper texture, and the expanded analysis view uses translucent panels with a more opaque lower details area for readability.
+
+First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background opacity**. Returning users retain their saved choices. Changes apply immediately; uploaded backgrounds and preferences stay on this device. [Background settings](/help/board-and-view/#app-background).
 
 ## Meet opponents online
 
@@ -142,11 +160,11 @@ Moves, game details, and the photo save locally so you can stop and return to th
 
 ## Build your library
 
-Saved Games keeps My Games, Training games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+Saved Games keeps My Games, Training games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
 
 ## Keep control of your data
 
-Ironwood saves games and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
+Ironwood saves games, personal annotations, uploaded backgrounds, and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
 
 ## Device and browser compatibility
 

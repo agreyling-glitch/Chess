@@ -37,6 +37,14 @@ fn attacks(board: &Board, from: Square, to: Square) -> bool {
 fn controllers(board: &Board, target: Square, color: Color) -> usize {
     ALL_SQUARES.iter().filter(|&&s| board.color_on(s) == Some(color) && attacks(board, s, target)).count()
 }
+
+/// Counts other pieces geometrically controlling each occupied square.
+pub fn attack_defense_counts(board: &Board) -> Vec<(Square, usize, usize)> {
+    ALL_SQUARES.iter().filter_map(|&square| {
+        let owner = board.color_on(square)?;
+        Some((square, controllers(board, square, !owner), controllers(board, square, owner)))
+    }).collect()
+}
 fn piece_name(piece: Piece) -> &'static str {
     match piece { Piece::Pawn => "pawn", Piece::Knight => "knight", Piece::Bishop => "bishop", Piece::Rook => "rook", Piece::Queen => "queen", Piece::King => "king" }
 }
@@ -101,6 +109,19 @@ pub fn detect(board: &Board, previous: Option<&Board>) -> Vec<Finding> {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    #[test]
+    fn attack_defense_counts_include_other_controllers_and_blocked_rays() {
+        let board = Board::from_str("3r3k/8/3p4/2p1p3/3P4/4PN2/8/4K3 w - - 0 1").unwrap();
+        let counts = attack_defense_counts(&board);
+        assert!(counts.contains(&(Square::D4, 2, 2)));
+        assert!(counts.contains(&(Square::H8, 0, 1))
+            && counts.contains(&(Square::E3, 0, 0)));
+        assert_eq!(counts.len(), 9);
+        let pinned = Board::from_str("k3r3/8/8/8/8/8/4R3/3QK3 w - - 0 1").unwrap();
+        // The king and queen defend the pinned rook; the enemy rook attacks it.
+        assert!(attack_defense_counts(&pinned).contains(&(Square::E2, 1, 2)));
+    }
+
     #[test]
     fn finds_absolute_pin_but_not_a_blocked_ray() {
         let board = Board::from_str("k3r3/8/8/8/8/8/4R3/4K3 w - - 0 1").unwrap();

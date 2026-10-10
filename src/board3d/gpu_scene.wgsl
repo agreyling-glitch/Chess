@@ -218,10 +218,10 @@ struct BlitOutput { @builtin(position) clip: vec4<f32>, @location(0) uv: vec2<f3
 @group(0) @binding(0) var rendered_board: texture_2d<f32>;
 @group(0) @binding(1) var rendered_sampler: sampler;
 @fragment fn blit_fragment(input: BlitOutput) -> @location(0) vec4<f32> {
-    let encoded = textureSampleLevel(rendered_board, rendered_sampler, input.uv, 0.0).rgb;
-    return vec4<f32>(encoded, 1.0);
+    let encoded = textureSampleLevel(rendered_board, rendered_sampler, input.uv, 0.0);
+    return encoded;
 }
 @fragment fn blit_fragment_srgb(input: BlitOutput) -> @location(0) vec4<f32> {
-    let encoded = textureSampleLevel(rendered_board, rendered_sampler, input.uv, 0.0).rgb;
-    return vec4<f32>(pow(encoded, vec3<f32>(2.2)), 1.0);
+    let encoded = textureSampleLevel(rendered_board, rendered_sampler, input.uv, 0.0);
+    return vec4<f32>(pow(encoded.rgb, vec3<f32>(2.2)), encoded.a);
 }

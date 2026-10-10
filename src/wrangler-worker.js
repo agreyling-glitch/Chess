@@ -40,13 +40,10 @@ export default {
 
     const headers = new Headers(response.headers);
     for (const [name, value] of Object.entries(ISOLATION_HEADERS)) headers.set(name, value);
-    if (
-      (url.hostname === "127.0.0.1" || url.hostname === "localhost") &&
-      !url.pathname.startsWith("/engine/")
-    ) {
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") {
       headers.set("Cache-Control", "no-store");
     }
-    if (url.pathname.startsWith("/engine/")) {
+    if (url.pathname.startsWith("/engine/") && url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
       headers.set("Cache-Control", "public, max-age=31536000, immutable");
     }
     if (url.pathname === "/app-version.json" || url.pathname === "/service-worker.js") {

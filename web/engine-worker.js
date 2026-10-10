@@ -17,6 +17,10 @@ onmessage = ({ data }) => {
       return;
     }
     const engineWasm = new URL('./engine/stockfish-19.wasm', self.location.href);
+    // Local previews can be restarted mid-download; never reuse a partial HTTP entry.
+    if (['localhost', '127.0.0.1'].includes(engineWasm.hostname)) {
+      engineWasm.searchParams.set('local', Date.now().toString());
+    }
     engine = new Worker(`./engine/stockfish-19.js#${encodeURIComponent(engineWasm.href)}`);
     engine.onerror = event => postMessage({ type: 'error', message: `Stockfish worker failed: ${event.message}` });
     const progressChannel = new MessageChannel();

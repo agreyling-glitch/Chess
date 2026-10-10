@@ -1,10 +1,20 @@
 // Paint personal board markings above the pieces, independently of engine arrows.
 export function paintDrawings(context, drawings = [], cell = 128) {
-  const colors = { G: '#4ac474', R: '#eb5852', Y: '#f5cd48', B: '#5397ef' };
+  const colors = { G: '#4ac474', R: '#eb5852', Y: '#f5cd48', B: '#5397ef', K: '#000000', W: '#ffffff' };
   for (const drawing of drawings) {
     const color = colors[drawing.color];
     if (!color || ![drawing.from, drawing.to].every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))) continue;
     const [x1, y1] = drawing.from, [x2, y2] = drawing.to;
+    if (/^ghost-[wb][PNBRQK]$/.test(drawing.style || '')) {
+      const glyphs = { wP:'♙',wN:'♘',wB:'♗',wR:'♖',wQ:'♕',wK:'♔',bP:'♟',bN:'♞',bB:'♝',bR:'♜',bQ:'♛',bK:'♚' };
+      context.save(); context.globalAlpha = .5;
+      context.font = `${cell * .85}px "DejaVu Sans","Segoe UI Symbol",serif`;
+      context.textAlign = 'center'; context.textBaseline = 'middle';
+      context.fillStyle = color;
+      context.strokeStyle = drawing.color === 'K' ? '#fff' : '#171717'; context.lineWidth = 1.5;
+      context.strokeText(glyphs[drawing.style.slice(6)], x1, y1);
+      context.fillText(glyphs[drawing.style.slice(6)], x1, y1); context.restore(); continue;
+    }
     context.save();
     context.strokeStyle = context.fillStyle = color;
     context.lineWidth = Math.max(3, cell * .06);
@@ -14,6 +24,18 @@ export function paintDrawings(context, drawings = [], cell = 128) {
       const dotted = drawing.style?.startsWith('dotted');
       if (dotted) { context.lineCap = 'round'; context.setLineDash([0, context.lineWidth * 2.8]); }
       const points = drawing.outline;
+      if (drawing.style === 'filled-square' || drawing.style === 'cross') {
+        const corners = points?.length === 4 ? points : [[x1-cell*.43,y1-cell*.43],[x1+cell*.43,y1-cell*.43],[x1+cell*.43,y1+cell*.43],[x1-cell*.43,y1+cell*.43]];
+        if (drawing.style === 'filled-square') {
+          context.globalAlpha = .25; context.moveTo(...corners[0]);
+          for (const point of corners.slice(1)) context.lineTo(...point);
+          context.closePath(); context.fill();
+        } else {
+          context.moveTo(...corners[0]); context.lineTo(...corners[2]);
+          context.moveTo(...corners[1]); context.lineTo(...corners[3]); context.stroke();
+        }
+        context.restore(); continue;
+      }
       if (points?.length >= 4 && points.every(p => p.length === 2 && p.every(Number.isFinite))) {
         context.moveTo(...points[0]);
         for (const point of points.slice(1)) context.lineTo(...point);
@@ -26,17 +48,19 @@ export function paintDrawings(context, drawings = [], cell = 128) {
       const length = Math.hypot(x2 - x1, y2 - y1);
       const dx = (x2 - x1) / length, dy = (y2 - y1) / length;
       const bend = drawing.style === 'curve-left' ? .35 : drawing.style === 'curve-right' ? -.35 : 0;
-      const control = [(x1+x2)/2 - dy*length*bend, (y1+y2)/2 + dx*length*bend];
+      const knight = ['knight', 'knight-dashed'].includes(drawing.style) && x1 !== x2 && y1 !== y2;
+      const control = knight ? (drawing.corner || (Math.abs(x2-x1) >= Math.abs(y2-y1) ? [x2,y1] : [x1,y2])) : [(x1+x2)/2 - dy*length*bend, (y1+y2)/2 + dx*length*bend];
       const tangentLength = Math.hypot(x2-control[0], y2-control[1]);
       const tx = (x2-control[0])/tangentLength, ty = (y2-control[1])/tangentLength;
       const tip = [x2 - tx * cell * .12, y2 - ty * cell * .12];
       const base = [tip[0] - tx * cell * .28, tip[1] - ty * cell * .28];
-      if (drawing.style === 'dashed') context.setLineDash([cell*.20,cell*.13]);
+      if (['dashed', 'knight-dashed'].includes(drawing.style)) context.setLineDash([cell*.20,cell*.13]);
       context.moveTo(x1, y1);
-      if (bend) context.quadraticCurveTo(...control,...base);
+      if (knight) { context.lineTo(...control); context.lineTo(...base); }
+      else if (bend) context.quadraticCurveTo(...control,...base);
       else context.lineTo(...base);
       context.stroke();
-      if (drawing.style === 'dashed') context.setLineDash([]);
+      if (['dashed', 'knight-dashed'].includes(drawing.style)) context.setLineDash([]);
       context.beginPath(); context.moveTo(...tip);
       context.lineTo(base[0] - ty * cell * .14, base[1] + tx * cell * .14);
       context.lineTo(base[0] + ty * cell * .14, base[1] - tx * cell * .14);

@@ -1,4 +1,5 @@
 ---
+lastmod: 2026-10-10T00:00:00-05:00
 title: "Taking notes and adding annotations"
 description: "Add Starting notes, record thoughts on individual moves, and use annotation symbols to review and share your games."
 category: "using-ironwood"
@@ -18,7 +19,7 @@ Double-click a move in **Game Moves** to open its note editor directly, whether 
 
 For example, a note after `Nf3` could say: “Develop the knight before moving the queen. Next, prepare castling.” The note belongs to that displayed position, so include the move or plan you mean when describing an earlier decision.
 
-The translucent Notes window follows the board as you step through the game. Drag it to reposition it, resize it, or close it with its close button or the Notes icon. Long notes scroll within the panel. Moves with notes have a small note marker; selecting the move displays its note. Double-click the note text to edit it. Hover **Note** for “Position Note” or **Start** for “Starting Note.”
+The translucent Notes window follows the board as you step through the game. Drag it to reposition it, resize it, or close it with its close button or the Notes icon. Long notes scroll within the panel. Moves with notes have a small gold note marker; drawings have a separate blue drawing icon, and moves with both show both indicators; selecting the move displays its note. Double-click the note text to edit it. Hover **Note** for “Position Note” or **Start** for “Starting Note.”
 
 The title identifies the note’s position with the move and a plain-language description, for example **Notes: Nxb5 (Knight to B5)**. The note editor uses the same title style. The starting note is titled **Notes: Starting position**.
 
@@ -80,7 +81,7 @@ The text forms above keep the symbols readable with Ironwood's fonts. Annotated 
 
 ## Draw arrows and highlight squares
 
-Click the **pencil icon** to the left of Notes above the board to open the separate translucent **Draw on board** window. Choose colored squares, circles, or arrows to illustrate the displayed position. Keyboard users can also use Alt-click or Alt-drag. Drawings stay attached to their positions and are preserved in saved games, annotated PGN, and Analysis JSON.
+Click the **pencil icon** to the left of Notes above the board to open the separate translucent **Draw on board** window. Choose colored square outlines, circles, filled squares, crosses, ghost pieces, or arrows to illustrate the displayed position. Keyboard users can also use Alt-click or Alt-drag. Tactical Map’s Attack vs Defense bubbles are automatic, temporary counts rather than personal drawings. Drawings stay attached to their positions and are preserved in saved games, annotated PGN, and Analysis JSON.
 
 See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for shape and arrow styles, right-click switching while dragging, editing individual drawings, undo, and shortcuts.
 
@@ -91,7 +92,7 @@ Notes and manual annotations stay with saved games on this device. To share or b
 - **Annotated PGN** includes notes, manual annotations, and supported engine analysis. Ironwood can restore its own exported notes and standard main-line NAGs when importing the file.
 - **Analysis JSON** preserves notes and manual annotations alongside Ironwood's analysis data.
 - **Plain PGN** contains the game record without your notes, manual symbols, or engine analysis.
-- **Printed analysis reports** include your written notes in the **Your notes** section.
+- **Printed analysis reports** include your written notes, manual annotation symbols, and board drawings in **Your notes and drawings**. Positions with drawings include board diagrams, even when the engine has not marked them as critical.
 
 Check your notes before sharing an annotated file or report, since your writing is included. Notes in another program's ordinary PGN comments are not automatically converted into Ironwood move notes.
 

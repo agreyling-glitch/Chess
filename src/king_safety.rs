@@ -286,20 +286,21 @@ fn content(
                     egui::Frame::new()
                         .fill(Color32::from_rgb(25, 30, 36))
                         .corner_radius(6.0)
-                        .inner_margin(12.0)
+                        .inner_margin(8.0)
                         .show(ui, |ui| {
                             ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing.y = 3.0;
                             ui.label(
                                 RichText::new(format!("{name} · {}", value.king))
-                                    .size(15.0)
+                                    .size(14.0)
                                     .strong(),
                             );
                             ui.colored_label(
                                 value.assessment.color(),
-                                RichText::new(value.assessment.label()).size(17.0).strong(),
+                                RichText::new(value.assessment.label()).size(15.0).strong(),
                             );
                             for reason in reasons(value) {
-                                ui.add(egui::Label::new(reason).wrap());
+                                ui.add(egui::Label::new(RichText::new(reason).size(13.0)).wrap());
                             }
                         });
                 }

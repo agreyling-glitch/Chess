@@ -1316,10 +1316,11 @@ fn rasterize(
                         let radius_sq = (2.0 * u - 1.0).powi(2) + (2.0 * v - 1.0).powi(2);
                         let alpha = 0.55 * (1.0 - radius_sq).max(0.0).powi(2);
                         let previous = image.pixels[index];
-                        Color32::from_rgb(
+                        Color32::from_rgba_premultiplied(
                             (previous.r() as f32 * (1.0 - alpha) + tri.color.r() as f32 * alpha) as u8,
                             (previous.g() as f32 * (1.0 - alpha) + tri.color.g() as f32 * alpha) as u8,
                             (previous.b() as f32 * (1.0 - alpha) + tri.color.b() as f32 * alpha) as u8,
+                            (previous.a() as f32 * (1.0 - alpha) + 255.0 * alpha) as u8,
                         )
                     } else if let Some(uv) = tri.shadow_uv {
                         let u = (w0 * reciprocal[0] * uv[0][0]
@@ -1336,10 +1337,11 @@ fn rasterize(
                             continue;
                         }
                         let previous = image.pixels[index];
-                        Color32::from_rgb(
+                        Color32::from_rgba_premultiplied(
                             (previous.r() as f32 * (1.0 - alpha)) as u8,
                             (previous.g() as f32 * (1.0 - alpha)) as u8,
                             (previous.b() as f32 * (1.0 - alpha)) as u8,
+                            (previous.a() as f32 * (1.0 - alpha) + 255.0 * alpha) as u8,
                         )
                     } else if let Some((uv, side)) = tri.texture {
                         // Divide by interpolated reciprocal depth to keep the texture attached
@@ -1502,13 +1504,14 @@ fn rasterize(
                     } else {
                         let alpha = tri.color.a() as f32 / 255.0;
                         let previous = image.pixels[index];
-                        Color32::from_rgb(
+                        Color32::from_rgba_premultiplied(
                             (previous.r() as f32 * (1.0 - alpha) + tri.color.r() as f32 * alpha)
                                 as u8,
                             (previous.g() as f32 * (1.0 - alpha) + tri.color.g() as f32 * alpha)
                                 as u8,
                             (previous.b() as f32 * (1.0 - alpha) + tri.color.b() as f32 * alpha)
                                 as u8,
+                            (previous.a() as f32 * (1.0 - alpha) + 255.0 * alpha) as u8,
                         )
                     };
                     if adjustments.outline { silhouettes[index] = tri.texture.and_then(|(_,side)| side); }

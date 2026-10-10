@@ -14,6 +14,8 @@ const ENGINE_URLS = [
   '/engine/stockfish-19.wasm',
 ];
 const SHELL_URLS = [
+  '/background-image.js',
+  '/brand/ironwood-background-no-ring.png',
   '/device-support.js',
   '/',
   '/play/',
@@ -187,6 +189,10 @@ self.addEventListener('fetch', event => {
   if (url.pathname === '/engine/stockfish-19.js') return;
 
   if (url.pathname.startsWith('/engine/')) {
+    if (LOCAL_DEVELOPMENT) {
+      event.respondWith(fetch(request, { cache: 'no-store' }));
+      return;
+    }
     event.respondWith(caches.open(ENGINE_CACHE).then(async cache =>
       (await cache.match(request, { ignoreSearch: true })) || fetch(request)
     ));

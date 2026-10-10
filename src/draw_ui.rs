@@ -47,6 +47,15 @@ impl ChessApp {
         }
     }
 
+    pub(super) fn paint_square_mark(painter: &egui::Painter, points: Vec<egui::Pos2>, stroke: Stroke, style: &str) {
+        if style == "filled-square" {
+            painter.add(egui::Shape::convex_polygon(points, Color32::from_rgba_unmultiplied(stroke.color.r(), stroke.color.g(), stroke.color.b(), 65), Stroke::NONE));
+        } else if style == "cross" && points.len() == 4 {
+            painter.line_segment([points[0],points[2]], stroke);
+            painter.line_segment([points[1],points[3]], stroke);
+        } else { Self::paint_shape_outline(painter, points, stroke, style.starts_with("dotted")); }
+    }
+
     pub(super) fn paint_shape_outline(painter: &egui::Painter, points: Vec<egui::Pos2>, stroke: Stroke, dotted: bool) {
         if points.len() < 2 { return; }
         if !dotted { painter.add(egui::Shape::closed_line(points, stroke)); return; }
@@ -70,7 +79,33 @@ impl ChessApp {
         ctx.data(|d| d.get_temp::<String>(egui::Id::new("drawing_arrow_style"))).unwrap_or_default()
     }
 
+    pub(super) fn knight_corner(from: Square, to: Square) -> Square {
+        let dx = from.get_file().to_index().abs_diff(to.get_file().to_index());
+        let dy = from.get_rank().to_index().abs_diff(to.get_rank().to_index());
+        if dx >= dy { Square::make_square(from.get_rank(), to.get_file()) }
+        else { Square::make_square(to.get_rank(), from.get_file()) }
+    }
+
+    pub(super) fn paint_knight_arrow(painter: &egui::Painter, source: egui::Pos2, corner: egui::Pos2, destination: egui::Pos2, cell: f32, color: Color32, dashed: bool) {
+        let tangent = (destination - corner).normalized();
+        let normal = Vec2::new(-tangent.y, tangent.x);
+        let tip = destination - tangent * cell * 0.12;
+        let base = tip - tangent * cell * 0.28;
+        let stroke = Stroke::new((cell * 0.07).clamp(2.0,7.0), color);
+        if dashed {
+            painter.extend(egui::Shape::dashed_line(&[source, corner, base], stroke, (cell * 0.20).max(4.0), (cell * 0.13).max(2.0)));
+        } else { painter.add(egui::Shape::line(vec![source, corner, base], stroke)); }
+        painter.add(egui::Shape::convex_polygon(vec![tip, base + normal * cell * 0.14, base - normal * cell * 0.14], color, Stroke::NONE));
+    }
+
     pub(super) fn paint_styled_arrow(painter: &egui::Painter, source: egui::Pos2, destination: egui::Pos2, cell: f32, color: Color32, style: &str) {
+        if matches!(style, "knight" | "knight-dashed") && source.x != destination.x && source.y != destination.y {
+            let corner = if (destination.x-source.x).abs() >= (destination.y-source.y).abs() {
+                egui::pos2(destination.x, source.y)
+            } else { egui::pos2(source.x, destination.y) };
+            Self::paint_knight_arrow(painter, source, corner, destination, cell, color, style == "knight-dashed");
+            return;
+        }
         let direction = (destination - source).normalized();
         let normal = Vec2::new(-direction.y, direction.x);
         let bend = match style { "curve-left" => 0.35, "curve-right" => -0.35, _ => 0.0 };
@@ -112,7 +147,7 @@ impl ChessApp {
         if index >= marks.len() { return Err("Drawing unavailable."); }
         let shape = marks[index].from == marks[index].to;
         if shape != (mark.from == mark.to) { return Err("An arrow needs two different squares."); }
-        if marks.iter().enumerate().any(|(i, m)| i != index && m.from == mark.from && m.to == mark.to) {
+        if marks.iter().enumerate().any(|(i, m)| i != index && m.from == mark.from && m.to == mark.to && m.ghost_glyph().is_some() == mark.ghost_glyph().is_some()) {
             return Err("A drawing already uses those squares.");
         }
         if marks[index] != mark {
@@ -152,15 +187,15 @@ impl ChessApp {
                     ui.push_id((position, index), |ui| {
                         let mut mark = original.clone();
                         let shape = mark.from == mark.to;
-                        let name = if shape {
-                            match mark.style.as_str() { "circle" => "Circle", "dotted-circle" => "Dotted circle", "dotted-square" => "Dotted square", _ => "Square" }
+                        let name = if mark.ghost_glyph().is_some() { "Ghost piece" } else if shape {
+                            match mark.style.as_str() { "circle" => "Circle", "dotted-circle" => "Dotted circle", "dotted-square" => "Dotted square", "filled-square" => "Filled square", "cross" => "Cross", _ => "Square" }
                         } else {
-                            match mark.style.as_str() { "dashed" => "Dashed arrow", "curve-left" => "Curve left", "curve-right" => "Curve right", _ => "Arrow" }
+                            match mark.style.as_str() { "dashed" => "Dashed arrow", "curve-left" => "Curve left", "curve-right" => "Curve right", "knight" => "Knight move", "knight-dashed" => "Dashed knight move", _ => "Arrow" }
                         };
                         Frame::new().fill(Color32::from_rgba_unmultiplied(33, 42, 55, 190))
                             .corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(8)).show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new(format!("{} · {name}", index + 1)).strong().color(Self::board_mark_color(mark.color)));
+                                    ui.label(RichText::new(format!("{} · {name} {}", index + 1, mark.ghost_glyph().map(|g| g.to_string()).unwrap_or_default())).strong().color(Self::board_mark_color(mark.color)));
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if ui.small_button("Delete").on_hover_text("Delete this drawing").clicked() {
                                             delete_index = Some(index);
@@ -168,10 +203,10 @@ impl ChessApp {
                                     });
                                 });
                                 ui.horizontal_wrapped(|ui| {
-                                    let color_name = |c| match c { 'R' => "Red", 'Y' => "Yellow", 'B' => "Blue", _ => "Green" };
+                                    let color_name = |c| match c { 'R' => "Red", 'Y' => "Yellow", 'B' => "Blue", 'K' => "Black", 'W' => "White", _ => "Green" };
                                     egui::ComboBox::from_id_salt("color").width(64.0).selected_text(RichText::new(color_name(mark.color)).color(Self::board_mark_color(mark.color)))
                                         .show_ui(ui, |ui| {
-                                            for color in ['G', 'R', 'Y', 'B'] {
+                                            for color in ['G', 'R', 'Y', 'B', 'K', 'W'] {
                                                 ui.selectable_value(&mut mark.color, color, RichText::new(color_name(color)).color(Self::board_mark_color(color)));
                                             }
                                         });
@@ -237,9 +272,9 @@ impl ChessApp {
             .inner_margin(Margin::same(14)).corner_radius(CornerRadius::same(12))
             .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 195, 230, 100)));
         let mut close = false;
-        egui::Window::new("Draw on board").id(egui::Id::new("draw_window"))
+        egui::Window::new("Draw on board").id(egui::Id::new("draw_window_tall"))
             .open(&mut open).frame(frame).default_pos(egui::pos2(112.0, 220.0))
-            .default_width(320.0).default_height(280.0)
+            .default_width(320.0).default_height(540.0)
             .min_width(320.0).max_width(320.0).min_height(120.0)
             .vscroll(true).resizable([false, true]).collapsible(false).title_bar(false)
             .show(ctx, |ui| {
@@ -283,44 +318,60 @@ impl ChessApp {
                         close = ui.add(egui::Button::new(RichText::new("×").size(18.0)).frame(false)).on_hover_text("Close drawing tools").clicked();
                     });
                 });
+                let control_size = Vec2::new((ui.available_width() - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
                 ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width() - 240.0) * 0.5).max(0.0));
-                    for (color, name) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow"), ('B', "Blue")] {
-                        let response = ui.add(egui::Button::new("").selected(self.board_mark_color == color).min_size(Vec2::new(54.0, 42.0)))
+                    for (color, name) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow"), ('B', "Blue"), ('K', "Black"), ('W', "White")] {
+                        let response = ui.add_sized(control_size, egui::Button::new("").selected(self.board_mark_color == color))
                             .on_hover_text(name);
                         ui.painter().circle_filled(response.rect.center(), 10.0, Self::board_mark_color(color));
+                        if color == 'K' { ui.painter().circle_stroke(response.rect.center(), 10.0, Stroke::new(1.0, Color32::GRAY)); }
                         if self.board_mark_color == color { ui.painter().circle_stroke(response.rect.center(), 13.0, Stroke::new(1.5, Color32::WHITE)); }
                         if response.clicked() { self.board_mark_color = color; self.board_mark_drag = None; }
                         response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, self.board_mark_color == color, name));
                     }
                 });
+                let ghost_id = egui::Id::new("draw_ghost_piece");
+                let mut ghost = ctx.data(|d| d.get_temp::<String>(ghost_id)).unwrap_or_default();
                 let tool_id = egui::Id::new("draw_tool_arrow");
                 let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
                 let mut shape_style = Self::drawing_shape_style(ctx);
                 ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width() - 240.0) * 0.5).max(0.0));
-                    for (value, label) in [("", "Solid square"), ("dotted-square", "Dotted square"), ("circle", "Solid circle"), ("dotted-circle", "Dotted circle")] {
-                        let response = ui.add(egui::Button::new("").selected(!arrow && shape_style == value).min_size(Vec2::new(54.0, 42.0))).on_hover_text(label);
+                    for (value, label) in [("", "Solid square"), ("dotted-square", "Dotted square"), ("circle", "Solid circle"), ("dotted-circle", "Dotted circle"), ("filled-square", "Filled square"), ("cross", "Cross")] {
+                        let response = ui.add_sized(control_size, egui::Button::new("").selected(ghost.is_empty() && !arrow && shape_style == value)).on_hover_text(label);
                         let points = Self::shape_points(response.rect.center(), 26.0, value.contains("circle"));
-                        Self::paint_shape_outline(ui.painter(), points, Stroke::new(2.0, Self::board_mark_color(self.board_mark_color)), value.starts_with("dotted"));
-                        if response.clicked() { shape_style = value.to_owned(); arrow = false; self.board_mark_mode = true; self.board_mark_drag = None; }
+                        Self::paint_square_mark(ui.painter(), points, Stroke::new(2.0, Self::board_mark_color(self.board_mark_color)), value);
+                        if response.clicked() { ghost.clear(); shape_style = value.to_owned(); arrow = false; self.board_mark_mode = true; self.board_mark_drag = None; }
                         response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, !arrow && shape_style == value, label));
                     }
                 });
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("drawing_shape_style"), shape_style));
                 let mut style = Self::drawing_arrow_style(ctx);
                 ui.horizontal(|ui| {
-                    ui.add_space(((ui.available_width() - 240.0) * 0.5).max(0.0));
-                    for (value, label) in [("", "Solid"), ("dashed", "Dashed"), ("curve-left", "Curve left"), ("curve-right", "Curve right")] {
-                        let response = ui.add(egui::Button::new("").selected(arrow && style == value).min_size(Vec2::new(54.0, 42.0))).on_hover_text(label);
+                    for (value, label) in [("", "Solid"), ("dashed", "Dashed"), ("curve-left", "Curve left"), ("curve-right", "Curve right"), ("knight", "Knight move (L-shaped)"), ("knight-dashed", "Dashed knight move")] {
+                        let response = ui.add_sized(control_size, egui::Button::new("").selected(ghost.is_empty() && arrow && style == value)).on_hover_text(label);
                         let rect = response.rect.shrink(8.0);
                         Self::paint_styled_arrow(ui.painter(), rect.left_bottom(), rect.right_top(), 22.0, Self::board_mark_color(self.board_mark_color), value);
-                        if response.clicked() { style = value.to_owned(); arrow = true; self.board_mark_mode = true; self.board_mark_drag = None; }
+                        if response.clicked() { ghost.clear(); style = value.to_owned(); arrow = true; self.board_mark_mode = true; self.board_mark_drag = None; }
                         response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, arrow && style == value, label));
                     }
                 });
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("drawing_arrow_style"), style));
                 ctx.data_mut(|d| d.insert_temp(tool_id, arrow));
+                ui.separator();
+                ui.label(RichText::new("Ghost pieces").strong());
+                ui.label(RichText::new("Choose a piece, then click a square. Click again to remove.").small().weak());
+                for (side, glyphs) in [("w", ['♙','♘','♗','♖','♕','♔']), ("b", ['♟','♞','♝','♜','♛','♚'])] {
+                    ui.horizontal(|ui| {
+                        for (piece, glyph) in ['P','N','B','R','Q','K'].into_iter().zip(glyphs) {
+                            let value = format!("ghost-{side}{piece}");
+                            if ui.add_sized(control_size, egui::Button::new(RichText::new(glyph).size(26.0).color(Self::board_mark_color(self.board_mark_color))).selected(ghost == value))
+                                .on_hover_text(format!("{} ghost {}", if side == "w" { "White" } else { "Black" }, match piece { 'P'=>"pawn", 'N'=>"knight", 'B'=>"bishop", 'R'=>"rook", 'Q'=>"queen", _=>"king" })).clicked() {
+                                ghost = value; self.board_mark_mode = true; self.board_mark_drag = None;
+                            }
+                        }
+                    });
+                }
+                ctx.data_mut(|d| d.insert_temp(ghost_id, ghost));
                 self.drawn_shapes_list(ui);
             });
         if close { open = false; }
@@ -332,6 +383,50 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn filled_squares_and_crosses_roundtrip_and_print() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 *");
+        for (style, square) in [("filled-square", "d5"), ("cross", "f5")] {
+            app.toggle_board_mark(1, BoardMark { style: style.into(), color: 'R', from: square.into(), to: square.into() });
+        }
+        let pgn = app.annotated_pgn();
+        let mut restored = ChessApp::new(&context);
+        restored.load_pgn(&pgn);
+        assert_eq!(restored.board_marks, app.board_marks);
+        let svg = ChessApp::report_drawings(&app.board_marks[1], 1);
+        assert!(svg.contains("fill-opacity=\"0.25\""));
+        assert!(svg.contains("M507,307 L593,393 M593,307 L507,393"));
+    }
+
+    #[test]
+    fn knight_arrows_use_board_axes_and_roundtrip() {
+        let from = Square::from_str("d4").unwrap();
+        for (destination, corner) in [("e6","d6"),("c6","d6"),("e2","d2"),("c2","d2"),
+            ("f5","f4"),("f3","f4"),("b5","b4"),("b3","b4")] {
+            assert_eq!(ChessApp::knight_corner(from, Square::from_str(destination).unwrap()).to_string(), corner);
+        }
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 *");
+        let mark = BoardMark { style: "knight".into(), color: 'W', from: "g1".into(), to: "f3".into() };
+        app.toggle_board_mark(1, mark.clone());
+        let pgn = app.annotated_pgn();
+        let mut restored = ChessApp::new(&context);
+        restored.load_pgn(&pgn);
+        assert_eq!(restored.board_marks[1], vec![mark.clone()]);
+        let svg = ChessApp::report_drawings(&[mark], 1);
+        assert!(svg.contains("M650,750 L650,550 L"));
+        let dashed = BoardMark { style: "knight-dashed".into(), color: 'B', from: "b1".into(), to: "c3".into() };
+        app.toggle_board_mark(1, dashed.clone());
+        restored.load_pgn(&app.annotated_pgn());
+        assert!(restored.board_marks[1].contains(&dashed));
+        let svg = ChessApp::report_drawings(&[dashed], 1);
+        assert!(svg.contains("M150,750 L150,550 L"));
+        assert!(svg.contains("stroke-dasharray=\"20 13\""));
+    }
+
     #[test]
     fn undo_restores_edits_deletion_clear_and_keeps_positions_separate() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
@@ -461,7 +556,7 @@ mod tests {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
         app.load_pgn("1. e4 *");
-        for style in ["dashed", "curve-left", "curve-right"] {
+        for style in ["dashed", "curve-left", "curve-right", "knight", "knight-dashed"] {
             let mark = BoardMark { color: 'B', from: "e2".into(), to: "e4".into(), style: style.into() };
             app.toggle_board_mark(1, mark.clone());
             assert_eq!(app.board_marks[1], vec![mark.clone()]);

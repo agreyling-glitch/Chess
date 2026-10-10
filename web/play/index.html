@@ -142,6 +142,7 @@
       await import('/position-editor/editor.js');
       await import('/scoresheet-import.js');
       await import(localDevelopment ? `/board-clipboard.js?v=${Date.now()}` : '/board-clipboard.js');
+      await import(localDevelopment ? `/background-image.js?v=${Date.now()}` : '/background-image.js');
       const packageToken = localDevelopment ? Date.now() : null;
       const packageUrl = packageToken ? `/pkg/battle_chess.js?v=${packageToken}` : '/pkg/battle_chess.js';
       const { default: init, export_saved_game, validate_scoresheet_pgn, preview_scoresheet } = await import(packageUrl);

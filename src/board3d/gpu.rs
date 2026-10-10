@@ -478,7 +478,7 @@ impl Gpu {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: scene.target_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -617,7 +617,7 @@ impl CallbackTrait for Scene {
                         r: c.r() as f64 / 255.0,
                         g: c.g() as f64 / 255.0,
                         b: c.b() as f64 / 255.0,
-                        a: 1.0,
+                        a: c.a() as f64 / 255.0,
                     }),
                     store: wgpu::StoreOp::Store,
                 },

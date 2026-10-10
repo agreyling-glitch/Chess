@@ -96,6 +96,17 @@ impl ChessApp {
             });
         });
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("tactical_filters"), filters));
+        let count_id = egui::Id::new("tactical_attack_defense");
+        let mut show_counts = ui.ctx().data(|d| d.get_temp::<bool>(count_id)).unwrap_or(false);
+        if ui.checkbox(&mut show_counts, "Attack vs Defense").on_hover_text(
+            "Red at top left: enemy attackers. Green at top right: friendly defenders. Counts include pinned pieces; they describe geometric control, not legal captures."
+        ).changed() { ui.ctx().request_repaint(); }
+        ui.ctx().data_mut(|d| d.insert_temp(count_id, show_counts));
+        if show_counts {
+            ui.label(RichText::new(if self.board_3d_active {
+                "Switch to 2D to see attacker and defender counts."
+            } else { "Red left: attackers · Green right: defenders (including pinned pieces)." }).size(12.0).color(muted));
+        }
         let selection = egui::Id::new("tactical_selection");
         let mut selected = ui.ctx().data(|d| d.get_temp::<String>(selection)).unwrap_or_default();
         let visible: Vec<_> = findings.iter().filter(|f| filters[Self::tactical_filter(f.kind)]).collect();
@@ -155,6 +166,32 @@ impl ChessApp {
     }
     pub(super) fn paint_tactical_map(&self, ui: &egui::Ui, rect: egui::Rect) {
         if !self.tactical_available() || !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_enabled"))).unwrap_or(false) { return; }
+        if !self.board_3d_active && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_attack_defense"))).unwrap_or(false) {
+            type Counts = (Board, Vec<(Square, usize, usize)>);
+            let cache_id = egui::Id::new("tactical_counts_cache");
+            let cached = ui.ctx().data(|d| d.get_temp::<Counts>(cache_id));
+            let counts = if let Some((_, counts)) = cached.filter(|(board, _)| *board == self.board) {
+                counts
+            } else {
+                let counts = crate::tactical::attack_defense_counts(&self.board);
+                ui.ctx().data_mut(|d| d.insert_temp(cache_id, (self.board, counts.clone())));
+                counts
+            };
+            let cell = rect.width() / 8.0;
+            let radius = (cell * 0.13).clamp(5.0, 12.0).min(cell * 0.20);
+            let inset = radius + 2.0;
+            let painter = ui.painter().with_clip_rect(rect);
+            for (square, attackers, defenders) in counts {
+                let center = rect.min + Self::square_screen_offset(square, self.flipped, cell);
+                for (count, x, color) in [(attackers, -cell * 0.5 + inset, Color32::from_rgb(185,43,43)),
+                    (defenders, cell * 0.5 - inset, Color32::from_rgb(30,125,67))] {
+                    let pos = center + Vec2::new(x, -cell * 0.5 + inset);
+                    painter.circle_filled(pos, radius, color);
+                    painter.circle_stroke(pos, radius, Stroke::new(1.0, Color32::from_white_alpha(180)));
+                    painter.text(pos, Align2::CENTER_CENTER, count, FontId::proportional(radius * 1.35), Color32::WHITE);
+                }
+            }
+        }
         let filters = ui.ctx().data(|d| d.get_temp::<[bool; 3]>(egui::Id::new("tactical_filters"))).unwrap_or([true; 3]);
         let selected = ui.ctx().data(|d| d.get_temp::<String>(egui::Id::new("tactical_selection"))).unwrap_or_default();
         let cell = rect.width() / if self.board_3d_active { 9.0 } else { 8.0 };

@@ -1,8 +1,9 @@
 ---
 title: "Tactical Map"
-description: "Explore changes in danger, absolute pins, and legal fork candidates on the board."
+description: "Inspect danger, pins, and forks, and show attacker and defender counts on every piece in 2D."
 category: "analysis"
-keywords: [tactics, tactical map, danger, pins, forks, threats]
+lastmod: 2026-10-10T00:00:00-05:00
+keywords: [attack vs defense, attackers, defenders, bubbles, counts, 2D, tactics, tactical map, danger, pins, forks, threats]
 weight: 18
 ---
 
@@ -20,6 +21,17 @@ The header contains **Danger**, **Pins**, and **Forks** filter buttons with coun
 
 Select a finding card to outline its relevant squares and trace attack lines. Select the same card again to clear the selection. A fork card identifies the candidate’s starting and destination squares, for example **Fork candidate · d1 to d7**; its description names the targets. Selecting it illustrates the candidate without playing the move.
 
+## Attack vs Defense
+
+Enable **Attack vs Defense** in the Tactical Map window to show two numbered bubbles on every real piece in the **2D board**:
+
+- **Red, top-left:** the number of enemy pieces attacking its square.
+- **Green, top-right:** the number of other friendly pieces defending its square.
+
+Zero counts are shown too. The bubbles update as you change positions and stay in the same screen corners when you flip the board. They disappear when you close Tactical Map or disable the option. In 3D, switch to 2D to see them.
+
+Counts describe geometric control, including pinned pieces and kings controlling adjacent squares. Sliding pieces are blocked by intervening pieces; pawns count diagonal attacks, not forward moves. A piece does not defend itself. These counts do not prove a legal capture or a winning exchange, and ghost annotations do not count as pieces.
+
 ## What the findings mean
 
 - **Danger** compares the displayed position with the previous move. It identifies surviving pieces on the same squares that are attacked and have gained attackers or lost defenders. Coral outlines mark these pieces.
@@ -32,6 +44,6 @@ These are geometric clues, not engine-confirmed wins. Attack and defender counts
 
 ## When the map is available
 
-The map is hidden during rated training games, active online play, best-move exercises, and prediction previews. Its controls are temporary for the current session. Automatic findings do not alter your saved notes or personal board drawings.
+The map is hidden during rated training games, active online play, best-move exercises, and prediction previews. Attack vs Defense uses the same availability rules. Its toggle and the pattern filters are temporary for the current session; switching positions updates the counts without saving them as annotations. Automatic findings do not alter your saved notes or personal board drawings.
 
 Use [Draw on board](/help/drawing-on-the-board/) to add your own persistent arrows and shapes, or [Notes](/help/taking-notes/) to record what you learned from a position.
