@@ -19,3 +19,4 @@ slug: "2026-10-11-optional-statistics-and-engine-help"
 ## Fixed
 
 - Analysis could stall before searching when Stockfish increased its thread count. Engine workers now finish loading before thread settings are applied.
+- Production now ships the matching patched engine script with the app under a new filename, avoiding an older script from the separate engine host or browser cache.

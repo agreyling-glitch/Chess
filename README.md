@@ -237,7 +237,9 @@ corresponding-source links with published builds.
 
 `npm run engine` copies the pinned Stockfish.js package and applies the GPLv3 glue patch in
 `scripts/stockfish-thread-pool.mjs`. It prepares the supported pthread pool asynchronously
-before applying thread settings, avoiding a synchronous thread-resize stall. The WebAssembly
+before applying thread settings, avoiding a synchronous thread-resize stall. The patched
+JavaScript ships with the app as `stockfish-19-ironwood-pool-v1.js`, so production cannot
+reuse the old glue from the separate engine origin or HTTP cache. The WebAssembly
 engine and NNUE network are unchanged. The adapter rejects an unexpected engine layout;
 review it when upgrading Stockfish. Run `node --test tests/engine-worker.test.mjs` to validate
 the startup handshake and worker-loading barrier.

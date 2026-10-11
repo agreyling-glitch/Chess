@@ -10,7 +10,7 @@ const APP_PACKAGE_URLS = [
   '/pkg/battle_chess_bg.wasm',
 ];
 const ENGINE_URLS = [
-  '/engine/stockfish-19.js',
+  '/engine/stockfish-19-ironwood-pool-v1.js',
   '/engine/stockfish-19.wasm',
 ];
 const SHELL_URLS = [
@@ -189,7 +189,7 @@ self.addEventListener('fetch', event => {
   // Emscripten creates pthread Workers by loading this same script again with
   // a URL fragment. Let the browser's immutable HTTP cache handle that script;
   // replaying it from Cache Storage breaks the nested Worker bootstrap.
-  if (url.pathname === '/engine/stockfish-19.js') return;
+  if (url.pathname === '/engine/stockfish-19.js' || url.pathname === '/engine/stockfish-19-ironwood-pool-v1.js') return;
 
   if (url.pathname.startsWith('/engine/')) {
     if (LOCAL_DEVELOPMENT) {

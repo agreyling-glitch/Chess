@@ -61,6 +61,11 @@ const engineVersion = createHash('sha256')
   .digest('hex')
   .slice(0, 16);
 
+// Ship the patched glue with the app; the separate engine origin owns only
+// the unchanged large WASM. A new filename bypasses old immutable HTTP entries.
+mkdirSync(join(target, 'engine'), { recursive: true });
+cpSync(join(source, 'engine', 'stockfish-19.js'), join(target, 'engine', 'stockfish-19-ironwood-pool-v1.js'));
+
 function hashTree(directory, hash, prefix = '') {
   for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     const path = join(directory, entry.name);

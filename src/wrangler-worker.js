@@ -28,6 +28,8 @@ export default {
       response = new Response(`User-agent: *\nAllow: /\nDisallow: /engine/\nDisallow: /pkg/\nDisallow: /engine-worker.js\n\nSitemap: ${url.origin}/sitemap.xml\n`, {
         headers: { "Content-Type": "text/plain; charset=utf-8" },
       });
+    } else if (url.pathname === "/engine/stockfish-19-ironwood-pool-v1.js") {
+      response = await env.ASSETS.fetch(request);
     } else if (url.pathname.startsWith("/engine/")) {
       if (!env.ENGINE_ORIGIN) {
         return new Response("The full-NNUE engine origin is not configured.", { status: 503 });

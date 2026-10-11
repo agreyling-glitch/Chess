@@ -17,7 +17,7 @@ onmessage = ({ data }) => {
       return;
     }
     const engineWasm = new URL('./engine/stockfish-19.wasm', self.location.href);
-    const engineScript = new URL('./engine/stockfish-19.js', self.location.href);
+    const engineScript = new URL('./engine/stockfish-19-ironwood-pool-v1.js', self.location.href);
     // Local previews can be restarted mid-download; never reuse a partial HTTP entry.
     if (['localhost', '127.0.0.1'].includes(engineWasm.hostname)) {
       engineWasm.searchParams.set('local', Date.now().toString());
