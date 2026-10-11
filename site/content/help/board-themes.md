@@ -1,9 +1,9 @@
 ---
-lastmod: 2026-10-09T00:00:00-05:00
+lastmod: 2026-10-11T00:00:00-05:00
 title: "Board themes and appearance"
 description: "Choose a 2D or 3D theme and customize its pieces, colors, shading, and lighting."
 category: "using-ironwood"
-keywords: [theme, appearance, board colors, gradient, shading, outlines, shadows, 2D, 3D, neon, staunton, art deco]
+keywords: [theme, appearance, board colors, gradient, shading, outlines, shadows, 2D, 3D, hybrid, marble, wood, glass, texture, sand, complement, custom]
 weight: 13
 ---
 
@@ -11,7 +11,7 @@ weight: 13
 
 Open **View → Board → Theme…** to see the 2D and 3D theme cards. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
 
-The eight 2D themes are System (Unicode), Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, and Art Deco Faceted. The three newest themes include coordinated square, frame, and coordinate colors:
+The flat-board themes are System (Unicode), Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. Several themes include coordinated square, frame, and coordinate colors:
 
 | Theme | Board palette |
 | --- | --- |
@@ -32,6 +32,23 @@ With a 3D theme selected:
 - **Scroll the mouse wheel** over the board to zoom in or out.
 
 These controls change your view of the board; they do not move pieces or change the position. They also work in focus mode.
+
+## Hybrid Marble: flat board with 3D pieces
+
+Choose **Hybrid Marble** under **2D boards** for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
+
+Open the Hybrid Marble card's **gear**, or **View → Board → Theme adjustments…**, to customize it:
+
+| Setting | Choices and behavior |
+| --- | --- |
+| **3D piece style** | Marble, Wood, Glass, Art Deco, or Egyptian. Changes the pieces while keeping the board flat. |
+| **Board theme: Complement** | Chooses square colors to suit the piece style. Switching styles updates the palette: Wood uses warm tones, Glass uses cool tones, and the other styles use their coordinated palettes. |
+| **Board theme: Custom** | Shows separate **Light squares** and **Dark squares** color pickers. Changes appear immediately. Switching piece styles while Custom is active keeps those colors. |
+| **Board texture** | Smooth, Marble veins, Wood grain, Linen, Slate, Glass, or Sand. Textures overlay the selected square colors, so they work with both Complement and Custom. |
+
+**Smooth** is flat and untextured. The other textures add beveled edges and soft lighting for depth. Glass adds reflections; Sand adds fine grain. A Glass board texture and Glass pieces are independent choices—you can combine any piece style with any board texture.
+
+The usual flat-board size, side-color, gradient, outline, and shadow controls also apply. Your selected piece style and Hybrid Marble appearance settings are saved on this device. The hybrid styles share one set of appearance adjustments. Copied board images include the selected piece style, square colors, and texture.
 
 ## Adjust one theme
 

@@ -14,6 +14,7 @@ const ENGINE_URLS = [
   '/engine/stockfish-19.wasm',
 ];
 const SHELL_URLS = [
+  '/tablebase.js',
   '/background-image.js',
   '/brand/ironwood-background-no-ring.png',
   '/device-support.js',

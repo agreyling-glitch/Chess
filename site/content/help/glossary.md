@@ -12,6 +12,10 @@ weight: 45
 
 **Depth** — How far ahead Stockfish searched along a line, counted in half-moves. More depth can reveal ideas that a shorter search misses.
 
+**DTZ / DTM** — Tablebase distances in half-moves: distance to zeroing (a pawn move, capture, or mate) and distance to mate. Continuation badges describe the position after the listed move. See [Syzygy endgame tablebases](/help/syzygy-tablebases/).
+
+**Tablebase** — Precomputed endgame results for covered positions. Ironwood's Syzygy tab supports standard positions with seven pieces or fewer and no castling rights. See [Syzygy endgame tablebases](/help/syzygy-tablebases/).
+
 **Evaluation (eval)** — Stockfish's estimate of who stands better. Positive favors White; negative favors Black. See [Evaluation and the graph](/help/evaluation/).
 
 **Elo** — A rating system based on results against other rated players. See [What is Elo?](/help/elo-rating/).

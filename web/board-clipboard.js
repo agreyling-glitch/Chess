@@ -90,32 +90,42 @@ export async function boardImage(fen, options = {}) {
   if (!context) throw new Error('Image rendering is unavailable');
   const margin = options.frame ? 36 : 0;
   const cell = (1024 - margin * 2) / 8;
-  const palette = ({
+  const palette = options.boardPalette || ({
     ClassicStaunton: ['#efe0c2','#8d6744','#31241b','#e8cb9b'],
     NeonGeometric: ['#233151','#18233b','#0c1221','#67e1f3'],
     ArtDecoFaceted: ['#d5dac5','#375b58','#162b2b','#e8c66f'],
   })[options.pieceSet] || ['#cdd6c1','#4c745c','#1c2c25','#d3ad62'];
   context.fillStyle = palette[2]; context.fillRect(0, 0, 1024, 1024);
+  const textureName = [null,'marble','wood','linen','slate','glass','sand'][options.boardTexture || 0];
+  const texture = textureName ? await new Promise((resolve,reject) => {
+    const image = new Image(); image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error('Could not load board texture'));
+    image.src=`/board-textures/${textureName}.svg`;
+  }) : null;
   for (let row = 0; row < 8; row++) for (let col = 0; col < 8; col++) {
     context.fillStyle = (row + col) % 2 ? palette[1] : palette[0];
     context.fillRect(margin + col * cell, margin + row * cell, cell, cell);
+    if (texture) context.drawImage(texture,margin+col*cell,margin+row*cell,cell,cell);
   }
   const sets = { Cburnett: 'cburnett', Merida: 'merida', RoyalRascals: 'royal-rascals', UndeadCourt: 'undead-court', ClassicStaunton: 'classic-staunton', NeonGeometric: 'neon-geometric', ArtDecoFaceted: 'art-deco-faceted' };
-  const set = sets[options.pieceSet] || 'merida';
+  const hybridSets = { SculptedMarble: 'sculpted-marble', HybridWood: 'hybrid-wood', HybridGlass: 'hybrid-glass', HybridArtDeco: 'hybrid-art-deco', HybridEgyptian: 'hybrid-egyptian' };
+  const hybrid = options.pieceSet in hybridSets;
+  const set = hybridSets[options.pieceSet] || sets[options.pieceSet] || 'merida';
+  const extension = hybrid ? 'png' : 'svg';
   const assets = new Map();
   if (options.pieceSet !== 'System') {
     await Promise.all([...new Set(pieces.map(item => item.piece))].map(piece => new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = () => { assets.set(piece, image); resolve(); };
       image.onerror = () => reject(new Error('Could not load chess-piece artwork'));
-      image.src = `/pieces/${set}/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.svg`;
+      image.src = `/pieces/${set}/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.${extension}`;
     })));
   }
   const symbols = {K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
   for (const {piece,file,rank} of pieces) {
     const col = options.flipped ? 7 - file : file;
     const row = options.flipped ? 7 - rank : rank;
-    const x = margin + col * cell, y = margin + row * cell;
+    const x = margin + col * cell, y = margin + row * cell - (hybrid ? cell * .17 : 0);
     context.save();
     if (options.shadows) { context.shadowColor = '#0007'; context.shadowBlur = cell * .04; context.shadowOffsetX = cell * .025; context.shadowOffsetY = cell * .04; }
     if (options.pieceSet === 'System') {

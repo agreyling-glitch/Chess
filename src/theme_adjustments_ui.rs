@@ -1,9 +1,19 @@
 fn theme_adjustment_key(is_3d: bool, set: PieceSet, theme: crate::board3d::Theme) -> String {
-    if is_3d { format!("3d:{theme:?}") } else { format!("2d:{}",set.label()) }
+    if is_3d { format!("3d:{theme:?}") } else if set.is_hybrid() { "2d:Sculpted Marble (flat board)".to_owned() } else { format!("2d:{}",set.label()) }
 }
 
 // Original Ironwood appearance controls; no additional assets or dependencies.
 impl ChessApp {
+    fn current_board_palette(&self) -> [Color32;4] {
+        let mut palette = self.piece_set.board_palette();
+        if self.piece_set.is_hybrid() && self.piece_appearance.custom_board_colors {
+            let [r,g,b] = self.piece_appearance.board_light;
+            palette[0] = Color32::from_rgb(r,g,b);
+            let [r,g,b] = self.piece_appearance.board_dark;
+            palette[1] = Color32::from_rgb(r,g,b);
+        }
+        palette
+    }
     fn sync_theme_adjustments(&mut self) {
         let key = theme_adjustment_key(self.board_3d_active,self.piece_set,self.board_3d_theme);
         if key == self.adjustment_theme_key { return; }
@@ -55,6 +65,49 @@ impl ChessApp {
 
     fn theme_adjustments_2d_ui(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing=Vec2::new(12.0,10.0);
+        if self.piece_set.is_hybrid() {
+            adjustment_section(ui,"3D piece style",|ui| {
+                let styles = [(PieceSet::SculptedMarble,"Marble"),(PieceSet::HybridWood,"Wood"),(PieceSet::HybridGlass,"Glass"),(PieceSet::HybridArtDeco,"Art Deco"),(PieceSet::HybridEgyptian,"Egyptian")];
+                let selected = styles.iter().find(|(set,_)| *set == self.piece_set).map_or("Marble",|(_,label)| *label);
+                ui.horizontal_wrapped(|ui| {
+                egui::ComboBox::from_id_salt("hybrid_piece_style").width(135.0).selected_text(selected).show_ui(ui,|ui| {
+                    for (set,label) in styles {
+                        if ui.selectable_value(&mut self.piece_set,set,label).changed() {
+                            self.save_preferences();
+                            ui.ctx().request_repaint();
+                        }
+                    }
+                });
+                ui.label("Board theme");
+                egui::ComboBox::from_id_salt("hybrid_board_theme").width(115.0)
+                    .selected_text(if self.piece_appearance.custom_board_colors { "Custom" } else { "Complement" })
+                    .show_ui(ui,|ui| {
+                        ui.selectable_value(&mut self.piece_appearance.custom_board_colors,false,"Complement");
+                        if ui.selectable_label(self.piece_appearance.custom_board_colors,"Custom").clicked() {
+                            if !self.piece_appearance.custom_board_colors {
+                                let palette=self.piece_set.board_palette();
+                                self.piece_appearance.board_light=[palette[0].r(),palette[0].g(),palette[0].b()];
+                                self.piece_appearance.board_dark=[palette[1].r(),palette[1].g(),palette[1].b()];
+                            }
+                            self.piece_appearance.custom_board_colors=true;
+                        }
+                    });
+                });
+                if self.piece_appearance.custom_board_colors {
+                    ui.horizontal(|ui| {
+                        ui.label("Light squares"); ui.color_edit_button_srgb(&mut self.piece_appearance.board_light);
+                        ui.label("Dark squares"); ui.color_edit_button_srgb(&mut self.piece_appearance.board_dark);
+                    });
+                }
+                ui.horizontal(|ui| {
+                    ui.label("Board texture");
+                    let textures=["Smooth","Marble veins","Wood grain","Linen","Slate","Glass","Sand"];
+                    egui::ComboBox::from_id_salt("hybrid_board_texture").selected_text(textures[self.piece_appearance.board_texture.min(6) as usize]).show_ui(ui,|ui| {
+                        for (i,label) in textures.iter().enumerate() { ui.selectable_value(&mut self.piece_appearance.board_texture,i as u8,*label); }
+                    });
+                });
+            });
+        }
         adjustment_section(ui,"Piece proportions",|ui| {
             egui::Grid::new("2d_size").min_col_width(145.0).spacing(Vec2::new(16.0,10.0)).show(ui,|ui| {
                 adjustment_slider(ui,"Size",&mut self.piece_appearance.size,65..=115,true);
@@ -177,7 +230,10 @@ impl ChessApp {
                     ui.ctx().data_mut(|d| d.insert_temp(id,(cache_settings,raster_width,texture.clone()))); Some(texture)
                 } else { None }
             };
-            if let Some(texture) = texture { egui::Image::new(&texture).maintain_aspect_ratio(true).paint_at(ui,rect.shrink(cell*0.06)); }
+            if let Some(texture) = texture {
+                let rect = if self.piece_set.is_hybrid() { rect.translate(Vec2::new(0.0,-cell*0.17)) } else { rect };
+                egui::Image::new(&texture).maintain_aspect_ratio(true).paint_at(ui,rect.shrink(cell*0.06));
+            }
             else { Self::paint_piece(ui,rect,cell,self.piece_set,side,piece); ui.ctx().request_repaint(); }
         } else {
             let glyph = Self::piece_glyph_for(side,piece);

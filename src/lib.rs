@@ -8,6 +8,7 @@ mod pawn_structure;
 mod mobility;
 mod king_safety;
 mod opening_explorer;
+mod tablebase;
 mod training;
 mod tactical;
 

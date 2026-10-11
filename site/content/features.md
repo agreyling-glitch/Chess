@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-10T00:00:00-05:00
+lastmod: 2026-10-11T00:00:00-05:00
 description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -22,6 +22,12 @@ Pause or stop full-game analysis before printing. Choose **Save as PDF** in your
 Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through Lichess-Online; no separate API token is needed. Signing out clears access and cached results.
 
 Explore common continuations in **Game Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Choose **My games** or **Player** for personal opening history, filter by player color, speed, and month range, see the player’s wins, draws, and losses at the displayed position, and import matching recent completed games for local analysis. Lichess indexes player games on demand; Ironwood shows indexing progress and lets you refresh the statistics afterward. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
+
+## Explore endgames with Syzygy
+
+Open **Game Analysis → Tablebases** to look up standard endgames with seven pieces or fewer, including both kings, and no castling rights. Results come from Lichess's tablebase service and require internet access, but no sign-in or local tablebase download. Read win, draw, and loss outcomes, including draws under the 50-move rule, alongside per-move **DTZ** and **DTM** badges when available.
+
+Hover a continuation to show its arrow on the live board; click to explore the resulting position and replies. An exploration tree keeps alternate branches available as you compare them. Back, Reset preview, and Clear give you control over the study without changing recorded game moves. Move labels follow your Letters or Figurines preference. Inspect the root's 50-move clock, refresh cached results, or open the selected position on Lichess. [Syzygy endgame tablebases](/help/syzygy-tablebases/) explains the outcomes, distance counts, and preview controls.
 
 ## Understand pawn structure
 
@@ -69,7 +75,7 @@ Counts describe geometric control, including pinned pieces; pawns count diagonal
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among eight 2D piece sets: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, and Art Deco Faceted. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among nine flat-board themes: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
 
 ## Type your moves
 
@@ -86,6 +92,10 @@ Click the focus icon beside **Flip board** or press **Shift+Enter** when you are
 Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with previews of all eight 2D piece sets and the Marble, Wood, Glass, Art Deco, and Egyptian 3D themes. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
 ## Make each theme your own
+
+**Hybrid Marble** adds a flat board with shaded 3D pieces viewed from above. Choose Marble, Wood, Glass, Art Deco, or Egyptian pieces in its theme settings. **Complement** selects board colors to suit the piece style; **Custom** lets you choose the light and dark squares yourself.
+
+Choose **Smooth, Marble veins, Wood grain, Linen, Slate, Glass, or Sand** as the board texture. All textured choices add beveled edges and soft depth lighting; Glass adds reflections, while Smooth stays flat. Texture and color choices are independent of the piece style. Your hybrid preferences are saved on this device and appear in copied board images.
 
 Classic Staunton pairs its pieces with cream and walnut squares. Neon Geometric uses navy squares and cyan coordinates; Art Deco Faceted uses jade and teal with gold accents. The palettes follow the theme in the live board, chooser previews, and copied board images.
 

@@ -6,6 +6,52 @@ Stockfish 19 runs behind a dedicated worker boundary; its full NNUE WebAssembly
 build uses SharedArrayBuffer, Atomics, and pthread workers when the page is
 cross-origin isolated.
 
+## Syzygy endgame tablebases
+
+In Game Analysis, select **Tablebases** and **Look up this position** to query
+Lichess for a standard position with up to seven pieces (including kings) and no
+castling rights. Clicking a continuation previews the move and automatically
+looks up the resulting position, using cached results when available.
+
+The **Exploration tree** keeps the moves you explore in a branching hierarchy.
+Click a node to revisit its board position; select a different continuation to
+add a sibling branch. Back and Reset preview preserve branches; **Clear** removes
+the tree.
+Click the small triangle beside Game position or a move with children to collapse
+or expand its continuations. This preserves branches and makes no API request.
+Selecting a node automatically looks up its position, using cached
+results when available. Once the tree has branches, **Look up this position**
+is hidden; Back and Reset preview also look up their destination automatically.
+Clearing the tree restores the initial lookup button. Automatic lookups never
+force a refresh.
+Results describe the side to move; move rows describe the player making that move. Cursed wins and blessed
+losses are shown as draws under the 50-move rule. DTZ measures plies to a pawn move,
+capture or mate and may be rounded; it is not generally a distance to mate.
+DTM is shown only when provided.
+The root 50-move clock defaults to the recorded game history and can be edited;
+check it for imported setup positions, whose starting counter Ironwood does not
+retain. Preview moves update that counter, resetting it on pawn moves or captures.
+The result card shows **Lichess API** for a fresh request or **Cached result** when
+revisiting a position already held in Ironwood's memory. **Look up this position**
+uses the cache when available. Inside **Position settings & API details**,
+**Refresh tablebase result** bypasses that cache and requests a fresh result.
+**Open this position on Lichess**, in the same settings section, opens the selected
+game or exploration position in a new tab with its FEN and move counters populated.
+
+Each lookup sends the position FEN to `https://tablebase.lichess.ovh/standard`.
+No sign-in is needed. Requests are serialized, cached in memory (up to 100
+positions), time out after 15 seconds, and pause for at least a minute after a
+rate limit. Offline or missing-table errors can be retried. Tablebases are
+unavailable during active training or FICS play; Lichess play uses its game-chat
+panel instead of Game Analysis. These results do not replace Stockfish scores.
+
+Licensing: this is original Ironwood client code accessing the
+[public HTTP API](https://lichess.org/developers), with the endpoint and response
+documented by [lila-tablebase](https://github.com/lichess-org/lila-tablebase#http-api).
+No server code, probing library, or tablebase files are copied or distributed.
+The server's AGPL-3.0-or-later license covers that server code; this integration
+adds no third-party code or asset license to Ironwood's distribution.
+
 ## Import from Lichess
 
 In the browser app, choose **Game → Import…** and enter a Lichess username

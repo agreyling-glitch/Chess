@@ -796,11 +796,23 @@ enum PieceSet {
     ClassicStaunton,
     NeonGeometric,
     ArtDecoFaceted,
+    SculptedMarble,
+    HybridWood,
+    HybridGlass,
+    HybridArtDeco,
+    HybridEgyptian,
 }
 
 impl PieceSet {
+    fn is_hybrid(self) -> bool {
+        matches!(self, Self::SculptedMarble | Self::HybridWood | Self::HybridGlass | Self::HybridArtDeco | Self::HybridEgyptian)
+    }
     fn board_palette(self) -> [Color32;4] {
         let colors=match self {
+            Self::HybridWood => [[238,220,187],[132,94,64],[49,36,27],[232,203,155]],
+            Self::HybridGlass => [[218,232,239],[75,111,135],[22,37,49],[189,218,237]],
+            Self::HybridArtDeco => [[227,219,198],[69,91,87],[24,40,37],[232,198,111]],
+            Self::HybridEgyptian => [[238,220,180],[119,96,66],[42,33,24],[232,198,111]],
             Self::NeonGeometric => [[35,49,81],[24,35,59],[12,18,33],[103,225,243]],
             Self::ClassicStaunton => [[239,224,194],[141,103,68],[49,36,27],[232,203,155]],
             Self::ArtDecoFaceted => [[213,218,197],[55,91,88],[22,43,43],[232,198,111]],
@@ -819,6 +831,7 @@ impl PieceSet {
             Self::ClassicStaunton => "Classic Staunton",
             Self::NeonGeometric => "Neon Geometric",
             Self::ArtDecoFaceted => "Art Deco Faceted",
+            Self::SculptedMarble | Self::HybridWood | Self::HybridGlass | Self::HybridArtDeco | Self::HybridEgyptian => "Hybrid Marble",
 
         }
     }
@@ -5278,9 +5291,9 @@ impl ChessApp {
                         );
                         let light = (file_index + rank_index) % 2 == 1;
                         let mut color = if light {
-                            self.piece_set.board_palette()[0]
+                            self.current_board_palette()[0]
                         } else {
-                            self.piece_set.board_palette()[1]
+                            self.current_board_palette()[1]
                         };
                         if self.show_highlighted_move && last_move.is_some_and(|chess_move| chess_move.get_source() == square || chess_move.get_dest() == square) {
                             color = Self::blend_color(color, Color32::from_rgb(211, 173, 98), 0.42);
@@ -5442,12 +5455,12 @@ impl ChessApp {
                             let count = if column.available_width() >= 400.0 { 2 } else { 1 };
                             let card_width = ((column.available_width() - (count-1) as f32 * 14.0) / count as f32).max(80.0);
                             let preview_size = (card_width - 24.0).min(260.0).max(56.0);
-                            let sets = [PieceSet::System, PieceSet::Cburnett, PieceSet::Merida, PieceSet::RoyalRascals, PieceSet::UndeadCourt, PieceSet::ClassicStaunton, PieceSet::NeonGeometric, PieceSet::ArtDecoFaceted];
+                            let sets = [PieceSet::System, PieceSet::Cburnett, PieceSet::Merida, PieceSet::RoyalRascals, PieceSet::UndeadCourt, PieceSet::ClassicStaunton, PieceSet::NeonGeometric, PieceSet::ArtDecoFaceted, PieceSet::SculptedMarble];
                             egui::Grid::new(("board_theme_grid", dimension)).num_columns(count).spacing(Vec2::new(14.0,14.0)).show(column, |ui| {
                                 for i in 0..if dimension == 0 { sets.len() } else { crate::board3d::Theme::ALL.len() } {
                                     let set = sets[i];
                                     let (theme, label) = crate::board3d::Theme::ALL[i % crate::board3d::Theme::ALL.len()];
-                                    let selected = if dimension == 0 { !self.board_3d_active && self.piece_set == set }
+                                    let selected = if dimension == 0 { !self.board_3d_active && (self.piece_set == set || (set.is_hybrid() && self.piece_set.is_hybrid())) }
                                         else { self.board_3d_active && self.board_3d_theme == theme };
                                     Frame::new().fill(Color32::from_rgb(20,24,28))
                                         .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { Color32::from_rgb(230,178,65) } else { Color32::from_white_alpha(35) }))
@@ -5507,7 +5520,7 @@ impl ChessApp {
                 });
             });
         if let Some(set) = chosen_2d {
-            self.piece_set = set;
+            self.piece_set = if set.is_hybrid() && self.piece_set.is_hybrid() { self.piece_set } else { set };
             self.board_3d_active = false;
         }
         if let Some(theme) = chosen_3d {
@@ -9668,6 +9681,66 @@ impl ChessApp {
         piece: Piece,
     ) -> Option<egui::ImageSource<'static>> {
         match (piece_set, color, piece) {
+            (PieceSet::HybridWood, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-wood/wK.png")),
+            (PieceSet::HybridWood, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-wood/wQ.png")),
+            (PieceSet::HybridWood, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-wood/wR.png")),
+            (PieceSet::HybridWood, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-wood/wB.png")),
+            (PieceSet::HybridWood, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-wood/wN.png")),
+            (PieceSet::HybridWood, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-wood/wP.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-wood/bK.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-wood/bQ.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-wood/bR.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-wood/bB.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-wood/bN.png")),
+            (PieceSet::HybridWood, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-wood/bP.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-glass/wK.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-glass/wQ.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-glass/wR.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-glass/wB.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-glass/wN.png")),
+            (PieceSet::HybridGlass, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-glass/wP.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-glass/bK.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-glass/bQ.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-glass/bR.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-glass/bB.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-glass/bN.png")),
+            (PieceSet::HybridGlass, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-glass/bP.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wK.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wQ.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wR.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wB.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wN.png")),
+            (PieceSet::HybridArtDeco, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wP.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bK.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bQ.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bR.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bB.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bN.png")),
+            (PieceSet::HybridArtDeco, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/bP.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wK.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wQ.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wR.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wB.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wN.png")),
+            (PieceSet::HybridEgyptian, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/wP.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bK.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bQ.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bR.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bB.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bN.png")),
+            (PieceSet::HybridEgyptian, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bP.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/sculpted-marble/wK.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/sculpted-marble/wQ.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/sculpted-marble/wR.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/sculpted-marble/wB.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/sculpted-marble/wN.png")),
+            (PieceSet::SculptedMarble, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/sculpted-marble/wP.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/sculpted-marble/bK.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/sculpted-marble/bQ.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/sculpted-marble/bR.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/sculpted-marble/bB.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/sculpted-marble/bN.png")),
+            (PieceSet::SculptedMarble, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/sculpted-marble/bP.png")),
             (PieceSet::ClassicStaunton, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/classic-staunton/wK.svg")),
             (PieceSet::ClassicStaunton, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/classic-staunton/wQ.svg")),
             (PieceSet::ClassicStaunton, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/classic-staunton/wR.svg")),
@@ -9871,7 +9944,7 @@ impl ChessApp {
             (Vec2::new(0.0, -softness), 18),
             (Vec2::new(0.0, softness), 18),
         ] {
-            let shadow_rect = rect.translate(offset + jitter);
+            let shadow_rect = rect.translate(offset + jitter + if piece_set.is_hybrid() { Vec2::new(0.0, -cell * 0.17) } else { Vec2::ZERO });
             let tint = Color32::from_black_alpha((alpha as f32 * appearance.shadow_strength as f32/100.0).min(255.0) as u8);
             if let Some(source) = Self::piece_image_for(piece_set, color, piece) {
                 egui::Image::new(source)
@@ -9898,6 +9971,7 @@ impl ChessApp {
         color: Color,
         piece: Piece,
     ) {
+        let rect = if piece_set.is_hybrid() { rect.translate(Vec2::new(0.0, -cell * 0.17)) } else { rect };
         if let Some(source) = Self::piece_image_for(piece_set, color, piece) {
             egui::Image::new(source)
                 .maintain_aspect_ratio(true)
@@ -10106,7 +10180,7 @@ impl ChessApp {
         ctx.request_repaint();
     }
 
-    fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2) -> egui::InnerResponse<()> {
+    fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2, allow_moves: bool) -> egui::InnerResponse<()> {
         ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
             if self.board_mark_drag.is_none() && response.double_clicked_by(egui::PointerButton::Secondary) {
@@ -10258,7 +10332,7 @@ impl ChessApp {
                     );
                 }
             }
-            if response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
+            if allow_moves && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(square) =
                     crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets)
@@ -10362,6 +10436,10 @@ impl ChessApp {
     }
 
     fn board_ui(&mut self, ui: &mut egui::Ui) {
+        self.board_ui_with_moves(ui, true);
+    }
+
+    fn board_ui_with_moves(&mut self, ui: &mut egui::Ui, allow_moves: bool) {
         self.sync_theme_adjustments();
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("live_piece_appearance"),self.piece_appearance));
         let available = ui.available_size();
@@ -10453,7 +10531,7 @@ impl ChessApp {
             .flatten();
         let highlighted_classification =
             highlighted_position_index.and_then(|index| self.move_classification(index));
-        let best_move_arrow = self
+        let best_move_arrow = crate::tablebase::hover_arrow(ui.ctx(), self.board).or_else(|| self
             .best_move_attempt
             .filter(|attempt| attempt.revealed)
             .map(|attempt| attempt.best_move)
@@ -10478,7 +10556,7 @@ impl ChessApp {
                     .and_then(|analysis| analysis.best_move.as_deref())
                     .and_then(Self::parse_uci_value)
                     .filter(|best_move| Some(*best_move) != self.last_move)
-            });
+            }));
         ui.allocate_ui_with_layout(
             Vec2::new(
                 board_width + balance_width,
@@ -10549,7 +10627,7 @@ impl ChessApp {
                                 |ui| {
                                     ui.spacing_mut().item_spacing.x = 7.0;
                                     let (marker, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
-                                    ui.painter().circle_filled(marker.center(), 4.0, self.piece_set.board_palette()[1]);
+                                    ui.painter().circle_filled(marker.center(), 4.0, self.current_board_palette()[1]);
                                     self.player_name_ui(ui, &top_player, top_is_white);
                                     if let Some((white_time, black_time)) = fics_clocks {
                                         let (seconds, active) = if top_is_white {
@@ -10570,7 +10648,7 @@ impl ChessApp {
                                             .clicked()
                                         {
                                             self.flipped = !self.flipped;
-                                            self.save_game();
+                                            if allow_moves { self.save_game(); } else { self.save_preferences(); }
                                         }
                                         let dimension_button = ui.add_sized(
                                             [29.0, 22.0],
@@ -10613,10 +10691,10 @@ impl ChessApp {
                 }
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let board_response = if self.board_3d_active {
-                    self.board_3d_ui(ui, Vec2::new(board_width, board_size))
+                    self.board_3d_ui(ui, Vec2::new(board_width, board_size), allow_moves)
                 } else {
                     egui::Frame::new()
-                        .fill(self.piece_set.board_palette()[2])
+                        .fill(self.current_board_palette()[2])
                         .inner_margin(egui::Margin::same(frame_width))
                         .show(ui, |ui| {
                             ui.allocate_ui_with_layout(
@@ -10644,9 +10722,9 @@ impl ChessApp {
                                                 );
                                                 let light = (file_index + rank_index) % 2 == 1;
                                                 let mut color = if light {
-                                                    self.piece_set.board_palette()[0]
+                                                    self.current_board_palette()[0]
                                                 } else {
-                                                    self.piece_set.board_palette()[1]
+                                                    self.current_board_palette()[1]
                                                 };
                                                 if self.show_highlighted_move && self.last_move.is_some_and(|m| {
                                                     m.get_source() == square
@@ -10692,6 +10770,18 @@ impl ChessApp {
                                                         .stroke(Stroke::NONE)
                                                         .corner_radius(0.0),
                                                 );
+                                                if self.piece_set.is_hybrid() {
+                                                    let texture = match self.piece_appearance.board_texture {
+                                                        1=>Some(egui::include_image!("../web/board-textures/marble.svg")),
+                                                        2=>Some(egui::include_image!("../web/board-textures/wood.svg")),
+                                                        3=>Some(egui::include_image!("../web/board-textures/linen.svg")),
+                                                        4=>Some(egui::include_image!("../web/board-textures/slate.svg")),
+                                                        5=>Some(egui::include_image!("../web/board-textures/glass.svg")),
+                                                        6=>Some(egui::include_image!("../web/board-textures/sand.svg")),
+                                                        _=>None,
+                                                    };
+                                                    if let Some(source)=texture { egui::Image::new(source).maintain_aspect_ratio(false).paint_at(ui,response.rect); }
+                                                }
                                                 if self.show_highlighted_move && self.prediction_index == 0
                                                     && self
                                                         .last_move
@@ -10768,7 +10858,7 @@ impl ChessApp {
                                                         );
                                                     }
                                                 }
-                                                if response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt) {
+                                                if allow_moves && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt) {
                                                     if !self.select_mobility_piece(ui.ctx(), square) { self.select(square); }
                                                 }
                                             }
@@ -10794,7 +10884,7 @@ impl ChessApp {
                     let rect = board_response.response.rect;
                     let inset = frame_width as f32 / 2.0;
                     let font = FontId::proportional((frame_width as f32 * 0.58).clamp(10.0, 15.0));
-                    let gold = self.piece_set.board_palette()[3];
+                    let gold = self.current_board_palette()[3];
                     for index in 0..8 {
                         let file = if self.flipped { 7 - index } else { index };
                         let rank = if self.flipped { index + 1 } else { 8 - index };
@@ -11856,6 +11946,8 @@ impl ChessApp {
                         "flipped": self.flipped, "frame": self.show_board_frame,
                         "coordinates": self.show_coordinates, "shadows": self.piece_shadows,
                         "pieceSet": self.piece_set,
+                        "boardPalette": self.current_board_palette().map(|color| format!("#{:02x}{:02x}{:02x}",color.r(),color.g(),color.b())),
+                        "boardTexture": if self.piece_set.is_hybrid() { self.piece_appearance.board_texture } else { 0 },
                         "boardMarks": if annotated { copy_marks.clone() } else { Vec::new() }
                     })
                     .to_string(),
@@ -14542,10 +14634,17 @@ impl eframe::App for ChessApp {
                         ui.selectable_value(&mut detail_tab, 2, "Piece Mobility");
                         ui.selectable_value(&mut detail_tab, 3, "King Safety");
                         ui.selectable_value(&mut detail_tab, 4, "Opening Explorer");
+                        ui.selectable_value(&mut detail_tab, 5, "Tablebases");
                     });
                     ui.data_mut(|data| data.insert_persisted(tab_id, detail_tab));
                     ui.separator();
-                    if detail_tab == 4 {
+                    if detail_tab == 5 {
+                        if self.training_live() || (self.fics_active && self.fics_playing) {
+                            ui.label("Tablebases are available after the game finishes.");
+                        } else {
+                            crate::tablebase::panel(ui, self.review_positions.get(index).copied().unwrap_or(self.board), &self.position_fen_for_copy(index), |san| self.display_san(san));
+                        }
+                    } else if detail_tab == 4 {
                         if self.training_live() || (self.fics_active && self.fics_playing) {
                             ui.label("Opening Explorer is available after the game finishes.");
                         } else {
@@ -15275,6 +15374,7 @@ impl eframe::App for ChessApp {
             .inner_margin(Margin { left:8, right:0, top:8, bottom:8 })).show(ctx, |ui| {
             let original = self.board;
             let preview = crate::opening_explorer::preview(ctx,original)
+                .or_else(|| crate::tablebase::preview(ctx, original))
                 .filter(|_| !self.focus_mode && !(self.fics_active && self.fics_playing) && !self.training_live() && !self.review_positions.is_empty());
             if let Some(board) = preview {
                 let selected = self.selected.take();
@@ -15282,7 +15382,7 @@ impl eframe::App for ChessApp {
                 let last_move = self.last_move.take();
                 let animation = self.move_animation.take();
                 self.board = board;
-                ui.add_enabled_ui(false, |ui| { ui.centered_and_justified(|ui| self.board_ui(ui)); });
+                ui.centered_and_justified(|ui| self.board_ui_with_moves(ui, false));
                 self.board = original;
                 self.selected = selected;
                 self.legal_targets = targets;

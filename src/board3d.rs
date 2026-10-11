@@ -11,6 +11,10 @@ use std::sync::OnceLock;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct PieceAppearance {
+    pub custom_board_colors: bool,
+    pub board_texture: u8,
+    pub board_light: [u8; 3],
+    pub board_dark: [u8; 3],
     pub size: u8,
     pub height: u8,
     pub custom_colors: bool,
@@ -30,10 +34,11 @@ pub struct PieceAppearance {
     pub radial_light: Option<bool>,
 }
 impl Default for PieceAppearance {
-    fn default() -> Self { Self { size:100,height:100,custom_colors:false,white:[235,232,225],black:[62,73,68],finish:0,outline:false,inner_shading:0,gradient:false,gradient_direction:0,white_end:[168,143,91],black_end:[12,20,32],shadow_strength:100,shadow_softness:50,shadows:true,board_appearance:None,radial_light:None } }
+    fn default() -> Self { Self { custom_board_colors:false,board_texture:0,board_light:[205,214,193],board_dark:[76,116,92],size:100,height:100,custom_colors:false,white:[235,232,225],black:[62,73,68],finish:0,outline:false,inner_shading:0,gradient:false,gradient_direction:0,white_end:[168,143,91],black_end:[12,20,32],shadow_strength:100,shadow_softness:50,shadows:true,board_appearance:None,radial_light:None } }
 }
 impl PieceAppearance {
     pub fn normalized(mut self) -> Self {
+        self.board_texture=self.board_texture.min(6);
         self.gradient_direction=self.gradient_direction.min(3);
         self.inner_shading = self.inner_shading.min(100);
         self.board_appearance = self.board_appearance.map(|value| value.min(100));
@@ -1545,6 +1550,56 @@ fn paint_silhouette_outline(image: &mut ColorImage, mask: &[Option<Color>], dept
 
 #[cfg(test)]
 mod tests {
+    /// Rebuild the flat-board sprites from the bundled CC0 Poly Haven meshes.
+    #[test]
+    #[ignore]
+    fn generate_sculpted_marble_sprites() {
+        use super::*;
+        let size = 3072;
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::splat(size as f32));
+        let camera = Camera::new(false, View { elevation: 1.12, distance: 12.0, ..View::default() });
+        for (theme, directory_name) in [(Theme::Marble,"sculpted-marble"),(Theme::Wood,"hybrid-wood"),(Theme::Glass,"hybrid-glass"),(Theme::ArtDeco,"hybrid-art-deco"),(Theme::Egyptian,"hybrid-egyptian")] {
+        let mut renders = Vec::new();
+        for (side, prefix) in [(Color::White, "w"), (Color::Black, "b")] {
+            for (piece, suffix) in [(Piece::King,"K"),(Piece::Queen,"Q"),(Piece::Rook,"R"),(Piece::Bishop,"B"),(Piece::Knight,"N"),(Piece::Pawn,"P")] {
+                let model = theme_models(theme).get(piece);
+                let mut triangles = Vec::new();
+                let color = if side == Color::White { [235,232,225] } else { [62,73,68] };
+                let yaw: f32 = if piece == Piece::Knight { -0.65 } else { 0.0 };
+                let (sin, cos) = yaw.sin_cos();
+                for face in model.indices.chunks_exact(3) {
+                    let points = std::array::from_fn(|i| turn_y(model.positions[face[i] as usize], sin, cos));
+                    let normals = std::array::from_fn(|i| turn_y(model.normals[face[i] as usize], sin, cos));
+                    let uv = std::array::from_fn(|i| model.texcoords[face[i] as usize]);
+                    push_triangle(&mut triangles, camera, rect, points, color, Some((uv,Some(side))), Some(normals));
+                }
+                let mut image = ColorImage::filled([size,size], Color32::TRANSPARENT);
+                rasterize(&mut image, &mut vec![0.0;size*size], triangles, camera, rect, 1.0, 0.5, theme, PieceAppearance::default());
+                let mut rgba = image::RgbaImage::new(size as u32,size as u32);
+                for (i, pixel) in image.pixels.iter().enumerate() {
+                    let x=i%size; let y=i/size;
+                    rgba.put_pixel(x as u32,y as u32,image::Rgba(pixel.to_srgba_unmultiplied()));
+                }
+                renders.push((format!("{prefix}{suffix}"),rgba));
+            }
+        }
+        let directory = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web/pieces").join(directory_name);
+        std::fs::create_dir_all(&directory).unwrap();
+        for (name, rgba) in renders {
+            let (mut left, mut top, mut right, mut bottom) = (size as u32, size as u32, 0, 0);
+            for (x,y,pixel) in rgba.enumerate_pixels() {
+                if pixel[3]>0 { left=left.min(x); top=top.min(y); right=right.max(x); bottom=bottom.max(y); }
+            }
+            let cropped=image::imageops::crop_imm(&rgba,left,top,right-left+1,bottom-top+1).to_image();
+            let height = match name.as_bytes()[1] { b'P'=>208, b'R'=>220, b'B'|b'N'=>232, _=>244 };
+            let width = (cropped.width() as f32 * height as f32 / cropped.height() as f32).round() as u32;
+            let resized=image::imageops::resize(&cropped,width,height,image::imageops::FilterType::Lanczos3);
+            let mut sprite=image::RgbaImage::new(256,256);
+            image::imageops::overlay(&mut sprite,&resized,((256-width)/2) as i64,((256-height)/2) as i64);
+            sprite.save(directory.join(format!("{name}.png"))).unwrap();
+        }
+        }
+    }
     #[test]
     fn silhouette_outline_preserves_interior_and_respects_occlusion() {
         let original = Color32::from_rgb(110,80,50);

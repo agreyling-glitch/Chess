@@ -141,6 +141,7 @@
       await import(localDevelopment ? `/lichess/bridge.js?v=${Date.now()}` : '/lichess/bridge.js');
       await import('/position-editor/editor.js');
       await import('/scoresheet-import.js');
+      await import(localDevelopment ? `/tablebase.js?v=${Date.now()}` : '/tablebase.js');
       await import(localDevelopment ? `/board-clipboard.js?v=${Date.now()}` : '/board-clipboard.js');
       await import(localDevelopment ? `/background-image.js?v=${Date.now()}` : '/background-image.js');
       const packageToken = localDevelopment ? Date.now() : null;
