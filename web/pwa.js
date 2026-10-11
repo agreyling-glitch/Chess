@@ -1,4 +1,7 @@
+import './analytics.js';
 import { isMobileDevice } from './device-support.js';
+window.ironwoodHasDeferredUpdate = () => false;
+window.ironwoodUpdateAndReload = () => {};
 if (isMobileDevice()) {
   for (const button of document.querySelectorAll('[data-install-app], [data-offline-engine]')) button.hidden = true;
   const status = document.querySelector('[data-offline-status]');
@@ -12,12 +15,23 @@ const runningAppVersion = '__APP_SHELL_VERSION__';
 const runningPackageVersion = '__PACKAGE_VERSION__';
 const runningEngineVersion = '__ENGINE_CACHE_VERSION__';
 const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const previewUpdate = isLocalhost && new URLSearchParams(location.search).get('preview-update') === '1';
 let installPrompt;
 let registration;
 let reloadForUpdate = false;
 let pendingEngineUpdate = false;
 let pendingAppVersion = '';
 let waitingWorker;
+let updateDeferred = false;
+window.ironwoodHasDeferredUpdate = () => updateDeferred && Boolean(waitingWorker || registration?.waiting) && !reloadForUpdate;
+window.ironwoodUpdateAndReload = () => {
+  const waiting = waitingWorker || registration?.waiting;
+  if (!waiting || reloadForUpdate) return;
+  reloadForUpdate = true;
+  updateNotice.querySelector('[data-update-reload]').disabled = true;
+  updateNotice.querySelector('[data-update-message]').textContent = 'Finishing the update…';
+  waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+};
 
 const versionDiagnostics = {
   status: 'Checking versions…',
@@ -114,15 +128,16 @@ function createUpdateNotice() {
     .ironwood-update::backdrop{background:#080a0cc0}
     .ironwood-update h2{margin:0 0 .65rem;font:600 1.5rem/1.2 Inter,system-ui,sans-serif;letter-spacing:0;color:#f3f0e4}
     .ironwood-update p{margin:0;color:#bdc1bc}
-    .ironwood-update-actions{display:flex;justify-content:flex-end;gap:.7rem;margin-top:1.35rem}
+    .ironwood-update-actions{display:flex;justify-content:center;gap:.7rem;margin-top:1.35rem}
     .ironwood-update button{padding:.65rem .9rem;border:1px solid #ffffff26;border-radius:4px;color:#f3f0e4;background:#292e32;font:600 .9rem Inter,system-ui,sans-serif;cursor:pointer}
     .ironwood-update [data-update-reload]{border-color:#d3ad62;background:#d3ad62;color:#17140e}`;
   document.head.append(style);
   document.body.append(notice);
   notice.querySelector('[data-update-later]').addEventListener('click', () => {
-    if (pendingAppVersion) {
+    if (pendingAppVersion && !previewUpdate) {
       localStorage.setItem(reminderKey(pendingAppVersion), String(Date.now() + 30 * 60_000));
     }
+    updateDeferred = true;
     notice.close();
   });
   notice.addEventListener('cancel', event => {
@@ -130,21 +145,34 @@ function createUpdateNotice() {
     notice.querySelector('[data-update-later]').click();
   });
   notice.querySelector('[data-update-reload]').addEventListener('click', () => {
-    const waiting = waitingWorker || registration?.waiting;
-    if (!waiting) return;
-    reloadForUpdate = true;
-    notice.querySelector('[data-update-reload]').disabled = true;
-    notice.querySelector('[data-update-message]').textContent = 'Finishing the update…';
-    waiting.postMessage({ type: 'ACTIVATE_UPDATE' });
+    window.ironwoodUpdateAndReload();
   });
   return notice;
 }
 
 const updateNotice = createUpdateNotice();
 
+// Exercise the real dialog and deferred Help action without installing a worker.
+if (previewUpdate) {
+  waitingWorker = {
+    postMessage() {
+      const url = new URL(location.href);
+      url.searchParams.delete('preview-update');
+      location.replace(url.href);
+    },
+  };
+  showUpdateNotice('local-update-preview');
+}
+
+
 function showUpdateNotice(version, engineChanged = false) {
-  if (!version || version === runningAppVersion || Date.now() < remindAfter(version) || updateNotice.open) return;
+  if (!version || version === runningAppVersion) return;
   pendingAppVersion = version;
+  if (!previewUpdate && Date.now() < remindAfter(version)) {
+    updateDeferred = true;
+    return;
+  }
+  if (updateNotice.open) return;
   updateNotice.querySelector('[data-update-message]').textContent = engineChanged
     ? 'A new app and engine version is ready. Your game and existing offline engine remain safe. After reloading, you can explicitly download the new engine for offline play.'
     : 'A new version is ready. Your current game is saved locally, and your offline Stockfish engine will remain installed.';

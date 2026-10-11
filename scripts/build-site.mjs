@@ -1,3 +1,4 @@
+import './build-analytics.mjs';
 import { rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';

@@ -58,7 +58,7 @@
       <p><a href="/licenses/stockfish-gpl-3.0.txt">Read the complete GPLv3 license</a></p>
       <p><a href="https://github.com/nmrugg/stockfish.js/tree/v19.0.0" rel="external">Browse the exact corresponding source</a> · <a href="https://github.com/nmrugg/stockfish.js/archive/refs/tags/v19.0.0.zip" rel="external">Download corresponding source</a></p>
       <p><a href="https://github.com/official-stockfish/Stockfish/tree/edb0d9d" rel="external">Browse the exact upstream Stockfish source</a> · <a href="https://github.com/official-stockfish/Stockfish/archive/edb0d9d.zip" rel="external">Download upstream source</a></p>
-      <p>This distribution does not modify the Stockfish.js engine files supplied by the pinned npm package.</p>
+      <p>Ironwood modifies the Stockfish.js JavaScript glue to prepare its pthread pool asynchronously before setting the thread count (2026-10-11). The engine WebAssembly and NNUE network are unchanged. The GPLv3 patch and reproducible copy step are included in the <a href="https://github.com/agreyling-glitch/Chess/blob/main/scripts/stockfish-thread-pool.mjs" rel="external">Ironwood source repository</a>.</p>
     </section>
 
     <section>
@@ -94,6 +94,7 @@
     <section>
       <h2>Screenshot recognition</h2><p>Uses <a href="https://github.com/scoriiu/fenshot">Fenshot</a> and ONNX Runtime Web. Recognition runs locally.</p><p><a href="/position-editor/vendor/FENSHOT-LICENSE">Fenshot MIT license</a> · <a href="/licenses/onnxruntime-mit.txt">ONNX Runtime MIT license</a></p>
     </section>
+    <section><h2>PostHog browser analytics</h2><p>Optional analytics use PostHog JS, licensed under Apache 2.0 and MIT. <a href="/licenses/posthog-js.txt">License and notices</a> · <a href="/licenses/analytics-dependencies.txt">Bundled dependency notices</a></p></section>
   </main>
 
   <footer><span>Ironwood Chess</span><a href="/">Return home</a></footer>

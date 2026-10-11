@@ -777,6 +777,10 @@ function __wbg_get_imports() {
         __wbg_ironwoodFinishBoardPngCopy_525b148cdb2b2c4e: function(arg0, arg1, arg2) {
             window.ironwoodFinishBoardPngCopy(arg0, getStringFromWasm0(arg1, arg2));
         },
+        __wbg_ironwoodHasDeferredUpdate_d7514bab69cd54eb: function() {
+            const ret = window.ironwoodHasDeferredUpdate();
+            return ret;
+        },
         __wbg_ironwoodImportedIndexReady_8a38969f90bbceeb: function() {
             const ret = window.ironwoodImportedIndexReady();
             return ret;
@@ -907,6 +911,12 @@ function __wbg_get_imports() {
         __wbg_ironwoodTakeBackground_471010464d1b85ee: function() {
             const ret = window.ironwoodTakeBackground();
             return ret;
+        },
+        __wbg_ironwoodTrackUsage_3832dcb188b240bc: function(arg0, arg1) {
+            window.ironwoodTrackUsage(getStringFromWasm0(arg0, arg1));
+        },
+        __wbg_ironwoodUpdateAndReload_b33fefd827788b6a: function() {
+            window.ironwoodUpdateAndReload();
         },
         __wbg_ironwoodUploadBackground_440ae091de845e7d: function() {
             window.ironwoodUploadBackground();

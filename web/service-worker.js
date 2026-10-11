@@ -54,6 +54,8 @@ const SHELL_URLS = [
   '/styles.css',
   '/site.css',
   '/pwa.js',
+  '/analytics.js',
+  '/privacy.html',
   '/game-storage.js',
   '/scoresheet-import.js',
   '/scoresheet-pgn.js',

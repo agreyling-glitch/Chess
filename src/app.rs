@@ -212,6 +212,12 @@ extern "C" {
     fn version_diagnostics() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRefreshVersionDiagnostics)]
     fn refresh_version_diagnostics();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodHasDeferredUpdate)]
+    fn has_deferred_update() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodUpdateAndReload)]
+    fn update_and_reload();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrackUsage)]
+    fn track_usage(event: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFicsConnect)]
     fn fics_connect();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFicsConnectRegistered)]
@@ -8260,6 +8266,8 @@ impl ChessApp {
         self.realtime_analysis_due_at = None;
         self.clear_verification();
         self.game_analysis = vec![None; self.review_positions.len()];
+        #[cfg(target_arch = "wasm32")]
+        track_usage("game_analysis_started");
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
         self.game_analysis_index = Some(0);
@@ -8800,6 +8808,7 @@ impl ChessApp {
         Self::set_page_title(false, "", "");
         #[cfg(target_arch = "wasm32")]
         if !self.fics_active {
+            track_usage("game_started");
             start_new_stored_game(if self.new_game_training { "training" } else { "mine" });
         }
         if !self.fics_observing && !self.new_game_training {
@@ -14022,6 +14031,8 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
+                Self::gold_menu_button(ui, "FICS-Online", |ui| self.fics_online_menu(ui));
+                Self::gold_menu_button(ui, "Lichess-Online", |ui| self.lichess_menu(ui));
                 Self::gold_menu_button(ui, "Storage", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("Backup all data…").clicked() {
@@ -14051,8 +14062,6 @@ impl eframe::App for ChessApp {
                         ui.close();
                     }
                 });
-                Self::gold_menu_button(ui, "FICS-Online", |ui| self.fics_online_menu(ui));
-                Self::gold_menu_button(ui, "Lichess-Online", |ui| self.lichess_menu(ui));
                 Self::gold_menu_button(ui, "Help", |ui| {
                     Self::set_menu_item_font(ui);
                     if ui.button("Contents…").clicked() {
@@ -14061,6 +14070,11 @@ impl eframe::App for ChessApp {
                     }
                     if ui.button("Join our Discord…").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(DISCORD_URL));
+                        ui.close();
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if has_deferred_update() && ui.button("Update and Reload").clicked() {
+                        update_and_reload();
                         ui.close();
                     }
                     if ui.button("About Ironwood Chess…").clicked() {

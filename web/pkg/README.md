@@ -231,3 +231,33 @@ the Rust logo (CC BY 4.0), Fenshot (MIT), and ONNX Runtime Web (MIT). See the
 texts, and source links. `npm run engine` copies the Stockfish license from the
 pinned npm package into the deployed site. Keep the notices, licenses, and
 corresponding-source links with published builds.
+
+
+### Engine worker startup
+
+`npm run engine` copies the pinned Stockfish.js package and applies the GPLv3 glue patch in
+`scripts/stockfish-thread-pool.mjs`. It prepares the supported pthread pool asynchronously
+before applying thread settings, avoiding a synchronous thread-resize stall. The WebAssembly
+engine and NNUE network are unchanged. The adapter rejects an unexpected engine layout;
+review it when upgrading Stockfish. Run `node --test tests/engine-worker.test.mjs` to validate
+the startup handshake and worker-loading barrier.
+
+### Optional PostHog analytics
+
+Analytics require explicit acceptance and are disabled on localhost and preview hosts by default.
+Localhost and `127.0.0.1` enable the statistics choice automatically, without a special URL parameter. Open `http://127.0.0.1:8788/play/`, then choose **Allow statistics**. Unanswered or declined consent sends no events.
+Test events go to the configured project with `environment = local_test`; filter production dashboards to `environment = production`.
+Use **Analytics settings** to decline or allow again. Do not use a personal API key in frontend code.
+
+Rebuild analytics with `node scripts/build-analytics.mjs` (also runs during `build:site`).
+The Apache 2.0/MIT SDK is pinned in package-lock.json and notices are copied into web/licenses.
+Run `node --test tests/analytics.test.mjs` to check consent and context filtering.
+
+Events: `$pageview`, `app_opened`, `game_started` (local new games), `game_analysis_started` (full-game analysis),
+and `active_usage` with `active_seconds`. Active time requires a focused, visible app with input in the last two minutes.
+For active minutes, sum active_seconds / 60, grouped by PostHog session ID; average or take the median across sessions.
+Unique visitors represent browsers that accepted analytics, not all people. Blocked/offline activity is not queued by Ironwood.
+Session replay, automatic interaction capture, surveys, performance capture, and exception capture are disabled.
+Maintain separate Production and Local Test dashboards. Use `environment = production` and
+`environment = local_test` respectively, including filters embedded in SQL queries. Use separate
+copies of insights so changing a test chart does not change the production chart.
