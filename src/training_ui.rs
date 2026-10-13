@@ -504,43 +504,46 @@ impl ChessApp {
     }
 
     pub(super) fn training_game_summary_ui(&mut self, ui: &mut egui::Ui) {
-        let Some(session) = &self.training else {
+        let Some(session) = self.training.clone() else {
             return;
         };
-        ui.label(
-            RichText::new(format!(
-                "Training · {} · {}",
-                session.profile_name,
-                session.side.label()
-            ))
-            .strong(),
-        );
+        let gold = Color32::from_rgb(211, 173, 98);
+        let muted = Color32::from_rgb(175, 182, 191);
+        let finished = !self.training_live();
+        Frame::new().fill(Color32::from_rgb(29, 32, 36))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(87, 73, 48)))
+            .corner_radius(8.0).inner_margin(10.0).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 8.0;
+        ui.label(RichText::new(if finished { "TRAINING RESULT" } else { "TRAINING GAME" }).size(10.0).strong().color(gold));
+        ui.label(RichText::new(&session.profile_name).size(16.0).strong().color(Color32::from_rgb(238, 232, 219)));
+        ui.label(RichText::new(format!("{} · Stockfish {} Elo", session.side.label(), session.opponent_elo)).size(12.0).color(muted));
         if let Some(after) = session.rating_after {
-            ui.label(format!(
-                "{} to {} ({:+}) · opponent {}",
-                session.rating_before,
-                after,
-                after - session.rating_before,
-                session.opponent_elo
-            ));
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(format!("{} to {}", session.rating_before, after)).size(20.0).strong().color(gold));
+                let change = after - session.rating_before;
+                ui.label(RichText::new(format!("{change:+}")).size(14.0).strong().color(
+                    if change > 0 { Color32::from_rgb(136, 194, 151) }
+                    else if change < 0 { Color32::from_rgb(240, 150, 130) } else { muted }));
+            });
         } else {
-            ui.label(format!(
-                "Your rating {} · Stockfish {}",
-                session.rating_before, session.opponent_elo
-            ));
+            ui.label(RichText::new(format!("{} Elo", session.rating_before)).size(20.0).strong().color(gold));
         }
         if let Some(error) = &self.training_error {
             ui.colored_label(Color32::from_rgb(240, 150, 130), error);
         }
-        ui.horizontal_wrapped(|ui| {
-            if ui.button("Profile & progress").clicked() {
-                self.training_dialog_open = true;
-            }
-            if !self.training_live() && ui.button("Next training game").clicked() {
-                if let Some(session) = &self.training {
-                    self.training_profiles.selected_id = session.profile_id.clone();
-                }
+        ui.add_space(2.0);
+            if finished && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
+                RichText::new("Next training game").size(13.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                .fill(gold).corner_radius(6.0)).clicked() {
+                self.training_profiles.selected_id = session.profile_id.clone();
                 self.start_training_game();
+            }
+            if ui.add_sized([ui.available_width(), 34.0], egui::Button::new(
+                RichText::new("Profile & progress").size(13.0).strong().color(gold))
+                .fill(Color32::from_rgb(43, 38, 29)).stroke(Stroke::new(1.0, gold.gamma_multiply(0.65)))
+                .corner_radius(6.0)).clicked() {
+                self.training_dialog_open = true;
             }
         });
         ui.separator();
@@ -623,7 +626,8 @@ impl ChessApp {
         });
     }
 
-    fn training_focus_ui(ui: &mut egui::Ui, stats: &AnalysisStats, analyzed_games: usize) {
+    fn training_focus_ui(ui: &mut egui::Ui, stats: &AnalysisStats, analyzed_games: usize, practice_enabled: bool) -> bool {
+        let mut launched = false;
         let gold = Color32::from_rgb(211, 173, 98);
         let muted = Color32::from_rgb(175, 182, 191);
         let analyzed = stats.analyzed_moves();
@@ -666,12 +670,14 @@ impl ChessApp {
                 ui.label(["Review development, king safety, and early tactical errors.", "Review your largest errors and compare the engine's alternative lines.", "Practice converting advantages and defending simplified positions."][i]);
                 ui.add_space(6.0);
                 ui.label(RichText::new(format!("Highest average loss: {:.0} cp across {} numerical evaluations. A practice suggestion based on the analyzed moves.", phase.mean_loss(), phase.cp_moves)).color(muted));
+                launched = Self::phase_practice_ui(ui, i, practice_enabled);
             } else {
                 ui.label(RichText::new("Build your analysis sample").size(22.0).strong());
                 ui.label("Analyze completed games to find a recurring weakness. A phase needs at least 20 numerical evaluations and a mistake or blunder before a focus is suggested.");
             }
         });
         ui.add_space(16.0);
+        launched
     }
 
     pub(super) fn training_dialog(&mut self, ctx: &egui::Context) {
@@ -726,7 +732,7 @@ impl ChessApp {
                 ui.label(RichText::new("Areas to focus on").size(19.0).strong());
                 let stats = profile.analysis_totals();
                 let analyzed_games = profile.results.iter().filter(|r| r.analysis.analyzed_moves() > 0).count();
-                Self::training_focus_ui(ui, &stats, analyzed_games);
+                if Self::training_focus_ui(ui, &stats, analyzed_games, !self.training_live() && !(self.fics_active && self.fics_playing)) { close = true; }
                 if stats.missed_mates + stats.allowed_mates > 0 { ui.label(format!("Tactics: {} missed mates · {} moves allowing mate. Review those positions before your next session.", stats.missed_mates, stats.allowed_mates)); }
                 let flags = profile.results.iter().filter(|r| r.timed_out).count();
                 if flags > 0 { ui.label(format!("Clock management: {flags} games lost on time.")); }

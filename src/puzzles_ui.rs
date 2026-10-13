@@ -161,10 +161,41 @@ impl State {
 
 const THEMES: &[(&str, &str)] = &[("Mixed", "mix"), ("Forks", "fork"), ("Pins", "pin"), ("Skewers", "skewer"),
     ("Discovered attacks", "discoveredAttack"), ("Hanging pieces", "hangingPiece"), ("Mate in one", "mateIn1"),
-    ("Mate in two", "mateIn2"), ("Endgames", "endgame"), ("Opening", "opening")];
+    ("Mate in two", "mateIn2"), ("Endgames", "endgame"), ("Opening", "opening"), ("Middlegame", "middlegame")];
 const DIFFICULTIES: &[(&str, &str)] = &[("Easiest", "easiest"), ("Easier", "easier"), ("Normal", "normal"), ("Harder", "harder"), ("Hardest", "hardest")];
 
 impl ChessApp {
+    pub(super) fn phase_practice_ui(ui: &mut egui::Ui, phase: usize, enabled: bool) -> bool {
+        let mut launched = false;
+        let state_id = egui::Id::new("puzzles_state");
+        let mut state = ui.ctx().data(|d| d.get_temp::<State>(state_id)).unwrap_or_default();
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Puzzle difficulty");
+            egui::ComboBox::from_id_salt("phase_puzzle_difficulty")
+                .selected_text(DIFFICULTIES[state.difficulty].0).show_ui(ui, |ui| {
+                    for (i, (name, _)) in DIFFICULTIES.iter().enumerate() {
+                        ui.selectable_value(&mut state.difficulty, i, *name);
+                    }
+                });
+            if ui.add_enabled(enabled && !state.loading, egui::Button::new("Practice this phase"))
+                .on_disabled_hover_text("Finish active training or online play, and wait for any puzzle request to complete.").clicked() {
+                let theme = ["opening", "middlegame", "endgame"][phase];
+                state.theme = THEMES.iter().position(|(_, key)| *key == theme).unwrap();
+                state.tab = 1;
+                state.collapsed = false;
+                state.session = None;
+                state.linked = false;
+                state.synced_board = None;
+                state.request(false, theme, DIFFICULTIES[state.difficulty].1);
+                launched = true;
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("puzzles_open"), true));
+            }
+        });
+        ui.small("Difficulty is relative to Lichess's anonymous baseline of 1500, not your Ironwood rating.");
+        ui.ctx().data_mut(|d| d.insert_temp(state_id, state));
+        launched
+    }
+
     fn sync_puzzle_position(&mut self, session: &Session) -> Result<(), String> {
         self.load_pgn(&session.review_pgn());
         if let Some(error) = self.pgn_error.as_ref() { return Err(error.clone()); }
@@ -301,7 +332,7 @@ impl ChessApp {
                                 let (rect, response) = ui.allocate_exact_size(Vec2::splat(cell), Sense::click());
                                 ui.painter().rect_filled(rect, 0.0, color);
                                 if let Some((piece, side)) = session.board.piece_on(square).zip(session.board.color_on(square)) {
-                                    Self::paint_piece(ui, rect, cell, self.piece_set, side, piece);
+                                    Self::paint_piece(ui, rect, cell, PieceSet::Merida, side, piece);
                                 }
                                 if session.selected.is_some_and(|source| MoveGen::new_legal(&session.board).any(|mv| mv.get_source() == source && mv.get_dest() == square)) {
                                     ui.painter().circle_filled(rect.center(), cell * 0.07, Color32::from_black_alpha(110));

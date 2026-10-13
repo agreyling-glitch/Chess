@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-12T00:00:00-05:00
+lastmod: 2026-10-13T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -8,6 +8,16 @@ weight: 13
 ---
 
 Use **View → Show 2D board** or **Show 3D board** to switch the board display. The position and moves stay the same. **Game → Flip board** puts the other color at the bottom without changing the position.
+
+On either a **2D or 3D board**, scroll the mouse wheel over the board to step through moves: **scroll down** goes forward and **scroll up** goes backward. After selecting a move in **Engine prediction**, the wheel steps through that prediction one move at a time, over either the board or the prediction table. Select a move in Game Moves to return to game navigation. On a **3D board**, hold the **right mouse button** while scrolling over the board to zoom instead. Wheel navigation is disabled during active training and online play.
+
+**View → Move feedback → Capture dissolve** turns the capture effect on or off. Captured pieces briefly shrink and fade with a soft gold pulse; on 3D boards the matching model also sinks slightly. This preference is saved on your device. Capture effects and live-move animations are suppressed when your system requests reduced motion.
+
+Capture dissolve is used for live captures only. Stepping through or replaying a game does not trigger it.
+
+**View → Move feedback → Highlight king in check** colors the checked king's square red in both 2D and 3D. It follows the position displayed during play, review, and engine predictions, and is enabled by default. Your choice is saved on this device.
+
+For 3D camera controls, **right-drag** rotates and tilts the board. Add **Shift** to lock rotation and change only the viewing height/tilt; **Shift + right mouse button + wheel** still zooms. See [Rotate, zoom, and reset the 3D board](/help/board-themes/#rotate-zoom-and-reset-the-3d-board).
 
 The Compact workspace uses tabs for Game Moves and Game Analysis. **View → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
 

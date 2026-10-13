@@ -6,9 +6,40 @@ use chess::{Color, Piece, Square, ALL_SQUARES};
 pub enum Kind { Danger, Pin, Fork }
 #[derive(Clone, Debug)]
 pub struct Finding {
+    pub fork: Option<ForkInfo>,
     pub kind: Kind,
     pub squares: Vec<Square>,
     pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ForkInfo {
+    pub gives_check: bool,
+    pub targets: Vec<Piece>,
+    pub capture_replies: Vec<chess::ChessMove>,
+}
+impl ForkInfo {
+    pub fn strong(&self) -> bool {
+        let majors = self.targets.iter().filter(|p| matches!(p, Piece::Queen | Piece::Rook)).count();
+        self.capture_replies.is_empty() && ((self.gives_check && majors > 0) || majors >= 2)
+    }
+    pub fn label(&self) -> &'static str {
+        if !self.capture_replies.is_empty() { "Capturable fork candidate" }
+        else if self.strong() { "Strong fork candidate" }
+        else if self.gives_check { "Checking fork candidate" }
+        else { "Fork candidate" }
+    }
+    pub fn badges(&self) -> String {
+        let mut badges = Vec::new();
+        if self.gives_check { badges.push("Check".to_owned()); }
+        let targets = [Piece::Queen, Piece::Rook, Piece::Bishop, Piece::Knight].into_iter()
+            .filter_map(|piece| { let count = self.targets.iter().filter(|p| **p == piece).count();
+                match count { 0 => None, 1 => Some(piece_name(piece).to_owned()), _ => Some(format!("{count} {}s", piece_name(piece))) }
+            }).collect::<Vec<_>>().join(" + ");
+        if !targets.is_empty() { badges.push(targets); }
+        badges.push(if self.capture_replies.is_empty() { "No immediate legal capture" } else { "Forking piece can be captured" }.into());
+        badges.join(" · ")
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -366,7 +397,7 @@ pub fn detect(board: &Board, previous: Option<&Board>) -> Vec<Finding> {
             let defenders = controllers(board, target, owner);
             if attackers > old_attackers || defenders < old_defenders {
                 let reason = if attackers > old_attackers { "gained an attacker" } else { "lost a defender" };
-                findings.push(Finding { kind: Kind::Danger, squares: vec![target], text: format!("Danger: the {} on {target} {reason} after the last move ({attackers} attackers, {defenders} defenders). Geometric control; not a proven loss.", piece_name(board.piece_on(target).unwrap())) });
+                findings.push(Finding { fork: None, kind: Kind::Danger, squares: vec![target], text: format!("Danger: the {} on {target} {reason} after the last move ({attackers} attackers, {defenders} defenders). Geometric control; not a proven loss.", piece_name(board.piece_on(target).unwrap())) });
             }
         }
     }
@@ -382,7 +413,7 @@ pub fn detect(board: &Board, previous: Option<&Board>) -> Vec<Finding> {
                     else {
                         let slider = piece == Piece::Queen || if dx == 0 || dy == 0 { piece == Piece::Rook } else { piece == Piece::Bishop };
                         if let Some(pinned) = blocker && board.color_on(square) == Some(!color) && slider {
-                            findings.push(Finding { kind: Kind::Pin, squares: vec![square, pinned, king], text: format!("Pin: the {} on {pinned} shields the king on {king} from the {} on {square}. It cannot leave this line while exposing its king.", piece_name(board.piece_on(pinned).unwrap()), piece_name(piece)) });
+                            findings.push(Finding { fork: None, kind: Kind::Pin, squares: vec![square, pinned, king], text: format!("Pin: the {} on {pinned} shields the king on {king} from the {} on {square}. It cannot leave this line while exposing its king.", piece_name(board.piece_on(pinned).unwrap()), piece_name(piece)) });
                         }
                         break;
                     }
@@ -401,9 +432,29 @@ pub fn detect(board: &Board, previous: Option<&Board>) -> Vec<Finding> {
         if targets.len() >= 2 {
             let mut squares = vec![mv.get_source(), mv.get_dest()];
             squares.extend(&targets);
-            findings.push(Finding { kind: Kind::Fork, squares, text: format!("Fork candidate: {mv} attacks {}. Check the opponent's replies; this pattern does not prove a material win.", targets.iter().map(ToString::to_string).collect::<Vec<_>>().join(" and ")) });
+            let capture_replies = MoveGen::new_legal(&after).filter(|reply| {
+                reply.get_dest() == mv.get_dest() || (after.piece_on(reply.get_source()) == Some(Piece::Pawn)
+                    && reply.get_source().get_file() != reply.get_dest().get_file()
+                    && after.piece_on(reply.get_dest()).is_none()
+                    && Square::make_square(reply.get_source().get_rank(), reply.get_dest().get_file()) == mv.get_dest())
+            }).collect();
+            let fork = ForkInfo { gives_check: after.checkers().popcnt() > 0,
+                targets: targets.iter().filter_map(|s| after.piece_on(*s)).collect(), capture_replies };
+            let replies = fork.capture_replies.iter().map(|reply| format!("{} {} × {}",
+                piece_name(after.piece_on(reply.get_source()).unwrap()), reply.get_source(), reply.get_dest())).collect::<Vec<_>>();
+            let reply_text = if replies.is_empty() { String::new() } else { format!(" Legal captures of the forking piece: {}.", replies.join(", ")) };
+            let text = format!("{}: {mv} attacks {}. {}.{} Check the opponent's replies; this pattern does not prove a material win.",
+                fork.label(), targets.iter().map(ToString::to_string).collect::<Vec<_>>().join(" and "), fork.badges(), reply_text);
+            findings.push(Finding { fork: Some(fork), kind: Kind::Fork, squares, text });
         }
     }
+    findings.sort_by_key(|f| match f.fork.as_ref() {
+        Some(fork) if fork.strong() => 2,
+        Some(fork) if !fork.capture_replies.is_empty() => 5,
+        Some(fork) if fork.gives_check => 3,
+        Some(_) => 4,
+        None => if f.kind == Kind::Danger { 0 } else { 1 },
+    });
     findings
 }
 
@@ -411,6 +462,38 @@ pub fn detect(board: &Board, previous: Option<&Board>) -> Vec<Finding> {
 mod tests {
     use super::*;
     use std::str::FromStr;
+    #[test]
+    fn royal_fork_is_stronger_than_a_knight_that_can_be_captured() {
+        let mut board = Board::default();
+        for text in ["e2e4", "d7d6", "d2d4", "g8f6", "d1d3", "b8c6", "c2c4", "c6b4", "d3e3", "d6d5", "c4c5"] {
+            let mv = chess::ChessMove::from_str(text).unwrap();
+            assert!(MoveGen::new_legal(&board).any(|legal| legal == mv));
+            board = board.make_move_new(mv);
+        }
+        let findings = detect(&board, None);
+        let c2 = findings.iter().find(|f| f.kind == Kind::Fork && f.squares[0] == Square::B4 && f.squares[1] == Square::C2).unwrap();
+        let d3 = findings.iter().find(|f| f.kind == Kind::Fork && f.squares[0] == Square::B4 && f.squares[1] == Square::D3).unwrap();
+        let strong = c2.fork.as_ref().unwrap();
+        assert!(strong.strong() && strong.gives_check);
+        assert!(strong.targets.contains(&Piece::Queen) && strong.targets.contains(&Piece::Rook));
+        assert!(strong.capture_replies.is_empty());
+        let weak = d3.fork.as_ref().unwrap();
+        assert!(weak.gives_check && !weak.strong());
+        assert!(weak.capture_replies.contains(&chess::ChessMove::from_str("e3d3").unwrap()));
+        assert_eq!(weak.label(), "Capturable fork candidate");
+        assert!(d3.text.contains("queen e3 × d3"));
+        assert!(findings.iter().position(|f| f.text == c2.text) < findings.iter().position(|f| f.text == d3.text));
+    }
+
+    #[test]
+    fn pinned_defender_is_not_reported_as_a_legal_fork_capture() {
+        let board = Board::from_str("4r2k/8/8/8/1n6/4Q3/8/2B1K3 b - - 0 1").unwrap();
+        let findings = detect(&board, None);
+        let fork = findings.iter().find(|f| f.kind == Kind::Fork && f.squares[0] == Square::B4 && f.squares[1] == Square::D3).unwrap();
+        assert!(fork.fork.as_ref().unwrap().capture_replies.is_empty());
+        assert_eq!(fork.fork.as_ref().unwrap().label(), "Checking fork candidate");
+    }
+
     #[test]
     fn pin_safety_excludes_pinned_defender_but_allows_moves_along_pin() {
         let board = Board::from_str("4r2k/8/8/8/8/2b5/3NR3/4K3 w - - 0 1").unwrap();

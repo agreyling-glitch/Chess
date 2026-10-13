@@ -676,25 +676,53 @@ impl ChessApp {
         }
         let mut open = true;
         let mut close_after = false;
+        let connected = self.lichess.connected();
+        let width = (ctx.screen_rect().width() - 64.0).clamp(280.0, if connected { 760.0 } else { 600.0 });
         egui::Window::new("Lichess lobby").title_bar(false).collapsible(false)
-            .fixed_size(Vec2::new(760.0, 800.0)).resizable(false).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .fixed_size(Vec2::new(width, if connected { 800.0 } else { 470.0 })).resizable(false).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .frame(Self::dialog_frame()).show(ctx, |ui| {
-            ui.set_min_size(Vec2::new(760.0, 800.0));
             if Self::dialog_header(ui, "Lichess lobby") { open = false; }
             ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
             ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
-            let status = self.lichess.lobby["status"].as_str().unwrap_or("Sign in to play on Lichess");
-            if status != "Connected to Lichess" { ui.label(status); }
+            let status = self.lichess.lobby["status"].as_str().unwrap_or("Sign in to play on Lichess").to_owned();
+            if connected && status != "Connected to Lichess" { ui.label(&status); }
             #[cfg(not(target_arch = "wasm32"))]
             ui.label("Lichess play is available in the browser app.");
             if !self.lichess.connected() {
-                if ui.button("Sign in with Lichess").clicked() {
+                let gold = Color32::from_rgb(211, 173, 98);
+                let muted = Color32::from_rgb(175, 182, 191);
+                ui.add_space(12.0);
+                Frame::new().fill(Color32::from_rgb(30, 34, 39))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(65, 61, 49)))
+                    .corner_radius(12.0).inner_margin(22.0).show(ui, |ui| {
+                ui.set_width((width - 44.0).max(180.0));
+                ui.label(RichText::new("PLAY ONLINE").size(12.0).strong().color(gold));
+                ui.add_space(6.0);
+                ui.label(RichText::new("Your next opponent awaits.").size(28.0).strong());
+                ui.label(RichText::new("Connect your Lichess account to find a game, challenge a friend, or pick up where you left off.").size(16.0).color(muted));
+                ui.add_space(12.0);
+                ui.horizontal_wrapped(|ui| {
+                    for label in ["Rapid & classical", "Correspondence", "Friend challenges"] {
+                        Frame::new().fill(Color32::from_rgb(40, 44, 48)).corner_radius(5.0)
+                            .inner_margin(7.0).show(ui, |ui| { ui.label(RichText::new(label).size(13.0).color(muted)); });
+                    }
+                });
+                ui.add_space(18.0);
+                if ui.add_sized([ui.available_width(), 46.0], egui::Button::new(
+                    RichText::new("Sign in with Lichess").size(17.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                    .fill(gold).corner_radius(7.0)).clicked() {
                     self.enter_lichess();
                     #[cfg(target_arch = "wasm32")]
                     lichess_sign_in();
                 }
-                if ui.button("Reconnect saved session").clicked() { self.start_lichess(); }
-                ui.label("Sign-in lasts for this browser session. Engine assistance is disabled during online play.");
+                if ui.add_sized([ui.available_width(), 38.0], egui::Button::new(RichText::new("Reconnect saved session").size(14.0))
+                    .fill(Color32::TRANSPARENT).stroke(Stroke::new(1.0, Color32::from_rgb(80, 84, 88))).corner_radius(7.0)).clicked() { self.start_lichess(); }
+                ui.add_space(6.0);
+                ui.label(RichText::new(status).size(13.0).color(muted));
+                });
+                ui.add_space(12.0);
+                ui.label(RichText::new("Sign-in lasts for this browser session.").size(13.0).color(muted));
+                ui.label(RichText::new("Fair play · Engine assistance is disabled during online play.").size(13.0).color(muted));
             } else {
                 ui.horizontal(|ui| {
                     let green = Color32::from_rgb(136, 194, 151);

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-12T00:00:00-05:00
+lastmod: 2026-10-13T00:00:00-05:00
 title: "Board themes and appearance"
 description: "Choose and customize 2D or 3D themes, with guidance on artwork downloads, Retry, and offline use."
 category: "using-ironwood"
@@ -39,10 +39,13 @@ If artwork is unavailable, reconnect and choose **Retry** beside its status in *
 With a 3D theme selected:
 
 - **Hold the right mouse button and drag** on the board to rotate the view and change its tilt.
+- **Hold Shift while right-dragging** to keep rotation fixed and adjust only the viewing height/tilt with vertical movement. Horizontal movement is ignored. You can press or release Shift during the drag.
 - **Double-click the right mouse button** on the board to reset the camera view.
-- **Scroll the mouse wheel** over the board to zoom in or out.
+- **Hold the right mouse button and scroll the mouse wheel** over the board to zoom in or out.
+- **Shift + right mouse button + mouse wheel** still zooms in or out, so you can adjust distance while keeping rotation locked.
+- **Scroll without holding the right mouse button** to navigate game moves, or the selected engine prediction, one move at a time.
 
-These controls change your view of the board; they do not move pieces or change the position. They also work in focus mode.
+Rotation, reset, and zoom change only your view. Normal scrolling changes the displayed position. These controls also work in focus mode.
 
 ## Hybrid Marble: flat board with 3D pieces
 

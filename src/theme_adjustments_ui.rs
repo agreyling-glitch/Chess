@@ -32,7 +32,7 @@ impl ChessApp {
     }
 
     fn render_piece_appearance(&self) -> crate::board3d::PieceAppearance {
-        crate::board3d::PieceAppearance { outline: !self.board_3d_active && self.piece_appearance.outline, shadows: self.piece_shadows, board_appearance:Some(self.board_3d_appearance), radial_light:Some(self.show_radial_light), ..self.piece_appearance.normalized() }
+        crate::board3d::PieceAppearance { highlight_check: self.highlight_checked_king, outline: !self.board_3d_active && self.piece_appearance.outline, shadows: self.piece_shadows, board_appearance:Some(self.board_3d_appearance), radial_light:Some(self.show_radial_light), ..self.piece_appearance.normalized() }
     }
 
     fn theme_adjustments_dialog(&mut self, ctx: &egui::Context) {

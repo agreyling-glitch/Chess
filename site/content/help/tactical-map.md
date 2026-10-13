@@ -2,12 +2,12 @@
 title: "Tactical Map"
 description: "Explore patterns, opponent threats, move changes, positional activity, knight routes, and pin-aware safety."
 category: "analysis"
-lastmod: 2026-10-11T00:00:00-05:00
+lastmod: 2026-10-13T00:00:00-05:00
 keywords: [attack vs defense, defenders, legal recaptures, pins, knight reach, destination safety, positional activity, opponent threats, what changed, tactical map]
 weight: 18
 ---
 
-Tactical Map helps you inspect the displayed position without running engine analysis. Pattern and threat lines work in both board views; attacker/defender bubbles and knight previews require **2D**.
+Tactical Map helps you inspect the displayed position without running engine analysis. Pattern and threat lines, Knight reach, and attacker/defender bubbles work in both board views.
 
 ## Open and arrange the map
 
@@ -17,7 +17,7 @@ Each tool has separate controls. **Positional activity** has its own heading. **
 
 ## Attack vs Defense
 
-Enable **Attack vs Defense** to show bubbles on every real piece in 2D:
+Enable **Attack vs Defense** to show bubbles beside every real piece. On 3D boards, the badges and numbers lie flat on the square's surface and follow rotation, tilt, and zoom. Hover a badge or piece for details.
 
 - **Red, top-left:** geometric enemy attackers, including pinned attackers.
 - **Green, top-right:** **geometric defenders / legal recapturers**. The first number includes pinned defenders. The second counts distinct friendly pieces able to recapture after at least one candidate legal enemy capture.
@@ -74,9 +74,13 @@ Reasons can include geometric mobility, central control, pressure on enemy piece
 
 The score is an explainable heuristic, **not a material value, engine evaluation, or tactical safety verdict**. Mobility is measured before king-safety checks, and geometric support includes pinned pieces. An active piece can still be lost tactically. Select another piece to inspect it; changing position clears the old activity card.
 
+## Fork candidate strength
+
+Fork pattern cards distinguish **strong fork candidates** (orange: checking a king while attacking a queen or rook, or attacking multiple major pieces, with no immediate legal capture of the forking piece), **checking fork candidates** (gold), and **capturable fork candidates** (muted cyan). Cards name the targets and show legal captures of the forking piece when available. Matching colors appear in the selected pattern's board outlines and arrows. These labels describe immediate legal replies, not an engine-proven material win.
+
 ## Knight reach: two hops
 
-Enable **Knight reach · two hops** in 2D, then click a knight on the main board or choose its square beside **Knight**. Either color can be selected.
+Enable **Knight reach · two hops**, then click a knight on the main board or choose its square beside **Knight**. Either color can be selected. In 3D, ghosts use the selected 3D knight model and square outlines follow the board's rotation, tilt, and zoom. Hover a ghost to focus its route; in review, click it to lock the route, just as in 2D.
 
 - **Ghost knights:** first-hop destinations. For the side to move, these are legal moves. For the other side, they show geometric reach, including pinned moves.
 - **Outlined squares:** potential second-hop destinations, assuming other pieces stay where they are and accounting for captures along the route.
@@ -106,7 +110,7 @@ The **Patterns** section contains **Danger**, **Pins**, and **Forks** buttons wi
 
 - **Danger:** surviving pieces on unchanged squares that are attacked and gained attackers or lost defenders after the last move. Coral outlines mark them.
 - **Pins:** pieces shielding their king from an enemy bishop, rook, or queen. Purple outlines mark absolute pins.
-- **Forks:** legal moves for the actual side to move that make the moving piece attack at least two enemy pieces other than pawns. Select a candidate to see its destination and targets in blue. All promotion choices are considered.
+- **Forks:** legal moves for the actual side to move that make the moving piece attack at least two enemy pieces other than pawns. Select a candidate to see its destination and targets in the card's matching color. All promotion choices are considered.
 
 These cards are geometric clues, not engine-confirmed material wins. They are separate from **Opponent threats**, which explores the other side's hypothetical moves, and **What changed?**, which explains changes after the last move. The map does not provide a skewer category or a complete vulnerability heatmap.
 

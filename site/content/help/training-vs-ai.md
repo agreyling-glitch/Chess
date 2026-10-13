@@ -2,6 +2,7 @@
 title: "Training vs AI"
 description: "Build a training profile, play both colors, and follow your progress against Stockfish."
 category: "using-ironwood"
+lastmod: 2026-10-13T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
@@ -15,6 +16,8 @@ Wins count as 1, draws as 0.5, and losses as 0. The rating changes by `32 × (sc
 Stockfish's target range is 1320–3190. Your training rating can fall below 1320; the engine stays at its lowest target until you recover. These are personal **Ironwood training ratings**, not FIDE, Chess.com, or Lichess ratings. Stockfish's strength limiter is approximate, and the game's conditions affect its effective strength. [Stockfish documents its Elo target and calibration](https://official-stockfish.github.io/docs/stockfish-wiki/UCI-Protocol-and-Stockfish-Commands.html#uci_elo).
 
 Hints, analysis, takebacks, and strength changes are held until the game finishes. Training automatically records a draw for stalemate, insufficient material, threefold repetition, or 50 moves without a pawn move or capture.
+
+To resign, choose **Resign…** beneath the board, then confirm **Resign game**. Choose **Keep playing** to cancel. The button is also available in Focus mode. A confirmed resignation records a training loss and updates your profile.
 
 ## Your profile and progress
 
@@ -41,7 +44,10 @@ The dashboard counts only your moves. An analysis-coverage indicator shows how m
 
 Phase labels are heuristics: the first ten full moves are the opening; later positions with at most 26 points of non-pawn material are endgames; other positions are middlegames. A phase needs at least 20 moves with numerical evaluations and a mistake or blunder before it can be recommended as a recurring focus area. Partial analysis can bias the summary. Use the suggested phase and mate counts to choose positions to review, rather than treating them as a diagnosis of your chess ability.
 
+When **Your next practice focus** recommends a phase, choose **Puzzle difficulty** and click **Practice this phase** to load a matching [Lichess puzzle](/help/puzzles/). The profile window closes and Puzzles opens on Practice with Opening, Middlegame, or Endgames selected. Difficulty uses Lichess's anonymous baseline of 1500, not your Ironwood training rating. Finish active training or online play before starting puzzles.
+
 ## Saved games and backups
+
 
 **Saved Games → Training** keeps training games separate from My Games, Imported Games, and Observed games. Filter the Training section by profile to replay games, add notes, and run analysis. Each game records the profile, color, opponent target, and rating change.
 

@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct PieceAppearance {
+    pub highlight_check: bool,
     pub custom_board_colors: bool,
     pub board_texture: u8,
     pub board_light: [u8; 3],
@@ -34,7 +35,7 @@ pub struct PieceAppearance {
     pub radial_light: Option<bool>,
 }
 impl Default for PieceAppearance {
-    fn default() -> Self { Self { custom_board_colors:false,board_texture:0,board_light:[205,214,193],board_dark:[76,116,92],size:100,height:100,custom_colors:false,white:[235,232,225],black:[62,73,68],finish:0,outline:false,inner_shading:0,gradient:false,gradient_direction:0,white_end:[168,143,91],black_end:[12,20,32],shadow_strength:100,shadow_softness:50,shadows:true,board_appearance:None,radial_light:None } }
+    fn default() -> Self { Self { highlight_check:false,custom_board_colors:false,board_texture:0,board_light:[205,214,193],board_dark:[76,116,92],size:100,height:100,custom_colors:false,white:[235,232,225],black:[62,73,68],finish:0,outline:false,inner_shading:0,gradient:false,gradient_direction:0,white_end:[168,143,91],black_end:[12,20,32],shadow_strength:100,shadow_softness:50,shadows:true,board_appearance:None,radial_light:None } }
 }
 impl PieceAppearance {
     pub fn normalized(mut self) -> Self {
@@ -227,8 +228,9 @@ fn align_wood_board_grid(board: &mut Model) {
     // The atlas is a photograph-like texture: its eight checker columns and
     // rows are not perfectly uniform. Give each square its own top-face quad
     // so every visible seam lands on the move/highlight grid exactly.
-    let x_pixels: [f32; 11] = [0.0, 47.0, 96.0, 148.0, 200.0, 252.0, 304.0, 357.0, 409.0, 461.0, 512.0];
-    let z_pixels: [f32; 11] = [0.0, 47.0, 99.0, 151.0, 203.0, 256.0, 308.0, 361.0, 413.0, 461.0, 512.0];
+    // Measured checker transitions in the bundled 1024px diffuse atlas.
+    let x_pixels: [f32; 11] = [0.0, 48.0, 97.0, 149.0, 202.0, 254.0, 306.0, 358.0, 411.0, 462.0, 512.0];
+    let z_pixels: [f32; 11] = [0.0, 49.0, 101.0, 153.0, 205.0, 258.0, 310.0, 362.0, 414.0, 462.0, 512.0];
     let min_x = board.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
     let max_x = board.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
     let min_z = board.positions.iter().map(|p| p.z).fold(f32::INFINITY, f32::min);
@@ -317,6 +319,11 @@ impl View {
     pub fn orbit(&mut self, delta: Vec2) {
         self.yaw = (self.yaw - delta.x * 0.008).rem_euclid(std::f32::consts::TAU);
         self.elevation = (self.elevation + delta.y * 0.008).clamp(0.20, 1.45);
+    }
+    pub fn orbit_with_rotation_lock(&mut self, delta: Vec2, lock_rotation: bool) {
+        let yaw = self.yaw;
+        self.orbit(delta);
+        if lock_rotation { self.yaw = yaw; }
     }
 }
 
@@ -809,6 +816,16 @@ pub fn circle_outline(square: Square, rect: Rect, flipped: bool, view: View) -> 
     }).collect()
 }
 
+/// Project a point on a square's surface. Offsets follow the player's board orientation.
+pub fn square_surface_point(square: Square, offset: Vec2, rect: Rect, flipped: bool, view: View) -> Option<Pos2> {
+    let direction = if flipped { -1.0 } else { 1.0 };
+    Camera::new(flipped, view).project(V3::new(
+        square.get_file().to_index() as f32 - 3.5 + offset.x * direction,
+        0.075,
+        3.5 - square.get_rank().to_index() as f32 + offset.y * direction,
+    ), rect).map(|(point, _)| point)
+}
+
 pub fn square_center(square: Square, rect: Rect, flipped: bool, view: View) -> Option<Pos2> {
     let file = square.get_file().to_index() as f32;
     let rank = square.get_rank().to_index() as f32;
@@ -906,18 +923,61 @@ pub fn image_with_adjustments(
     image
 }
 
+/// Render the selected model alone, retaining the board camera and materials.
+/// The offset anchors the model's square center to the drag pointer.
+pub fn drag_piece_image(
+    square: Square, piece: Piece, side: Color, rect: Rect, flipped: bool, view: View,
+    appearance: f32, theme: Theme, adjustments: PieceAppearance, scale: f32,
+) -> (ColorImage, Vec2, Vec2) {
+    let camera = Camera::new(flipped, view);
+    let mut adjustments = adjustments.normalized();
+    adjustments.shadows = false;
+    let mut triangles = Vec::new();
+    append_piece_triangles(&mut triangles, square, piece, side, camera, rect, theme, adjustments);
+    let mut bounds = Rect::NOTHING;
+    for triangle in &triangles { for point in triangle.points { bounds.extend_with(point); } }
+    if !bounds.is_finite() { return (ColorImage::filled([1, 1], Color32::TRANSPARENT), Vec2::ZERO, Vec2::splat(1.0)); }
+    let bounds = bounds.expand(2.0);
+    let width = (bounds.width() * scale).ceil().max(1.0) as usize;
+    let height = (bounds.height() * scale).ceil().max(1.0) as usize;
+    let mut image = ColorImage::filled([width, height], Color32::TRANSPARENT);
+    let mut depth = vec![0.0; width * height];
+    rasterize(&mut image, &mut depth, triangles, camera, bounds, scale, appearance, theme, adjustments);
+    let anchor = square_center(square, rect, flipped, view).unwrap_or(bounds.center());
+    (image, bounds.min - anchor, bounds.size())
+}
+
 fn dynamic_triangles(
     board: &Board, rect: Rect, flipped: bool, view: View,
     selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme, adjustments: PieceAppearance,
 ) -> Vec<Triangle> {
     let mut triangles = highlight_triangles(rect, flipped, view, selected, targets, last_move, theme);
+    triangles.extend(check_triangles(rect, flipped, view, checked_king(board, adjustments.highlight_check)));
     triangles.extend(piece_triangles(board, rect, flipped, view, theme, adjustments));
+    triangles
+}
+
+pub fn checked_king(board: &Board, enabled: bool) -> Option<Square> {
+    if !enabled || board.checkers().popcnt() == 0 { return None; }
+    Some((*board.pieces(Piece::King) & *board.color_combined(board.side_to_move())).to_square())
+}
+
+fn check_triangles(rect: Rect, flipped: bool, view: View, square: Option<Square>) -> Vec<Triangle> {
+    let mut triangles = Vec::new();
+    if let Some(square) = square {
+        let x = square.get_file().to_index() as f32 - 4.0;
+        let z = 3.0 - square.get_rank().to_index() as f32;
+        overlay_quad(&mut triangles, Camera::new(flipped, view), rect, [
+            V3::new(x, 0.063, z), V3::new(x + 1.0, 0.063, z),
+            V3::new(x + 1.0, 0.063, z + 1.0), V3::new(x, 0.063, z + 1.0),
+        ], [205, 55, 50]);
+    }
     triangles
 }
 
 fn highlight_triangles(
     rect: Rect, flipped: bool, view: View,
-    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, _theme: Theme,
 ) -> Vec<Triangle> {
     let camera = Camera::new(flipped, view);
     let mut triangles = Vec::with_capacity(2 * (targets.len() + usize::from(selected.is_some()) + 2 * usize::from(last_move.is_some())).min(64));
@@ -937,21 +997,15 @@ fn highlight_triangles(
                 color = Some([230, 178, 65]);
             }
             if let Some(color) = color {
-                // The Wood atlas's painted checker seams sit slightly away
-                // from the mesh grid. Keep the tint full-size and register it
-                // to the painted squares rather than shrinking its footprint.
-                let (highlight_x, highlight_z) = if theme == Theme::Wood {
-                    (x + 0.04, z - 0.035)
-                } else { (x, z) };
                 overlay_quad(
                     &mut triangles,
                     camera,
                     rect,
                     [
-                        V3::new(highlight_x, 0.061, highlight_z),
-                        V3::new(highlight_x + 1.0, 0.061, highlight_z),
-                        V3::new(highlight_x + 1.0, 0.061, highlight_z + 1.0),
-                        V3::new(highlight_x, 0.061, highlight_z + 1.0),
+                        V3::new(x, 0.061, z),
+                        V3::new(x + 1.0, 0.061, z),
+                        V3::new(x + 1.0, 0.061, z + 1.0),
+                        V3::new(x, 0.061, z + 1.0),
                     ],
                     color,
                 );
@@ -1377,6 +1431,39 @@ fn paint_silhouette_outline(image: &mut ColorImage, mask: &[Option<Color>], dept
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn shift_orbit_changes_elevation_without_changing_rotation() {
+        let mut view = View { yaw: 0.73, elevation: 0.85, distance: 20.0 };
+        view.orbit_with_rotation_lock(Vec2::new(100.0, 30.0), true);
+        assert_eq!(view.yaw, 0.73);
+        assert!(view.elevation > 0.85);
+        assert_eq!(view.distance, 20.0);
+        view.orbit_with_rotation_lock(Vec2::new(-100.0, 1000.0), true);
+        assert_eq!(view.yaw, 0.73);
+        assert_eq!(view.elevation, 1.45);
+        view.orbit_with_rotation_lock(Vec2::new(100.0, -1000.0), true);
+        assert_eq!(view.yaw, 0.73);
+        assert_eq!(view.elevation, 0.20);
+        view.orbit_with_rotation_lock(Vec2::new(20.0, 10.0), false);
+        assert_ne!(view.yaw, 0.73);
+    }
+
+    #[test]
+    fn drag_preview_renders_model_on_transparency_and_tracks_camera() {
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(700.0, 500.0));
+        let view = View::default();
+        let (image, offset, size) = drag_piece_image(Square::E2, Piece::Knight, Color::White,
+            rect, false, view, 0.5, Theme::Marble, PieceAppearance::default(), 1.0);
+        assert!(image.pixels.iter().any(|pixel| pixel.a() > 0));
+        assert!(image.pixels.iter().any(|pixel| pixel.a() == 0));
+        assert!(size.x > 1.0 && size.y > 1.0 && offset.is_finite());
+        let mut rotated = view;
+        rotated.orbit(Vec2::new(160.0, 40.0));
+        let (other, _, _) = drag_piece_image(Square::E2, Piece::Knight, Color::White,
+            rect, false, rotated, 0.5, Theme::Marble, PieceAppearance::default(), 1.0);
+        assert_ne!(image, other);
+    }
+
     /// Rebuild the flat-board sprites from the bundled CC0 Poly Haven meshes.
     #[test]
     #[ignore]

@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-12T00:00:00-05:00
+lastmod: 2026-10-13T00:00:00-05:00
 description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -114,6 +114,18 @@ Open a theme card’s **gear** or **View → Board → Theme adjustments…** to
 For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
 
 The 3D dialog groups size with height, then provides side colors, material finishes, shadows, overall appearance, and radial lighting. Contrasting outlines are limited to 2D. See [Board themes and appearance](/help/board-themes/) for the available controls.
+
+## Move and review in either board view
+
+Drag pieces to legal destinations in 2D or 3D, with a translucent preview following the pointer. Scroll down over the board to advance through game moves and up to go back. Select an engine prediction to navigate that line instead. Wheel navigation is disabled during active training and online play. In 3D, hold the right mouse button while scrolling to zoom; Shift while right-dragging locks rotation while adjusting tilt.
+
+Under **View → Move feedback**, choose **Capture dissolve** and **Highlight king in check**. Preferences save locally. Capture effects apply only to live captures, and capture and live-move animations respect system reduced-motion settings. Active-game actions remain beneath the board in Focus mode, including training resignation. Local two-player games can accept or decline draw offers. [Board controls](/help/board-and-view/) · [Playing a game](/help/playing-a-game/).
+
+Tactical Map shows Knight reach ghosts and attacker/defender counts on the 3D board, following its camera. Fork cards distinguish strong, checking, and capturable candidates and show immediate legal captures of the forking piece. These clues do not prove a material win. [Tactical Map](/help/tactical-map/).
+
+## Practice a recommended game phase
+
+Choose Opening, Middlegame, or Endgames in puzzle practice. When your training dashboard recommends a phase, **Practice this phase** opens a matching puzzle at your chosen difficulty. Difficulty uses the anonymous Lichess baseline of 1500, independently of your training rating. Puzzles use Merida pieces on a separate board. [Training practice](/help/training-vs-ai/#finding-areas-to-focus-on).
 
 ## Personalize the app background
 

@@ -147,12 +147,8 @@ impl ChessApp {
         ).changed() { ui.ctx().request_repaint(); }
         ui.ctx().data_mut(|d| d.insert_temp(count_id, show_counts));
         if show_counts {
-            if self.board_3d_rendering() {
-                ui.label(RichText::new("Switch to 2D to see attacker and defender counts.").size(12.0).color(muted));
-            } else {
                 ui.label(RichText::new("Red: geometric attackers. Green: geometric defenders / legal recapturers.").size(12.0).color(muted));
                 ui.label(RichText::new("2/-: no legal enemy capture, so recaptures do not apply.\n2/0: no defender can legally recapture. 2/1: one can.\nHover a piece for capture-specific details.").size(11.0).color(muted));
-            }
         }
         let threats_id = egui::Id::new("tactical_show_opponent");
         let mut show_threats = ui.ctx().data(|d| d.get_temp::<bool>(threats_id)).unwrap_or(false);
@@ -256,9 +252,7 @@ impl ChessApp {
                 "Click a ghost to lock/unlock its route."
             } else { "Live game: board clicks select and move pieces. Hover ghosts to preview; route locking is available in review." }).size(12.0).color(muted));
             ui.label(RichText::new("Safety: red attackers, green legal recapturers, amber unavailable defenders, gray geometric support. Hover for capture-specific recaptures.").size(12.0).color(muted));
-            ui.label(RichText::new(if self.board_3d_rendering() {
-                "Switch to 2D for knight reach."
-            } else if knights.is_empty() { "No knights on the board." }
+            ui.label(RichText::new(if knights.is_empty() { "No knights on the board." }
             else { "Click any knight on the board or choose its square above. Ghosts: first hop; outlines: next hop. Hover a ghost to focus. Gold: potential major-piece fork. Off-turn knights show geometric reach, including pinned moves. Other pieces stay put; replies can change reach." }).size(12.0).color(muted));
         }
         ui.add_space(4.0);
@@ -290,11 +284,11 @@ impl ChessApp {
         egui::ScrollArea::vertical().id_salt("tactical_list").max_height(320.0).auto_shrink([false, true]).show(ui, |ui| {
             for (index, f) in visible.iter().enumerate() {
                 let active = selected == f.text;
-                let color = Self::tactical_color(f.kind);
+                let color = Self::tactical_finding_color(f);
                 let title = match f.kind {
                     crate::tactical::Kind::Danger => format!("Exposed piece · {}", f.squares[0]),
                     crate::tactical::Kind::Pin => format!("Absolute pin · {}", f.squares[1]),
-                    crate::tactical::Kind::Fork => format!("Fork candidate · {} to {}", f.squares[0], f.squares[1]),
+                    crate::tactical::Kind::Fork => format!("{} · {} to {}", f.fork.as_ref().map_or("Fork candidate", |fork| fork.label()), f.squares[0], f.squares[1]),
                 };
                 let description = f.text.split_once(": ").map_or(f.text.as_str(), |(_, body)| body)
                     .split(". ").next().unwrap_or(&f.text);
@@ -311,6 +305,13 @@ impl ChessApp {
                             ui.label(RichText::new(title).size(13.0).strong().color(color));
                         });
                         ui.add(egui::Label::new(RichText::new(description).size(13.0).color(Color32::from_rgb(218, 225, 235))).wrap());
+                        if let Some(fork) = &f.fork {
+                            ui.label(RichText::new(fork.badges()).size(12.0).color(color));
+                            if !fork.capture_replies.is_empty() {
+                                ui.label(RichText::new(format!("Legal capture replies: {}", fork.capture_replies.iter()
+                                    .map(|reply| format!("{} × {}", reply.get_source(), reply.get_dest())).collect::<Vec<_>>().join(", "))).size(12.0));
+                            }
+                        }
                     });
                 let response = ui.interact(card.response.rect, ui.id().with(("tactical_card", index)), egui::Sense::click())
                     .on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(&f.text);
@@ -332,6 +333,15 @@ impl ChessApp {
     fn tactical_filter(kind: crate::tactical::Kind) -> usize {
         match kind { crate::tactical::Kind::Danger => 0, crate::tactical::Kind::Pin => 1, crate::tactical::Kind::Fork => 2 }
     }
+    fn tactical_finding_color(finding: &crate::tactical::Finding) -> Color32 {
+        if let Some(fork) = &finding.fork {
+            if !fork.capture_replies.is_empty() { return Color32::from_rgb(135, 173, 185); }
+            if fork.strong() { return Color32::from_rgb(245, 139, 88); }
+            if fork.gives_check { return Color32::from_rgb(230, 178, 65); }
+        }
+        Self::tactical_color(finding.kind)
+    }
+
     fn tactical_color(kind: crate::tactical::Kind) -> Color32 {
         match kind {
             crate::tactical::Kind::Danger => Color32::from_rgb(240, 130, 105),
@@ -339,38 +349,80 @@ impl ChessApp {
             crate::tactical::Kind::Fork => Color32::from_rgb(100, 195, 230),
         }
     }
+    fn knight_3d_ghosts(&self, ctx: &egui::Context, rect: egui::Rect, source: Square) -> Vec<(Square, egui::TextureHandle, egui::Rect)> {
+        type Cached = (String, Vec<(Square, egui::TextureHandle, egui::Rect)>);
+        let Some(side) = self.board.color_on(source).filter(|_| self.board.piece_on(source) == Some(Piece::Knight)) else { return Vec::new(); };
+        let view = self.board_3d_view();
+        let adjustments = self.render_piece_appearance();
+        let key = format!("{}:{:?}:{:?}:{:?}:{:?}:{:?}:{}:{}:{}", self.board, source, self.board_3d_theme,
+            (view.yaw, view.elevation, view.distance), adjustments, rect, self.flipped,
+            self.board_3d_appearance, ctx.pixels_per_point());
+        let id = egui::Id::new("knight_reach_3d_ghosts");
+        if let Some((_, ghosts)) = ctx.data(|d| d.get_temp::<Cached>(id)).filter(|cached| cached.0 == key) { return ghosts; }
+        let ghosts = crate::tactical::knight_routes(&self.board, source).into_iter().filter_map(|(first, _)| {
+            let center = crate::board3d::square_center(first, rect, self.flipped, view)?;
+            let (image, offset, size) = crate::board3d::drag_piece_image(first, Piece::Knight, side, rect,
+                self.flipped, view, self.board_3d_appearance as f32 / 100.0, self.board_3d_theme,
+                adjustments, ctx.pixels_per_point().min(1.5));
+            Some((first, ctx.load_texture(format!("knight_reach_{first}"), image, egui::TextureOptions::LINEAR),
+                egui::Rect::from_min_size(center + offset, size)))
+        }).collect::<Vec<_>>();
+        ctx.data_mut(|d| d.insert_temp(id, (key, ghosts.clone())));
+        ghosts
+    }
+
+    pub(super) fn tactical_knight_3d_hit(&self, ctx: &egui::Context, pos: egui::Pos2, rect: egui::Rect) -> Option<Square> {
+        if !self.board_3d_rendering() || !self.tactical_knight_active(ctx) || !rect.contains(pos) { return None; }
+        let source = ctx.data(|d| d.get_temp::<Square>(egui::Id::new("tactical_knight_source")))?;
+        self.knight_3d_ghosts(ctx, rect, source).iter().filter(|(_, _, bounds)| bounds.contains(pos))
+            .min_by(|a, b| a.2.center().distance_sq(pos).total_cmp(&b.2.center().distance_sq(pos)))
+            .map(|(square, _, _)| *square)
+    }
+
     pub(super) fn paint_tactical_map(&self, ui: &mut egui::Ui, rect: egui::Rect) {
         if !self.tactical_available() || !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_enabled"))).unwrap_or(false) { return; }
-        if !self.board_3d_rendering() && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_knight_reach"))).unwrap_or(false)
+        if ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_knight_reach"))).unwrap_or(false)
             && let Some(source) = ui.ctx().data(|d| d.get_temp::<Square>(egui::Id::new("tactical_knight_source"))) {
-            let cell = rect.width() / 8.0;
-            let center = |s| rect.min + Self::square_screen_offset(s, self.flipped, cell);
+            let is_3d = self.board_3d_rendering();
+            let cell = rect.width() / if is_3d { 10.0 } else { 8.0 };
+            let center = |s| if is_3d {
+                crate::board3d::square_center(s, rect, self.flipped, self.board_3d_view()).unwrap_or(rect.center())
+            } else { rect.min + Self::square_screen_offset(s, self.flipped, cell) };
             let routes = crate::tactical::knight_routes(&self.board, source);
             let hover = ui.ctx().pointer_hover_pos().filter(|&p| ui.rect_contains_pointer(rect) && rect.contains(p));
-            let hovered_first = routes.iter().find(|(s, _)| hover.is_some_and(|p|
-                egui::Rect::from_center_size(center(*s), Vec2::splat(cell)).contains(p))).map(|(s, _)| *s);
+            let hovered_square = hover.and_then(|pos| self.tactical_knight_3d_hit(ui.ctx(), pos, rect)
+                .or_else(|| self.board_mark_square(pos, rect)));
+            let hovered_first = routes.iter().find(|(s, _)| Some(*s) == hovered_square).map(|(s, _)| *s);
             let locked = ui.ctx().data(|d| d.get_temp::<(Board, Square, Square)>(egui::Id::new("tactical_knight_lock")))
                 .filter(|(board, knight, first)| *board == self.board && *knight == source && routes.iter().any(|(s, _)| s == first))
                 .map(|(_, _, first)| first);
             let focused = locked.or(hovered_first);
             let cyan = Color32::from_rgb(100, 195, 230);
             let painter = ui.painter().with_clip_rect(rect);
-            painter.rect_stroke(egui::Rect::from_center_size(center(source), Vec2::splat(cell * 0.94)), 4.0,
-                Stroke::new(2.5, cyan), egui::StrokeKind::Inside);
+            let outline = |square, scale, stroke| {
+                if is_3d {
+                    if let Some(points) = crate::board3d::square_outline(square, rect, self.flipped, self.board_3d_view()) {
+                        let middle = center(square);
+                        painter.add(egui::Shape::closed_line(points.into_iter().map(|p| middle + (p - middle) * scale).collect(), stroke));
+                    }
+                } else {
+                    painter.rect_stroke(egui::Rect::from_center_size(center(square), Vec2::splat(cell * scale)), 3.0, stroke, egui::StrokeKind::Inside);
+                }
+            };
+            outline(source, 0.94, Stroke::new(2.5, cyan));
             for (first, next) in &routes {
                 if focused.is_some_and(|s| s != *first) { continue; }
                 for &(target, fork) in next {
                     let color = if fork { Color32::from_rgb(230, 178, 65) } else { cyan.gamma_multiply(if focused.is_some() { 0.8 } else { 0.35 }) };
-                    painter.rect_stroke(egui::Rect::from_center_size(center(target), Vec2::splat(cell * 0.76)), 3.0,
-                        Stroke::new(if fork { 2.5 } else { 1.5 }, color), egui::StrokeKind::Inside);
+                    outline(target, 0.76, Stroke::new(if fork { 2.5 } else { 1.5 }, color));
                     if focused.is_some() { painter.arrow(center(*first), (center(target) - center(*first)) * 0.82, Stroke::new(1.2, color)); }
                 }
                 if focused.is_some() { painter.arrow(center(source), (center(*first) - center(source)) * 0.8, Stroke::new(2.0, cyan)); }
             }
             if ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_destination_safety"))).unwrap_or(true) {
                 let destination = hover.and_then(|pos| {
-                    let square = self.board_mark_square(pos, rect)?;
                     if let Some(first) = hovered_first { return Some((first, first)); }
+                    let square = self.board_mark_square(pos, rect)?;
                     if let Some(first) = focused {
                         return routes.iter().find(|(s, _)| *s == first)
                             .filter(|(_, next)| next.iter().any(|(s, _)| *s == square)).map(|_| (first, square));
@@ -401,7 +453,11 @@ impl ChessApp {
                 ghost.set_clip_rect(rect);
                 ghost.set_opacity(if focused == Some(first) { 0.8 } else { 0.45 });
                 let side = self.board.color_on(source).unwrap();
-                Self::paint_piece(&ghost, piece_rect, cell, self.piece_set, side, Piece::Knight);
+                if is_3d {
+                    if let Some((_, texture, bounds)) = self.knight_3d_ghosts(ui.ctx(), rect, source).iter().find(|(square, _, _)| *square == first) {
+                        egui::Image::new((texture.id(), bounds.size())).paint_at(&ghost, *bounds);
+                    }
+                } else { Self::paint_piece(&ghost, piece_rect, cell, self.piece_set, side, Piece::Knight); }
                 if self.board.color_on(first) == Some(!side) {
                     painter.circle_stroke(center(first), cell * 0.42, Stroke::new(2.0, Color32::from_rgb(240, 130, 105)));
                 }
@@ -463,7 +519,7 @@ impl ChessApp {
         for f in self.tactical_findings(ui.ctx()) {
             if !filters[Self::tactical_filter(f.kind)] { continue; }
             let active = f.text == selected;
-            let color = Self::tactical_color(f.kind);
+            let color = Self::tactical_finding_color(&f);
             let squares = if active { f.squares.clone() } else {
                 match f.kind { crate::tactical::Kind::Danger => vec![f.squares[0]], crate::tactical::Kind::Pin => vec![f.squares[1]], crate::tactical::Kind::Fork => Vec::new() }
             };
@@ -490,10 +546,45 @@ impl ChessApp {
             }
         }
     }
+    fn paint_surface_count(&self, ui: &egui::Ui, rect: egui::Rect, square: Square,
+        offset: Vec2, text: &str, color: Color32) -> Option<egui::Rect> {
+        let project = |point| crate::board3d::square_surface_point(square, point, rect, self.flipped, self.board_3d_view());
+        let points = (0..40).map(|i| {
+            let angle = i as f32 * std::f32::consts::TAU / 40.0;
+            project(offset + Vec2::new(angle.cos(), angle.sin()) * 0.11)
+        }).collect::<Option<Vec<_>>>()?;
+        let bounds = egui::Rect::from_points(&points);
+        let painter = ui.painter().with_clip_rect(rect);
+        painter.add(egui::Shape::convex_polygon(points, color, Stroke::new(0.8, Color32::from_white_alpha(180))));
+        // Vector digits are projected onto the same plane as the badge. Screen-space
+        // text would stay upright and appear to float when the camera rotates.
+        let count = text.chars().count().max(1) as f32;
+        let advance = (0.18 / count).min(0.074);
+        let glyph_width = advance * 0.72;
+        let total_width = advance * (count - 1.0) + glyph_width;
+        let stroke = Stroke::new((bounds.width().min(bounds.height()) * 0.09).clamp(0.7, 1.6), Color32::WHITE);
+        for (index, ch) in text.chars().enumerate() {
+            let left = offset.x - total_width * 0.5 + index as f32 * advance;
+            let point = |x, y| project(Vec2::new(left + x * glyph_width, offset.y + (y - 1.0) * 0.065));
+            let line = |a: (f32, f32), b: (f32, f32)| {
+                if let (Some(a), Some(b)) = (point(a.0, a.1), point(b.0, b.1)) { painter.line_segment([a, b], stroke); }
+            };
+            let mask = match ch { '0'=>63, '1'=>6, '2'=>91, '3'=>79, '4'=>102, '5'=>109,
+                '6'=>125, '7'=>7, '8'=>127, '9'=>111, '-'=>64, _=>0 };
+            for (bit, a, b) in [(1,(0.0,0.0),(1.0,0.0)), (2,(1.0,0.0),(1.0,1.0)),
+                (4,(1.0,1.0),(1.0,2.0)), (8,(0.0,2.0),(1.0,2.0)),
+                (16,(0.0,1.0),(0.0,2.0)), (32,(0.0,0.0),(0.0,1.0)), (64,(0.0,1.0),(1.0,1.0))] {
+                if mask & bit != 0 { line(a, b); }
+            }
+            if ch == '/' { line((0.0, 2.0), (1.0, 0.0)); }
+        }
+        Some(bounds)
+    }
+
     // Paint last on the board layer, above annotations and tactical/engine arrows.
     pub(super) fn paint_tactical_bubbles(&self, ui: &mut egui::Ui, rect: egui::Rect) {
         if !self.tactical_piece_active(ui.ctx()) { return; }
-        if !self.board_3d_rendering() && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_attack_defense"))).unwrap_or(false) {
+        if ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_attack_defense"))).unwrap_or(false) {
             type Counts = (Board, Vec<(Square, crate::tactical::PinAwareSafety)>);
             let cache_id = egui::Id::new("tactical_pin_counts_cache");
             let cached = ui.ctx().data(|d| d.get_temp::<Counts>(cache_id));
@@ -508,7 +599,29 @@ impl ChessApp {
             let radius = (cell * 0.13).clamp(5.0, 12.0).min(cell * 0.20);
             let inset = radius + 2.0;
             let painter = ui.painter().with_clip_rect(rect);
+            let hovered_3d = self.board_3d_rendering().then(|| ui.ctx().pointer_hover_pos()
+                .filter(|_| ui.rect_contains_pointer(rect))).flatten()
+                .and_then(|pos| crate::board3d::square_at(pos, rect, self.flipped, self.board_3d_view(), &self.board, &[])
+                    .map(|square| (pos, square)));
             for (square, safety) in counts {
+                if self.board_3d_rendering() {
+                    let mut hover = false;
+                    for (text, x, color) in [(safety.attackers.len().to_string(), -0.28, Color32::from_rgb(185,43,43)),
+                        (format!("{}/{}", safety.defenders.len(), if safety.captures.is_empty() { "-".to_owned() } else { safety.recapturers.len().to_string() }), 0.28, Color32::from_rgb(30,125,67))] {
+                        if let Some(bounds) = self.paint_surface_count(ui, rect, square, Vec2::new(x, 0.28), &text, color) {
+                            hover |= ui.rect_contains_pointer(bounds);
+                            ui.interact(bounds, ui.id().with(("pin_safety_3d", square.to_index(), x < 0.0)), Sense::hover())
+                                .on_hover_text(format!("{square}\n{}", Self::tactical_safety_text(&safety)));
+                        }
+                    }
+                    if !hover { // Inspecting the piece itself keeps the existing detailed tooltip.
+                        if let Some((pos, _)) = hovered_3d.filter(|(_, hovered)| *hovered == square) {
+                            ui.interact(egui::Rect::from_center_size(pos, Vec2::splat(2.0)), ui.id().with(("pin_piece_3d", square.to_index())), Sense::hover())
+                                .on_hover_text(format!("{square}\n{}", Self::tactical_safety_text(&safety)));
+                        }
+                    }
+                    continue;
+                }
                 let center = rect.min + Self::square_screen_offset(square, self.flipped, cell);
                 for (count, x, color) in [(safety.attackers.len().to_string(), -cell * 0.5 + inset, Color32::from_rgb(185,43,43)),
                     (format!("{}/{}", safety.defenders.len(), if safety.captures.is_empty() { "-".to_owned() } else { safety.recapturers.len().to_string() }), cell * 0.5 - inset, Color32::from_rgb(30,125,67))] {
@@ -528,6 +641,72 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn three_d_count_badges_stay_on_their_square_when_camera_changes() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("tactical_enabled"), true);
+            d.insert_temp(egui::Id::new("tactical_attack_defense"), true);
+        });
+        let board = app.board;
+        let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(700.0, 500.0));
+        for (flipped, yaw, distance) in [(false, 0.0, 20.0), (true, 0.7, 17.0), (false, -0.9, 25.0)] {
+            app.flipped = flipped;
+            app.board_3d_yaw = yaw;
+            app.board_3d_distance = distance;
+            let mut bounds = None;
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    bounds = app.paint_surface_count(ui, rect, Square::E4, Vec2::new(0.28, 0.28), "2/-", Color32::GREEN);
+                    app.paint_tactical_bubbles(ui, rect);
+                });
+            });
+            let bounds = bounds.unwrap();
+            assert!(bounds.is_finite() && bounds.width() > 1.0 && bounds.height() > 1.0);
+            assert_eq!(crate::board3d::board_square_at(bounds.center(), rect, flipped, app.board_3d_view()), Some(Square::E4));
+            assert!(!output.shapes.is_empty());
+            assert_eq!(app.board, board);
+        }
+    }
+
+    #[test]
+    fn knight_reach_3d_ghosts_follow_camera_and_lock_without_moving() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        app.review_index = Some(0);
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("tactical_enabled"), true);
+            d.insert_temp(egui::Id::new("tactical_knight_reach"), true);
+            d.insert_temp(egui::Id::new("tactical_knight_source"), Square::G1);
+        });
+        let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::new(700.0, 500.0));
+        let original = app.board;
+        let mut previous_bounds = None;
+        for (flipped, yaw) in [(false, 0.0), (true, 0.6), (false, -0.7)] {
+            app.flipped = flipped;
+            app.board_3d_yaw = yaw;
+            let ghosts = app.knight_3d_ghosts(&ctx, rect, Square::G1);
+            assert_eq!(ghosts.len(), 2);
+            let cached = app.knight_3d_ghosts(&ctx, rect, Square::G1);
+            assert_eq!(ghosts[0].1.id(), cached[0].1.id());
+            let bounds = ghosts.iter().find(|(square, _, _)| *square == Square::F3).unwrap().2;
+            assert!(bounds.is_finite() && bounds.width() > 1.0);
+            assert_eq!(app.tactical_knight_3d_hit(&ctx, bounds.center(), rect), Some(Square::F3));
+            if let Some(previous) = previous_bounds { assert_ne!(bounds, previous); }
+            previous_bounds = Some(bounds);
+            assert!(app.tactical_knight_selection(&ctx, Square::F3));
+            assert_eq!(app.board, original);
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| app.paint_tactical_map(ui, rect));
+            });
+        }
+    }
+
     #[test]
     fn live_ai_moves_work_with_map_and_knight_preview_open() {
         for (source, target) in [(Square::E2, Square::E4), (Square::G1, Square::F3)] {

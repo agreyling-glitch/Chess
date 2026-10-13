@@ -375,6 +375,15 @@ struct MoveAnimation {
 }
 
 #[derive(Clone, Copy)]
+struct CaptureAnimation {
+    square: Square,
+    piece: Piece,
+    color: Color,
+    board_after: Board,
+    started_at: f64,
+}
+
+#[derive(Clone, Copy)]
 struct BestMoveAttempt {
     target_index: usize,
     best_move: ChessMove,
@@ -1207,6 +1216,8 @@ struct PersistedGame {
     #[serde(default)]
     local_resigned_white: Option<bool>,
     #[serde(default)]
+    local_agreed_draw: bool,
+    #[serde(default)]
     local_start_ply: usize,
     board: String,
     #[serde(default)]
@@ -1276,6 +1287,7 @@ struct PersistedGame {
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct UserPreferences {
+    highlight_checked_king: bool,
     workspace_mode: WorkspaceMode,
     show_coordinates: bool,
     show_highlighted_move: bool,
@@ -1292,6 +1304,7 @@ struct UserPreferences {
     figurine_notation: bool,
     move_sounds: bool,
     animate_moves: bool,
+    animate_captures: bool,
     piece_set: PieceSet,
     board_3d_active: bool,
     board_3d_theme: crate::board3d::Theme,
@@ -1302,6 +1315,7 @@ struct UserPreferences {
 impl Default for UserPreferences {
     fn default() -> Self {
         Self {
+            highlight_checked_king: true,
             workspace_mode: WorkspaceMode::default(),
             show_coordinates: true,
             show_highlighted_move: true,
@@ -1318,6 +1332,7 @@ impl Default for UserPreferences {
             figurine_notation: false,
             move_sounds: true,
             animate_moves: true,
+            animate_captures: true,
             piece_set: PieceSet::default(),
             board_3d_active: false,
             board_3d_theme: crate::board3d::Theme::Marble,
@@ -1330,6 +1345,7 @@ impl Default for UserPreferences {
 impl UserPreferences {
     fn from_game(game: &PersistedGame) -> Self {
         Self {
+            highlight_checked_king: true,
             workspace_mode: game.workspace_mode,
             show_coordinates: game.show_coordinates,
             show_highlighted_move: true,
@@ -1346,6 +1362,7 @@ impl UserPreferences {
             figurine_notation: game.figurine_notation,
             move_sounds: game.move_sounds,
             animate_moves: game.animate_moves,
+            animate_captures: true,
             piece_set: game.piece_set,
             board_3d_active: false,
             board_3d_theme: crate::board3d::Theme::Marble,
@@ -1356,6 +1373,7 @@ impl UserPreferences {
 }
 
 pub struct ChessApp {
+    highlight_checked_king: bool,
     training: Option<Session>,
     training_profiles: Profiles,
     training_dialog_open: bool,
@@ -1381,6 +1399,7 @@ pub struct ChessApp {
     board_3d_gpu_scene: Option<crate::board3d::gpu::Scene>,
     board_3d_gpu_scene_id: u64,
     selected: Option<Square>,
+    piece_drag: Option<(Board, Square, bool)>,
     legal_targets: Vec<Square>,
     history: Vec<Board>,
     last_move: Option<ChessMove>,
@@ -1411,6 +1430,8 @@ pub struct ChessApp {
     move_sounds: bool,
     animate_moves: bool,
     move_animation: Option<MoveAnimation>,
+    animate_captures: bool,
+    capture_animation: Option<CaptureAnimation>,
     piece_set: PieceSet,
     engine_enabled: bool,
     lichess: LichessSession,
@@ -1473,6 +1494,8 @@ pub struct ChessApp {
     new_game_fen: String,
     local_clock: Option<LocalClock>,
     local_resigned_white: Option<bool>,
+    local_agreed_draw: bool,
+    local_draw_dialog_open: bool,
     local_start_ply: usize,
     engine_searching: bool,
     engine_status: String,
@@ -1585,10 +1608,69 @@ pub struct ChessApp {
 }
 
 impl ChessApp {
+    fn board_game_actions_available(&self) -> bool {
+        if self.fics_active {
+            return self.fics_playing && !self.fics_observing && !self.fics_game_finished;
+        }
+        self.review_index.is_none() && self.pgn_input.trim().is_empty() && self.game_result() == "*"
+    }
+
+    fn board_game_action_button(ui: &mut egui::Ui, label: &str, resign: bool) -> egui::Response {
+        let (fill, border, text) = if resign {
+            (Color32::from_rgb(91, 47, 43), Color32::from_rgb(158, 87, 73), Color32::from_rgb(255, 220, 211))
+        } else {
+            (Color32::from_rgb(35, 55, 46), Color32::from_rgb(75, 120, 96), Color32::from_rgb(192, 225, 205))
+        };
+        ui.add(egui::Button::new(RichText::new(label).size(14.0).color(text))
+            .fill(fill).stroke(Stroke::new(1.0, border)).corner_radius(6.0)
+            .min_size(Vec2::new(0.0, 34.0)))
+    }
+
+    fn board_game_actions_ui(&mut self, ui: &mut egui::Ui) {
+        if self.lichess.active {
+            self.lichess_game_actions(ui, true);
+            return;
+        }
+        ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+        ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
+        if Self::board_game_action_button(ui, "Resign…", true).clicked() {
+            self.fics_resign_dialog_open = true;
+        }
+        if self.fics_active {
+            ui.add_enabled_ui(self.fics_connected, |ui| {
+                for (label, command) in [("Offer draw", "draw"), ("Accept offer", "accept"), ("Decline offer", "decline")] {
+                    if Self::board_game_action_button(ui, label, false).clicked() {
+                        #[cfg(target_arch = "wasm32")]
+                        fics_send(command);
+                        self.fics_status = format!("Sent: {command}");
+                    }
+                }
+            });
+        } else {
+            let can_agree = !self.engine_enabled && self.training.is_none();
+            ui.add_enabled_ui(can_agree, |ui| {
+                if Self::board_game_action_button(ui, "Offer draw…", false)
+                    .on_disabled_hover_text("Engine opponents do not negotiate draw offers. Rule-based draws still apply during training.")
+                    .clicked() {
+                    self.local_draw_dialog_open = true;
+                }
+            });
+            if self.training.is_none() {
+                ui.add_enabled_ui(!self.history.is_empty(), |ui| {
+                    if Self::board_game_action_button(ui, "Take back", false).clicked() {
+                        let undo_reply = self.engine_enabled && self.board.side_to_move() == self.player_side.color() && self.history.len() >= 2;
+                        self.undo();
+                        if undo_reply { self.undo(); }
+                    }
+                });
+            }
+        }
+    }
+
     fn running_local_clock_side(&self) -> Option<bool> {
         let clock = self.local_clock.as_ref()?;
         if self.fics_active
-            || self.local_resigned_white.is_some()
+            || self.local_resigned_white.is_some() || self.local_agreed_draw
             || clock.flagged_white.is_some()
             || (self.engine_enabled && !self.engine_ready)
             || (self.training.is_some() && self.game_result() != "*")
@@ -1712,11 +1794,91 @@ impl ChessApp {
         }
     }
 
+    fn prefers_reduced_motion() -> bool {
+        #[cfg(target_arch = "wasm32")]
+        { return web_sys::window().and_then(|window| window.match_media("(prefers-reduced-motion: reduce)").ok().flatten())
+            .is_some_and(|query| query.matches()); }
+        #[cfg(not(target_arch = "wasm32"))]
+        { false }
+    }
+
+    fn captured_piece(previous: &Board, mv: ChessMove) -> Option<(Square, Piece, Color)> {
+        if previous.castle_side(mv).is_some() { return None; }
+        let square = if previous.piece_on(mv.get_source()) == Some(Piece::Pawn)
+            && mv.get_source().get_file() != mv.get_dest().get_file()
+            && previous.piece_on(mv.get_dest()).is_none() {
+            Square::make_square(mv.get_source().get_rank(), mv.get_dest().get_file())
+        } else { mv.get_dest() };
+        let piece = previous.piece_on(square)?;
+        let color = previous.color_on(square)?;
+        (color != previous.side_to_move()).then_some((square, piece, color))
+    }
+
+    fn paint_capture_dissolve(&mut self, ui: &mut egui::Ui, rect: egui::Rect, cell: f32) {
+        let Some(animation) = self.capture_animation else { return; };
+        let elapsed = Self::animation_time() - animation.started_at;
+        if !self.animate_captures || Self::prefers_reduced_motion()
+            || self.review_index.is_some() || self.prediction_index != 0
+            || self.board != animation.board_after || !(0.0..0.55).contains(&elapsed) {
+            self.capture_animation = None;
+            return;
+        }
+        let progress = (elapsed / 0.55) as f32;
+        // Hold the silhouette briefly, then fade smoothly rather than disappearing immediately.
+        let fade = ((progress - 0.18) / 0.82).clamp(0.0, 1.0);
+        let opacity = 1.0 - fade * fade * (3.0 - 2.0 * fade);
+        let shrink = 1.0 - 0.18 * progress;
+        let is_3d = self.board_3d_rendering();
+        let center = if is_3d {
+            crate::board3d::square_center(animation.square, rect, self.flipped, self.board_3d_view())
+                .unwrap_or(rect.center())
+        } else { rect.min + Self::square_screen_offset(animation.square, self.flipped, cell) };
+        let gold = Color32::from_rgba_unmultiplied(230, 185, 96, (135.0 * opacity) as u8);
+        let radius = cell * (0.3 + 0.3 * progress);
+        ui.painter().circle_stroke(center, radius, Stroke::new(2.0 * (1.0 - progress), gold));
+        ui.painter().circle_filled(center, cell * 0.34, Color32::from_rgba_unmultiplied(230, 185, 96, (32.0 * opacity) as u8));
+        let preview = if is_3d {
+            let view = self.board_3d_view();
+            let adjustments = self.render_piece_appearance();
+            let key = format!("{}:{:?}:{:?}:{:?}:{:?}:{}:{}:{}", animation.started_at,
+                self.board_3d_theme, (view.yaw, view.elevation, view.distance), adjustments,
+                rect.size(), self.flipped, self.board_3d_appearance, ui.ctx().pixels_per_point());
+            type Cached = (String, egui::TextureHandle, Vec2, Vec2);
+            let id = egui::Id::new("capture_dissolve_texture");
+            let cached = ui.ctx().data(|d| d.get_temp::<Cached>(id)).filter(|cached| cached.0 == key)
+                .unwrap_or_else(|| {
+                    let (image, offset, size) = crate::board3d::drag_piece_image(animation.square,
+                        animation.piece, animation.color, rect, self.flipped, view,
+                        self.board_3d_appearance as f32 / 100.0, self.board_3d_theme, adjustments,
+                        ui.ctx().pixels_per_point().min(2.0));
+                    (key, ui.ctx().load_texture("capture_dissolve", image, egui::TextureOptions::LINEAR), offset, size)
+                });
+            ui.ctx().data_mut(|d| d.insert_temp(id, cached.clone()));
+            Some((cached.1, cached.2, cached.3))
+        } else { None };
+        ui.scope(|ui| {
+            ui.set_opacity(opacity);
+            if let Some((texture, offset, size)) = preview {
+                let min = center + offset * shrink + Vec2::new(0.0, cell * 0.1 * progress);
+                egui::Image::new((texture.id(), size * shrink)).paint_at(ui, egui::Rect::from_min_size(min, size * shrink));
+            } else {
+                self.paint_adjusted_piece(ui, egui::Rect::from_center_size(center, Vec2::splat(cell * shrink)),
+                    cell * shrink, animation.color, animation.piece);
+            }
+        });
+        ui.ctx().request_repaint();
+    }
+
     fn live_move_effects(&mut self, previous: &Board, mv: ChessMove) {
         let Some(piece) = previous.piece_on(mv.get_source()) else {
             return;
         };
         let castle = previous.castle_side(mv);
+        self.capture_animation = if self.animate_captures && !Self::prefers_reduced_motion() {
+            Self::captured_piece(previous, mv).map(|(square, piece, color)| CaptureAnimation {
+                square, piece, color, board_after: self.board, started_at: Self::animation_time(),
+            })
+        } else { None };
         let destination = castle
             .map(|kingside| {
                 Square::make_square(
@@ -1726,7 +1888,7 @@ impl ChessApp {
             })
             .unwrap_or(mv.get_dest());
         self.move_animation =
-            (self.animate_moves && destination != mv.get_source()).then(|| MoveAnimation {
+            (self.animate_moves && !Self::prefers_reduced_motion() && destination != mv.get_source()).then(|| MoveAnimation {
                 chess_move: ChessMove::new(mv.get_source(), destination, mv.get_promotion()),
                 piece,
                 color: previous.side_to_move(),
@@ -2514,6 +2676,8 @@ impl ChessApp {
         let figurine_notation = preferences.figurine_notation;
         let move_sounds = preferences.move_sounds;
         let animate_moves = preferences.animate_moves;
+        let highlight_checked_king = preferences.highlight_checked_king;
+        let animate_captures = preferences.animate_captures;
         let piece_set = preferences.piece_set;
         let board_3d_appearance = if preferences.board_3d_appearance_customized {
             preferences.board_3d_appearance.min(100)
@@ -2592,6 +2756,7 @@ impl ChessApp {
             board_3d_gpu_scene: None,
             board_3d_gpu_scene_id: 0,
             selected: None,
+            piece_drag: None,
             legal_targets: vec![],
             history,
             last_move,
@@ -2622,6 +2787,9 @@ impl ChessApp {
             move_sounds,
             animate_moves,
             move_animation: None,
+            animate_captures,
+            highlight_checked_king,
+            capture_animation: None,
             piece_set,
             engine_enabled,
             lichess: LichessSession::new(),
@@ -2684,6 +2852,8 @@ impl ChessApp {
             new_game_fen: Board::default().to_string(),
             local_start_ply: saved.as_ref().map(|game| game.local_start_ply).unwrap_or(0),
             local_resigned_white: saved.as_ref().and_then(|game| game.local_resigned_white),
+            local_agreed_draw: saved.as_ref().is_some_and(|game| game.local_agreed_draw),
+            local_draw_dialog_open: false,
             local_clock: saved
                 .as_ref()
                 .and_then(|game| game.local_clock.clone())
@@ -2836,6 +3006,7 @@ impl ChessApp {
         let live_computer_game = self.engine_enabled
             && !self.fics_active
             && self.local_resigned_white.is_none()
+            && !self.local_agreed_draw
             && !self.local_clock.as_ref().is_some_and(|clock| clock.flagged_white.is_some())
             && !(self.training.is_some() && self.game_result() != "*")
             && live_board.status() == BoardStatus::Ongoing;
@@ -6370,6 +6541,7 @@ impl ChessApp {
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn game_result(&self) -> String {
+        if !self.fics_active && self.local_agreed_draw { return "1/2-1/2".into(); }
         if !self.fics_active
             && let Some(white) = self.local_resigned_white
         {
@@ -7604,6 +7776,8 @@ impl ChessApp {
                 self.new_game_training = false;
                 self.local_clock = None;
                 self.local_resigned_white = None;
+                self.local_agreed_draw = false;
+                self.local_draw_dialog_open = false;
                 self.local_start_ply = 0;
                 let imported_analysis = Self::parse_pgn_annotations(text, &positions);
                 let restored_analysis = imported_analysis.iter().any(Option::is_some);
@@ -7682,6 +7856,7 @@ impl ChessApp {
                 training: None,
                 local_clock: None,
                 local_resigned_white: None,
+                local_agreed_draw: false,
                 local_start_ply: 0,
                 board: final_board.to_string(),
                 final_board: final_board.to_string(),
@@ -7955,6 +8130,7 @@ impl ChessApp {
         self.realtime_analysis_due_at = None;
         self.best_move_attempt = None;
         let index = index.min(self.review_positions.len() - 1);
+        self.capture_animation = None;
         if self.game_analysis_running || self.game_analysis_paused {
             self.review_index = Some(index);
             self.review_scroll_to_selected = true;
@@ -8253,6 +8429,60 @@ impl ChessApp {
                 .prediction_chess_moves
                 .get(self.prediction_index - 1)
                 .copied();
+        }
+    }
+
+    fn zoom_3d_with_wheel(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if !self.board_3d_rendering() || !ui.rect_contains_pointer(rect)
+            || !ui.input(|input| input.pointer.button_down(egui::PointerButton::Secondary)) { return; }
+        let scroll = ui.input_mut(|input| {
+            // Shift can remap a vertical wheel to the horizontal axis.
+            let scroll = if input.modifiers.shift && input.raw_scroll_delta.y == 0.0 {
+                input.raw_scroll_delta.x
+            } else { input.raw_scroll_delta.y };
+            if scroll != 0.0 {
+                input.raw_scroll_delta = Vec2::ZERO;
+                input.smooth_scroll_delta = Vec2::ZERO;
+            }
+            scroll
+        });
+        if scroll != 0.0 {
+            let distance = (self.board_3d_distance * (-scroll * 0.0003).exp()).clamp(14.0, 26.0);
+            if distance != self.board_3d_distance {
+                self.board_3d_distance = distance;
+                self.board_3d_zoom_until = Self::animation_time() + 0.15;
+            }
+        }
+    }
+
+    fn wheel_move_navigation(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
+        if (self.board_3d_rendering() && ui.input(|input| input.pointer.button_down(egui::PointerButton::Secondary)))
+            || self.training_live() || self.best_move_attempt.is_some()
+            || (self.fics_active && self.fics_playing && !self.fics_game_finished)
+            || !ui.rect_contains_pointer(rect) { return; }
+        // Raw input avoids repeated steps from egui's smoothed scrolling tail.
+        let delta = ui.input_mut(|input| {
+            let delta = input.raw_scroll_delta.y;
+            if delta != 0.0 {
+                input.raw_scroll_delta = Vec2::ZERO;
+                input.smooth_scroll_delta = Vec2::ZERO;
+            }
+            delta
+        });
+        self.step_wheel_navigation(delta);
+    }
+
+    fn step_wheel_navigation(&mut self, delta: f32) {
+        if delta == 0.0 { return; }
+        if self.prediction_navigation_active && !self.prediction_moves.is_empty() {
+            let index = if delta > 0.0 { self.prediction_index.saturating_sub(1) }
+                else { (self.prediction_index + 1).min(self.prediction_moves.len()) };
+            if index != self.prediction_index { self.prediction_to(index); }
+        } else if !self.review_positions.is_empty() {
+            let current = self.review_index.unwrap_or(self.review_positions.len() - 1);
+            let index = if delta > 0.0 { current.saturating_sub(1) }
+                else { (current + 1).min(self.review_positions.len() - 1) };
+            if index != current { self.review_to(index); }
         }
     }
 
@@ -8721,6 +8951,8 @@ impl ChessApp {
             web_sys::window().and_then(|window| window.local_storage().ok().flatten())
         {
             let preferences = UserPreferences {
+                highlight_checked_king: self.highlight_checked_king,
+                animate_captures: self.animate_captures,
                 workspace_mode: self.workspace_mode,
                 show_coordinates: self.show_coordinates,
                 show_highlighted_move: self.show_highlighted_move,
@@ -8780,6 +9012,7 @@ impl ChessApp {
             training: self.training.clone(),
             local_clock: self.local_clock.clone(),
             local_resigned_white: self.local_resigned_white,
+            local_agreed_draw: self.local_agreed_draw,
             local_start_ply: self.local_start_ply,
             board: self.board.to_string(),
             final_board: self
@@ -8862,6 +9095,7 @@ impl ChessApp {
         }
         game.local_clock = None;
         game.local_resigned_white = None;
+        game.local_agreed_draw = false;
         game.local_start_ply = observed.start_ply;
         game.board = observed.board.to_string();
         game.final_board = observed.board.to_string();
@@ -8950,6 +9184,8 @@ impl ChessApp {
         self.new_game_training = false;
         self.local_clock = None;
         self.local_resigned_white = None;
+        self.local_agreed_draw = false;
+        self.local_draw_dialog_open = false;
         self.local_start_ply = 0;
         self.ignore_next_bestmove = self.engine_searching;
         self.pending_analysis_search = None;
@@ -9035,6 +9271,8 @@ impl ChessApp {
         start_new_stored_game("mine");
         self.local_clock = None;
         self.local_resigned_white = None;
+        self.local_agreed_draw = false;
+        self.local_draw_dialog_open = false;
         if self.fics_active {
             return;
         }
@@ -9119,6 +9357,92 @@ impl ChessApp {
             return true;
         }
         false
+    }
+
+    fn piece_drag_ui(&mut self, ui: &mut egui::Ui, rect: egui::Rect, cell: f32, allow_moves: bool) {
+        let (pos, origin, pressed, released, down, escape, alt) = ui.input(|input| (
+            input.pointer.latest_pos(), input.pointer.press_origin(),
+            input.pointer.button_pressed(egui::PointerButton::Primary),
+            input.pointer.button_released(egui::PointerButton::Primary),
+            input.pointer.primary_down(), input.key_pressed(egui::Key::Escape), input.modifiers.alt,
+        ));
+        if !allow_moves || !ui.is_enabled() || self.board_mark_mode || self.board_mark_drag.is_some()
+            || alt || escape || self.promotion.is_some()
+            || self.piece_drag.is_some_and(|(board, _, _)| board != self.board) {
+            self.piece_drag = None;
+            return;
+        }
+        if pressed && ui.rect_contains_pointer(rect)
+            && let Some(pos) = pos
+            && let Some(from) = self.piece_drag_square(pos, rect)
+            && self.board.color_on(from) == Some(self.board.side_to_move()) {
+            self.piece_drag = Some((self.board, from, false));
+        }
+        let Some((board, from, mut active)) = self.piece_drag else { return; };
+        if !active && down && origin.zip(pos).is_some_and(|(a, b)| a.distance(b) > 6.0) {
+            // Use the existing selection gates for turn, review, engine, and online state.
+            self.selected = None;
+            self.legal_targets.clear();
+            self.select(from);
+            if self.selected != Some(from) { self.piece_drag = None; return; }
+            active = true;
+            self.piece_drag = Some((board, from, true));
+        }
+        if released || !down {
+            self.piece_drag = None;
+            if active {
+                let target = pos.filter(|_| ui.rect_contains_pointer(rect))
+                    .and_then(|pos| self.piece_drag_square(pos, rect));
+                if let Some(to) = target.filter(|to| self.legal_targets.contains(to)) {
+                    self.select(to);
+                } else {
+                    self.selected = None;
+                    self.legal_targets.clear();
+                }
+            }
+            return;
+        }
+        if active && let Some(pos) = pos
+            && let (Some(color), Some(piece)) = (board.color_on(from), board.piece_on(from)) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            let preview_3d = if self.board_3d_rendering() {
+                let view = self.board_3d_view();
+                let adjustments = self.render_piece_appearance();
+                let key = format!("{:?}:{:?}:{:?}:{:?}:{:?}:{:?}:{:?}:{}:{}:{}", from, piece, color,
+                    self.board_3d_theme, (view.yaw, view.elevation, view.distance), adjustments, rect.size(), self.flipped,
+                    self.board_3d_appearance, ui.ctx().pixels_per_point());
+                let id = egui::Id::new("piece_drag_3d_texture");
+                type Cached = (String, egui::TextureHandle, Vec2, Vec2);
+                let cached = ui.ctx().data(|d| d.get_temp::<Cached>(id));
+                let cached = cached.filter(|cached| cached.0 == key).unwrap_or_else(|| {
+                    let (image, offset, size) = crate::board3d::drag_piece_image(from, piece, color,
+                        rect, self.flipped, view, self.board_3d_appearance as f32 / 100.0,
+                        self.board_3d_theme, adjustments, ui.ctx().pixels_per_point().min(2.0));
+                    (key, ui.ctx().load_texture("drag_piece_3d", image, egui::TextureOptions::LINEAR), offset, size)
+                });
+                ui.ctx().data_mut(|d| d.insert_temp(id, cached.clone()));
+                Some((cached.1, cached.2, cached.3))
+            } else { None };
+            ui.scope_builder(egui::UiBuilder::new().layer_id(egui::LayerId::new(
+                egui::Order::Tooltip, egui::Id::new("dragged_chess_piece"))), |ui| {
+                ui.set_clip_rect(ui.ctx().screen_rect());
+                ui.set_opacity(0.72);
+                if let Some((texture, offset, size)) = preview_3d {
+                    egui::Image::new((texture.id(), size)).paint_at(ui, egui::Rect::from_min_size(pos + offset, size));
+                } else {
+                    Self::paint_piece(ui, egui::Rect::from_center_size(pos, Vec2::splat(cell)), cell,
+                        self.piece_set, color, piece);
+                }
+            });
+            ui.ctx().request_repaint();
+        }
+    }
+
+    fn piece_drag_square(&self, pos: egui::Pos2, rect: egui::Rect) -> Option<Square> {
+        if !rect.contains(pos) { return None; }
+        if self.board_3d_rendering() {
+            crate::board3d::square_at(pos, rect, self.flipped, self.board_3d_view(), &self.board, &self.legal_targets)
+        } else { self.board_mark_square(pos, rect) }
     }
 
     fn select(&mut self, square: Square) {
@@ -9364,7 +9688,7 @@ impl ChessApp {
             return;
         }
         self.tick_local_clock();
-        if !self.fics_active && self.local_resigned_white.is_some() {
+        if !self.fics_active && (self.local_resigned_white.is_some() || self.local_agreed_draw) {
             return;
         }
         if !self.fics_active
@@ -9462,7 +9786,7 @@ impl ChessApp {
             self.engine_config.limit_strength = true;
             self.engine_config.elo = session.opponent_elo as u32;
         }
-        if self.local_resigned_white.is_some() && !self.fics_active {
+        if (self.local_resigned_white.is_some() || self.local_agreed_draw) && !self.fics_active {
             return;
         }
         if self.fics_active
@@ -9831,7 +10155,7 @@ impl ChessApp {
 
     fn undo(&mut self) {
         if self.training.is_some() { return; }
-        if self.local_resigned_white.is_some() {
+        if self.local_resigned_white.is_some() || self.local_agreed_draw {
             return;
         }
         if self.fics_active {
@@ -10483,7 +10807,8 @@ impl ChessApp {
                 self.reset_board_3d_view(ui.ctx());
             } else if self.board_mark_drag.is_none() && response.dragged_by(egui::PointerButton::Secondary) {
                 let mut view = self.board_3d_view();
-                view.orbit(ui.input(|input| input.pointer.delta()));
+                let (delta, lock_rotation) = ui.input(|input| (input.pointer.delta(), input.modifiers.shift));
+                view.orbit_with_rotation_lock(delta, lock_rotation);
                 self.board_3d_yaw = view.yaw;
                 self.board_3d_elevation = view.elevation;
                 // A scaled zoom preview cannot represent a changed camera angle.
@@ -10491,17 +10816,7 @@ impl ChessApp {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
                 ui.ctx().request_repaint();
             }
-            if response.hovered() {
-                let scroll = ui.input(|input| input.smooth_scroll_delta.y);
-                if scroll != 0.0 {
-                    let distance =
-                        (self.board_3d_distance * (-scroll * 0.0003).exp()).clamp(14.0, 26.0);
-                    if distance != self.board_3d_distance {
-                        self.board_3d_distance = distance;
-                        self.board_3d_zoom_until = Self::animation_time() + 0.15;
-                    }
-                }
-            }
+            self.zoom_3d_with_wheel(ui, rect);
             let zooming = Self::animation_time() < self.board_3d_zoom_until;
             if zooming && self.board_3d_gpu_format.is_none() {
                 ui.ctx()
@@ -10633,7 +10948,8 @@ impl ChessApp {
             if (allow_moves || self.tactical_piece_active(ui.ctx())) && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(square) =
-                    crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets)
+                    self.review_index.and_then(|_| self.tactical_knight_3d_hit(ui.ctx(), pos, rect))
+                        .or_else(|| crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets))
             {
                 if !self.select_mobility_piece(ui.ctx(), square) { self.select(square); }
             }
@@ -10796,7 +11112,9 @@ impl ChessApp {
                 0.0
             };
         let online_actions_height =
-            if !self.focus_mode && self.fics_active && (self.fics_playing || self.fics_observing) {
+            if allow_moves && self.board_game_actions_available() {
+                if self.fics_active { 120.0 } else if available.x < 380.0 { 84.0 } else { 44.0 }
+            } else if !self.focus_mode && self.fics_active && self.fics_observing {
                 44.0
             } else {
                 0.0
@@ -10824,7 +11142,7 @@ impl ChessApp {
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("live_board_height"),board_size));
         let pending_preview_board = self.lichess_preview_board();
         let move_animation = self.move_animation.filter(|animation| {
-            self.review_index.is_none()
+            !Self::prefers_reduced_motion() && self.review_index.is_none()
                 && self.prediction_index == 0
                 && Self::animation_time() - animation.started_at < 0.24
         });
@@ -11080,6 +11398,10 @@ impl ChessApp {
                                                 if self.selected == Some(square) {
                                                     color = Color32::from_rgb(230, 178, 65);
                                                 }
+                                                let checked_king = self.highlight_checked_king && self.board.checkers().popcnt() > 0
+                                                    && self.board.piece_on(square) == Some(Piece::King)
+                                                    && self.board.color_on(square) == Some(self.board.side_to_move());
+                                                if checked_king { color = Color32::from_rgb(177, 65, 61); }
                                                 let response = ui.add_sized(
                                                     Vec2::splat(cell),
                                                     egui::Button::new("")
@@ -11098,6 +11420,7 @@ impl ChessApp {
                                                         _=>None,
                                                     };
                                                     if let Some(source)=texture { egui::Image::new(source).maintain_aspect_ratio(false).paint_at(ui,response.rect); }
+                                                    if checked_king { ui.painter().rect_filled(response.rect, 0.0, Color32::from_rgba_unmultiplied(190, 45, 40, 155)); }
                                                 }
                                                 if self.show_highlighted_move && self.prediction_index == 0
                                                     && self
@@ -11121,7 +11444,8 @@ impl ChessApp {
                                                     preview.piece_on(square) != self.board.piece_on(square)
                                                         || preview.color_on(square) != self.board.color_on(square)
                                                 });
-                                                if !animation_hides_piece && !preview_hides_piece {
+                                                let drag_hides_piece = self.piece_drag.is_some_and(|(board, from, active)| active && board == self.board && from == square);
+                                                if !animation_hides_piece && !preview_hides_piece && !drag_hides_piece {
                                                     if self.piece_shadows
                                                         && let (Some(color), Some(piece)) = (
                                                             self.board.color_on(square),
@@ -11187,6 +11511,7 @@ impl ChessApp {
                         .inner
                 };
                 let board_rect = board_response.response.rect.expand(frame_width as f32);
+                self.wheel_move_navigation(ui, board_rect);
                 ui.ctx().data_mut(|data| data.insert_temp(
                     egui::Id::new("game_moves_board_alignment"),
                     (board_rect.top(), board_rect.bottom() - frame_width as f32 / 2.0),
@@ -11227,6 +11552,7 @@ impl ChessApp {
                         }
                     }
                 }
+                self.paint_capture_dissolve(ui, board_response.response.rect, cell);
                 if let Some(animation) = move_animation.filter(|_| !self.board_3d_rendering()) {
                     let board_rect = board_response.response.rect;
                     let square_center = |square: Square| {
@@ -11257,6 +11583,7 @@ impl ChessApp {
                     ui.ctx().request_repaint();
                 }
                 self.paint_lichess_preview(ui, board_response.response.rect, cell);
+                self.piece_drag_ui(ui, board_response.response.rect, cell, allow_moves);
                 if ui.is_enabled() {
                     self.board_mark_input(ui, board_response.response.rect);
                     self.paint_tactical_map(ui, board_response.response.rect);
@@ -11329,48 +11656,16 @@ impl ChessApp {
                         },
                     );
                 }
-                if !self.focus_mode {
-                if self.lichess.active && self.fics_playing && !self.fics_game_finished {
-                    ui.add_space(8.0);
-                    ui.allocate_ui_with_layout(Vec2::new(board_width, 36.0), Layout::left_to_right(Align::Center), |ui| {
-                        ui.horizontal_wrapped(|ui| { self.lichess_game_actions(ui, true); });
-                    });
-                } else if self.fics_active && self.fics_playing {
+                if allow_moves && self.board_game_actions_available() {
                     ui.add_space(8.0);
                     ui.allocate_ui_with_layout(
-                        Vec2::new(board_width, 36.0),
-                        Layout::right_to_left(Align::Center),
-                        |ui| {
-                            ui.spacing_mut().item_spacing.x = 10.0;
-                            let draw = ui.add(
-                                egui::Button::new(RichText::new("     Offer draw").size(14.0))
-                                    .min_size(Vec2::new(128.0, 36.0))
-                                    .fill(Color32::from_rgb(44, 67, 58)),
-                            );
-                            let icon = draw.rect.left_center() + Vec2::new(17.0, 0.0);
-                            let draw_color = Color32::from_rgb(210, 229, 216);
-                            ui.painter()
-                                .circle_stroke(icon, 7.0, Stroke::new(1.4, draw_color));
-                            for offset in [-2.5, 2.5] {
-                                ui.painter().line_segment(
-                                    [
-                                        icon + Vec2::new(-3.5, offset),
-                                        icon + Vec2::new(3.5, offset),
-                                    ],
-                                    Stroke::new(1.4, draw_color),
-                                );
-                            }
-                            if draw.clicked() {
-                                #[cfg(target_arch = "wasm32")]
-                                {
-                                    if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"draw/yes"})); }
-                                    else { fics_send("draw"); }
-                                }
-                                self.fics_status = "Draw offer sent".into();
-                            }
-                        },
+                        Vec2::new(board_width, online_actions_height - 8.0),
+                        Layout::left_to_right(Align::Center),
+                        |ui| { ui.horizontal_wrapped(|ui| { self.board_game_actions_ui(ui); }); },
                     );
-                } else if self.fics_active && self.fics_observing {
+                }
+                if !self.focus_mode {
+                if self.fics_active && self.fics_observing {
                     ui.add_space(8.0);
                     ui.allocate_ui_with_layout(
                         Vec2::new(board_width, 36.0),
@@ -11500,7 +11795,7 @@ impl ChessApp {
             if !self.prediction_moves.is_empty() {
                 ui.separator();
                 ui.add_space(8.0);
-                ui.vertical(|ui| {
+                let prediction_panel = ui.vertical(|ui| {
                     ui.vertical(|ui| {
                         ui.label(RichText::new("Engine prediction").size(14.0).strong());
                         ui.add_space(6.0);
@@ -11639,6 +11934,9 @@ impl ChessApp {
                         self.prediction_to(destination);
                     }
                 });
+                if self.prediction_navigation_active {
+                    self.wheel_move_navigation(ui, prediction_panel.response.rect);
+                }
             }
             });
         });
@@ -12349,7 +12647,9 @@ impl ChessApp {
                     Color32::from_rgb(211, 173, 98),
                 ),
             };
-            let detail = if !self.fics_active && self.local_resigned_white.is_some() {
+            let detail = if !self.fics_active && self.local_agreed_draw {
+                "Game drawn by agreement".to_owned()
+            } else if !self.fics_active && self.local_resigned_white.is_some() {
                 "Game ended by resignation".to_owned()
             } else if !self.fics_active
                 && let Some(white) = self
@@ -12805,6 +13105,254 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn agreed_local_draw_stops_play_and_clock_and_resets_for_new_game() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.reset_for_side(PlayerSide::White);
+        app.engine_enabled = false;
+        app.local_clock = Some(LocalClock { white: 60.0, black: 60.0, increment: 0.0, flagged_white: None, updated_at: 0.0 });
+        assert!(app.board_game_actions_available());
+        app.local_agreed_draw = true;
+        assert_eq!(app.game_result(), "1/2-1/2");
+        assert_eq!(app.running_local_clock_side(), None);
+        assert!(!app.board_game_actions_available());
+        let board = app.board;
+        app.play(ChessMove::new(Square::E2, Square::E4, None));
+        assert_eq!(app.board, board);
+        let json = serde_json::to_string(&app.persisted_game()).unwrap();
+        let saved: PersistedGame = serde_json::from_str(&json).unwrap();
+        assert!(saved.local_agreed_draw);
+        assert_eq!(saved.result, "1/2-1/2");
+        let mut old: serde_json::Value = serde_json::from_str(&json).unwrap();
+        old.as_object_mut().unwrap().remove("local_agreed_draw");
+        assert!(!serde_json::from_value::<PersistedGame>(old).unwrap().local_agreed_draw);
+        app.reset_for_side(PlayerSide::White);
+        assert!(!app.local_agreed_draw);
+        assert_eq!(app.game_result(), "*");
+    }
+
+    #[test]
+    fn shift_right_wheel_zooms_both_directions_without_rotating_or_navigating() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        let yaw = app.board_3d_yaw;
+        let distance = app.board_3d_distance;
+        let frame = |app: &mut ChessApp, delta: f32, press: bool| {
+            let pos = egui::pos2(100.0, 100.0);
+            let mut input = egui::RawInput { modifiers: egui::Modifiers::SHIFT, ..Default::default() };
+            input.events.push(egui::Event::PointerMoved(pos));
+            if press { input.events.push(egui::Event::PointerButton { pos, button: egui::PointerButton::Secondary,
+                pressed: true, modifiers: egui::Modifiers::SHIFT }); }
+            input.events.push(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point,
+                delta: Vec2::new(0.0, delta), modifiers: egui::Modifiers::SHIFT });
+            let _ = ctx.run(input, |ctx| { egui::CentralPanel::default().show(ctx, |ui| {
+                let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::splat(400.0));
+                app.zoom_3d_with_wheel(ui, rect);
+                app.wheel_move_navigation(ui, rect);
+            }); });
+        };
+        frame(&mut app, 0.0, false);
+        frame(&mut app, 120.0, true);
+        assert!(app.board_3d_distance < distance);
+        let close = app.board_3d_distance;
+        frame(&mut app, -120.0, false);
+        assert!(app.board_3d_distance > close);
+        assert_eq!(app.board_3d_yaw, yaw);
+    }
+
+    #[test]
+    fn three_d_wheel_navigates_unless_right_button_is_held() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 e5 2. Nf3 Nc6 *");
+        app.review_to(1);
+        app.board_3d_active = true;
+        let frame = |app: &mut ChessApp, delta: f32, right: Option<bool>| {
+            let pos = egui::pos2(100.0, 100.0);
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(pos));
+            if let Some(pressed) = right { input.events.push(egui::Event::PointerButton {
+                pos, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::NONE,
+            }); }
+            if delta != 0.0 { input.events.push(egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point, delta: Vec2::new(0.0, delta), modifiers: egui::Modifiers::NONE,
+            }); }
+            let _ = ctx.run(input, |ctx| { egui::CentralPanel::default().show(ctx, |ui| {
+                let rect = egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::splat(400.0));
+                app.zoom_3d_with_wheel(ui, rect);
+                app.wheel_move_navigation(ui, rect);
+            }); });
+        };
+        frame(&mut app, 0.0, None);
+        let distance = app.board_3d_distance;
+        frame(&mut app, -120.0, None);
+        assert_eq!(app.review_index, Some(2));
+        assert_eq!(app.board_3d_distance, distance);
+        frame(&mut app, 120.0, Some(true));
+        assert_eq!(app.review_index, Some(2));
+        assert!(app.board_3d_distance < distance);
+        let zoomed = app.board_3d_distance;
+        frame(&mut app, -120.0, Some(false));
+        assert_eq!(app.review_index, Some(3));
+        assert_eq!(app.board_3d_distance, zoomed);
+        app.prediction_positions = app.review_positions.clone();
+        app.prediction_moves = vec!["e4".into(), "e5".into(), "Nf3".into(), "Nc6".into()];
+        app.prediction_to(1);
+        frame(&mut app, -120.0, None);
+        assert_eq!(app.prediction_index, 2);
+        assert_eq!(app.review_index, Some(3));
+        frame(&mut app, 120.0, Some(true));
+        assert_eq!(app.prediction_index, 2);
+        frame(&mut app, 120.0, Some(false));
+        assert_eq!(app.prediction_index, 1);
+    }
+
+    #[test]
+    fn playback_does_not_animate_captures() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 d5 2. exd5 Qxd5 *");
+        app.review_to(2);
+        app.review_to(3);
+        assert!(app.capture_animation.is_none());
+        app.review_to(2);
+        assert!(app.capture_animation.is_none());
+        app.review_to(4);
+        assert!(app.capture_animation.is_none());
+        app.review_to(3);
+        app.game_analysis_paused = true;
+        app.review_to(4);
+        assert!(app.capture_animation.is_none());
+        app.review_to(3);
+        app.animate_captures = false;
+        app.review_to(4);
+        assert!(app.capture_animation.is_none());
+    }
+
+    #[test]
+    fn capture_dissolve_tracks_captured_piece_and_respects_saved_toggle() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        let board = Board::from_str("7k/8/8/3pP3/8/8/8/7K w - d6 0 1").unwrap();
+        let mv = ChessMove::from_str("e5d6").unwrap();
+        assert_eq!(ChessApp::captured_piece(&board, mv), Some((Square::D5, Piece::Pawn, Color::Black)));
+        app.board = board.make_move_new(mv);
+        app.live_move_effects(&board, mv);
+        let capture = app.capture_animation.unwrap();
+        assert_eq!(capture.square, Square::D5);
+        assert_eq!(capture.board_after, app.board);
+        app.animate_captures = false;
+        app.live_move_effects(&board, mv);
+        assert!(app.capture_animation.is_none());
+        let board = Board::from_str("7k/8/8/3r4/8/8/8/3Q3K w - - 0 1").unwrap();
+        let mv = ChessMove::from_str("d1d5").unwrap();
+        assert_eq!(ChessApp::captured_piece(&board, mv), Some((Square::D5, Piece::Rook, Color::Black)));
+        let start = Board::default();
+        assert!(ChessApp::captured_piece(&start, ChessMove::from_str("e2e4").unwrap()).is_none());
+        let castle = Board::from_str("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1").unwrap();
+        let mv = ChessApp::parse_san_move(&castle, "O-O").unwrap();
+        assert!(ChessApp::captured_piece(&castle, mv).is_none());
+        let old: UserPreferences = serde_json::from_str("{}").unwrap();
+        assert!(old.animate_captures);
+        let prefs = UserPreferences { animate_captures: false, ..Default::default() };
+        let restored: UserPreferences = serde_json::from_str(&serde_json::to_string(&prefs).unwrap()).unwrap();
+        assert!(!restored.animate_captures);
+    }
+
+    #[test]
+    fn piece_drag_moves_only_on_legal_release_and_cancels_outside_board() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        app.board = Board::default();
+        app.engine_enabled = false;
+        app.review_index = None;
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("tactical_enabled"), true));
+        assert!(app.tactical_piece_active(&ctx));
+        let frame = |app: &mut ChessApp, pos: egui::Pos2, button: Option<bool>| {
+            let mut input = egui::RawInput::default();
+            input.events.push(egui::Event::PointerMoved(pos));
+            if let Some(pressed) = button { input.events.push(egui::Event::PointerButton {
+                pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE,
+            }); }
+            let _ = ctx.run(input, |ctx| { egui::CentralPanel::default().show(ctx, |ui| {
+                app.piece_drag_ui(ui, egui::Rect::from_min_size(egui::pos2(20.0, 20.0), Vec2::splat(400.0)), 50.0, true);
+            }); });
+        };
+        let e2 = egui::pos2(245.0, 345.0);
+        let e4 = egui::pos2(245.0, 245.0);
+        frame(&mut app, e2, None);
+        frame(&mut app, e2, Some(true));
+        frame(&mut app, e4, None);
+        assert_eq!(app.board, Board::default());
+        assert!(app.piece_drag.is_some_and(|(_, from, active)| from == Square::E2 && active));
+        frame(&mut app, e4, Some(false));
+        assert_eq!(app.board.piece_on(Square::E4), Some(Piece::Pawn));
+        assert_eq!(app.board.side_to_move(), Color::Black);
+        assert!(app.piece_drag.is_none());
+        let before = app.board;
+        let e7 = egui::pos2(245.0, 95.0);
+        frame(&mut app, e7, Some(true));
+        frame(&mut app, egui::pos2(245.0, 195.0), None);
+        frame(&mut app, egui::pos2(450.0, 195.0), Some(false));
+        assert_eq!(app.board, before);
+        assert!(app.selected.is_none());
+        assert!(app.piece_drag.is_none());
+        frame(&mut app, e7, Some(true));
+        frame(&mut app, egui::pos2(295.0, 195.0), None);
+        frame(&mut app, egui::pos2(295.0, 195.0), Some(false));
+        assert_eq!(app.board, before); // Empty diagonal is not a legal pawn capture.
+        app.board = Board::from_str("7k/P7/8/8/8/8/8/7K w - - 0 1").unwrap();
+        frame(&mut app, egui::pos2(45.0, 95.0), Some(true));
+        frame(&mut app, egui::pos2(45.0, 45.0), None);
+        frame(&mut app, egui::pos2(45.0, 45.0), Some(false));
+        assert_eq!(app.promotion, Some((Square::A7, Square::A8)));
+        assert_eq!(app.board.piece_on(Square::A7), Some(Piece::Pawn));
+        // Tactical inspection in review must still leave the position unchanged.
+        app.promotion = None;
+        app.review_index = Some(0);
+        let before = app.board;
+        frame(&mut app, egui::pos2(45.0, 95.0), Some(true));
+        frame(&mut app, egui::pos2(45.0, 45.0), None);
+        frame(&mut app, egui::pos2(45.0, 45.0), Some(false));
+        assert_eq!(app.board, before);
+        assert!(app.piece_drag.is_none());
+    }
+
+    #[test]
+    fn wheel_navigation_steps_history_and_selected_prediction_without_skipping() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn("1. e4 e5 2. Nf3 Nc6 *");
+        app.review_to(2);
+        app.step_wheel_navigation(-120.0);
+        assert_eq!(app.review_index, Some(3));
+        app.step_wheel_navigation(120.0);
+        assert_eq!(app.review_index, Some(2));
+        app.prediction_positions = app.review_positions.clone();
+        app.prediction_moves = vec!["e4".into(), "e5".into(), "Nf3".into(), "Nc6".into()];
+        app.prediction_to(1);
+        app.step_wheel_navigation(-500.0);
+        assert_eq!(app.prediction_index, 2);
+        assert_eq!(app.review_index, Some(2));
+        assert_eq!(app.board, app.prediction_positions[2]);
+        app.step_wheel_navigation(500.0);
+        assert_eq!(app.prediction_index, 1);
+        app.step_wheel_navigation(500.0);
+        app.step_wheel_navigation(500.0);
+        assert_eq!(app.prediction_index, 0);
+        assert!(app.prediction_navigation_active);
+        app.step_wheel_navigation(-500.0);
+        assert_eq!(app.prediction_index, 1);
+        app.prediction_to(4);
+        app.step_wheel_navigation(-500.0);
+        assert_eq!(app.prediction_index, 4);
+    }
+
     #[test]
     fn engine_startup_waits_for_analysis_instead_of_loading_with_the_board() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
@@ -14844,6 +15392,14 @@ impl eframe::App for ChessApp {
                     });
                     ui.menu_button("Move feedback", |ui| {
                         Self::set_menu_item_font(ui);
+                        if ui.checkbox(&mut self.highlight_checked_king, "Highlight king in check").changed() {
+                            self.save_preferences();
+                        }
+                        if ui.checkbox(&mut self.animate_captures, "Capture dissolve").changed() {
+                            self.capture_animation = None;
+                            self.save_preferences();
+                        }
+                        ui.label(RichText::new("Animations respect your system's reduced-motion setting.").small().weak());
                         if ui
                             .checkbox(&mut self.animate_moves, "Animate live moves")
                             .changed()
@@ -16254,6 +16810,7 @@ impl eframe::App for ChessApp {
                 let targets = std::mem::take(&mut self.legal_targets);
                 let last_move = self.last_move.take();
                 let animation = self.move_animation.take();
+                let capture_animation = self.capture_animation.take();
                 self.board = board;
                 ui.centered_and_justified(|ui| self.board_ui_with_moves(ui, false));
                 self.board = original;
@@ -16261,10 +16818,104 @@ impl eframe::App for ChessApp {
                 self.legal_targets = targets;
                 self.last_move = last_move;
                 self.move_animation = animation;
+                self.capture_animation = capture_animation;
             } else {
                 ui.centered_and_justified(|ui| self.board_ui(ui));
             }
         });
+
+        if self.local_draw_dialog_open && !self.fics_active && !self.engine_enabled
+            && self.training.is_none() && self.game_result() == "*"
+        {
+            egui::Window::new("Draw offer")
+                .collapsible(false).resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .show(ctx, |ui| {
+                    ui.label("Does the other player accept a draw?");
+                    ui.horizontal(|ui| {
+                        if ui.button("Accept draw").clicked() {
+                            self.local_agreed_draw = true;
+                            self.local_draw_dialog_open = false;
+                            self.selected = None;
+                            self.legal_targets.clear();
+                            self.promotion = None;
+                            self.engine_status = "Game drawn by agreement".into();
+                            self.save_game();
+                        }
+                        if ui.button("Decline / keep playing").clicked() {
+                            self.local_draw_dialog_open = false;
+                        }
+                    });
+                });
+        }
+        if self.fics_resign_dialog_open
+            && ((self.fics_active && self.fics_playing)
+                || (!self.fics_active && self.game_result() == "*"))
+        {
+            egui::Window::new("Resign game")
+                .collapsible(false)
+                .resizable(false)
+                .fixed_size(Vec2::new(400.0, 148.0))
+                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .frame(Frame::window(&ctx.style()).inner_margin(Margin::symmetric(20, 18)))
+                .show(ctx, |ui| {
+                    ui.set_min_width(360.0);
+                    ui.label("Resigning ends this game and gives the win to your opponent.");
+                    ui.add_space(18.0);
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(ui.available_width(), 32.0),
+                        Layout::right_to_left(Align::Center),
+                        |ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new("Resign game")
+                                        .min_size(Vec2::new(108.0, 32.0))
+                                        .fill(Color32::from_rgb(116, 58, 52)),
+                                )
+                                .clicked()
+                            {
+                                if self.fics_active {
+                                    #[cfg(target_arch = "wasm32")]
+                                    {
+                                        if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"resign"})); }
+                                        else { fics_send("resign"); }
+                                    }
+                                    self.fics_status = "Resignation sent…".into();
+                                } else {
+                                    self.local_resigned_white = Some(if self.engine_enabled {
+                                        self.player_side == PlayerSide::White
+                                    } else {
+                                        self.board.side_to_move() == Color::White
+                                    });
+                                    #[cfg(target_arch = "wasm32")]
+                                    self.stop_analysis();
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let Some(engine) = &self.engine {
+                                        engine.command("stop");
+                                    }
+                                    self.engine_searching = false;
+                                    self.resume_engine_after_ready = false;
+                                    self.selected = None;
+                                    self.legal_targets.clear();
+                                    self.promotion = None;
+                                    self.engine_status = "Game ended by resignation".into();
+                                    self.save_game();
+                                }
+                                self.fics_resign_dialog_open = false;
+                            }
+                            if ui
+                                .add(
+                                    egui::Button::new("Keep playing")
+                                        .min_size(Vec2::new(108.0, 32.0)),
+                                )
+                                .clicked()
+                            {
+                                self.fics_resign_dialog_open = false;
+                            }
+                        },
+                    );
+                });
+        }
 
         if !self.focus_mode {
         if let Some(until) = self.print_notice_until {
@@ -16526,6 +17177,8 @@ impl eframe::App for ChessApp {
                                     self.analysis_running = false;
                                     self.local_clock = None;
                                     self.local_resigned_white = None;
+                                    self.local_agreed_draw = false;
+                                    self.local_draw_dialog_open = false;
                                     #[cfg(target_arch = "wasm32")]
                                     if let Some(engine) = &self.engine { engine.command("stop"); }
                                     self.fics_password.clear();
@@ -16790,75 +17443,6 @@ impl eframe::App for ChessApp {
                     }
                 });
             self.fics_console_open = open;
-        }
-
-        if self.fics_resign_dialog_open
-            && ((self.fics_active && self.fics_playing)
-                || (!self.fics_active && self.game_result() == "*"))
-        {
-            egui::Window::new("Resign game")
-                .collapsible(false)
-                .resizable(false)
-                .fixed_size(Vec2::new(400.0, 148.0))
-                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-                .frame(Frame::window(&ctx.style()).inner_margin(Margin::symmetric(20, 18)))
-                .show(ctx, |ui| {
-                    ui.set_min_width(360.0);
-                    ui.label("Resigning ends this game and gives the win to your opponent.");
-                    ui.add_space(18.0);
-                    ui.allocate_ui_with_layout(
-                        Vec2::new(ui.available_width(), 32.0),
-                        Layout::right_to_left(Align::Center),
-                        |ui| {
-                            if ui
-                                .add(
-                                    egui::Button::new("Resign game")
-                                        .min_size(Vec2::new(108.0, 32.0))
-                                        .fill(Color32::from_rgb(116, 58, 52)),
-                                )
-                                .clicked()
-                            {
-                                if self.fics_active {
-                                    #[cfg(target_arch = "wasm32")]
-                                    {
-                                        if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"resign"})); }
-                                        else { fics_send("resign"); }
-                                    }
-                                    self.fics_status = "Resignation sent…".into();
-                                } else {
-                                    self.local_resigned_white = Some(if self.engine_enabled {
-                                        self.player_side == PlayerSide::White
-                                    } else {
-                                        self.board.side_to_move() == Color::White
-                                    });
-                                    #[cfg(target_arch = "wasm32")]
-                                    self.stop_analysis();
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let Some(engine) = &self.engine {
-                                        engine.command("stop");
-                                    }
-                                    self.engine_searching = false;
-                                    self.resume_engine_after_ready = false;
-                                    self.selected = None;
-                                    self.legal_targets.clear();
-                                    self.promotion = None;
-                                    self.engine_status = "Game ended by resignation".into();
-                                    self.save_game();
-                                }
-                                self.fics_resign_dialog_open = false;
-                            }
-                            if ui
-                                .add(
-                                    egui::Button::new("Keep playing")
-                                        .min_size(Vec2::new(108.0, 32.0)),
-                                )
-                                .clicked()
-                            {
-                                self.fics_resign_dialog_open = false;
-                            }
-                        },
-                    );
-                });
         }
 
         if self.new_game_dialog_open {

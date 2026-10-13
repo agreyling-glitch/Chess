@@ -10,6 +10,7 @@ const VERTEX_STRIDE: usize = 104;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct Highlights {
+    checked: Option<Square>,
     selected: Option<Square>,
     targets: u64,
     last_move: Option<chess::ChessMove>,
@@ -17,7 +18,7 @@ struct Highlights {
 
 impl Highlights {
     fn new(selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>) -> Self {
-        Self { selected, targets: targets.iter().fold(0, |mask, square| mask | (1_u64 << square.to_index())), last_move }
+        Self { checked: None, selected, targets: targets.iter().fold(0, |mask, square| mask | (1_u64 << square.to_index())), last_move }
     }
 }
 
@@ -69,6 +70,7 @@ fn occupant(board: &Board, square: Square) -> Option<(Piece, Color)> {
 
 #[derive(Clone)]
 pub struct Scene {
+    current_check: Option<Square>,
     // Static glow/board geometry is shared by all positions at this view.
     vertices: Arc<[u8]>,
     squares: Arc<[SquareGeometry; 64]>,
@@ -96,6 +98,7 @@ impl Scene {
     /// Piece geometry retains the base projection so a move after zoom gets
     /// the same single shader distance adjustment as every retained piece.
     pub fn update_board(&mut self, board: &Board) {
+        self.current_check = checked_king(board, self.adjustments.highlight_check);
         let changed = (0..64).fold(0_u64, |mask, index| {
             if self.squares[index].occupant != occupant(board, square_from_index(index)) {
                 mask | (1_u64 << index)
@@ -133,10 +136,12 @@ impl Scene {
     /// Selection changes keep the board/piece mesh and its GPU buffer intact.
     /// Retain the base projection: zoom is applied to both buffers by the shader.
     pub fn update_highlights(&mut self, selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>) {
-        let highlights = Highlights::new(selected, targets, last_move);
+        let mut highlights = Highlights::new(selected, targets, last_move);
+        highlights.checked = self.current_check;
         if self.highlights == highlights { return; }
-        let triangles = highlight_triangles(self.projection_rect, self.projection_flipped, self.projection_view,
+        let mut triangles = highlight_triangles(self.projection_rect, self.projection_flipped, self.projection_view,
             selected, targets, last_move, self.theme);
+        triangles.extend(check_triangles(self.projection_rect, self.projection_flipped, self.projection_view, self.current_check));
         let mut vertices = Vec::with_capacity(triangles.len() * 3 * VERTEX_STRIDE);
         self.overlay_count = append_triangles(&mut vertices, &triangles, self.projection_rect);
         self.highlight_vertices = vertices.into();
@@ -282,7 +287,8 @@ pub fn scene(
             LightingMode::Shader,
         );
     }
-    let overlays = highlight_triangles(rect, flipped, view, selected, targets, last_move, theme);
+    let mut overlays = highlight_triangles(rect, flipped, view, selected, targets, last_move, theme);
+    overlays.extend(check_triangles(rect, flipped, view, checked_king(board, adjustments.highlight_check)));
     let mut vertices = Vec::with_capacity((board_triangles.len() + 2) * 3 * VERTEX_STRIDE);
     let mut highlight_vertices = Vec::with_capacity(overlays.len() * 3 * VERTEX_STRIDE);
     let glow_count = if show_radial_light { append_triangles(&mut vertices, &board_glow(camera, rect, theme), rect) } else { 0 };
@@ -300,7 +306,9 @@ pub fn scene(
         vertices: vertices.into(),
         squares: Arc::new(std::array::from_fn(|_| SquareGeometry::default())),
         highlight_vertices: highlight_vertices.into(),
-        highlights: Highlights::new(selected, targets, last_move),
+        current_check: checked_king(board, adjustments.highlight_check),
+        highlights: { let mut highlights = Highlights::new(selected, targets, last_move);
+            highlights.checked = checked_king(board, adjustments.highlight_check); highlights },
         highlight_revision: 0,
         projection_rect: rect,
         projection_flipped: flipped,
@@ -909,7 +917,7 @@ mod tests {
                 if targets.contains(&square) { color = Some([125, 190, 123]); }
                 if selected == Some(square) { color = Some([230, 178, 65]); }
                 if let Some(color) = color {
-                    let (highlight_x, highlight_z) = if theme == Theme::Wood { (x + 0.04, z - 0.035) } else { (x, z) };
+                    let (highlight_x, highlight_z) = (x, z);
                     overlay_quad(&mut triangles, camera, rect, [
                         V3::new(highlight_x, 0.061, highlight_z),
                         V3::new(highlight_x + 1.0, 0.061, highlight_z),
@@ -1170,7 +1178,7 @@ mod tests {
     }
 
     #[test]
-    fn highlight_precedence_and_wood_grid_offsets_match_board_squares() {
+    fn highlight_precedence_matches_board_squares_without_theme_offsets() {
         let rect = Rect::from_min_size(Pos2::new(37.0, 29.0), Vec2::new(840.0, 600.0));
         for (theme, _) in Theme::ALL {
             for flipped in [false, true] {
@@ -1182,13 +1190,41 @@ mod tests {
                     let color = Color32::from_rgba_unmultiplied(color[0], color[1], color[2], 135);
                     assert_eq!(triangles[index * 2].color, color);
                     assert_eq!(triangles[index * 2 + 1].color, color);
-                    let x = square.get_file().to_index() as f32 - 4.0 + if theme == Theme::Wood { 0.04 } else { 0.0 };
-                    let z = 3.0 - square.get_rank().to_index() as f32 - if theme == Theme::Wood { 0.035 } else { 0.0 };
+                    let x = square.get_file().to_index() as f32 - 4.0;
+                    let z = 3.0 - square.get_rank().to_index() as f32;
                     let expected = camera.project(V3::new(x, 0.061, z), rect).unwrap().0;
                     assert!(triangles[index * 2].points[0].distance(expected) < 0.001);
                 }
             }
         }
+    }
+
+    #[test]
+    fn checked_king_highlight_updates_and_clears_with_board_and_toggle() {
+        let board = Board::from_str("k3r3/8/8/8/8/8/8/4K3 w - - 0 1").unwrap();
+        assert_eq!(checked_king(&board, true), Some(Square::E1));
+        assert_eq!(checked_king(&board, false), None);
+        let rect = Rect::from_min_size(Pos2::ZERO, Vec2::new(700.0, 500.0));
+        let mut rendered = scene(&board, rect, false, View::default(), None, &[], None,
+            Color32::BLACK, 1.0, wgpu::TextureFormat::Rgba8Unorm, 1, Theme::Wood, false,
+            PieceAppearance { highlight_check: true, ..Default::default() });
+        assert_eq!(rendered.highlights.checked, Some(Square::E1));
+        assert_eq!(rendered.overlay_count, 6);
+        let base = rendered.vertices.clone();
+        let revision = rendered.highlight_revision;
+        let escaped = board.make_move_new(chess::ChessMove::new(Square::E1, Square::D1, None));
+        rendered.update_board(&escaped);
+        rendered.update_highlights(None, &[], None);
+        assert!(rendered.highlights.checked.is_none());
+        assert_eq!(rendered.overlay_count, 0);
+        assert!(rendered.highlight_revision > revision);
+        assert!(Arc::ptr_eq(&base, &rendered.vertices));
+        rendered.update_board(&board);
+        rendered.update_highlights(None, &[], None);
+        assert_eq!(rendered.overlay_count, 6);
+        let disabled = scene(&board, rect, false, View::default(), None, &[], None,
+            Color32::BLACK, 1.0, wgpu::TextureFormat::Rgba8Unorm, 2, Theme::Wood, false, PieceAppearance::default());
+        assert_eq!(disabled.overlay_count, 0);
     }
 
     fn vertex_float(bytes: &[u8], vertex: usize, component: usize) -> f32 {
