@@ -1,11 +1,15 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-11T00:00:00-05:00
+lastmod: 2026-10-12T00:00:00-05:00
 description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
 ---
+
+## Practice with puzzles
+
+Open **Game → Puzzles…** for the Lichess daily puzzle or practice by theme and difficulty, with automatic opponent replies, promotion choices, hints, and solution reveal. A separate puzzle board preserves your current game. Review missed puzzles and track results locally without signing in or submitting a Lichess rating. New puzzles require internet access; saved mistakes can be retried offline. [Puzzles help](/help/puzzles/).
 
 ## Analyze without limits
 
@@ -65,13 +69,19 @@ Expand **Drawings** to edit a drawing’s color and squares or delete it. **Clea
 
 Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood’s PGN extensions preserve shape and arrow styles and colored ghost pieces; other chess programs may simplify styles or ignore ghosts. **Copy Annotated Board to Clipboard** captures the selected position’s drawings and any displayed Stockfish recommendation arrow in the active 2D or 3D view. Printed analysis also includes personal annotations. Plain PGN omits them.
 
-## Explore tactical patterns
+## Explore tactics and positional plans
 
-Open **Tactical Map** from the bullseye beside the **2D/3D** button. Its translucent floating window lists newly exposed pieces, absolute pins, and legal fork candidates, with color-coded **Danger**, **Pins**, and **Forks** filters and counts. Select a finding to highlight its squares and trace attack lines on the board; select it again to clear the overlay. Drag its title to reposition the map, or resize the window alongside your notes and drawing tools.
+Open **Tactical Map** from the bullseye beside **2D/3D** to explore the position directly on the board. Drag or resize its floating window to arrange your workspace. Its tools work without an engine analysis run:
 
-Enable **Attack vs Defense** to see two numbered bubbles on every real piece in the **2D board**: red at the top-left counts enemy attackers, and green at the top-right counts friendly defenders. Zeros are shown, and the counts update as you review moves or flip the board. Closing Tactical Map hides the bubbles. The option is available in its window, with a prompt to switch to 2D when using a 3D board.
+- **Opponent threats:** inspect candidate checks, captures, and forks for the other side if the position stays unchanged. Click a row to trace the move in pink and its checking or fork attacks in gold. Candidates update with the position; resolve check before exploring a hypothetical opponent turn.
+- **What changed?:** step through a game to see opened attack lines in blue, lost defenders with gold dashed lines from their previous squares, and new attacks in red. Explanations connect each change to the affected pieces.
+- **Positional activity:** click any real piece, of either color, for a 0–100 score rated **Restricted**, **Balanced**, **Active**, or **Dominant**. Concrete reasons describe mobility, central control, pressure, support, pins, and piece-specific roles. During a live game against the AI, activity follows your selection while normal moves still work.
+- **Knight reach · two hops (2D):** select either side's knight to preview first-hop ghosts, potential second-hop squares, capture rings, and major-piece fork opportunities. Hover a ghost to focus its branch. In review, click a ghost to lock its route; click again or use **Unlock route** to release it. Live-game clicks continue to select and move pieces.
+- **Pin-aware Destination safety (2D):** hover a knight destination to distinguish geometric support in gray, legal recapturers in green, unavailable defenders in amber, and geometric attackers in red. Capture-specific details account for pins, king safety, captures, and newly opened lines.
+- **Attack vs Defense (2D):** red bubbles count geometric attackers; green bubbles show **geometric defenders / legal recapturers**. The built-in legend explains `2/-` (no legal enemy capture), `2/0` (no legal recapturer), and `2/1` (one legal recapturer). Hover a piece for details against each candidate capture. Bubbles remain above board markings and arrows so their numbers stay readable.
+- **Patterns:** filter **Danger**, **Pins**, and **Forks** using the colored buttons directly above their cards. Click a card to trace its relevant squares and attack lines; click again to clear it.
 
-Counts describe geometric control, including pinned pieces; pawns count diagonal attacks, sliding attacks respect blockers, and a piece does not defend itself. Ghost pieces do not affect the counts. The map provides geometric clues without requiring an engine analysis run. A candidate is not a proven material win: use Stockfish to check the opponent’s replies. Tactical Map is available for review and analysis and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for its scope and controls.
+Geometric counts include pinned pieces; legal recapture counts check the position after each candidate capture. Ghost annotations do not affect real-piece counts. Activity ratings are positional heuristics, and hypothetical routes assume other pieces remain stationary. None of these tools proves a winning exchange: use Stockfish to check replies. The map requires no engine analysis run and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for all controls and legends.
 
 ## Play your way
 
@@ -89,7 +99,7 @@ Click the focus icon beside **Flip board** or press **Shift+Enter** when you are
 
 ## Choose a 2D or 3D board
 
-Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with previews of all eight 2D piece sets and the Marble, Wood, Glass, Art Deco, and Egyptian 3D themes. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with **2D** and **3D** tabs. It always opens on **2D**; the Marble, Wood, Glass, Art Deco, and Egyptian previews load when you select **3D**. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
 ## Make each theme your own
 

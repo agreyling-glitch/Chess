@@ -1,49 +1,117 @@
 ---
 title: "Tactical Map"
-description: "Inspect danger, pins, and forks, and show attacker and defender counts on every piece in 2D."
+description: "Explore patterns, opponent threats, move changes, positional activity, knight routes, and pin-aware safety."
 category: "analysis"
-lastmod: 2026-10-10T00:00:00-05:00
-keywords: [attack vs defense, attackers, defenders, bubbles, counts, 2D, tactics, tactical map, danger, pins, forks, threats]
+lastmod: 2026-10-11T00:00:00-05:00
+keywords: [attack vs defense, defenders, legal recaptures, pins, knight reach, destination safety, positional activity, opponent threats, what changed, tactical map]
 weight: 18
 ---
 
-The Tactical Map helps you inspect threats and tactical patterns in the displayed position. It works on both the 2D and 3D boards without requiring an engine analysis run.
+Tactical Map helps you inspect the displayed position without running engine analysis. Pattern and threat lines work in both board views; attacker/defender bubbles and knight previews require **2D**.
 
 ## Open and arrange the map
 
-Click the **bullseye icon** immediately to the left of **2D/3D** above the board to open the translucent **Tactical Map** window. The Notes icon is to its left, followed by the Draw on board pencil farther left. The map has its own window rather than a section in Game Moves.
+Click the **bullseye icon** immediately to the left of **2D/3D** above the board. Notes and Draw on board have separate icons to its left. Drag or resize the floating window to arrange your workspace. Click the bullseye again or its close button to hide the map and overlays.
 
-Drag the window to reposition it or resize it. Click the bullseye again, or the close button, to close the window and hide its overlays.
-
-## Filter and inspect patterns
-
-The header contains **Danger**, **Pins**, and **Forks** filter buttons with counts for the displayed position. Click a filter to show or hide that kind of finding. The color matches the corresponding cards and board markings.
-
-Select a finding card to outline its relevant squares and trace attack lines. Select the same card again to clear the selection. A fork card identifies the candidate’s starting and destination squares, for example **Fork candidate · d1 to d7**; its description names the targets. Selecting it illustrates the candidate without playing the move.
+Each tool has separate controls. **Positional activity** has its own heading. **Danger**, **Pins**, and **Forks** filters sit directly above the cards in **Patterns**.
 
 ## Attack vs Defense
 
-Enable **Attack vs Defense** in the Tactical Map window to show two numbered bubbles on every real piece in the **2D board**:
+Enable **Attack vs Defense** to show bubbles on every real piece in 2D:
 
-- **Red, top-left:** the number of enemy pieces attacking its square.
-- **Green, top-right:** the number of other friendly pieces defending its square.
+- **Red, top-left:** geometric enemy attackers, including pinned attackers.
+- **Green, top-right:** **geometric defenders / legal recapturers**. The first number includes pinned defenders. The second counts distinct friendly pieces able to recapture after at least one candidate legal enemy capture.
 
-Zero counts are shown too. The bubbles update as you change positions and stay in the same screen corners when you flip the board. They disappear when you close Tactical Map or disable the option. In 3D, switch to 2D to see them.
+A small legend appears directly below the checkbox:
 
-Counts describe geometric control, including pinned pieces and kings controlling adjacent squares. Sliding pieces are blocked by intervening pieces; pawns count diagonal attacks, not forward moves. A piece does not defend itself. These counts do not prove a legal capture or a winning exchange, and ghost annotations do not count as pieces.
+| Bubble | Meaning |
+| --- | --- |
+| `2/-` | Two geometric defenders. No legal enemy capture on the square, so recaptures do not apply. |
+| `2/0` | Two geometric defenders, but neither can legally recapture after the candidate captures. |
+| `2/1` | Two geometric defenders; one can legally recapture after at least one candidate capture. |
 
-## What the findings mean
+Hover a piece for **capture-specific** details. A defender may work against one attacker but not another. A capture can also uncover a new recapturer that was not originally a geometric defender, so the second number can exceed the first.
 
-- **Danger** compares the displayed position with the previous move. It identifies surviving pieces on the same squares that are attacked and have gained attackers or lost defenders. Coral outlines mark these pieces.
-- **Pins** identifies pieces shielding their king from an enemy bishop, rook, or queen. Purple outlines mark the pinned pieces.
-- **Forks** lists legal moves for the side to move that make the moving piece attack at least two enemy pieces other than pawns. Select a candidate to see its destination and targets in blue. All promotion choices are considered.
+Legal recapture checks account for pins, opened lines, and king safety. A pinned piece may still recapture along its pin line. A king cannot recapture onto an attacked square. These checks do not calculate whether an exchange wins material or account for intervening moves.
 
-The current map reports Danger, absolute Pins, and Fork candidates; it does not provide a skewer category or a complete heatmap of every vulnerable square.
+Geometric control respects blockers and pawn attack directions. A piece does not defend itself, and personal ghost annotations do not affect the counts. Zero counts are shown. Bubbles update with the position and remain in the same screen corners when the board is flipped. Disable the option or close the map to hide them.
 
-These are geometric clues, not engine-confirmed wins. Attack and defender counts include pinned pieces; they do not establish which captures are legal or profitable. Test the opponent's responses with analysis before concluding that a tactic wins material. Danger does not cover all weak or vulnerable empty squares.
+## Opponent threats
 
-## When the map is available
+Enable **Opponent threats** to list candidate **checks**, **captures**, and **forks** for the side opposite the current side to move. The list assumes you leave the position unchanged for a hypothetical opponent turn; it does not predict your next move. All promotion choices are considered.
 
-The map is hidden during rated training games, active online play, best-move exercises, and prediction previews. Attack vs Defense uses the same availability rules. Its toggle and the pattern filters are temporary for the current session; switching positions updates the counts without saving them as annotations. Automatic findings do not alter your saved notes or personal board drawings.
+Click a row to trace the candidate without playing it:
 
-Use [Draw on board](/help/drawing-on-the-board/) to add your own persistent arrows and shapes, or [Notes](/help/taking-notes/) to record what you learned from a position.
+- **Pink:** the moving piece's source and destination, with a move arrow.
+- **Gold:** checking or fork attack lines after the candidate move, including discovered checks.
+
+Click the same row again to clear it. Changing position clears the displayed selection. If the current side is in check, resolve check before exploring a hypothetical opponent turn. Captures may lose material, and a fork candidate is not a forced win.
+
+## What changed?
+
+**What changed?** compares the displayed game position with the immediately preceding position. Step through the move list to update its explanations and overlays:
+
+- **Blue:** an opened attack line from a stationary bishop, rook, or queen to a stationary enemy piece.
+- **Gold dashed lines:** lost support, drawn from the defender's **previous square** to the surviving piece it no longer defends. The previous square may now be empty or occupied by a capturer.
+- **Red:** a newly threatened piece or an additional attacker against an already attacked piece.
+
+The list includes lost defenders on pieces that are not currently attacked. It tracks moved surviving pieces where their identities can be established. At the starting position or without a matching previous game position, step forward in a game to make a comparison. An unchanged position produces no changes.
+
+These comparisons use geometric control, including pinned pieces. They explain changed relationships, not engine-proven threats. Disable **What changed?** to hide its list and markings.
+
+## Positional activity
+
+With Tactical Map open, **click any real piece on the main board**, of either color. The separate **Positional activity** section displays a score and reasons. In review, clicking inspects without moving the piece. During a live game against the AI, normal move selection still works: activity follows the piece you click, and clicking a legal destination plays the move. Knight reach does not need to be enabled.
+
+| Score | Rating |
+| --- | --- |
+| 0–34 | Restricted |
+| 35–54 | Balanced |
+| 55–74 | Active |
+| 75–100 | Dominant |
+
+Reasons can include geometric mobility, central control, pressure on enemy pieces, friendly support, pawn attacks, absolute pins, a rook's open or semi-open file, and a supported advanced knight post. King ratings also note whether enemy rooks or queens remain.
+
+The score is an explainable heuristic, **not a material value, engine evaluation, or tactical safety verdict**. Mobility is measured before king-safety checks, and geometric support includes pinned pieces. An active piece can still be lost tactically. Select another piece to inspect it; changing position clears the old activity card.
+
+## Knight reach: two hops
+
+Enable **Knight reach · two hops** in 2D, then click a knight on the main board or choose its square beside **Knight**. Either color can be selected.
+
+- **Ghost knights:** first-hop destinations. For the side to move, these are legal moves. For the other side, they show geometric reach, including pinned moves.
+- **Outlined squares:** potential second-hop destinations, assuming other pieces stay where they are and accounting for captures along the route.
+- **Gold outlines:** potential second-hop forks against at least two enemy kings, queens, or rooks.
+- **Coral rings:** first-hop destinations occupied by an enemy piece.
+
+Hover a ghost to focus its branch and connecting arrows. **In review, click a ghost to lock its route** so it stays visible when the pointer moves away. Click the same ghost again or use **Unlock route** to release it. Click another ghost to switch branches. Changing position or selecting a different knight clears the old route. During live play, board clicks select and move pieces; use hover previews, or enter review to lock a route.
+
+Second hops are potential reach, not a legal two-move sequence: the opponent's reply, checks, captures, and pins can change available moves. Preview ghosts are temporary and do not change the game or create saved drawings.
+
+### Destination safety
+
+**Destination safety** is enabled by default within Knight reach. Hover a first-hop ghost or a second-hop destination to inspect the hypothetical position after that route. With a locked branch, hover its second-hop squares; when no destination is hovered, safety remains visible for the locked first hop.
+
+- **Red lines:** geometric enemy attackers.
+- **Gray lines:** geometric friendly support.
+- **Green lines:** pieces able to make a legal recapture after at least one candidate enemy capture.
+- **Amber lines:** geometric defenders unable to recapture after any of those captures because their king would remain or become unsafe.
+
+The destination label shows **G / R**: geometric defenders and legal recapturers. A dash in place of R means there is no legal enemy capture to recapture. Hover for the specific recaptures available against each attacker.
+
+Safety accounts for the knight leaving its original square, captured pieces disappearing, and opened attack lines. It checks both the enemy capture and each friendly recapture for king safety. It does not evaluate exchange profitability or predict intervening replies.
+
+## Filter and inspect patterns
+
+The **Patterns** section contains **Danger**, **Pins**, and **Forks** buttons with counts, directly above the finding cards. Click a button to show or hide that kind of pattern. Select a card to outline its relevant squares and trace attack lines; select it again to clear the selection.
+
+- **Danger:** surviving pieces on unchanged squares that are attacked and gained attackers or lost defenders after the last move. Coral outlines mark them.
+- **Pins:** pieces shielding their king from an enemy bishop, rook, or queen. Purple outlines mark absolute pins.
+- **Forks:** legal moves for the actual side to move that make the moving piece attack at least two enemy pieces other than pawns. Select a candidate to see its destination and targets in blue. All promotion choices are considered.
+
+These cards are geometric clues, not engine-confirmed material wins. They are separate from **Opponent threats**, which explores the other side's hypothetical moves, and **What changed?**, which explains changes after the last move. The map does not provide a skewer category or a complete vulnerability heatmap.
+
+## Availability and saved annotations
+
+The map is hidden during rated training games, active online play, best-move exercises, and prediction previews. Its controls and selections are temporary for the current session. They do not alter your game, saved notes, or personal drawings, and are not exported as annotations.
+
+Use [Draw on board](/help/drawing-on-the-board/) for persistent arrows and shapes, or [Notes](/help/taking-notes/) to record conclusions. Use engine analysis to check whether a candidate survives the opponent's replies.

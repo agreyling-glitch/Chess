@@ -6,13 +6,15 @@ import { STANDARD,parseFen,placement,basicError } from '../web/position-editor/m
 test('editor opens, closes, reopens, and returns a manually edited FEN',()=>{
  const dom=new JSDOM('<!doctype html><body></body>',{url:'https://ironwood.test',runScripts:'outside-only'});
  const w=dom.window;
- const requests=[];
- Object.assign(w,{STANDARD,parseFen,placement,basicError,Worker:class {postMessage(message){requests.push(message);} terminate(){}}});
+ const requests=[];let workers=0;
+ Object.assign(w,{STANDARD,parseFen,placement,basicError,Worker:class {constructor(){workers++;}postMessage(message){requests.push(message);} terminate(){}}});
  w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
  const source=readFileSync('web/position-editor/editor.js','utf8').replace(/^import .*;\r?\n/,'');
  w.eval(source);
  assert.doesNotThrow(()=>w.ironwoodOpenPositionEditor(STANDARD));
+
+ assert.equal(workers,0,'manual editing must not load the recognition runtime or model');
  assert.equal(w.document.querySelectorAll('#pe-board .square').length,64);
  assert.match(w.document.querySelector('#pe-status').textContent,/Arrange pieces manually/);
  w.document.querySelector('#pe-close').click();
@@ -36,5 +38,13 @@ test('editor opens, closes, reopens, and returns a manually edited FEN',()=>{
  w.document.querySelector('#pe-use').click();
  assert.match(w.ironwoodPollPositionEditor(),/^rnbqkbnr\/1ppppppp\//);
  assert.equal(w.ironwoodPollPositionEditor(),'');
+ w.ironwoodOpenPositionEditor(STANDARD);
+ const image=new w.File(['image'], 'board.png',{type:'image/png'});
+ const paste=new w.Event('paste',{bubbles:true,cancelable:true});
+ Object.defineProperty(paste,'clipboardData',{value:{items:[{type:'image/png',getAsFile:()=>image}]}});
+ w.document.querySelector('#ironwood-position-editor').dispatchEvent(paste);
+ assert.equal(workers,1,'an actual image import starts recognition');
+ assert.deepEqual(requests.map(request=>request.type),['warmup','scan']);
+ assert.equal(requests[1].file,image);
  dom.window.close();
 });

@@ -61,5 +61,5 @@ function create(){
  dialog.addEventListener('paste',e=>{const item=[...e.clipboardData.items].find(item=>item.type.startsWith('image/'));if(item){e.preventDefault();scan(item.getAsFile());}});
  dialog.ondragover=e=>{if(e.dataTransfer.types.includes('Files'))e.preventDefault();};dialog.ondrop=e=>{if(e.dataTransfer.types.includes('application/x-ironwood-piece')){e.preventDefault();return;}if(e.dataTransfer.files.length){e.preventDefault();scan(e.dataTransfer.files[0]);}};
 }
-window.ironwoodOpenPositionEditor=fen=>{if(!dialog)create();try{load(fen);}catch{load(STANDARD);}$('status').textContent='Arrange pieces manually, or import a screenshot. Images stay on your device.';dialog.showModal();ensureWorker();};
+window.ironwoodOpenPositionEditor=fen=>{if(!dialog)create();try{load(fen);}catch{load(STANDARD);}$('status').textContent='Arrange pieces manually, or import a screenshot. Images stay on your device.';dialog.showModal();};
 window.ironwoodPollPositionEditor=()=>{const value=pending;pending='';return value;};

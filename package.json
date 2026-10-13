@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "engine": "node scripts/copy-engine.mjs",
+    "build:piece-themes": "node scripts/build-piece-themes.mjs",
+    "build:board-themes": "node scripts/build-board-themes.mjs",
+    "prebuild:wasm": "npm run build:piece-themes && npm run build:board-themes",
     "build:wasm": "wasm-pack build --target web --release --out-dir web/pkg",
     "build:site": "node scripts/build-site.mjs",
     "refresh:site": "npm run build:site && node scripts/prepare-wrangler.mjs",

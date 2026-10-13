@@ -3,15 +3,26 @@
 let engine;
 let ready = false;
 const pending = [];
+const resourceOptions = new Map();
 
 function emit(line) { postMessage({ type: 'uci', line }); }
+function dispatch(command) {
+  // Stockfish rebuilds threads and clears its hash even when these values
+  // have not changed. Keep explicit search/reset commands in their UCI order.
+  const option = /^setoption name (Threads|Hash) value ([1-9]\d*)$/.exec(command);
+  if (option && resourceOptions.get(option[1]) === option[2]) return;
+  engine.postMessage(command);
+  if (option) resourceOptions.set(option[1], option[2]);
+}
 function send(command) {
   if (!ready) pending.push(command);
-  else engine.postMessage(command);
+  else dispatch(command);
 }
 
 onmessage = ({ data }) => {
   if (data?.type === 'init') {
+    ready = false;
+    resourceOptions.clear();
     if (!crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
       postMessage({ type: 'error', message: 'Cross-origin isolation is required for multi-thread Stockfish.' });
       return;
@@ -41,13 +52,13 @@ onmessage = ({ data }) => {
       }
       if (line === 'ironwood-thread-pool-ready') {
         ready = true;
-        engine.postMessage(`setoption name Threads value ${Math.max(1, Math.min(data.threads || 2, 8))}`);
-        engine.postMessage(`setoption name Hash value ${data.hash || 64}`);
-        engine.postMessage(`setoption name Skill Level value ${Math.max(0, Math.min(data.skillLevel ?? 20, 20))}`);
-        engine.postMessage(`setoption name UCI_LimitStrength value ${data.limitStrength ? 'true' : 'false'}`);
-        engine.postMessage(`setoption name UCI_Elo value ${Math.max(1320, Math.min(data.elo || 1800, 3190))}`);
-        engine.postMessage('setoption name Ponder value false');
-        while (pending.length) engine.postMessage(pending.shift());
+        send(`setoption name Threads value ${Math.max(1, Math.min(data.threads || 2, 8))}`);
+        send(`setoption name Hash value ${data.hash || 64}`);
+        send(`setoption name Skill Level value ${Math.max(0, Math.min(data.skillLevel ?? 20, 20))}`);
+        send(`setoption name UCI_LimitStrength value ${data.limitStrength ? 'true' : 'false'}`);
+        send(`setoption name UCI_Elo value ${Math.max(1320, Math.min(data.elo || 1800, 3190))}`);
+        send('setoption name Ponder value false');
+        while (pending.length) send(pending.shift());
         emit('uciok');
         return;
       }

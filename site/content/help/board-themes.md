@@ -1,15 +1,15 @@
 ---
-lastmod: 2026-10-11T00:00:00-05:00
+lastmod: 2026-10-12T00:00:00-05:00
 title: "Board themes and appearance"
-description: "Choose a 2D or 3D theme and customize its pieces, colors, shading, and lighting."
+description: "Choose and customize 2D or 3D themes, with guidance on artwork downloads, Retry, and offline use."
 category: "using-ironwood"
-keywords: [theme, appearance, board colors, gradient, shading, outlines, shadows, 2D, 3D, hybrid, marble, wood, glass, texture, sand, complement, custom]
+keywords: [theme, appearance, board colors, gradient, shading, outlines, shadows, 2D, 3D, hybrid, marble, wood, glass, texture, sand, complement, custom, loading, artwork, download, offline, cache, fallback, retry]
 weight: 13
 ---
 
 ## Choose a theme
 
-Open **View → Board → Theme…** to see the 2D and 3D theme cards. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
+Open **View → Board → Theme…** to browse the **2D** and **3D** tabs. The chooser always opens on **2D**, so browsing flat-board themes does not load 3D previews. Select **3D** to load those previews. Switching tabs leaves your current board unchanged. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
 
 The flat-board themes are System (Unicode), Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. Several themes include coordinated square, frame, and coordinate colors:
 
@@ -23,6 +23,17 @@ These palettes follow the selected theme automatically and appear in the live bo
 
 The 3D themes are Marble, Wood, Glass, Art Deco, and Egyptian. Switch dimensions with the **2D / 3D** button above the board or the View menu. Right-click that button to open the theme chooser.
 
+## Loading artwork and offline use
+
+In the web app, some artwork downloads only when needed:
+
+- **Hybrid Marble pieces:** the Marble, Wood, and Glass piece styles download when you use them or view their preview. Merida pieces keep the flat board usable while the selected style loads.
+- **3D boards:** artwork downloads when you open a 3D preview or switch to a 3D board. Wood has its own download; the other 3D themes share artwork. The live board stays usable in 2D until the selected 3D artwork is ready, then switches automatically. Your position and selected 3D theme are preserved.
+
+Connect to the internet the first time you use this artwork. After a complete download, it can be reused offline while it remains cached on this device. Installing Ironwood alone does not download every theme, and clearing browser data or the browser removing cached files can require another download.
+
+If artwork is unavailable, reconnect and choose **Retry** beside its status in **Board Theme** or **Theme adjustments…**. For a 3D board, **Retry** also appears above the live 2D fallback board. You can keep playing with the fallback or choose another available theme. Wait until 3D artwork is ready before copying a 3D board image.
+
 ## Rotate, zoom, and reset the 3D board
 
 With a 3D theme selected:
@@ -35,7 +46,7 @@ These controls change your view of the board; they do not move pieces or change 
 
 ## Hybrid Marble: flat board with 3D pieces
 
-Choose **Hybrid Marble** under **2D boards** for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
+Choose **Hybrid Marble** in the **2D** tab for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
 
 Open the Hybrid Marble card's **gear**, or **View → Board → Theme adjustments…**, to customize it:
 

@@ -519,7 +519,7 @@ impl ChessApp {
             else {
                 continue;
             };
-            let center = if self.board_3d_active {
+            let center = if self.board_3d_rendering() {
                 crate::board3d::square_center(square, rect, self.flipped, self.board_3d_view())
             } else {
                 let file = square.get_file().to_index() as f32;

@@ -92,6 +92,12 @@ impl FromStr for Board {
 }
 
 impl Board {
+    /// Analysis-only pass: preserve variant/castling metadata and clear en passant.
+    /// Passing while in check is invalid, so no hypothetical turn is returned.
+    pub fn opponent_turn_for_analysis(&self) -> Option<Self> {
+        Some(Self { inner: self.inner.null_move()?, ep_square: None, ..*self })
+    }
+
     pub fn from_chess960_fen(fen: &str) -> Result<Self, String> {
         let position: Chess = Fen::from_ascii(fen.as_bytes())
             .map_err(|e| e.to_string())?.into_position(CastlingMode::Chess960)

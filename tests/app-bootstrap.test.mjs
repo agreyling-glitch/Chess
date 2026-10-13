@@ -1,0 +1,307 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
+
+const source = readFileSync(new URL('../web/app-bootstrap.js', import.meta.url), 'utf8');
+const { startChessApp, installDeferredTools, compileAppWasm } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const flush = () => new Promise(resolve => setImmediate(resolve));
+const deferred = () => {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
+function environment(url = 'http://localhost/play/') {
+  const dom = new JSDOM('<body><canvas id="chess_canvas"></canvas><div id="loading">Loading</div></body>', { url });
+  const warnings = [];
+  const target = {
+    document: dom.window.document, location: dom.window.location, localStorage: dom.window.localStorage,
+    performance: { now: () => 123.4 }, setTimeout: () => 0,
+    console: { warn: (...args) => warnings.push(args), error: (...args) => warnings.push(args) },
+    alert: message => warnings.push(message), ironwoodPlayChessSound: () => {},
+  };
+  return { dom, target, warnings };
+}
+
+test('core fetch/compile overlaps restoration; optional modules wait for the painted board or use', async () => {
+  const { dom, target } = environment();
+  const restored = deferred(), compiled = deferred(), painted = deferred();
+  const requests = [], module = {}, app = { export_saved_game() {}, validate_scoresheet_pgn() {}, preview_scoresheet() {} };
+  let initialized = false, storageReady = false, clipboardReady = false;
+  app.default = async options => {
+    assert.equal(options.module_or_path, module);
+    assert.ok(storageReady, 'restored game must exist before Rust starts');
+    assert.ok(clipboardReady, 'clipboard writes must retain the original user gesture');
+    const bindings = [...readFileSync(new URL('../web/pkg/battle_chess.js', import.meta.url), 'utf8').matchAll(/window\.(ironwood\w+)\(/g)].map(match => match[1]);
+    for (const binding of bindings) assert.equal(typeof target[binding], 'function', `${binding} must be synchronously callable`);
+    assert.equal(target.ironwoodLichessPoll(), '');
+    assert.equal(target.ironwoodPollPositionEditor(), '');
+    assert.equal(target.ironwoodTakeBackground().length, 0);
+    initialized = true;
+  };
+  const start = startChessApp({ target,
+    compile: url => { requests.push(new URL(url, target.location.href).pathname); return compiled.promise; },
+    afterPaint: () => painted.promise,
+    loadModule: async url => {
+      const path = new URL(url, target.location.href).pathname;
+      requests.push(path);
+      if (path === '/pkg/battle_chess.js') return app;
+      if (path === '/game-storage.js') return { initializeGameStorage: async () => { await restored.promise; storageReady = true; } };
+      if (path === '/board-clipboard.js') { clipboardReady = true; return {}; }
+      return {};
+    },
+  });
+  await flush();
+  assert.deepEqual(new Set(requests), new Set(['/pkg/battle_chess.js', '/pkg/battle_chess_bg.wasm', '/game-storage.js', '/board-clipboard.js']));
+  compiled.resolve(module);
+  await flush();
+  assert.equal(initialized, false);
+  restored.resolve();
+  assert.equal(await start, true);
+  assert.equal(target.document.getElementById('loading'), null);
+  assert.equal(target.ironwoodExportSavedGame, app.export_saved_game);
+  assert.equal(requests.length, 4);
+  painted.resolve();
+  await flush();
+  assert.deepEqual(requests.slice(4).sort(), ['/background-image.js', '/lichess/bridge.js', '/pwa.js']);
+  assert.equal(target.document.body.dataset.startupReadyMs, '123.4');
+  dom.window.close();
+});
+
+test('new WASM waits for the actual first app frame before optional work, beyond init readiness', async () => {
+  const { dom, target } = environment();
+  const name = new TextEncoder().encode('__wbg_ironwoodFirstFrame_test');
+  const imports = [1, 3, 119, 98, 103, name.length, ...name, 0, 0];
+  const module = new WebAssembly.Module(new Uint8Array([
+    0, 97, 115, 109, 1, 0, 0, 0, // WASM header
+    1, 4, 1, 96, 0, 0, // () -> () function type
+    2, imports.length, ...imports,
+  ]));
+  const requests = [], frames = [];
+  const success = await startChessApp({ target, compile: async () => module,
+    afterPaint: () => { const frame = deferred(); frames.push(frame); return frame.promise; },
+    loadModule: async url => {
+      const path = new URL(url, target.location.href).pathname;
+      requests.push(path);
+      if (path === '/game-storage.js') return { initializeGameStorage: async () => {} };
+      if (path === '/pkg/battle_chess.js') return { default: async () => {} };
+      return {};
+    },
+  });
+  assert.equal(success, true);
+  assert.equal(frames.length, 1);
+  frames[0].resolve(); await flush();
+  assert.equal(target.document.body.dataset.startupReadyMs, '123.4');
+  assert.equal(target.document.body.dataset.boardReadyMs, undefined);
+  assert.equal(requests.length, 3, 'async painter initialization must not race optional scripts');
+  target.ironwoodFirstFrame(); await flush();
+  assert.equal(frames.length, 2);
+  assert.equal(requests.length, 3);
+  frames[1].resolve(); await flush();
+  assert.equal(target.document.body.dataset.boardReadyMs, '123.4');
+  assert.deepEqual(requests.slice(3).sort(), ['/background-image.js', '/lichess/bridge.js', '/pwa.js']);
+  dom.window.close();
+});
+
+test('OAuth callback bridge initializes before Rust; normal sessions reconnect after paint', async () => {
+  for (const query of ['?code=one-use&state=secret', '?error=access_denied&state=secret']) {
+    const { dom, target } = environment(`https://ironwood.test/play/${query}`);
+    const oauth = deferred();
+    let initialized = false, authStarted = false;
+    const start = startChessApp({ target, compile: async () => ({}), afterPaint: () => new Promise(() => {}),
+      loadModule: async url => {
+        if (url === '/lichess/bridge.js') {
+          authStarted = true;
+          await oauth.promise;
+          dom.window.history.replaceState(null, '', '/play/');
+        }
+        if (url === '/game-storage.js') return { initializeGameStorage: async () => {} };
+        if (url === '/pkg/battle_chess.js') return { default: async () => {
+          assert.equal(target.location.search, ''); initialized = true;
+        } };
+        return {};
+      },
+    });
+    await flush();
+    assert.equal(authStarted, true);
+    assert.equal(initialized, false);
+    oauth.resolve();
+    assert.equal(await start, true);
+    dom.window.close();
+  }
+});
+
+test('optional storage/clipboard failures do not prevent board startup; core failure remains visible', async () => {
+  for (const failCore of [false, true]) {
+    const { dom, target, warnings } = environment();
+    let initialized = false;
+    const success = await startChessApp({ target,
+      compile: async () => { if (failCore) throw new Error('offline'); return {}; },
+      afterPaint: () => new Promise(() => {}),
+      loadModule: async url => {
+        if (url.startsWith('/pkg/')) return { default: async () => { initialized = true; } };
+        throw new Error('Unavailable optional file');
+      },
+    });
+    assert.equal(success, !failCore);
+    assert.equal(initialized, !failCore);
+    assert.ok(warnings.length >= 2);
+    if (failCore) assert.match(target.document.getElementById('loading').textContent, /could not start/);
+    else assert.equal(target.ironwoodBeginBoardPngCopy(), false);
+    dom.window.close();
+  }
+});
+
+test('deferred actions preserve arguments and order with one load; idle polls do not fetch tools', async () => {
+  const { dom, target } = environment();
+  const gate = deferred(), paths = [], calls = [];
+  installDeferredTools(target, async path => {
+    paths.push(path);
+    await gate.promise;
+    target.ironwoodFicsConnectRegistered = (...args) => calls.push(['connect', ...args]);
+    target.ironwoodFicsDisconnect = () => calls.push(['disconnect']);
+  });
+  for (let index = 0; index < 20; index++) {
+    target.ironwoodFicsPoll(); target.ironwoodLichessPoll();
+    target.ironwoodPollPositionEditor(); target.ironwoodPollScoresheet(); target.ironwoodTakeBackground();
+  }
+  assert.deepEqual(paths, []);
+  target.ironwoodFicsConnectRegistered('Alice', 'session-password');
+  target.ironwoodFicsDisconnect();
+  await flush();
+  assert.deepEqual(paths, ['/fics/bridge.js']);
+  gate.resolve();
+  await flush();
+  assert.deepEqual(calls, [['connect', 'Alice', 'session-password'], ['disconnect']]);
+  dom.window.close();
+});
+
+test('piece artwork bridge loads its helper only when requested and preserves the async byte contract', async () => {
+  const { dom, target } = environment();
+  const paths = [], calls = [], bytes = Array.from({ length: 12 }, () => new Uint8Array([137, 80]));
+  installDeferredTools(target, async path => {
+    paths.push(path);
+    return { loadPieceTheme: async theme => { calls.push(theme); return bytes; } };
+  });
+  assert.deepEqual(paths, []);
+  const first = target.ironwoodLoadPieceTheme('hybrid-wood');
+  const second = target.ironwoodLoadPieceTheme('sculpted-marble');
+  assert.deepEqual(paths, [], 'module fetch begins asynchronously only after an explicit theme request');
+  assert.equal(await first, bytes);
+  assert.equal(await second, bytes);
+  assert.deepEqual(paths, ['/piece-themes.js']);
+  assert.deepEqual(calls, ['hybrid-wood', 'sculpted-marble']);
+  dom.window.close();
+});
+
+test('3D artwork bridge stays idle until requested and shares one helper for Wood and Marble/Glass', async () => {
+  const { dom, target } = environment();
+  const paths = [], calls = [], bytes = Array.from({ length: 14 }, () => new Uint8Array([103, 108, 84, 70]));
+  installDeferredTools(target, async path => {
+    paths.push(path);
+    return { loadBoardTheme: async theme => { calls.push(theme); return bytes; } };
+  });
+  assert.deepEqual(paths, []);
+  const first = target.ironwoodLoadBoardTheme('wood');
+  const second = target.ironwoodLoadBoardTheme('marble');
+  assert.deepEqual(paths, []);
+  assert.equal(await first, bytes);
+  assert.equal(await second, bytes);
+  assert.deepEqual(paths, ['/board-themes.js']);
+  assert.deepEqual(calls, ['wood', 'marble']);
+  dom.window.close();
+});
+
+test('failed deferred action can be retried without reloading the board', async () => {
+  const { dom, target } = environment();
+  let attempts = 0, opened = '';
+  const urls = [];
+  installDeferredTools(target, async url => {
+    urls.push(url);
+    if (++attempts === 1) throw new Error('temporarily offline');
+    target.ironwoodOpenPositionEditor = fen => { opened = fen; };
+  });
+  target.ironwoodOpenPositionEditor('first');
+  await flush();
+  assert.match(target.document.querySelector('[role=alert]').textContent, /Could not load Position Editor/);
+  target.ironwoodOpenPositionEditor('second');
+  await flush();
+  assert.equal(attempts, 2);
+  assert.notEqual(urls[0], urls[1], 'retry must bypass a failed browser module-map entry');
+  assert.equal(opened, 'second');
+  dom.window.close();
+});
+
+test('tablebase first lookup is replayed once for the latest position while the module loads', async () => {
+  const { dom, target } = environment();
+  const gate = deferred(), calls = [];
+  let loads = 0;
+  installDeferredTools(target, async path => {
+    assert.equal(path, '/tablebase.js'); loads++;
+    await gate.promise;
+    target.ironwoodTablebase = (...args) => { calls.push(args); return '{"category":"draw"}'; };
+  });
+  assert.equal(target.ironwoodTablebase('first', false, true), '');
+  assert.equal(target.ironwoodTablebase('latest', false, true), '');
+  target.ironwoodTablebase('latest', false, false);
+  await flush();
+  assert.equal(loads, 1);
+  gate.resolve(); await flush();
+  assert.deepEqual(calls, [['latest', false, false]]);
+  assert.equal(JSON.parse(target.ironwoodTablebase('latest', false, false)).category, 'draw');
+  dom.window.close();
+});
+
+test('puzzle history stays synchronous before lazy client load and requests are not duplicated', async () => {
+  const { dom, target } = environment();
+  const gate = deferred(), calls = [];
+  let loads = 0;
+  target.localStorage.setItem('ironwood.puzzles.history.v1', '[{"id":"saved"}]');
+  installDeferredTools(target, async path => {
+    assert.equal(path, '/puzzles.js'); loads++;
+    await gate.promise;
+    target.ironwoodPuzzles = (...args) => { calls.push(args); return '{}'; };
+  });
+  assert.equal(target.ironwoodPuzzles('history'), '[{"id":"saved"}]');
+  assert.equal(target.ironwoodPuzzles('save', '[{"id":"updated"}]'), '');
+  assert.equal(target.ironwoodPuzzles('history'), '[{"id":"updated"}]');
+  assert.equal(loads, 0);
+  for (let i = 0; i < 10; i++) assert.equal(JSON.parse(target.ironwoodPuzzles('request', '{"daily":true}')).loading, true);
+  await flush(); assert.equal(loads, 1);
+  gate.resolve(); await flush();
+  assert.deepEqual(calls, [['request', '{"daily":true}']]);
+  dom.window.close();
+});
+
+test('background picker opens synchronously before loading, then passes the selected file', async () => {
+  const { dom, target } = environment();
+  const gate = deferred(), file = new dom.window.File(['image'], 'background.png', { type: 'image/png' });
+  let picker = false, loadStarted = false, uploaded;
+  dom.window.HTMLInputElement.prototype.click = function () {
+    picker = true;
+    assert.equal(loadStarted, false, 'picker must retain user activation');
+    Object.defineProperty(this, 'files', { value: [file] });
+    this.onchange();
+  };
+  installDeferredTools(target, async path => {
+    assert.equal(path, '/background-image.js'); loadStarted = true;
+    await gate.promise;
+    return { uploadBackgroundFile: selected => { uploaded = selected; } };
+  });
+  target.ironwoodUploadBackground();
+  assert.equal(picker, true);
+  assert.equal(loadStarted, false);
+  await flush(); gate.resolve(); await flush();
+  assert.equal(uploaded, file);
+  dom.window.close();
+});
+
+test('WASM compilation streams only valid WASM MIME responses and preserves byte fallback', async () => {
+  const calls = [], module = {};
+  const wasm = { compileStreaming: async response => { calls.push('stream'); return module; },
+    compile: async bytes => { calls.push(bytes.byteLength); return module; } };
+  assert.equal(await compileAppWasm('/app.wasm', async () => new Response('test', { headers: { 'Content-Type': 'application/wasm' } }), wasm), module);
+  assert.equal(await compileAppWasm('/app.wasm', async () => new Response('test', { headers: { 'Content-Type': 'application/octet-stream' } }), wasm), module);
+  assert.deepEqual(calls, ['stream', 4]);
+  await assert.rejects(compileAppWasm('/app.wasm', async () => new Response('', { status: 404 }), wasm), /404/);
+});

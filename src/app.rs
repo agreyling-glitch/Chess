@@ -3,10 +3,15 @@ use crate::rules::{Board, MoveGen};
 mod training_ui;
 #[path = "tactical_ui.rs"]
 mod tactical_ui;
+#[path = "puzzles_ui.rs"]
+mod puzzles_ui;
 #[path = "notes_ui.rs"]
 mod notes_ui;
 #[path = "draw_ui.rs"]
 mod draw_ui;
+#[cfg(any(target_arch = "wasm32", test))]
+#[path = "piece_themes.rs"]
+mod piece_themes;
 
 use crate::training::{self, Profiles, Profile, Session, Side as TrainingSide, AnalysisStats};
 use chess::{BoardStatus, ChessMove, Color, File, Piece, Rank, Square};
@@ -32,6 +37,14 @@ trait GoldScrollAreaExt {
         ui: &mut egui::Ui,
         add_contents: impl FnOnce(&mut egui::Ui) -> R,
     ) -> egui::scroll_area::ScrollAreaOutput<R>;
+
+    fn show_rows_gold<R>(
+        self,
+        ui: &mut egui::Ui,
+        row_height: f32,
+        total_rows: usize,
+        add_contents: impl FnOnce(&mut egui::Ui, std::ops::Range<usize>) -> R,
+    ) -> egui::scroll_area::ScrollAreaOutput<R>;
 }
 
 impl GoldScrollAreaExt for egui::ScrollArea {
@@ -54,6 +67,32 @@ impl GoldScrollAreaExt for egui::ScrollArea {
             self.show(ui, |ui| {
                 *ui.visuals_mut() = original;
                 add_contents(ui)
+            })
+        })
+        .inner
+    }
+
+    fn show_rows_gold<R>(
+        self,
+        ui: &mut egui::Ui,
+        row_height: f32,
+        total_rows: usize,
+        add_contents: impl FnOnce(&mut egui::Ui, std::ops::Range<usize>) -> R,
+    ) -> egui::scroll_area::ScrollAreaOutput<R> {
+        let original = ui.visuals().clone();
+        ui.scope(|ui| {
+            let gold = Color32::from_rgb(185, 150, 82);
+            let visuals = ui.visuals_mut();
+            for widget in [
+                &mut visuals.widgets.inactive,
+                &mut visuals.widgets.hovered,
+                &mut visuals.widgets.active,
+            ] {
+                widget.bg_fill = gold;
+            }
+            self.show_rows(ui, row_height, total_rows, |ui, rows| {
+                *ui.visuals_mut() = original;
+                add_contents(ui, rows)
             })
         })
         .inner
@@ -126,6 +165,8 @@ use wasm_bindgen::{JsCast, JsValue, closure::Closure};
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFirstFrame)]
+    fn report_first_frame();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodUploadBackground)]
     fn upload_background();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodBackgroundLibrary)]
@@ -306,6 +347,7 @@ struct EngineBridge {
     worker: web_sys::Worker,
     messages: Receiver<EngineEvent>,
     _handler: Closure<dyn FnMut(web_sys::MessageEvent)>,
+    _error_handler: Closure<dyn FnMut(JsValue)>,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -605,6 +647,8 @@ impl EngineBridge {
     fn new(ctx: egui::Context, config: &EngineConfig) -> Option<Self> {
         let worker = web_sys::Worker::new("/engine-worker.js").ok()?;
         let (tx, messages) = mpsc::channel();
+        let error_tx = tx.clone();
+        let error_ctx = ctx.clone();
         let handler = Closure::wrap(Box::new(move |event: web_sys::MessageEvent| {
             let data = event.data();
             let line = js_sys::Reflect::get(&data, &JsValue::from_str("line"))
@@ -629,6 +673,13 @@ impl EngineBridge {
             ctx.request_repaint();
         }) as Box<dyn FnMut(_)>);
         worker.set_onmessage(Some(handler.as_ref().unchecked_ref()));
+        let error_handler = Closure::wrap(Box::new(move |event: JsValue| {
+            let detail = js_sys::Reflect::get(&event, &"message".into())
+                .ok().and_then(|value| value.as_string()).unwrap_or_else(|| "could not load engine worker".into());
+            let _ = error_tx.send(EngineEvent::Line(format!("Stockfish worker failed: {detail}")));
+            error_ctx.request_repaint();
+        }) as Box<dyn FnMut(_)>);
+        worker.set_onerror(Some(error_handler.as_ref().unchecked_ref()));
         let init = js_sys::Object::new();
         js_sys::Reflect::set(&init, &"type".into(), &"init".into()).ok()?;
         js_sys::Reflect::set(&init, &"threads".into(), &config.threads.into()).ok()?;
@@ -646,6 +697,7 @@ impl EngineBridge {
             worker,
             messages,
             _handler: handler,
+            _error_handler: error_handler,
         })
     }
 
@@ -654,6 +706,15 @@ impl EngineBridge {
         let _ = js_sys::Reflect::set(&message, &"type".into(), &"command".into());
         let _ = js_sys::Reflect::set(&message, &"command".into(), &command.into());
         let _ = self.worker.post_message(&message);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Drop for EngineBridge {
+    fn drop(&mut self) {
+        self.worker.set_onmessage(None);
+        self.worker.set_onerror(None);
+        self.worker.terminate();
     }
 }
 
@@ -878,6 +939,23 @@ struct LocalClock {
 }
 
 impl LocalClock {
+    fn next_display_change(&self, now: f64, white_to_move: bool) -> std::time::Duration {
+        let seconds = if white_to_move { self.white } else { self.black };
+        // The display rounds up to whole seconds. Account for time spent in
+        // this frame, and wake at the flag deadline when less than a second remains.
+        let until_change = if seconds <= 0.0 {
+            0.0
+        } else if seconds.fract() == 0.0 {
+            1.0
+        } else {
+            seconds.fract()
+        };
+        // If the displayed boundary passed while drawing, repaint now rather
+        // than skipping that second and waiting for the following boundary.
+        let delay = (until_change - (now - self.updated_at).max(0.0)).max(0.0);
+        std::time::Duration::from_secs_f64(delay)
+    }
+
     fn advance(&mut self, now: f64, white_to_move: bool, running: bool) -> bool {
         let elapsed = (now - self.updated_at).max(0.0);
         self.updated_at = now;
@@ -1444,6 +1522,7 @@ pub struct ChessApp {
     print_confirm_open: bool,
     background_dialog_open: bool,
     board_theme_open: bool,
+    board_theme_3d_tab: bool,
     expanded_graph_open: bool,
     expanded_graph_hover_index: Option<usize>,
     print_notice_until: Option<f64>,
@@ -1491,6 +1570,9 @@ pub struct ChessApp {
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     engine_ready: bool,
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    engine_initial_frame: u64,
+    engine_start_failed: bool,
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     show_engine_download: bool,
     resume_engine_after_ready: bool,
     pending_analysis_search: Option<String>,
@@ -1498,23 +1580,39 @@ pub struct ChessApp {
     ignore_next_bestmove: bool,
     #[cfg(target_arch = "wasm32")]
     engine: Option<EngineBridge>,
+    #[cfg(target_arch = "wasm32")]
+    first_frame_reported: bool,
 }
 
 impl ChessApp {
-    fn tick_local_clock(&mut self) {
-        if self.training.is_some() && self.game_result() != "*" { return; }
-        if self.fics_active || self.local_resigned_white.is_some() {
-            return;
+    fn running_local_clock_side(&self) -> Option<bool> {
+        let clock = self.local_clock.as_ref()?;
+        if self.fics_active
+            || self.local_resigned_white.is_some()
+            || clock.flagged_white.is_some()
+            || (self.engine_enabled && !self.engine_ready)
+            || (self.training.is_some() && self.game_result() != "*")
+        {
+            return None;
         }
         let live_board = self.review_positions.last().copied().unwrap_or(self.board);
+        (live_board.status() == BoardStatus::Ongoing)
+            .then_some(live_board.side_to_move() == Color::White)
+    }
+
+    fn local_clock_repaint_delay(&self, now: f64) -> Option<std::time::Duration> {
+        let white = self.running_local_clock_side()?;
+        Some(self.local_clock.as_ref()?.next_display_change(now, white))
+    }
+
+    fn tick_local_clock(&mut self) {
+        let side = self.running_local_clock_side();
         let Some(clock) = &mut self.local_clock else {
             return;
         };
         let now = Self::animation_time();
-        let white = live_board.side_to_move() == Color::White;
-        let running = live_board.status() == BoardStatus::Ongoing
-            && (!self.engine_enabled || self.engine_ready);
-        if clock.advance(now, white, running) {
+        let white = side.unwrap_or(false);
+        if clock.advance(now, white, side.is_some()) {
             self.engine_searching = false;
             self.resume_engine_after_ready = false;
             self.engine_status =
@@ -2433,7 +2531,6 @@ impl ChessApp {
             && review_index.is_none()
             && board.side_to_move() != player_side.color()
             && board.status() == BoardStatus::Ongoing;
-        let show_engine_download = !Self::engine_was_ready();
         let available_threads = Self::engine_thread_count();
         let mut engine_config = saved
             .as_ref()
@@ -2469,7 +2566,7 @@ impl ChessApp {
             Ok(profiles) => (profiles, None),
             Err(error) => (Profiles::default(), Some(error)),
         };
-        let app = Self {
+        let mut app = Self {
             training: saved.as_ref().and_then(|game| game.training.clone()),
             training_profiles,
             training_dialog_open: false,
@@ -2595,12 +2692,8 @@ impl ChessApp {
                     clock
                 }),
             engine_searching: false,
-            engine_status: if show_engine_download {
-                "Downloading Stockfish 19…".into()
-            } else {
-                "Initializing Stockfish 19…".into()
-            },
-            engine_progress: show_engine_download.then(|| (0.0, "Starting download…".into())),
+            engine_status: "Stockfish starts when needed".into(),
+            engine_progress: None,
             engine_config: engine_config.clone(),
             analysis_config,
             full_game_analysis_config,
@@ -2649,6 +2742,7 @@ impl ChessApp {
             print_confirm_open: false,
             background_dialog_open: false,
             board_theme_open: false,
+            board_theme_3d_tab: false,
             expanded_graph_open: false,
             expanded_graph_hover_index: None,
             print_notice_until: None,
@@ -2696,14 +2790,96 @@ impl ChessApp {
             verification_nodes,
             resume_game_analysis_after_ready: game_analysis_running,
             engine_ready: false,
-            show_engine_download,
+            engine_initial_frame: cc.egui_ctx.cumulative_frame_nr(),
+            engine_start_failed: false,
+            show_engine_download: false,
             resume_engine_after_ready,
             pending_analysis_search: None,
             ignore_next_bestmove: false,
             #[cfg(target_arch = "wasm32")]
-            engine: EngineBridge::new(cc.egui_ctx.clone(), &engine_config),
+            engine: None,
+            #[cfg(target_arch = "wasm32")]
+            first_frame_reported: false,
         };
+        // Preserve automatic analysis on restored positions without making
+        // engine download and initialization part of the first board frame.
+        if !app.game_analysis_running && !app.game_analysis_paused {
+            app.schedule_realtime_analysis();
+        }
         app
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn engine_first_frame_finished(&self, ctx: &egui::Context) -> bool {
+        ctx.cumulative_frame_nr() > self.engine_initial_frame
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn prepare_analysis_engine(&mut self) {
+        // A requested analysis replaces any computer-turn request left over
+        // from navigating while the engine was loading, and permits a retry.
+        self.resume_engine_after_ready = false;
+        self.engine_start_failed = false;
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    fn engine_startup_needed(&self) -> bool {
+        if self.engine_ready || self.engine_start_failed
+            || (self.fics_active && !self.fics_game_finished)
+        {
+            return false;
+        }
+        if self.analysis_running || (self.game_analysis_running && !self.game_analysis_paused) {
+            return true;
+        }
+        let live_board = self.review_positions.last().copied().unwrap_or(self.board);
+        let live_computer_game = self.engine_enabled
+            && !self.fics_active
+            && self.local_resigned_white.is_none()
+            && !self.local_clock.as_ref().is_some_and(|clock| clock.flagged_white.is_some())
+            && !(self.training.is_some() && self.game_result() != "*")
+            && live_board.status() == BoardStatus::Ongoing;
+        // A timed computer game must become ready even on the human's turn:
+        // its clock is deliberately paused until Stockfish is available.
+        live_computer_game && (self.local_clock.is_some()
+            || (self.resume_engine_after_ready && self.review_index.is_none()
+                && self.board.side_to_move() != self.player_side.color()))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn start_engine_if_needed(&mut self, ctx: &egui::Context) {
+        if !self.engine_first_frame_finished(ctx) {
+            if self.engine_startup_needed() {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+            return;
+        }
+        if self.engine.is_some() || !self.engine_startup_needed() {
+            return;
+        }
+        let config = if self.analysis_running || self.game_analysis_running {
+            &self.analysis_config
+        } else {
+            &self.engine_config
+        };
+        self.engine = EngineBridge::new(ctx.clone(), config);
+        if self.engine.is_none() {
+            self.engine_start_failed = true;
+            self.analysis_running = false;
+            self.game_analysis_paused = self.game_analysis_running;
+            self.game_analysis_running = false;
+            self.engine_status = "Stockfish worker failed to start · start analysis or a new game to retry".into();
+            return;
+        }
+        self.ignore_next_bestmove = false;
+        self.show_engine_download = !Self::engine_was_ready();
+        self.engine_status = if self.show_engine_download {
+            "Downloading Stockfish 19…".into()
+        } else {
+            "Initializing Stockfish 19…".into()
+        };
+        self.engine_progress = self.show_engine_download.then(|| (0.0, "Starting download…".into()));
+        ctx.request_repaint();
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -4417,13 +4593,6 @@ impl ChessApp {
             .game_analysis
             .get(position_index)
             .and_then(Option::as_ref);
-        let move_description = position_index
-            .checked_sub(1)
-            .and_then(|index| self.review_positions.get(index).copied())
-            .and_then(|board| {
-                Self::review_move_at(&self.review_positions, &self.review_moves, position_index)
-                    .map(|chess_move| Self::move_hover_text(&board, chess_move))
-            });
         let evaluation_text = evaluation.map(|analysis| {
             if let Some(mate) = analysis.mate {
                 format!("M{mate}")
@@ -4510,6 +4679,13 @@ impl ChessApp {
             return response;
         }
         response.on_hover_ui(|ui| {
+            let move_description = position_index
+                .checked_sub(1)
+                .and_then(|index| self.review_positions.get(index).copied())
+                .and_then(|board| {
+                    Self::review_move_at(&self.review_positions, &self.review_moves, position_index)
+                        .map(|chess_move| Self::move_hover_text(&board, chess_move))
+                });
             ui.set_max_width(290.0);
             if let Some(description) = &move_description {
                 ui.label(RichText::new(description).size(15.0).strong());
@@ -4964,7 +5140,7 @@ impl ChessApp {
     fn paint_board_marks(&self, ui: &egui::Ui, rect: egui::Rect, index: usize) {
         if self.prediction_index != 0 { return; }
         let center = |square| {
-            if self.board_3d_active { crate::board3d::square_center(square, rect, self.flipped, self.board_3d_view()) }
+            if self.board_3d_rendering() { crate::board3d::square_center(square, rect, self.flipped, self.board_3d_view()) }
             else { Some(rect.left_top() + Self::square_screen_offset(square, self.flipped, rect.width() / 8.0)) }
         };
         let mut marks = self.board_marks.get(index).cloned().unwrap_or_default();
@@ -4979,7 +5155,7 @@ impl ChessApp {
                 marks.push(BoardMark { style: if ui.input(|i| i.modifiers.alt) { String::new() } else if square_tool { Self::drawing_shape_style(ui.ctx()) } else { Self::drawing_arrow_style(ui.ctx()) }, color, from: from.to_string(), to: if square_tool { from } else { to }.to_string() });
             }
         }
-        let cell = rect.width() / if self.board_3d_active { 9.0 } else { 8.0 };
+        let cell = rect.width() / if self.board_3d_rendering() { 9.0 } else { 8.0 };
         for mark in marks.iter().filter(|mark| mark.valid()) {
             let from = Square::from_str(&mark.from).unwrap();
             let to = Square::from_str(&mark.to).unwrap();
@@ -4995,7 +5171,7 @@ impl ChessApp {
             } else if from == to {
                 let stroke = Stroke::new((cell * 0.06).clamp(2.0, 5.0), color);
                 let circle = mark.style.contains("circle");
-                let points = if self.board_3d_active {
+                let points = if self.board_3d_rendering() {
                     if circle { crate::board3d::circle_outline(from, rect, self.flipped, self.board_3d_view()) }
                     else { crate::board3d::square_outline(from, rect, self.flipped, self.board_3d_view()) }
                 } else { Some(Self::shape_points(source, cell, circle)) };
@@ -5019,7 +5195,7 @@ impl ChessApp {
 
     fn board_mark_square(&self, pos: egui::Pos2, rect: egui::Rect) -> Option<Square> {
         if !rect.contains(pos) { return None; }
-        if self.board_3d_active {
+        if self.board_3d_rendering() {
             crate::board3d::board_square_at(pos, rect, self.flipped, self.board_3d_view())
         } else {
             let file = ((pos.x - rect.left()) / (rect.width() / 8.0)).floor() as usize;
@@ -5318,6 +5494,7 @@ impl ChessApp {
     fn theme_2d_preview(ui: &mut egui::Ui, piece_set: PieceSet, side: f32) -> egui::Rect {
         let board = Board::default();
         let (rect, _) = ui.allocate_exact_size(Vec2::splat(side), Sense::hover());
+        if !ui.is_rect_visible(rect) { return rect; }
         let cell = side / 8.0;
         for rank in 0..8 {
             for file in 0..8 {
@@ -5436,6 +5613,11 @@ impl ChessApp {
         if close || response.should_close() { self.background_dialog_open = false; }
     }
 
+    fn open_board_theme_dialog(&mut self) {
+        self.board_theme_3d_tab = false;
+        self.board_theme_open = true;
+    }
+
     fn board_theme_dialog(&mut self, ctx: &egui::Context) {
         if !self.board_theme_open { return; }
         let mut close = false;
@@ -5451,87 +5633,103 @@ impl ChessApp {
                 close = Self::dialog_header(ui, "Board Theme");
                 ui.label("Click a preview to apply it. Double-click to apply it and close this window.");
                 ui.add_space(12.0);
-                egui::ScrollArea::vertical().id_salt("board_theme_choices")
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.board_theme_3d_tab, false, RichText::new("2D").size(20.0).strong());
+                    ui.selectable_value(&mut self.board_theme_3d_tab, true, RichText::new("3D").size(20.0).strong());
+                });
+                ui.add_space(10.0);
+                let dimension = usize::from(self.board_theme_3d_tab);
+                egui::ScrollArea::vertical().id_salt(("board_theme_choices", dimension))
                     .max_height(ui.available_height().max(80.0)).auto_shrink([false,false])
                     .show_gold(ui, |ui| {
-                    ui.columns(2, |columns| {
-                        for (dimension, column) in columns.iter_mut().enumerate() {
-                            column.label(RichText::new(if dimension == 0 { "2D boards" } else { "3D boards" }).size(23.0).strong());
-                            column.add_space(10.0);
-                            let count = if column.available_width() >= 400.0 { 2 } else { 1 };
-                            let card_width = ((column.available_width() - (count-1) as f32 * 14.0) / count as f32).max(80.0);
-                            let preview_size = (card_width - 24.0).min(260.0).max(56.0);
-                            let sets = [PieceSet::System, PieceSet::Cburnett, PieceSet::Merida, PieceSet::RoyalRascals, PieceSet::UndeadCourt, PieceSet::ClassicStaunton, PieceSet::NeonGeometric, PieceSet::ArtDecoFaceted, PieceSet::SculptedMarble];
-                            egui::Grid::new(("board_theme_grid", dimension)).num_columns(count).spacing(Vec2::new(14.0,14.0)).show(column, |ui| {
-                                for i in 0..if dimension == 0 { sets.len() } else { crate::board3d::Theme::ALL.len() } {
-                                    let set = sets[i];
-                                    let (theme, label) = crate::board3d::Theme::ALL[i % crate::board3d::Theme::ALL.len()];
-                                    let selected = if dimension == 0 { !self.board_3d_active && (self.piece_set == set || (set.is_hybrid() && self.piece_set.is_hybrid())) }
-                                        else { self.board_3d_active && self.board_3d_theme == theme };
-                                    Frame::new().fill(Color32::from_rgb(20,24,28))
-                                        .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { Color32::from_rgb(230,178,65) } else { Color32::from_white_alpha(35) }))
-                                        .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
-                                        ui.set_min_width(card_width-24.0);
-                                        ui.set_max_width(card_width-24.0);
-                                        ui.with_layout(Layout::top_down(Align::Center), |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label(RichText::new(if dimension == 0 { set.label() } else { label }).size(16.0).strong());
-                                            if ui.small_button("⚙").on_hover_text("Adjust this theme").clicked() {
-                                                if dimension == 0 { chosen_2d = Some(set); } else { chosen_3d = Some(theme); }
-                                                configure_theme = true;
-                                                close = true;
-                                            }
-                                        });
-                                        ui.add_space(6.0);
-                                        let preview_rect = if dimension == 0 {
-                                            Self::theme_2d_preview(ui, set, preview_size)
-                                        } else {
-                                            let id = egui::Id::new(format!("theme_preview_{theme:?}_{}_{}", self.board_3d_appearance, self.show_radial_light));
-                                            let mut texture = ctx.data_mut(|data| data.get_temp::<egui::TextureHandle>(id));
-                                            if texture.is_none() && !generated_preview && ui.clip_rect().intersects(egui::Rect::from_min_size(ui.cursor().min,Vec2::splat(preview_size))) {
-                                                let rect = egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::splat(240.0));
-                                                let image = crate::board3d::image_with_options(&Board::default(), rect, false, crate::board3d::View::default(), None, &[], None,
-                                                    Color32::from_rgb(20,24,28), 1.0, self.board_3d_appearance as f32 / 100.0, theme, self.show_radial_light);
-                                                let handle = ctx.load_texture(format!("board_theme_{theme:?}"), image, egui::TextureOptions::LINEAR);
-                                                ctx.data_mut(|data| data.insert_temp(id,handle.clone()));
-                                                texture = Some(handle);
-                                                generated_preview = true;
-                                            }
-                                            if let Some(texture) = texture {
-                                                ui.add(egui::Image::new((texture.id(),Vec2::splat(preview_size)))).rect
-                                            } else {
-                                                let (rect, _) = ui.allocate_exact_size(Vec2::splat(preview_size),Sense::hover());
-                                                ui.painter().text(rect.center(),Align2::CENTER_CENTER,"Loading preview…",FontId::proportional(14.0),Color32::LIGHT_GRAY);
-                                                ctx.request_repaint();
-                                                rect
-                                            }
-                                        };
-                                        let click = ui.interact(preview_rect,ui.id().with((dimension,i,"select_theme")),Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-                                        if click.clicked() || click.double_clicked() {
-                                            if dimension == 0 { chosen_2d=Some(set); } else { chosen_3d=Some(theme); }
-                                            if click.double_clicked() { close=true; }
-                                        }
-                                        let gold = Color32::from_rgb(230,178,65);
-                                        let caption = ui.painter().layout_no_wrap(if selected { "Selected" } else { "Click to use" }.into(), FontId::proportional(16.0), gold);
-                                        let caption_rect = egui::Rect::from_center_size(preview_rect.center(), caption.size());
-                                        ui.painter().rect_filled(caption_rect.expand2(Vec2::new(10.0,6.0)), 5.0, Color32::from_black_alpha(200));
-                                        ui.painter().galley(caption_rect.min, caption, gold);
-                                        });
-                                    });
-                                    if (i+1) % count == 0 { ui.end_row(); }
+                    let count = ((ui.available_width() + 14.0) / 294.0).floor().clamp(1.0, 4.0) as usize;
+                    let card_width = ((ui.available_width() - (count-1) as f32 * 14.0) / count as f32).max(80.0);
+                    let preview_size = (card_width - 24.0).min(260.0).max(56.0);
+                    let sets = [PieceSet::System, PieceSet::Cburnett, PieceSet::Merida, PieceSet::RoyalRascals, PieceSet::UndeadCourt, PieceSet::ClassicStaunton, PieceSet::NeonGeometric, PieceSet::ArtDecoFaceted, PieceSet::SculptedMarble];
+                    egui::Grid::new(("board_theme_grid", dimension)).num_columns(count).spacing(Vec2::new(14.0,14.0)).show(ui, |ui| {
+                        for i in 0..if dimension == 0 { sets.len() } else { crate::board3d::Theme::ALL.len() } {
+                            let set = sets[i];
+                            let (theme, label) = crate::board3d::Theme::ALL[i % crate::board3d::Theme::ALL.len()];
+                            let selected = if dimension == 0 { !self.board_3d_active && (self.piece_set == set || (set.is_hybrid() && self.piece_set.is_hybrid())) }
+                                else { self.board_3d_active && self.board_3d_theme == theme };
+                            Frame::new().fill(Color32::from_rgb(20,24,28))
+                                .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, if selected { Color32::from_rgb(230,178,65) } else { Color32::from_white_alpha(35) }))
+                                .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
+                                ui.set_min_width(card_width-24.0);
+                                ui.set_max_width(card_width-24.0);
+                                ui.with_layout(Layout::top_down(Align::Center), |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(if dimension == 0 { set.label() } else { label }).size(16.0).strong());
+                                    if ui.small_button("⚙").on_hover_text("Adjust this theme").clicked() {
+                                        if dimension == 0 { chosen_2d = Some(set); } else { chosen_3d = Some(theme); }
+                                        configure_theme = true;
+                                        close = true;
+                                    }
+                                });
+                                ui.add_space(6.0);
+                                let preview_set = if set.is_hybrid() && self.piece_set.is_hybrid() { self.piece_set } else { set };
+                                let mut preview_status = None;
+                                let preview_rect = if dimension == 0 {
+                                    Self::theme_2d_preview(ui, preview_set, preview_size)
+                                } else {
+                                    let visible = ui.is_rect_visible(egui::Rect::from_min_size(ui.cursor().min, Vec2::splat(preview_size)));
+                                    if visible { crate::board3d::assets::request(ctx, theme); }
+                                    let asset_state = crate::board3d::assets::status(theme);
+                                    let ready = asset_state == crate::board3d::assets::LoadState::Ready;
+                                    let id = egui::Id::new(format!("theme_preview_{theme:?}_{}_{}", self.board_3d_appearance, self.show_radial_light));
+                                    let mut texture = ready.then(|| ctx.data_mut(|data| data.get_temp::<egui::TextureHandle>(id))).flatten();
+                                    if texture.is_none() && ready && visible && !generated_preview {
+                                        let rect = egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::splat(240.0));
+                                        let image = crate::board3d::image_with_options(&Board::default(), rect, false, crate::board3d::View::default(), None, &[], None,
+                                            Color32::from_rgb(20,24,28), 1.0, self.board_3d_appearance as f32 / 100.0, theme, self.show_radial_light);
+                                        let handle = ctx.load_texture(format!("board_theme_{theme:?}"), image, egui::TextureOptions::LINEAR);
+                                        ctx.data_mut(|data| data.insert_temp(id,handle.clone()));
+                                        texture = Some(handle);
+                                        generated_preview = true;
+                                    }
+                                    if let Some(texture) = texture {
+                                        ui.add(egui::Image::new((texture.id(),Vec2::splat(preview_size)))).rect
+                                    } else {
+                                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(preview_size),Sense::hover());
+                                        let label = if asset_state == crate::board3d::assets::LoadState::Failed { "3D artwork unavailable" } else { "Loading preview…" };
+                                        preview_status = Some(label);
+                                        if visible && ready { ctx.request_repaint(); }
+                                        rect
+                                    }
+                                };
+                                let click = ui.interact(preview_rect,ui.id().with((dimension,i,"select_theme")),Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+                                if click.clicked() || click.double_clicked() {
+                                    if dimension == 0 { chosen_2d=Some(set); } else { chosen_3d=Some(theme); }
+                                    if click.double_clicked() { close=true; }
                                 }
+                                let gold = Color32::from_rgb(230,178,65);
+                                let selection_caption = if selected { "Selected" } else { "Click to use" };
+                                let caption = preview_status.map_or_else(|| selection_caption.to_owned(), |status| format!("{status}\n{selection_caption}"));
+                                let caption = ui.painter().layout_no_wrap(caption, FontId::proportional(16.0), gold);
+                                let caption_rect = egui::Rect::from_center_size(preview_rect.center(), caption.size());
+                                ui.painter().rect_filled(caption_rect.expand2(Vec2::new(10.0,6.0)), 5.0, Color32::from_black_alpha(200));
+                                ui.painter().galley(caption_rect.min, caption, gold);
+                                #[cfg(target_arch = "wasm32")]
+                                if dimension == 0 { piece_themes::status_ui(ui, preview_set); }
+                                if dimension == 1 { crate::board3d::assets::status_ui(ui, theme); }
+                                });
                             });
+                            if (i+1) % count == 0 { ui.end_row(); }
                         }
                     });
                 });
             });
         if let Some(set) = chosen_2d {
             self.piece_set = if set.is_hybrid() && self.piece_set.is_hybrid() { self.piece_set } else { set };
+            #[cfg(target_arch = "wasm32")]
+            piece_themes::retry(ctx, self.piece_set);
             self.board_3d_active = false;
         }
         if let Some(theme) = chosen_3d {
             self.board_3d_theme = theme;
             self.board_3d_active = true;
+            crate::board3d::assets::retry(ctx, theme);
+            self.clear_unavailable_board_3d_cache(crate::board3d::assets::status(theme));
         }
         if chosen_2d.is_some() || chosen_3d.is_some() {
             self.sync_theme_adjustments();
@@ -7164,7 +7362,7 @@ impl ChessApp {
             moves.push(token.to_owned());
             positions.push(board);
         }
-        if moves.is_empty() {
+        if moves.is_empty() && initial_fen.is_none() {
             return Err("No legal mainline moves were found in the PGN.".to_owned());
         }
         Ok((positions, moves))
@@ -8180,6 +8378,12 @@ impl ChessApp {
         self.last_move = self.review_index.and_then(|index| {
             Self::review_move_at(&self.review_positions, &self.review_moves, index)
         });
+        self.analysis_running = true;
+        self.prepare_analysis_engine();
+        if !self.engine_ready {
+            self.engine_searching = false;
+            return;
+        }
         let Some(engine) = &self.engine else { return };
         engine.command("stop");
         engine.command(&format!(
@@ -8271,6 +8475,7 @@ impl ChessApp {
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
         self.game_analysis_index = Some(0);
+        self.prepare_analysis_engine();
         self.resume_game_analysis_after_ready = !self.engine_ready;
         self.save_game();
         if self.engine_ready {
@@ -8322,6 +8527,7 @@ impl ChessApp {
         self.game_analysis_index = Some(index);
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
+        self.prepare_analysis_engine();
         self.resume_game_analysis_after_ready = !self.engine_ready;
         self.save_game();
         if self.engine_ready {
@@ -8404,6 +8610,7 @@ impl ChessApp {
         }
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
+        self.prepare_analysis_engine();
         self.resume_game_analysis_after_ready = !self.engine_ready;
         self.save_game();
         if self.engine_ready {
@@ -8419,6 +8626,7 @@ impl ChessApp {
         self.game_analysis_index = Some(index);
         self.game_analysis_running = true;
         self.game_analysis_paused = false;
+        self.prepare_analysis_engine();
         self.resume_game_analysis_after_ready = !self.engine_ready;
         self.save_game();
         if self.engine_ready {
@@ -8474,11 +8682,13 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     fn queue_live_engine_resume(&mut self) {
-        if self.pgn_input.is_empty()
+        if self.engine_enabled && !self.fics_active
+            && self.pgn_input.is_empty()
             && self.review_index.is_none()
             && self.board.side_to_move() != self.player_side.color()
             && self.board.status() == BoardStatus::Ongoing
         {
+            self.engine_start_failed = false;
             self.resume_engine_after_ready = true;
             if let Some(engine) = &self.engine {
                 engine.command("isready");
@@ -8549,11 +8759,6 @@ impl ChessApp {
             .and_then(|window| window.local_storage().ok().flatten())
             .and_then(|storage| storage.get_item(ENGINE_CACHE_KEY).ok().flatten())
             .is_some()
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn engine_was_ready() -> bool {
-        false
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -8736,6 +8941,7 @@ impl ChessApp {
     }
 
     fn reset_for_side(&mut self, player_side: PlayerSide) {
+        self.engine_start_failed = false;
         self.lichess.pending_preview = None;
         self.settle_training();
         self.training = None;
@@ -8889,6 +9095,7 @@ impl ChessApp {
         };
         self.clear_analysis_result();
         self.resume_engine_after_ready = engine_should_move;
+        self.engine_start_failed = false;
         self.engine_status = if engine_should_move {
             format!("Waiting for {}…", self.engine_config.opponent.label())
         } else {
@@ -8901,7 +9108,8 @@ impl ChessApp {
     }
 
     fn select_mobility_piece(&self, ctx: &egui::Context, square: Square) -> bool {
-        let active = !self.training_live() && self.prediction_index == 0
+        if self.tactical_knight_selection(ctx, square) { return true; }
+        let active = self.review_index.is_some() && !self.training_live() && self.prediction_index == 0
             && !(self.fics_active && !self.fics_game_finished)
             && ctx.data_mut(|data| data.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) == Some(2);
         if active {
@@ -8962,6 +9170,7 @@ impl ChessApp {
 
     fn keyboard_move_ui(&mut self, ctx: &egui::Context) {
         let blocked = ctx.wants_keyboard_input()
+            || ctx.data(|d| d.get_temp::<bool>(egui::Id::new("puzzles_open"))).unwrap_or(false)
             || self.new_game_dialog_open || self.training_dialog_open || self.elo_calculator_open
             || self.pgn_dialog_open || self.strength_dialog_open || self.about_dialog_open
             || self.batch_pgn_dialog_open || self.batch_pgn_result_open || self.print_confirm_open
@@ -9269,6 +9478,11 @@ impl ChessApp {
             && self.board.side_to_move() != self.player_side.color()
             && self.board.status() == BoardStatus::Ongoing
         {
+            if !self.engine_ready {
+                self.engine_start_failed = false;
+                self.resume_engine_after_ready = true;
+                return;
+            }
             if let Some(engine) = &self.engine {
                 self.engine_searching = true;
                 self.analysis_running = false;
@@ -9432,16 +9646,13 @@ impl ChessApp {
                             self.resume_game_analysis_after_ready = false;
                             self.engine_status = "Resuming saved game analysis…".into();
                             self.start_game_analysis_position();
+                        } else if self.analysis_running && self.pending_analysis_search.is_none() {
+                            // Analysis requested before download finished uses the
+                            // current position, never a queued stale search.
+                            self.start_analysis();
                         } else if self.resume_engine_after_ready {
                             self.resume_engine_after_ready = false;
                             self.request_engine_move();
-                        } else if !self.analysis_running
-                            && !self.game_analysis_running
-                            && !self.game_analysis_paused
-                            && !(self.fics_active && !self.fics_game_finished)
-                        {
-                            // Restored positions have no move/navigation event to trigger analysis.
-                            self.schedule_realtime_analysis();
                         }
                     }
                     if line == "readyok" && self.resume_engine_after_ready {
@@ -9599,14 +9810,19 @@ impl ChessApp {
                             line
                         };
                         self.engine_progress = None;
+                        self.engine_ready = false;
+                        self.engine_start_failed = true;
+                        self.engine = None;
+                        self.resume_engine_after_ready = false;
+                        self.realtime_analysis_due_at = None;
                         self.pending_analysis_search = None;
                         self.analysis_running = false;
                         self.engine_searching = false;
+                        self.game_analysis_paused = self.game_analysis_running;
                         self.game_analysis_running = false;
-                        self.game_analysis_paused = false;
                         self.resume_game_analysis_after_ready = false;
-                        self.game_analysis_index = None;
                         self.save_game();
+                        break;
                     }
                 }
             }
@@ -9678,41 +9894,72 @@ impl ChessApp {
         }
     }
 
-    fn piece_image(&self, square: Square) -> Option<egui::ImageSource<'static>> {
+    fn piece_image(&self, ctx: &egui::Context, square: Square) -> Option<egui::ImageSource<'static>> {
         let color = self.board.color_on(square)?;
         let piece = self.board.piece_on(square)?;
-        Self::piece_image_for(self.piece_set, color, piece)
+        Self::piece_image_for(ctx, self.piece_set, color, piece).map(|(source, _)| source)
     }
 
     fn piece_image_for(
+        _ctx: &egui::Context,
         piece_set: PieceSet,
         color: Color,
         piece: Piece,
-    ) -> Option<egui::ImageSource<'static>> {
-        match (piece_set, color, piece) {
+    ) -> Option<(egui::ImageSource<'static>, bool)> {
+        #[cfg(target_arch = "wasm32")]
+        if piece_themes::theme_key(piece_set).is_some() {
+            return piece_themes::image(_ctx, piece_set, color, piece)
+                .map(|source| (source, true))
+                .or_else(|| Self::piece_image_for(_ctx, PieceSet::Merida, color, piece));
+        }
+        (match (piece_set, color, piece) {
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-wood/wK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-wood/wQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-wood/wR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-wood/wB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-wood/wN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-wood/wP.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-wood/bK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-wood/bQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-wood/bR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-wood/bB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-wood/bN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridWood, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-wood/bP.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-glass/wK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-glass/wQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-glass/wR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-glass/wB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-glass/wN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-glass/wP.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-glass/bK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-glass/bQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/hybrid-glass/bR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-glass/bB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-glass/bN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::HybridGlass, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-glass/bP.png")),
             (PieceSet::HybridArtDeco, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wK.png")),
             (PieceSet::HybridArtDeco, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/hybrid-art-deco/wQ.png")),
@@ -9738,17 +9985,29 @@ impl ChessApp {
             (PieceSet::HybridEgyptian, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bB.png")),
             (PieceSet::HybridEgyptian, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bN.png")),
             (PieceSet::HybridEgyptian, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/hybrid-egyptian/bP.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/sculpted-marble/wK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/sculpted-marble/wQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::Rook) => Some(egui::include_image!("../web/pieces/sculpted-marble/wR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::Bishop) => Some(egui::include_image!("../web/pieces/sculpted-marble/wB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::Knight) => Some(egui::include_image!("../web/pieces/sculpted-marble/wN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::White, Piece::Pawn) => Some(egui::include_image!("../web/pieces/sculpted-marble/wP.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::King) => Some(egui::include_image!("../web/pieces/sculpted-marble/bK.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::Queen) => Some(egui::include_image!("../web/pieces/sculpted-marble/bQ.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::Rook) => Some(egui::include_image!("../web/pieces/sculpted-marble/bR.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::Bishop) => Some(egui::include_image!("../web/pieces/sculpted-marble/bB.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::Knight) => Some(egui::include_image!("../web/pieces/sculpted-marble/bN.png")),
+            #[cfg(not(target_arch = "wasm32"))]
             (PieceSet::SculptedMarble, Color::Black, Piece::Pawn) => Some(egui::include_image!("../web/pieces/sculpted-marble/bP.png")),
             (PieceSet::ClassicStaunton, Color::White, Piece::King) => Some(egui::include_image!("../web/pieces/classic-staunton/wK.svg")),
             (PieceSet::ClassicStaunton, Color::White, Piece::Queen) => Some(egui::include_image!("../web/pieces/classic-staunton/wQ.svg")),
@@ -9931,7 +10190,7 @@ impl ChessApp {
                 Some(egui::include_image!("../web/pieces/undead-court/bP.svg"))
             }
             _ => None,
-        }
+        }).map(|source| (source, piece_set.is_hybrid()))
     }
 
     fn paint_piece_shadow(
@@ -9944,6 +10203,9 @@ impl ChessApp {
     ) {
         let appearance = ui.ctx().data(|d| d.get_temp::<crate::board3d::PieceAppearance>(egui::Id::new("live_piece_appearance"))).unwrap_or_default();
         let rect = egui::Rect::from_center_size(rect.center(),rect.size()*appearance.size as f32/100.0);
+        if !ui.is_rect_visible(rect.expand(cell * 0.3)) { return; }
+        let artwork = Self::piece_image_for(ui.ctx(), piece_set, color, piece);
+        let hybrid_shape = artwork.as_ref().is_some_and(|(_, hybrid)| *hybrid);
         let offset = Vec2::new(cell * 0.035, cell * 0.045);
         let softness = (cell * 0.03 * appearance.shadow_softness as f32/100.0).max(0.2);
         for (jitter, alpha) in [
@@ -9953,10 +10215,10 @@ impl ChessApp {
             (Vec2::new(0.0, -softness), 18),
             (Vec2::new(0.0, softness), 18),
         ] {
-            let shadow_rect = rect.translate(offset + jitter + if piece_set.is_hybrid() { Vec2::new(0.0, -cell * 0.17) } else { Vec2::ZERO });
+            let shadow_rect = rect.translate(offset + jitter + if hybrid_shape { Vec2::new(0.0, -cell * 0.17) } else { Vec2::ZERO });
             let tint = Color32::from_black_alpha((alpha as f32 * appearance.shadow_strength as f32/100.0).min(255.0) as u8);
-            if let Some(source) = Self::piece_image_for(piece_set, color, piece) {
-                egui::Image::new(source)
+            if let Some((source, _)) = &artwork {
+                egui::Image::new(source.clone())
                     .maintain_aspect_ratio(true)
                     .tint(tint)
                     .paint_at(ui, shadow_rect.shrink(cell * 0.06));
@@ -9980,8 +10242,9 @@ impl ChessApp {
         color: Color,
         piece: Piece,
     ) {
-        let rect = if piece_set.is_hybrid() { rect.translate(Vec2::new(0.0, -cell * 0.17)) } else { rect };
-        if let Some(source) = Self::piece_image_for(piece_set, color, piece) {
+        if !ui.is_rect_visible(rect.expand(cell * 0.2)) { return; }
+        if let Some((source, hybrid_shape)) = Self::piece_image_for(ui.ctx(), piece_set, color, piece) {
+            let rect = if hybrid_shape { rect.translate(Vec2::new(0.0, -cell * 0.17)) } else { rect };
             egui::Image::new(source)
                 .maintain_aspect_ratio(true)
                 .paint_at(ui, rect.shrink(cell * 0.06));
@@ -10106,6 +10369,9 @@ impl ChessApp {
     fn board_3d_png(&self, board: &Board, ctx: &egui::Context) -> Result<Vec<u8>, wasm_bindgen::JsValue> {
         use image::ImageEncoder;
 
+        if crate::board3d::assets::status(self.board_3d_theme) != crate::board3d::assets::LoadState::Ready {
+            return Err(wasm_bindgen::JsValue::from_str("3D artwork is unavailable. Wait for it to load, or choose Retry in Board Theme, then copy again."));
+        }
         let size = 1200.0;
         let rect = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(size));
         let view = self.board_3d_view();
@@ -10162,9 +10428,29 @@ impl ChessApp {
 
     fn toggle_board_dimension(&mut self, ctx: &egui::Context) {
         self.board_3d_active = !self.board_3d_active;
+        if self.board_3d_active {
+            crate::board3d::assets::retry(ctx, self.board_3d_theme);
+            self.clear_unavailable_board_3d_cache(crate::board3d::assets::status(self.board_3d_theme));
+        }
         self.save_preferences();
         self.move_animation = None;
         ctx.request_repaint();
+    }
+
+    fn board_3d_rendering(&self) -> bool {
+        self.board_3d_active
+            && crate::board3d::assets::status(self.board_3d_theme) == crate::board3d::assets::LoadState::Ready
+    }
+
+    fn clear_unavailable_board_3d_cache(&mut self, state: crate::board3d::assets::LoadState) {
+        if state == crate::board3d::assets::LoadState::Ready { return; }
+        // Never retain an old theme's CPU image or GPU scene while a new pack
+        // is loading. Readiness then necessarily builds the requested theme.
+        self.board_3d_render_key.clear();
+        self.board_3d_texture = None;
+        self.board_3d_gpu_key.clear();
+        self.board_3d_gpu_scene = None;
+        self.board_3d_zoom_until = 0.0;
     }
 
     fn board_3d_view(&self) -> crate::board3d::View {
@@ -10192,6 +10478,7 @@ impl ChessApp {
     fn board_3d_ui(&mut self, ui: &mut egui::Ui, size: Vec2, allow_moves: bool) -> egui::InnerResponse<()> {
         ui.allocate_ui_with_layout(size, Layout::top_down(Align::Min), |ui| {
             let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+            if !self.board_3d_rendering() { return; }
             if self.board_mark_drag.is_none() && response.double_clicked_by(egui::PointerButton::Secondary) {
                 self.reset_board_3d_view(ui.ctx());
             } else if self.board_mark_drag.is_none() && response.dragged_by(egui::PointerButton::Secondary) {
@@ -10227,9 +10514,9 @@ impl ChessApp {
                 (self.board_3d_background_opacity as u16 * 255 / 100) as u8);
             if let Some(target_format) = self.board_3d_gpu_format {
                 let key = format!(
-                    "{}:{}:{}:{}:{:?}:{:?}:{:?}:{:?}:{}:{:?}",
-                    self.board, size.x.to_bits(), size.y.to_bits(),
-                    self.flipped, self.selected, self.legal_targets, visible_last_move,
+                    "{}:{}:{}:{:?}:{}:{:?}",
+                    size.x.to_bits(), size.y.to_bits(),
+                    self.flipped,
                     background, ui.ctx().pixels_per_point().to_bits(), self.board_3d_theme,
                 );
                 let key = format!("{key}:{}:{}:{}", view.yaw.to_bits(), view.elevation.to_bits(), self.show_radial_light);
@@ -10245,7 +10532,9 @@ impl ChessApp {
                     self.board_3d_gpu_key = key;
                     self.board_3d_rendered_distance = view.distance;
                 }
-                if let Some(scene) = &self.board_3d_gpu_scene {
+                if let Some(scene) = &mut self.board_3d_gpu_scene {
+                    scene.update_board(&self.board);
+                    scene.update_highlights(self.selected, &self.legal_targets, visible_last_move);
                     ui.painter().add(eframe::egui_wgpu::Callback::new_paint_callback(
                         rect, scene.clone().at_distance(
                             view.distance - self.board_3d_rendered_distance,
@@ -10341,7 +10630,7 @@ impl ChessApp {
                     );
                 }
             }
-            if allow_moves && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
+            if (allow_moves || self.tactical_piece_active(ui.ctx())) && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt)
                 && let Some(pos) = response.interact_pointer_pos()
                 && let Some(square) =
                     crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets)
@@ -10450,8 +10739,20 @@ impl ChessApp {
 
     fn board_ui_with_moves(&mut self, ui: &mut egui::Ui, allow_moves: bool) {
         self.sync_theme_adjustments();
+        let show_artwork_status = if self.board_3d_active {
+            crate::board3d::assets::request(ui.ctx(), self.board_3d_theme);
+            let state = crate::board3d::assets::status(self.board_3d_theme);
+            self.clear_unavailable_board_3d_cache(state);
+            state != crate::board3d::assets::LoadState::Ready
+        } else { false };
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("live_piece_appearance"),self.piece_appearance));
         let available = ui.available_size();
+        // The caller centers and justifies its single board child. Keep the
+        // status inside that child's normal layout so it cannot consume the board.
+        let artwork_status_height = if show_artwork_status {
+            ui.text_style_height(&egui::TextStyle::Small) * 3.0
+                + ui.spacing().interact_size.y + ui.spacing().item_spacing.y * 2.0
+        } else { 0.0 };
         let show_players =
             !self.review_positions.is_empty() || (self.fics_active && self.fics_playing);
         let mut capture_positions = if self.review_positions.is_empty() {
@@ -10505,16 +10806,16 @@ impl ChessApp {
         let board_available_width = (available.x - balance_width).max(180.0);
         let board_size = board_available_width
             .min(
-                (available.y - player_area_height - observe_tabs_height - online_actions_height)
+                (available.y - artwork_status_height - player_area_height - observe_tabs_height - online_actions_height)
                     .max(180.0),
             )
             .max(180.0);
-        let board_width = if self.board_3d_active {
+        let board_width = if self.board_3d_rendering() {
             (board_size * 1.4).min(board_available_width)
         } else {
             board_size
         };
-        let frame_width = if self.show_board_frame && !self.board_3d_active {
+        let frame_width = if self.show_board_frame && !self.board_3d_rendering() {
             (board_size * 0.035).clamp(14.0, 26.0) as i8
         } else {
             0
@@ -10569,10 +10870,17 @@ impl ChessApp {
         ui.allocate_ui_with_layout(
             Vec2::new(
                 board_width + balance_width,
-                board_size + player_area_height + observe_tabs_height + online_actions_height,
+                board_size + artwork_status_height + player_area_height + observe_tabs_height + online_actions_height,
             ),
             Layout::top_down(Align::Min),
             |ui| {
+                if show_artwork_status {
+                    let row_height = artwork_status_height - ui.spacing().item_spacing.y;
+                    ui.allocate_ui_with_layout(Vec2::new(board_width, row_height), Layout::top_down(Align::Min), |ui| {
+                        ui.set_min_height(row_height);
+                        crate::board3d::assets::status_ui(ui, self.board_3d_theme);
+                    });
+                }
                 if observe_tabs_height > 0.0 {
                     let mut selected = None;
                     let mut closed = None;
@@ -10666,13 +10974,13 @@ impl ChessApp {
                                             "Click to switch to 2D · Right-click to choose a theme"
                                         } else { "Click to switch to 3D · Right-click to choose a theme" });
                                         if dimension_button.clicked() { self.toggle_board_dimension(ui.ctx()); }
-                                        if dimension_button.secondary_clicked() { self.board_theme_open = true; self.set_focus_mode(false); }
+                                        if dimension_button.secondary_clicked() { self.open_board_theme_dialog(); self.set_focus_mode(false); }
                                         if !self.focus_mode {
                                             self.tactical_toggle_ui(ui);
                                             self.notes_toggle_ui(ui);
                                             self.draw_toggle_ui(ui);
                                         }
-                                        if self.board_3d_active && self.board_3d_view_rotated()
+                                        if self.board_3d_rendering() && self.board_3d_view_rotated()
                                             && ui.add_sized([29.0, 22.0], egui::Button::new("↺"))
                                                 .on_hover_text("Reset 3D view (or double right-click the board)")
                                                 .clicked()
@@ -10699,7 +11007,7 @@ impl ChessApp {
                     ui.add_space(4.0);
                 }
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
-                let board_response = if self.board_3d_active {
+                let board_response = if self.board_3d_rendering() {
                     self.board_3d_ui(ui, Vec2::new(board_width, board_size), allow_moves)
                 } else {
                     egui::Frame::new()
@@ -10867,7 +11175,7 @@ impl ChessApp {
                                                         );
                                                     }
                                                 }
-                                                if allow_moves && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt) {
+                                                if (allow_moves || self.tactical_piece_active(ui.ctx())) && response.clicked() && !self.board_mark_mode && self.board_mark_drag.is_none() && !ui.input(|input| input.modifiers.alt) {
                                                     if !self.select_mobility_piece(ui.ctx(), square) { self.select(square); }
                                                 }
                                             }
@@ -10889,7 +11197,7 @@ impl ChessApp {
                         egui::pos2(board_rect.right()+13.0,board_rect.top()),
                         Vec2::new(18.0,board_rect.height())));
                 }
-                if !self.board_3d_active && self.show_board_frame && self.show_coordinates {
+                if !self.board_3d_rendering() && self.show_board_frame && self.show_coordinates {
                     let rect = board_response.response.rect;
                     let inset = frame_width as f32 / 2.0;
                     let font = FontId::proportional((frame_width as f32 * 0.58).clamp(10.0, 15.0));
@@ -10919,7 +11227,7 @@ impl ChessApp {
                         }
                     }
                 }
-                if let Some(animation) = move_animation.filter(|_| !self.board_3d_active) {
+                if let Some(animation) = move_animation.filter(|_| !self.board_3d_rendering()) {
                     let board_rect = board_response.response.rect;
                     let square_center = |square: Square| {
                         let file = square.get_file().to_index() as f32;
@@ -10955,7 +11263,7 @@ impl ChessApp {
                     self.paint_board_marks(ui, board_response.response.rect, self.review_index.unwrap_or(self.review_moves.len()));
                 }
                 if let Some(best_move) = best_move_arrow.filter(|_| ui.is_enabled()) {
-                    if self.board_3d_active {
+                    if self.board_3d_rendering() {
                         Self::draw_best_move_arrow_3d(
                             ui,
                             board_response.response.rect,
@@ -10971,6 +11279,9 @@ impl ChessApp {
                             self.flipped,
                         );
                     }
+                }
+                if ui.is_enabled() {
+                    self.paint_tactical_bubbles(ui, board_response.response.rect);
                 }
                 if show_players {
                     ui.add_space(4.0);
@@ -11807,12 +12118,21 @@ impl ChessApp {
         output
     }
 
+    fn move_context_shortcut_requested(&self, ctx: &egui::Context) -> bool {
+        !self.new_game_dialog_open
+            && !ctx.wants_keyboard_input()
+            && ctx.input(|input| input.events.iter().any(|event| matches!(
+                event,
+                egui::Event::Key { key: egui::Key::F10, pressed: true, modifiers, .. }
+                    if modifiers.matches_logically(egui::Modifiers::SHIFT)
+            )))
+    }
+
     fn move_context_response(&mut self, response: &egui::Response, index: usize) {
         if response.double_clicked() { self.edit_note(index); }
         let selected = self.review_index.unwrap_or(self.review_moves.len()) == index;
         let keyboard_open = selected
-            && !self.new_game_dialog_open
-            && !response.ctx.wants_keyboard_input()
+            && self.move_context_shortcut_requested(&response.ctx)
             && response
                 .ctx
                 .input_mut(|input| input.consume_key(egui::Modifiers::SHIFT, egui::Key::F10));
@@ -11894,7 +12214,9 @@ impl ChessApp {
         for (label, annotated) in [("Copy Board to Clipboard", false), ("Copy Annotated Board to Clipboard", true)] {
         let copy_marks = self.annotated_copy_marks(index);
         let drawing_count = copy_marks.len();
-        let response = ui.add_enabled(!annotated || drawing_count > 0, egui::Button::new(label));
+        let artwork_ready = !self.board_3d_active || self.board_3d_rendering();
+        let response = ui.add_enabled(artwork_ready && (!annotated || drawing_count > 0), egui::Button::new(label))
+            .on_disabled_hover_text(if artwork_ready { "This position has no drawings to copy." } else { "Wait for the selected 3D artwork to load, or choose Retry in Board Theme, then copy again." });
         let response = if annotated {
             response.on_hover_text(if drawing_count == 0 {
                 "This position has no personal drawings or displayed Stockfish recommendation arrow. Right-click the annotated move you want to copy.".to_owned()
@@ -12232,6 +12554,21 @@ impl ChessApp {
         response
     }
 
+    fn game_moves_scroll_offset(
+        first_ply: usize,
+        position_index: usize,
+        row_height: f32,
+        row_spacing: f32,
+        viewport_height: f32,
+    ) -> f32 {
+        if position_index == 0 {
+            return 0.0;
+        }
+        let row = (first_ply + position_index - 1) / 2 - first_ply / 2;
+        (row as f32 * (row_height + row_spacing) + row_height * 0.5 - viewport_height * 0.5)
+            .max(0.0)
+    }
+
     fn game_moves_header_ui(ui: &mut egui::Ui, min_move_width: f32) {
         ui.horizontal(|ui| {
             ui.add_sized(
@@ -12468,6 +12805,451 @@ impl ChessApp {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn engine_startup_waits_for_analysis_instead_of_loading_with_the_board() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        assert!(!app.engine_first_frame_finished(&context.egui_ctx));
+        assert!(!app.engine_startup_needed());
+        assert!(!app.show_engine_download);
+        assert!(app.engine_progress.is_none());
+        assert!(app.realtime_analysis_due_at.is_some());
+
+        // Opening a review in focus mode keeps the board usable without Stockfish.
+        app.engine_enabled = false;
+        app.review_index = Some(0);
+        app.set_focus_mode(true);
+        assert!(app.realtime_analysis_due_at.is_none());
+        assert!(!app.engine_startup_needed());
+        app.set_focus_mode(false);
+        assert!(app.realtime_analysis_due_at.is_some());
+        assert!(!app.engine_startup_needed());
+        // The settled-position request, rather than the timer alone, loads it.
+        app.analysis_running = true;
+        assert!(app.engine_startup_needed());
+        app.analysis_running = false;
+        assert!(!app.engine_startup_needed());
+    }
+
+    #[test]
+    fn engine_startup_resumes_full_game_work_but_not_paused_or_online_work() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.engine_enabled = false;
+        app.game_analysis_index = Some(4);
+        app.game_analysis_paused = true;
+        assert!(!app.engine_startup_needed());
+        app.game_analysis_paused = false;
+        app.game_analysis_running = true;
+        app.resume_game_analysis_after_ready = true;
+        assert!(app.engine_startup_needed());
+        app.fics_active = true;
+        app.fics_game_finished = false;
+        assert!(!app.engine_startup_needed());
+        app.fics_game_finished = true;
+        assert!(app.engine_startup_needed());
+        app.engine_ready = true;
+        assert!(!app.engine_startup_needed());
+    }
+
+    #[test]
+    fn engine_startup_readies_timed_games_even_before_the_computers_turn() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.player_side = PlayerSide::Black;
+        app.resume_engine_after_ready = true;
+        assert!(app.engine_startup_needed());
+        app.player_side = PlayerSide::White;
+        assert!(!app.engine_startup_needed(), "a stale turn request cannot start the engine");
+        app.resume_engine_after_ready = false;
+        app.local_clock = Some(super::LocalClock {
+            white: 60.0, black: 60.0, increment: 0.0,
+            flagged_white: None, updated_at: 100.0,
+        });
+        assert!(app.engine_startup_needed());
+        assert!(app.running_local_clock_side().is_none(), "clock waits for engine readiness");
+        app.engine_ready = true;
+        assert_eq!(app.running_local_clock_side(), Some(true));
+        app.engine_ready = false;
+        app.local_resigned_white = Some(true);
+        assert!(!app.engine_startup_needed());
+        app.local_resigned_white = None;
+        app.local_clock.as_mut().unwrap().flagged_white = Some(true);
+        assert!(!app.engine_startup_needed());
+        app.local_clock.as_mut().unwrap().flagged_white = None;
+        app.engine_enabled = false;
+        assert!(!app.engine_startup_needed(), "manual timed games need no engine");
+    }
+
+    #[test]
+    fn engine_startup_failures_do_not_retry_without_a_new_request() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.analysis_running = true;
+        app.engine_start_failed = true;
+        assert!(!app.engine_startup_needed());
+        app.reset_for_side(PlayerSide::White);
+        assert!(!app.engine_start_failed);
+        assert!(!app.engine_startup_needed());
+        app.local_clock = Some(super::LocalClock {
+            white: 60.0, black: 60.0, increment: 0.0,
+            flagged_white: None, updated_at: 100.0,
+        });
+        assert!(app.engine_startup_needed(), "a new timed game may retry a failed engine");
+    }
+
+    #[test]
+    fn engine_analysis_request_replaces_stale_play_resume_and_can_retry() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.resume_engine_after_ready = true;
+        app.engine_start_failed = true;
+        app.review_index = Some(0);
+        app.analysis_running = true;
+        app.prepare_analysis_engine();
+        assert!(!app.resume_engine_after_ready, "a stale play request must not consume analysis readiness");
+        assert!(!app.engine_start_failed, "Analyze position permits an explicit retry");
+        assert!(app.engine_startup_needed());
+        app.analysis_running = false;
+        app.game_analysis_running = true;
+        app.game_analysis_index = Some(4);
+        app.resume_engine_after_ready = true;
+        app.engine_start_failed = true;
+        app.prepare_analysis_engine();
+        assert!(!app.resume_engine_after_ready);
+        assert!(app.engine_startup_needed());
+        assert_eq!(app.game_analysis_index, Some(4), "retry preserves the unfinished position");
+    }
+
+    #[test]
+    fn engine_startup_waits_for_the_first_frame_including_layout_retries() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let app = ChessApp::new(&context);
+        let mut may_start = Vec::new();
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            may_start.push(app.engine_first_frame_finished(ctx));
+            if ctx.current_pass_index() == 0 {
+                ctx.request_discard("exercise first-frame layout retry");
+            }
+        });
+        assert_eq!(may_start, [false, false], "all first-frame passes must stay engine-free");
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            assert!(app.engine_first_frame_finished(ctx));
+        });
+    }
+
+    #[test]
+    fn game_moves_scroll_offset_tracks_white_black_and_observed_starts() {
+        let offset = |first_ply, index| ChessApp::game_moves_scroll_offset(first_ply, index, 30.0, 4.0, 120.0);
+        assert_eq!(offset(0, 0), 0.0);
+        assert_eq!(offset(39, 0), 0.0);
+        assert_eq!(offset(0, 1), 0.0);
+        assert_eq!(offset(0, 101), 1655.0); // White's 51st move is row 50.
+        assert_eq!(offset(0, 102), 1655.0); // Black's reply shares that row.
+        assert_eq!(offset(39, 100), 1655.0); // Black-to-move setup has a partial first row.
+        assert_eq!(offset(39, 101), 1655.0);
+        assert_eq!(offset(80, 101), 1655.0); // FICS absolute move numbers do not add blank rows.
+    }
+
+    #[test]
+    fn game_moves_virtual_rows_keep_selection_and_widget_ids() {
+        let ctx = egui::Context::default();
+        let mut shared_row_id = None;
+        for selected_row in [750, 749, 0, 999] {
+            let mut rendered = Vec::new();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(400.0, 300.0))),
+                ..Default::default()
+            };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.spacing_mut().item_spacing.y = 4.0;
+                    let original_fill = ui.visuals().widgets.inactive.bg_fill;
+                    let offset = ChessApp::game_moves_scroll_offset(0, selected_row * 2 + 1, 30.0, 4.0, 120.0);
+                    let output = egui::ScrollArea::vertical()
+                        .id_salt("virtual_moves_test")
+                        .max_height(120.0)
+                        .min_scrolled_height(120.0)
+                        .auto_shrink([false, false])
+                        .vertical_scroll_offset(offset)
+                        .show_rows_gold(ui, 30.0, 1_000, |ui, rows| {
+                            assert_eq!(ui.visuals().widgets.inactive.bg_fill, original_fill);
+                            rows.map(|row| {
+                                let response = ui.horizontal(|ui| {
+                                    ui.allocate_exact_size(Vec2::new(100.0, 30.0), Sense::click()).1
+                                }).inner;
+                                (row, response.id)
+                            }).collect::<Vec<_>>()
+                        });
+                    assert_eq!(ui.visuals().widgets.inactive.bg_fill, original_fill);
+                    rendered = output.inner;
+                });
+            });
+            assert!(rendered.len() <= 8, "only the viewport's rows should be built");
+            assert!(rendered.iter().any(|(row, _)| *row == selected_row));
+            if let Some((_, id)) = rendered.iter().find(|(row, _)| *row == 750) {
+                if let Some(previous) = shared_row_id {
+                    assert_eq!(*id, previous, "scrolling must preserve move context-menu IDs");
+                }
+                shared_row_id = Some(*id);
+            }
+        }
+    }
+
+    #[test]
+    fn game_moves_context_shortcut_reveals_offscreen_selection() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.review_moves = vec!["e4".to_owned(); 2_000];
+        app.review_positions = vec![Board::default(); 2_001];
+        app.review_index = Some(1_501);
+        let ctx = &context.egui_ctx;
+        for keyboard_open in [false, true] {
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(500.0, 700.0))),
+                events: if keyboard_open { vec![egui::Event::Key {
+                    key: egui::Key::F10,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::SHIFT,
+                }] } else { Vec::new() },
+                ..Default::default()
+            };
+            ctx.begin_pass(input);
+            let mut selected_popup = None;
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.spacing_mut().item_spacing.y = 4.0;
+                let reveal_selected = app.move_context_shortcut_requested(ctx);
+                assert_eq!(reveal_selected, keyboard_open);
+                assert_eq!(ctx.input(|input| input.key_pressed(egui::Key::F10)), keyboard_open,
+                    "checking whether to scroll must leave the shortcut for the row handler");
+                let offset = if reveal_selected {
+                    ChessApp::game_moves_scroll_offset(0, 1_501, 30.0, 4.0, 120.0)
+                } else { 0.0 };
+                egui::ScrollArea::vertical()
+                    .id_salt("context_shortcut_moves_test")
+                    .max_height(120.0)
+                    .min_scrolled_height(120.0)
+                    .vertical_scroll_offset(offset)
+                    .show_rows_gold(ui, 30.0, 1_000, |ui, rows| {
+                        for row in rows {
+                            let response = ui.horizontal(|ui| {
+                                ui.allocate_exact_size(Vec2::new(100.0, 30.0), Sense::click()).1
+                            }).inner;
+                            let index = row * 2 + 1;
+                            if index == 1_501 {
+                                selected_popup = Some(egui::Popup::default_response_id(&response));
+                            }
+                            app.move_context_response(&response, index);
+                        }
+                    });
+            });
+            if keyboard_open {
+                assert!(egui::Popup::is_id_open(ctx, selected_popup.expect("selected row is rendered")));
+                assert!(!ctx.input(|input| input.key_pressed(egui::Key::F10)));
+            } else {
+                assert!(selected_popup.is_none(), "manual scrolling can hide the selected row");
+                assert!(!egui::Popup::is_any_open(ctx));
+            }
+            let _ = ctx.end_pass();
+        }
+    }
+
+    #[test]
+    fn unavailable_3d_artwork_keeps_the_centered_2d_board_visible_and_pickable() {
+        use crate::board3d::assets::{LoadState, with_test_status};
+        for state in [LoadState::Idle, LoadState::Loading, LoadState::Failed] {
+            for size in [Vec2::new(600.0, 700.0), Vec2::new(360.0, 520.0)] {
+                let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+                let ctx = &context.egui_ctx;
+                let mut app = ChessApp::new(&context);
+                app.board_3d_active = true;
+                app.board_3d_theme = crate::board3d::Theme::Wood;
+                app.piece_set = PieceSet::Merida;
+                app.focus_mode = true;
+                app.show_board_frame = false;
+                app.show_coordinates = false;
+                app.review_positions.clear();
+                let palette = app.current_board_palette();
+                with_test_status(app.board_3d_theme, state, || {
+                    let output = ctx.run(egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
+                        ..Default::default()
+                    }, |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            // Match the actual board's parent, which made an
+                            // unbounded status label consume the entire panel.
+                            ui.centered_and_justified(|ui| app.board_ui(ui));
+                        });
+                    });
+                    let squares: Vec<_> = output.shapes.iter().filter_map(|clipped| {
+                        let egui::Shape::Rect(shape) = &clipped.shape else { return None; };
+                        (shape.fill == palette[0] || shape.fill == palette[1])
+                            .then_some((shape.rect, clipped.clip_rect))
+                    }).collect();
+                    assert_eq!(squares.len(), 64, "all fallback squares must render for {state:?} at {size:?}");
+                    let mut board_rect = egui::Rect::NOTHING;
+                    for (square, clip) in squares {
+                        assert!(clip.contains_rect(square), "fallback board is clipped: {square:?} by {clip:?}");
+                        board_rect = board_rect.union(square);
+                    }
+                    assert!(board_rect.width() >= 300.0);
+                    let expected_status = if state == LoadState::Failed { "3D artwork unavailable" } else { "Loading 3D artwork" };
+                    assert!(output.shapes.iter().any(|clipped| matches!(&clipped.shape,
+                        egui::Shape::Text(text) if text.galley.job.text.contains(expected_status)
+                            && text.pos.y < board_rect.top())));
+                    let e2 = board_rect.left_top() + ChessApp::square_screen_offset(Square::E2, app.flipped, board_rect.width() / 8.0);
+                    assert_eq!(app.board_mark_square(e2, board_rect), Some(Square::E2));
+                    assert!(app.board_3d_active, "fallback must preserve the 3D preference");
+                });
+            }
+        }
+    }
+
+    #[test]
+    fn unavailable_3d_artwork_discards_render_caches_without_changing_the_selected_theme() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        app.board_3d_theme = crate::board3d::Theme::Wood;
+        app.board_3d_distance = 23.0;
+        app.piece_set = PieceSet::Merida;
+        app.piece_appearance.height = 120;
+        for state in [crate::board3d::assets::LoadState::Idle, crate::board3d::assets::LoadState::Loading, crate::board3d::assets::LoadState::Failed] {
+            app.board_3d_render_key = "previous CPU theme".into();
+            app.board_3d_gpu_key = "previous GPU theme".into();
+            app.board_3d_texture = Some(context.egui_ctx.load_texture("old board", egui::ColorImage::filled([1, 1], Color32::WHITE), egui::TextureOptions::LINEAR));
+            app.board_3d_zoom_until = 123.0;
+            app.clear_unavailable_board_3d_cache(state);
+            assert!(app.board_3d_render_key.is_empty() && app.board_3d_gpu_key.is_empty());
+            assert!(app.board_3d_texture.is_none());
+            assert_eq!(app.board_3d_zoom_until, 0.0, "a ready theme must not reuse a scaled old image");
+            assert!(app.board_3d_active);
+            assert_eq!(app.board_3d_theme, crate::board3d::Theme::Wood);
+            assert_eq!(app.board_3d_distance, 23.0);
+            assert!(app.piece_set == PieceSet::Merida);
+            assert_eq!(app.piece_appearance.height, 120);
+        }
+        app.board_3d_render_key = "ready CPU theme".into();
+        app.board_3d_gpu_key = "ready GPU theme".into();
+        app.clear_unavailable_board_3d_cache(crate::board3d::assets::LoadState::Ready);
+        assert_eq!(app.board_3d_render_key, "ready CPU theme");
+        assert_eq!(app.board_3d_gpu_key, "ready GPU theme");
+    }
+
+    fn render_gpu_board_for_test(app: &mut ChessApp, ctx: &egui::Context, size: Vec2) -> u64 {
+        let _ = ctx.run(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1_200.0, 900.0))),
+            ..Default::default()
+        }, |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                app.board_3d_ui(ui, size, false);
+            });
+        });
+        assert!(app.board_3d_gpu_scene.is_some());
+        app.board_3d_gpu_scene_id
+    }
+
+    #[test]
+    fn gpu_board_selection_and_last_move_reuse_geometry_including_after_zoom() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let ctx = &context.egui_ctx;
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        app.board_3d_gpu_format = Some(eframe::wgpu::TextureFormat::Rgba8Unorm);
+        app.show_coordinates = false;
+        let size = Vec2::new(640.0, 480.0);
+        let geometry_id = render_gpu_board_for_test(&mut app, ctx, size);
+        let projection_distance = app.board_3d_rendered_distance;
+        for (selected, targets) in [
+            (Some(Square::E2), vec![Square::E3, Square::E4]),
+            (Some(Square::G1), vec![Square::F3, Square::H3]),
+            (None, Vec::new()),
+        ] {
+            app.selected = selected;
+            app.legal_targets = targets;
+            assert_eq!(render_gpu_board_for_test(&mut app, ctx, size), geometry_id);
+        }
+        app.last_move = Some(ChessMove::new(Square::E2, Square::E4, None));
+        assert_eq!(render_gpu_board_for_test(&mut app, ctx, size), geometry_id);
+        app.show_highlighted_move = false;
+        assert_eq!(render_gpu_board_for_test(&mut app, ctx, size), geometry_id);
+        app.board_3d_distance += 2.0;
+        app.selected = Some(Square::B1);
+        app.legal_targets = vec![Square::A3, Square::C3];
+        assert_eq!(render_gpu_board_for_test(&mut app, ctx, size), geometry_id);
+        assert_eq!(app.board_3d_rendered_distance, projection_distance,
+            "new highlights must share the retained geometry's projection distance");
+    }
+
+    #[test]
+    fn gpu_board_moves_and_history_reuse_geometry_including_after_zoom() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let ctx = &context.egui_ctx;
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        app.board_3d_gpu_format = Some(eframe::wgpu::TextureFormat::Rgba8Unorm);
+        app.show_coordinates = false;
+        let size = Vec2::new(640.0, 480.0);
+        let geometry_id = render_gpu_board_for_test(&mut app, ctx, size);
+        let projection_distance = app.board_3d_rendered_distance;
+        let initial = app.board;
+        let moved = initial.make_move_new(ChessMove::new(Square::E2, Square::E4, None));
+        app.board_3d_distance += 2.0;
+        for board in [moved, initial, moved] {
+            app.board = board;
+            assert_eq!(render_gpu_board_for_test(&mut app, ctx, size), geometry_id,
+                "moves and history navigation must retain unchanged geometry");
+            let scene = app.board_3d_gpu_scene.as_ref().unwrap();
+            for square in [Square::E2, Square::E4, Square::A1, Square::E8] {
+                assert_eq!(scene.cached_piece(square), board.piece_on(square).zip(board.color_on(square)));
+            }
+            assert_eq!(app.board_3d_rendered_distance, projection_distance,
+                "changed pieces must use the retained geometry's projection distance after zoom");
+        }
+    }
+
+    #[test]
+    fn gpu_board_geometry_rebuilds_for_view_and_appearance_changes() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let ctx = &context.egui_ctx;
+        let mut app = ChessApp::new(&context);
+        app.board_3d_active = true;
+        app.board_3d_gpu_format = Some(eframe::wgpu::TextureFormat::Rgba8Unorm);
+        app.show_coordinates = false;
+        let size = Vec2::new(640.0, 480.0);
+        let mut previous = render_gpu_board_for_test(&mut app, ctx, size);
+        let mut check_rebuilt = |app: &mut ChessApp, size| {
+            let current = render_gpu_board_for_test(app, ctx, size);
+            assert_ne!(current, previous);
+            previous = current;
+        };
+        app.flipped = !app.flipped;
+        check_rebuilt(&mut app, size);
+        app.board_3d_yaw += 0.2;
+        check_rebuilt(&mut app, size);
+        app.board_3d_elevation += 0.1;
+        check_rebuilt(&mut app, size);
+        app.board_3d_theme = crate::board3d::Theme::Wood;
+        check_rebuilt(&mut app, size);
+        app.piece_appearance.height = 110;
+        check_rebuilt(&mut app, size);
+        app.piece_shadows = !app.piece_shadows;
+        check_rebuilt(&mut app, size);
+        app.show_radial_light = !app.show_radial_light;
+        check_rebuilt(&mut app, size);
+        app.board_3d_background_opacity = 60;
+        check_rebuilt(&mut app, size);
+        let resized = Vec2::new(800.0, 600.0);
+        check_rebuilt(&mut app, resized);
+        ctx.set_pixels_per_point(2.0);
+        check_rebuilt(&mut app, resized);
+        app.clear_unavailable_board_3d_cache(crate::board3d::assets::LoadState::Loading);
+        check_rebuilt(&mut app, resized);
+    }
+
     #[test]
     fn theme_adjustments_restore_independent_2d_and_3d_settings() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
@@ -12935,6 +13717,70 @@ mod tests {
         assert_eq!(clock.flagged_white, Some(false));
         assert!(!clock.advance(210.0, true, true));
         assert_eq!(clock.white, 50.0);
+    }
+
+    #[test]
+    fn local_clock_wakes_on_display_changes_and_the_flag_deadline() {
+        let mut clock = super::LocalClock {
+            white: 60.0,
+            black: 12.25,
+            increment: 2.0,
+            flagged_white: None,
+            updated_at: 100.0,
+        };
+        let seconds = |clock: &super::LocalClock, now, white| {
+            clock.next_display_change(now, white).as_secs_f64()
+        };
+        assert_eq!(seconds(&clock, 100.0, true), 1.0);
+        assert_eq!(seconds(&clock, 100.0, false), 0.25);
+        assert_eq!(seconds(&clock, 100.75, true), 0.25);
+        assert_eq!(seconds(&clock, 99.0, true), 1.0);
+        clock.white = 12.125;
+        assert_eq!(seconds(&clock, 100.25, true), 0.0);
+        clock.white = 0.25;
+        assert_eq!(seconds(&clock, 100.0, true), 0.25);
+        assert_eq!(seconds(&clock, 100.5, true), 0.0);
+        assert!(clock.advance(100.5, true, true));
+        assert_eq!(clock.flagged_white, Some(true));
+    }
+
+    #[test]
+    fn local_clock_repaints_only_while_the_live_game_is_running() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.engine_enabled = false;
+        assert!(app.local_clock_repaint_delay(100.0).is_none());
+        app.local_clock = Some(super::LocalClock {
+            white: 60.0,
+            black: 12.25,
+            increment: 0.0,
+            flagged_white: None,
+            updated_at: 100.0,
+        });
+        let live = Board::default().make_move_new(ChessMove::new(Square::E2, Square::E4, None));
+        app.review_positions = vec![Board::default(), live];
+        // Reviewing White's earlier position must still schedule Black's live clock.
+        app.board = Board::default();
+        app.review_index = Some(0);
+        assert_eq!(app.local_clock_repaint_delay(100.0), Some(std::time::Duration::from_millis(250)));
+        app.engine_enabled = true;
+        app.engine_ready = false;
+        assert!(app.local_clock_repaint_delay(100.0).is_none());
+        app.engine_ready = true;
+        assert!(app.local_clock_repaint_delay(100.0).is_some());
+        app.local_resigned_white = Some(true);
+        assert!(app.local_clock_repaint_delay(100.0).is_none());
+        app.local_resigned_white = None;
+        app.local_clock.as_mut().unwrap().flagged_white = Some(false);
+        assert!(app.local_clock_repaint_delay(100.0).is_none());
+        app.local_clock.as_mut().unwrap().flagged_white = None;
+        app.fics_active = true;
+        assert!(app.local_clock_repaint_delay(100.0).is_none());
+        app.fics_active = false;
+        for fen in ["7k/6Q1/5K2/8/8/8/8/8 b - - 0 1", "7k/5Q2/5K2/8/8/8/8/8 b - - 0 1"] {
+            app.review_positions.push(Board::from_str(fen).unwrap());
+            assert!(app.local_clock_repaint_delay(100.0).is_none());
+        }
     }
 
     #[test]
@@ -13624,9 +14470,6 @@ impl eframe::App for ChessApp {
             }
         }
         self.tick_local_clock();
-        if self.local_clock.is_some() && !self.fics_active {
-            ctx.request_repaint_after(std::time::Duration::from_millis(100));
-        }
         if let Some(contents) = ctx.input(|input| {
             input.raw.dropped_files.iter().find_map(|file| {
                 file.bytes
@@ -13844,6 +14687,11 @@ impl eframe::App for ChessApp {
                         self.engine_status = "Game saved on this device".into();
                         ui.close();
                     }
+                    if ui.add_enabled(!self.training_live() && !(self.fics_active && self.fics_playing), egui::Button::new("Puzzles…"))
+                        .on_disabled_hover_text("Finish your training or online game before starting puzzles.").clicked() {
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("puzzles_open"), true));
+                        ui.close();
+                    }
                     if ui.button("Training profiles…").clicked() {
                         self.settle_training();
                         self.training_dialog_open = true;
@@ -13957,7 +14805,7 @@ impl eframe::App for ChessApp {
                     ui.menu_button("Board", |ui| {
                         Self::set_menu_item_font(ui);
                         if ui.button("Theme…").clicked() {
-                            self.board_theme_open = true;
+                            self.open_board_theme_dialog();
                             ui.close();
                         }
                         if ui.button("Theme adjustments…").clicked() {
@@ -14338,7 +15186,7 @@ impl eframe::App for ChessApp {
         let panel = if show_moves { egui::SidePanel::left("game_moves_panel") }
             else { egui::SidePanel::right("game_analysis_panel") };
         let board_height = (ctx.available_rect().height()-160.0).max(180.0);
-        let board_reservation = board_height * if self.board_3d_active { 1.4 } else { 1.0 };
+        let board_reservation = board_height * if self.board_3d_rendering() { 1.4 } else { 1.0 };
         let analysis_width = (ctx.available_rect().width()-board_reservation-44.0-8.0-180.0).max(260.0);
         let panel = if show_moves { panel.default_width(220.0).min_width(180.0)
             .max_width((ctx.screen_rect().width()*0.4).max(360.0)).resizable(true) }
@@ -14379,7 +15227,8 @@ impl eframe::App for ChessApp {
                 }) {
                     if show_moves {
                     let mut jump_to = None;
-                    let scroll_to_selected = self.review_scroll_to_selected;
+                    let scroll_to_selected = self.review_scroll_to_selected
+                        || (index > 0 && self.move_context_shortcut_requested(ui.ctx()));
                     if self.fics_observation_start_ply.unwrap_or(0) > 0 {
                         ui.label(format!("Moves seen since joining: {}", self.review_moves.len()));
                     } else {
@@ -14399,29 +15248,35 @@ impl eframe::App for ChessApp {
                             // Leave room for navigation and the frame's bottom margin.
                             let controls_top = board_alignment.map_or(panel_bottom - 46.0, |(_, bottom)| bottom - 15.0);
                             let moves_height = (controls_top - ui.cursor().top() - 12.0).max(0.0);
-                            egui::ScrollArea::vertical()
+                            let first_ply = self.fics_observation_start_ply.unwrap_or(self.local_start_ply);
+                            let first_pair = first_ply / 2;
+                            let end_pair = if self.review_moves.is_empty() {
+                                first_pair
+                            } else {
+                                (first_ply + self.review_moves.len()).div_ceil(2)
+                            };
+                            let row_height = 30.0_f32.max(ui.spacing().interact_size.y);
+                            let mut moves_scroll = egui::ScrollArea::vertical()
                                 .id_salt("game_moves")
                                 .max_height(moves_height)
                                 .min_scrolled_height(moves_height)
-                                .auto_shrink([false, false])
-                                .show_gold(ui, |ui| {
-                                    let first_ply = self.fics_observation_start_ply.unwrap_or(self.local_start_ply);
-                                    let end_pair = if self.review_moves.is_empty() {
-                                        first_ply / 2
-                                    } else {
-                                        (first_ply + self.review_moves.len()).div_ceil(2)
-                                    };
-                                    for pair in first_ply / 2..end_pair {
+                                .auto_shrink([false, false]);
+                            if scroll_to_selected {
+                                // Select the viewport before building rows, including offscreen moves.
+                                moves_scroll = moves_scroll.vertical_scroll_offset(Self::game_moves_scroll_offset(
+                                    first_ply, index, row_height, ui.spacing().item_spacing.y, moves_height,
+                                ));
+                            }
+                            moves_scroll.show_rows_gold(ui, row_height, end_pair - first_pair, |ui, rows| {
+                                    for row in rows {
+                                        let pair = first_pair + row;
                                         let white_ply = (pair * 2).checked_sub(first_ply);
                                         let black_ply = (pair * 2 + 1).checked_sub(first_ply);
                                         ui.horizontal(|ui| {
-                                            let move_number = ui.add_sized(
+                                            ui.add_sized(
                                                 [30.0, 28.0],
                                                 egui::Label::new(format!("{}.", pair + 1)),
                                             );
-                                            if pair == first_ply / 2 && index == 0 && scroll_to_selected {
-                                                move_number.scroll_to_me(Some(Align::Min));
-                                            }
                                             let move_width = ((ui.available_width()
                                                 - ui.spacing().item_spacing.x)
                                                 / 2.0)
@@ -14441,9 +15296,6 @@ impl eframe::App for ChessApp {
                                                 if response.clicked() || response.secondary_clicked() {
                                                     jump_to = Some(white_ply + 1);
                                                 }
-                                                if selected && scroll_to_selected {
-                                                    response.scroll_to_me(Some(Align::Center));
-                                                }
                                             }
                                             if let Some((black_ply, san)) = black_ply
                                                 .and_then(|ply| self.review_moves.get(ply).map(|san| (ply, san)))
@@ -14459,9 +15311,6 @@ impl eframe::App for ChessApp {
                                                 self.move_context_response(&response, black_ply + 1);
                                                 if response.clicked() || response.secondary_clicked() {
                                                     jump_to = Some(black_ply + 1);
-                                                }
-                                                if selected && scroll_to_selected {
-                                                    response.scroll_to_me(Some(Align::Center));
                                                 }
                                             }
                                         });
@@ -14640,6 +15489,15 @@ impl eframe::App for ChessApp {
                         self.review_to(destination);
                     }
                     ui.add_space(8.0);
+                    let details_min_height = (ui.clip_rect().bottom() - ui.cursor().top() - 26.0).max(0.0);
+                    Frame::new()
+                        .fill(Color32::from_rgb(13, 17, 22))
+                        .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+                        .corner_radius(CornerRadius::same(6))
+                        .inner_margin(Margin::same(12))
+                        .show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.set_min_height(details_min_height);
                     let tab_id = egui::Id::new("analysis_details_tab");
                     let mut detail_tab = ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(0));
                     ui.horizontal_wrapped(|ui| {
@@ -15349,6 +16207,7 @@ impl eframe::App for ChessApp {
                     }
                     ui.add_space(12.0);
                     }
+                        });
                     }
                 }
                 if show_analysis { ui.add_space((ui.clip_rect().height() * 0.4).clamp(160.0, 320.0)); }
@@ -15456,6 +16315,7 @@ impl eframe::App for ChessApp {
         self.notes_window(ctx);
         self.move_note_dialog(ctx);
         self.tactical_window(ctx);
+        self.puzzles_window(ctx);
 
         if self.print_confirm_open {
             let mut open = true;
@@ -16377,6 +17237,21 @@ impl eframe::App for ChessApp {
             && !self.game_analysis_paused
         {
             self.request_engine_move();
+        }
+
+        // New games, engine readiness and moves can change the running clock
+        // during this frame. Arm its next wake only after those updates.
+        #[cfg(target_arch = "wasm32")]
+        self.start_engine_if_needed(ctx);
+        if let Some(delay) = self.local_clock_repaint_delay(Self::animation_time()) {
+            ctx.request_repaint_after(delay);
+        }
+        #[cfg(target_arch = "wasm32")]
+        if !self.first_frame_reported {
+            // WebGPU initialization is asynchronous. Bootstrap can now wait
+            // for this rendered update, then yield to paint before extra work.
+            self.first_frame_reported = true;
+            report_first_frame();
         }
     }
 }

@@ -56,16 +56,22 @@ async function decode(source, save = false, name = "Uploaded image") {
   width = canvas.width; height = canvas.height;
   pixels = new Uint8Array(context.getImageData(0, 0, width, height).data);
 }
+export async function uploadBackgroundFile(file) {
+  // An upload can be selected while this module is still restoring the saved
+  // background. Finish restoration first so it cannot cancel the new decode.
+  await backgroundReady;
+  const url = URL.createObjectURL(file);
+  try { await decode(url, true, file.name); }
+  catch { alert('Could not save this background. Try a smaller PNG, JPEG, or WebP image.'); }
+  finally { URL.revokeObjectURL(url); }
+}
 window.ironwoodUploadBackground = () => {
   const input = document.createElement('input');
   input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp';
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    try { await decode(url, true, file.name); }
-    catch { alert('Could not save this background. Try a smaller PNG, JPEG, or WebP image.'); }
-    finally { URL.revokeObjectURL(url); }
+    await uploadBackgroundFile(file);
   };
   input.click();
 };
@@ -79,7 +85,7 @@ window.ironwoodRemoveBackground = async () => {
 window.ironwoodBackgroundWidth = () => width;
 window.ironwoodBackgroundHeight = () => height;
 window.ironwoodTakeBackground = () => { const result = pixels; pixels = new Uint8Array(); return result; };
-(async () => {
+export const backgroundReady = (async () => {
   await refreshLibrary();
   const legacy = localStorage.getItem(KEY);
   if (legacy && library.length === 1) {

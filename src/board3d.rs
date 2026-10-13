@@ -1,10 +1,10 @@
 //! Poly Haven chess geometry and the shared CPU/GPU scene description.
 //! The CPU rasterizer remains available for PNG export and renderer fallback.
 pub mod gpu;
+pub mod assets;
 use chess::{Board, Color, File, Piece, Rank, Square};
 use egui::{Color32, ColorImage, Pos2, Rect, Vec2};
 use image::{ImageFormat, RgbImage};
-use serde_json::Value;
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
@@ -161,8 +161,6 @@ struct Models {
     queen: Model,
     king: Model,
 }
-static MODELS: OnceLock<Models> = OnceLock::new();
-static WOOD_MODELS: OnceLock<Models> = OnceLock::new();
 struct BoardBase {
     key: (usize, usize, bool, u32, u32, u32, Color32, u32, u32, Theme, bool),
     image: ColorImage,
@@ -171,76 +169,12 @@ struct BoardBase {
 thread_local! {
     static BOARD_BASE: RefCell<Option<BoardBase>> = const { RefCell::new(None) };
 }
-static TEXTURES: OnceLock<(
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-)> = OnceLock::new();
-static WOOD_TEXTURES: OnceLock<(
-    RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage,
-)> = OnceLock::new();
-fn textures() -> &'static (
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-    RgbImage,
-) {
-    TEXTURES.get_or_init(|| {
-        let decode = |bytes| {
-            image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-                .expect("bundled chess-piece texture")
-                .to_rgb8()
-        };
-        (
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_pieces_white_diff_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_pieces_black_diff_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_board_diff_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_board_nor_gl_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_board_arm_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_pieces_white_nor_gl_1k.jpg"
-            )),
-            decode(include_bytes!(
-                "../assets/3d/polyhaven-chess-set/chess_set_pieces_black_nor_gl_1k.jpg"
-            )),
-        )
-    })
+fn textures() -> &'static TextureSet {
+    &assets::pack(Theme::Marble).textures
 }
-fn theme_textures(theme: Theme) -> &'static (
-    RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage,
-) {
+fn theme_textures(theme: Theme) -> &'static TextureSet {
     if theme.is_polyy() { return polyy_textures(theme); }
-    if theme != Theme::Wood { return textures(); }
-    WOOD_TEXTURES.get_or_init(|| {
-        let decode = |bytes| image::load_from_memory_with_format(bytes, ImageFormat::Jpeg)
-            .expect("bundled Omie texture").to_rgb8();
-        (
-            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_white_diff.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_black_diff.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/board_diff.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/board_nor.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/board_rough.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_white_nor.jpg")),
-            decode(include_bytes!("../assets/3d/omies-chess-set/pieces_black_nor.jpg")),
-        )
-    })
+    &assets::pack(theme).textures
 }
 type TextureSet = (RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage, RgbImage);
 static DECO_TEXTURES: OnceLock<TextureSet> = OnceLock::new();
@@ -286,29 +220,7 @@ fn polyy_models(theme: Theme) -> &'static Models {
 }
 fn theme_models(theme: Theme) -> &'static Models {
     if theme.is_polyy() { return polyy_models(theme); }
-    if theme != Theme::Wood { return models(); }
-    WOOD_MODELS.get_or_init(|| {
-        let mut board = parse_glb(include_bytes!("../assets/3d/omies-chess-set/board.glb"), false);
-        let span = board.positions.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max)
-            - board.positions.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
-        // The checker grid occupies pixels 49..463 of the board atlas's
-        // 512-pixel top-face region. Scale that 414-pixel grid to eight move
-        // units, rather than scaling the full board (including its frame).
-        let grid_fraction = 414.0 / 512.0;
-        let scale = 8.0 / (span * grid_fraction);
-        let top = board.positions.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max) * scale;
-        for point in &mut board.positions { *point = point.mul(scale); point.y += 0.055 - top; }
-        align_wood_board_grid(&mut board);
-        Models {
-            board,
-            pawn: parse_glb(include_bytes!("../assets/3d/omies-chess-set/pawn.glb"), true).with_dimensions(0.51, 0.90),
-            rook: parse_glb(include_bytes!("../assets/3d/omies-chess-set/rook.glb"), true).with_dimensions(0.58, 0.98),
-            knight: parse_glb(include_bytes!("../assets/3d/omies-chess-set/knight.glb"), true).with_dimensions(0.65, 1.15),
-            bishop: parse_glb(include_bytes!("../assets/3d/omies-chess-set/bishop.glb"), true).with_dimensions(0.63, 1.30),
-            queen: parse_glb(include_bytes!("../assets/3d/omies-chess-set/queen.glb"), true).with_dimensions(0.63, 1.43),
-            king: parse_glb(include_bytes!("../assets/3d/omies-chess-set/king.glb"), true).with_dimensions(0.66, 1.52),
-        }
-    })
+    &assets::pack(theme).models
 }
 
 fn align_wood_board_grid(board: &mut Model) {
@@ -355,54 +267,7 @@ fn align_wood_board_grid(board: &mut Model) {
     *board = aligned;
 }
 fn models() -> &'static Models {
-    MODELS.get_or_init(|| Models {
-        board: {
-            let mut board = parse_glb(
-                include_bytes!("../assets/3d/polyhaven-chess-set/board.glb"),
-                false,
-            );
-            // Poly Haven's playing grid has a 0.057888-unit square pitch.
-            // Match that pitch to our one-unit move and picking coordinates;
-            // scaling the outer mesh to 8.56 instead misplaces edge pieces.
-            let scale = 1.0 / 0.057_888;
-            let top = board.positions.iter().map(|p| p.y).fold(0.0, f32::max) * scale;
-            for point in &mut board.positions {
-                *point = point.mul(scale);
-                point.y += 0.055 - top;
-            }
-            board
-        },
-        pawn: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/pawn.glb"),
-            true,
-        )
-        .with_dimensions(0.51, 0.90),
-        rook: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/rook.glb"),
-            true,
-        )
-        .with_dimensions(0.58, 0.98),
-        knight: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/knight.glb"),
-            true,
-        )
-        .with_dimensions(0.65, 1.15),
-        bishop: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/bishop.glb"),
-            true,
-        )
-        .with_dimensions(0.63, 1.30),
-        queen: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/queen.glb"),
-            true,
-        )
-        .with_dimensions(0.63, 1.43),
-        king: parse_glb(
-            include_bytes!("../assets/3d/polyhaven-chess-set/king.glb"),
-            true,
-        )
-        .with_dimensions(0.66, 1.52),
-    })
+    &assets::pack(Theme::Marble).models
 }
 impl Models {
     fn get(&self, piece: Piece) -> &Model {
@@ -417,102 +282,8 @@ impl Models {
     }
 }
 
-fn word(bytes: &[u8], at: usize) -> u32 {
-    u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap())
-}
 fn parse_glb(bytes: &[u8], normalize: bool) -> Model {
-    assert_eq!(&bytes[..4], b"glTF");
-    let json_len = word(bytes, 12) as usize;
-    let gltf: Value = serde_json::from_slice(&bytes[20..20 + json_len]).unwrap();
-    let bin_at = 20 + json_len + 8;
-    let primitive = &gltf["meshes"][0]["primitives"][0];
-    let position_accessor =
-        &gltf["accessors"][primitive["attributes"]["POSITION"].as_u64().unwrap() as usize];
-    let index_accessor = &gltf["accessors"][primitive["indices"].as_u64().unwrap() as usize];
-    let uv_accessor =
-        &gltf["accessors"][primitive["attributes"]["TEXCOORD_0"].as_u64().unwrap() as usize];
-    let normal_accessor =
-        &gltf["accessors"][primitive["attributes"]["NORMAL"].as_u64().unwrap() as usize];
-    let view =
-        |accessor: &Value| &gltf["bufferViews"][accessor["bufferView"].as_u64().unwrap() as usize];
-    let pos_at = bin_at
-        + view(position_accessor)["byteOffset"].as_u64().unwrap_or(0) as usize
-        + position_accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
-    let idx_at = bin_at
-        + view(index_accessor)["byteOffset"].as_u64().unwrap_or(0) as usize
-        + index_accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
-    let uv_at = bin_at
-        + view(uv_accessor)["byteOffset"].as_u64().unwrap_or(0) as usize
-        + uv_accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
-    let normal_at = bin_at
-        + view(normal_accessor)["byteOffset"].as_u64().unwrap_or(0) as usize
-        + normal_accessor["byteOffset"].as_u64().unwrap_or(0) as usize;
-    let count = position_accessor["count"].as_u64().unwrap() as usize;
-    let mut raw = Vec::with_capacity(count);
-    let mut texcoords = Vec::with_capacity(count);
-    let mut normals = Vec::with_capacity(count);
-    for n in 0..count {
-        let at = pos_at + n * 12;
-        raw.push(V3::new(
-            f32::from_le_bytes(bytes[at..at + 4].try_into().unwrap()),
-            f32::from_le_bytes(bytes[at + 4..at + 8].try_into().unwrap()),
-            f32::from_le_bytes(bytes[at + 8..at + 12].try_into().unwrap()),
-        ));
-        let uv = uv_at + n * 8;
-        texcoords.push([
-            f32::from_le_bytes(bytes[uv..uv + 4].try_into().unwrap()),
-            f32::from_le_bytes(bytes[uv + 4..uv + 8].try_into().unwrap()),
-        ]);
-        let normal = normal_at + n * 12;
-        normals.push(V3::new(
-            f32::from_le_bytes(bytes[normal..normal + 4].try_into().unwrap()),
-            f32::from_le_bytes(bytes[normal + 4..normal + 8].try_into().unwrap()),
-            f32::from_le_bytes(bytes[normal + 8..normal + 12].try_into().unwrap()),
-        ));
-    }
-    let (mut min, mut max) = (
-        V3::new(f32::MAX, f32::MAX, f32::MAX),
-        V3::new(f32::MIN, f32::MIN, f32::MIN),
-    );
-    for p in &raw {
-        min.x = min.x.min(p.x);
-        min.y = min.y.min(p.y);
-        min.z = min.z.min(p.z);
-        max.x = max.x.max(p.x);
-        max.y = max.y.max(p.y);
-        max.z = max.z.max(p.z);
-    }
-    let scale = if normalize {
-        (0.76 / (max.x - min.x).max(max.z - min.z)).min(1.3 / (max.y - min.y))
-    } else {
-        1.0
-    };
-    let positions = raw
-        .into_iter()
-        .map(|p| {
-            V3::new(
-                (p.x - (min.x + max.x) * 0.5) * scale,
-                (p.y - min.y) * scale,
-                (p.z - (min.z + max.z) * 0.5) * scale,
-            )
-        })
-        .collect();
-    assert_eq!(index_accessor["componentType"].as_u64(), Some(5123));
-    let indices = (0..index_accessor["count"].as_u64().unwrap() as usize)
-        .map(|n| {
-            u16::from_le_bytes(
-                bytes[idx_at + n * 2..idx_at + n * 2 + 2]
-                    .try_into()
-                    .unwrap(),
-            )
-        })
-        .collect();
-    Model {
-        positions,
-        normals,
-        texcoords,
-        indices,
-    }
+    assets::parse_glb_checked(bytes, normalize).expect("bundled chess model")
 }
 
 #[derive(Clone, Copy)]
@@ -685,6 +456,13 @@ fn studio_lighting_for_theme(
     )
 }
 
+#[derive(Clone, Copy)]
+enum LightingMode {
+    Cpu,
+    Shader,
+}
+
+// CPU rasterization, previews and PNG export still need vertex lighting.
 fn push_triangle(
     triangles: &mut Vec<Triangle>,
     camera: Camera,
@@ -694,6 +472,19 @@ fn push_triangle(
     texture: Option<([[f32; 2]; 3], Option<Color>)>,
     vertex_normals: Option<[V3; 3]>,
 ) {
+    push_triangle_with_lighting(triangles, camera, rect, points, base, texture, vertex_normals, LightingMode::Cpu);
+}
+
+fn push_triangle_with_lighting(
+    triangles: &mut Vec<Triangle>,
+    camera: Camera,
+    rect: Rect,
+    points: [V3; 3],
+    base: [u8; 3],
+    texture: Option<([[f32; 2]; 3], Option<Color>)>,
+    vertex_normals: Option<[V3; 3]>,
+    lighting: LightingMode,
+) {
     let normal = points[1]
         .sub(points[0])
         .cross(points[2].sub(points[0]))
@@ -701,9 +492,15 @@ fn push_triangle(
     let light = V3::new(-0.5, 1.0, 0.6).unit();
     let shade = (0.47 + 0.53 * normal.dot(light).abs()).clamp(0.0, 1.0);
     let side = texture.and_then(|(_, side)| side);
-    let vertex_lighting = vertex_normals.map(|normals| {
-        std::array::from_fn(|i| studio_lighting(normals[i], points[i], camera, side))
-    });
+    let vertex_lighting = match lighting {
+        LightingMode::Cpu => vertex_normals.map(|normals| {
+            std::array::from_fn(|i| studio_lighting(normals[i], points[i], camera, side))
+        }),
+        LightingMode::Shader => None,
+    };
+    // Normal-bearing surfaces use their unshaded base color even when the
+    // shader supplies lighting. Normal maps still need the full surface below.
+    let has_vertex_normals = vertex_normals.is_some();
     let normal_surface = if let (Some((uv, _)), Some(normals)) = (texture, vertex_normals) {
         let edge1 = points[1].sub(points[0]);
         let edge2 = points[2].sub(points[0]);
@@ -735,19 +532,19 @@ fn push_triangle(
         depths: [da, db, dc],
         color: Color32::from_rgb(
             (base[0] as f32
-                * if vertex_lighting.is_some() {
+                * if has_vertex_normals {
                     1.0
                 } else {
                     shade
                 }) as u8,
             (base[1] as f32
-                * if vertex_lighting.is_some() {
+                * if has_vertex_normals {
                     1.0
                 } else {
                     shade
                 }) as u8,
             (base[2] as f32
-                * if vertex_lighting.is_some() {
+                * if has_vertex_normals {
                     1.0
                 } else {
                     shade
@@ -1113,9 +910,17 @@ fn dynamic_triangles(
     board: &Board, rect: Rect, flipped: bool, view: View,
     selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme, adjustments: PieceAppearance,
 ) -> Vec<Triangle> {
+    let mut triangles = highlight_triangles(rect, flipped, view, selected, targets, last_move, theme);
+    triangles.extend(piece_triangles(board, rect, flipped, view, theme, adjustments));
+    triangles
+}
+
+fn highlight_triangles(
+    rect: Rect, flipped: bool, view: View,
+    selected: Option<Square>, targets: &[Square], last_move: Option<chess::ChessMove>, theme: Theme,
+) -> Vec<Triangle> {
     let camera = Camera::new(flipped, view);
-    let mut triangles = Vec::with_capacity(40000);
-    let mut piece_triangles = Vec::with_capacity(40000);
+    let mut triangles = Vec::with_capacity(2 * (targets.len() + usize::from(selected.is_some()) + 2 * usize::from(last_move.is_some())).min(64));
     for rank in 0..8 {
         for file in 0..8 {
             let square = Square::make_square(Rank::from_index(rank), File::from_index(file));
@@ -1151,55 +956,77 @@ fn dynamic_triangles(
                     color,
                 );
             }
+        }
+    }
+    triangles
+}
+
+fn piece_triangles(
+    board: &Board, rect: Rect, flipped: bool, view: View, theme: Theme, adjustments: PieceAppearance,
+) -> Vec<Triangle> {
+    let camera = Camera::new(flipped, view);
+    let mut triangles = Vec::with_capacity(40000);
+    for rank in 0..8 {
+        for file in 0..8 {
+            let square = Square::make_square(Rank::from_index(rank), File::from_index(file));
             if let (Some(piece), Some(side)) = (board.piece_on(square), board.color_on(square)) {
-                let model = theme_models(theme).get(piece);
-                let center = V3::new(file as f32 - 3.5, 0.075, 3.5 - rank as f32);
-                let yaw = piece_yaw(piece, side, square);
-                let (sin, cos) = yaw.sin_cos();
-                let shadow_center = if theme == Theme::Wood {
-                    center.add(V3::new(-0.055, 0.0, 0.06))
-                } else { center };
-                if adjustments.shadows && adjustments.shadow_strength > 0 { contact_shadow(
-                    &mut piece_triangles,
-                    camera,
-                    rect,
-                    shadow_center,
-                    (if piece == Piece::Pawn { 0.45 } else { 0.54 }) * adjustments.size as f32 / 100.0 * (0.75 + adjustments.shadow_softness as f32 / 200.0),
-                ); }
-                let color = if side == Color::White {
-                    [235, 232, 225]
-                } else {
-                    [62, 73, 68]
-                };
-                for face in model.indices.chunks_exact(3) {
-                    let mut pts = [V3::default(); 3];
-                    for (n, &i) in face.iter().enumerate() {
-                        let p = turn_y(model.positions[i as usize], sin, cos);
-                        pts[n] = center.add(V3::new(p.x * adjustments.size as f32 / 100.0, p.y * adjustments.size as f32 / 100.0 * adjustments.height as f32 / 100.0, p.z * adjustments.size as f32 / 100.0));
-                    }
-                    let uv = [
-                        model.texcoords[face[0] as usize],
-                        model.texcoords[face[1] as usize],
-                        model.texcoords[face[2] as usize],
-                    ];
-                    let normals = std::array::from_fn(|i| {
-                        { let n = turn_y(model.normals[face[i] as usize], sin, cos); V3::new(n.x,n.y*100.0/adjustments.height as f32,n.z).unit() }
-                    });
-                    push_triangle(
-                        &mut piece_triangles,
-                        camera,
-                        rect,
-                        pts,
-                        color,
-                        Some((uv, Some(side))),
-                        Some(normals),
-                    );
-                }
+                append_piece_triangles(&mut triangles, square, piece, side, camera, rect, theme, adjustments);
             }
         }
     }
-    triangles.extend(piece_triangles);
     triangles
+}
+
+// Each square is independent: retain unchanged projected pieces on the GPU
+// while the CPU renderer still assembles the original rank/file sequence.
+fn append_piece_triangles(
+    triangles: &mut Vec<Triangle>, square: Square, piece: Piece, side: Color,
+    camera: Camera, rect: Rect, theme: Theme, adjustments: PieceAppearance,
+) {
+    append_piece_triangles_with_lighting(triangles, square, piece, side, camera, rect, theme, adjustments, LightingMode::Cpu);
+}
+
+fn append_piece_triangles_with_lighting(
+    triangles: &mut Vec<Triangle>, square: Square, piece: Piece, side: Color,
+    camera: Camera, rect: Rect, theme: Theme, adjustments: PieceAppearance,
+    lighting: LightingMode,
+) {
+    let file = square.get_file().to_index();
+    let rank = square.get_rank().to_index();
+    let model = theme_models(theme).get(piece);
+    let center = V3::new(file as f32 - 3.5, 0.075, 3.5 - rank as f32);
+    let yaw = piece_yaw(piece, side, square);
+    let (sin, cos) = yaw.sin_cos();
+    let shadow_center = if theme == Theme::Wood {
+        center.add(V3::new(-0.055, 0.0, 0.06))
+    } else { center };
+    if adjustments.shadows && adjustments.shadow_strength > 0 { contact_shadow(
+        triangles,
+        camera,
+        rect,
+        shadow_center,
+        (if piece == Piece::Pawn { 0.45 } else { 0.54 }) * adjustments.size as f32 / 100.0 * (0.75 + adjustments.shadow_softness as f32 / 200.0),
+    ); }
+    let color = if side == Color::White { [235, 232, 225] } else { [62, 73, 68] };
+    for face in model.indices.chunks_exact(3) {
+        let mut pts = [V3::default(); 3];
+        for (n, &i) in face.iter().enumerate() {
+            let p = turn_y(model.positions[i as usize], sin, cos);
+            pts[n] = center.add(V3::new(p.x * adjustments.size as f32 / 100.0,
+                p.y * adjustments.size as f32 / 100.0 * adjustments.height as f32 / 100.0,
+                p.z * adjustments.size as f32 / 100.0));
+        }
+        let uv = [
+            model.texcoords[face[0] as usize],
+            model.texcoords[face[1] as usize],
+            model.texcoords[face[2] as usize],
+        ];
+        let normals = std::array::from_fn(|i| {
+            let n = turn_y(model.normals[face[i] as usize], sin, cos);
+            V3::new(n.x, n.y * 100.0 / adjustments.height as f32, n.z).unit()
+        });
+        push_triangle_with_lighting(triangles, camera, rect, pts, color, Some((uv, Some(side))), Some(normals), lighting);
+    }
 }
 
 fn appearance_color(color: Color32, appearance: f32) -> Color32 {

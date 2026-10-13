@@ -4,6 +4,9 @@ const SHELL_CACHE = `ironwood-shell-${APP_SHELL_VERSION}`;
 const ENGINE_CACHE_PREFIX = 'ironwood-engine-stockfish-19-';
 const ENGINE_CACHE = `${ENGINE_CACHE_PREFIX}${ENGINE_CACHE_VERSION}`;
 const LEGACY_ENGINE_CACHE = 'ironwood-engine-stockfish-19';
+// Content-hashed theme artwork remains reusable when the app shell is updated.
+const PIECE_THEME_CACHE = 'ironwood-piece-themes-v1';
+const BOARD_THEME_CACHE = 'ironwood-board-themes-v1';
 const LOCAL_DEVELOPMENT = ['127.0.0.1', 'localhost'].includes(self.location.hostname);
 const APP_PACKAGE_URLS = [
   '/pkg/battle_chess.js',
@@ -14,26 +17,19 @@ const ENGINE_URLS = [
   '/engine/stockfish-19.wasm',
 ];
 const SHELL_URLS = [
+  // The optional /3d/ viewer and built-in background image are cached by the
+  // normal fetch routes only when used.
+  '/puzzles.js',
   '/tablebase.js',
   '/background-image.js',
-  '/brand/ironwood-background-no-ring.png',
   '/device-support.js',
+  '/app-bootstrap.js',
+  '/piece-themes.js',
+  '/piece-themes/manifest.js',
+  '/board-themes.js',
+  '/board-themes/manifest.js',
   '/',
   '/play/',
-  '/3d/',
-  '/3d/main.js',
-  '/3d/style.css',
-  '/3d/licenses/three-mit.txt',
-  '/3d/models/board.glb',
-  '/3d/models/chess_set_board_diff_1k.jpg',
-  '/3d/models/chess_set_board_nor_gl_1k.jpg',
-  '/3d/models/chess_set_board_arm_1k.jpg',
-  '/3d/models/pawn.glb',
-  '/3d/models/rook.glb',
-  '/3d/models/knight.glb',
-  '/3d/models/bishop.glb',
-  '/3d/models/queen.glb',
-  '/3d/models/king.glb',
   '/fics/',
   '/fics/bridge.js',
   '/fics/protocol.js',
@@ -139,6 +135,20 @@ async function cachedAsset(request, event) {
   return cached || await refresh || Response.error();
 }
 
+async function cachedThemeAsset(request, cacheName) {
+  let cache;
+  try {
+    cache = await caches.open(cacheName);
+    // Exact URLs only: neither changed content hashes nor query strings may
+    // reuse unrelated bytes from the generic shell's ignoreSearch lookup.
+    const cached = await cache.match(request);
+    if (cached) return cached;
+  } catch { /* Keep online themes usable when persistent storage is unavailable. */ }
+  const response = await fetch(request);
+  if (response.ok && cache) await cache.put(request, response.clone()).catch(() => {});
+  return response;
+}
+
 self.addEventListener('fetch', event => {
   const { request } = event;
   if (request.method !== 'GET') return;
@@ -150,6 +160,17 @@ self.addEventListener('fetch', event => {
     return;
   }
   if (url.pathname === '/service-worker.js') return;
+
+  if (/^\/piece-themes\/(?:sculpted-marble|hybrid-wood|hybrid-glass)\/[a-f0-9]{64}\/[wb][KQRBNP]\.png$/.test(url.pathname)) {
+    event.respondWith(cachedThemeAsset(request, PIECE_THEME_CACHE));
+    return;
+  }
+
+  if (/^\/board-themes\/wood\/[a-f0-9]{64}\/(?:(?:board|pawn|rook|knight|bishop|queen|king)\.glb|(?:pieces_(?:white|black)_(?:diff|nor)|board_(?:diff|nor|rough))\.jpg)$/.test(url.pathname) ||
+      /^\/board-themes\/marble\/[a-f0-9]{64}\/(?:(?:board|pawn|rook|knight|bishop|queen|king)\.glb|chess_set_(?:pieces_(?:white|black)_(?:diff|nor_gl)|board_(?:diff|nor_gl|arm))_1k\.jpg)$/.test(url.pathname)) {
+    event.respondWith(cachedThemeAsset(request, BOARD_THEME_CACHE));
+    return;
+  }
 
   if (url.pathname === '/site.webmanifest') {
     event.respondWith(networkFirst(request));

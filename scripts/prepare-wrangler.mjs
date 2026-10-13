@@ -1,6 +1,8 @@
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
+import { buildPieceThemes } from './build-piece-themes.mjs';
+import { buildBoardThemes } from './build-board-themes.mjs';
 
 const root = join(import.meta.dirname, '..');
 const source = join(root, 'web');
@@ -8,6 +10,8 @@ const hugoSource = join(root, '.hugo-public');
 const target = join(root, '.wrangler-assets');
 const changelogSource = join(root, 'site', 'content', 'changelog');
 
+buildPieceThemes();
+buildBoardThemes();
 mkdirSync(target, { recursive: true });
 for (const entry of readdirSync(target)) {
   rmSync(join(target, entry), { recursive: true, force: true });

@@ -1,10 +1,14 @@
 import { createReadStream, existsSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize } from 'node:path';
+import { buildPieceThemes } from './build-piece-themes.mjs';
+import { buildBoardThemes } from './build-board-themes.mjs';
 
+buildPieceThemes();
+buildBoardThemes();
 const root = normalize(join(import.meta.dirname, '..', 'web'));
 const siteRoot = normalize(join(import.meta.dirname, '..', '.hugo-public'));
-const mime = {'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css','.nnue':'application/octet-stream'};
+const mime = {'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.jpg':'image/jpeg','.glb':'model/gltf-binary','.nnue':'application/octet-stream'};
 createServer((req,res) => {
   const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
   let file = normalize(join(root, urlPath === '/' ? 'index.html' : urlPath));

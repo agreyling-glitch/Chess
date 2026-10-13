@@ -72,7 +72,10 @@ impl ChessApp {
                 ui.horizontal_wrapped(|ui| {
                 egui::ComboBox::from_id_salt("hybrid_piece_style").width(135.0).selected_text(selected).show_ui(ui,|ui| {
                     for (set,label) in styles {
-                        if ui.selectable_value(&mut self.piece_set,set,label).changed() {
+                        let response = ui.selectable_value(&mut self.piece_set,set,label);
+                        #[cfg(target_arch = "wasm32")]
+                        if response.clicked() { piece_themes::retry(ui.ctx(), set); }
+                        if response.changed() {
                             self.save_preferences();
                             ui.ctx().request_repaint();
                         }
@@ -106,6 +109,8 @@ impl ChessApp {
                         for (i,label) in textures.iter().enumerate() { ui.selectable_value(&mut self.piece_appearance.board_texture,i as u8,*label); }
                     });
                 });
+                #[cfg(target_arch = "wasm32")]
+                piece_themes::status_ui(ui, self.piece_set);
             });
         }
         adjustment_section(ui,"Piece proportions",|ui| {
@@ -173,6 +178,7 @@ impl ChessApp {
 
     fn theme_adjustments_3d_ui(&mut self, ui: &mut egui::Ui) {
         ui.spacing_mut().item_spacing = Vec2::new(12.0,10.0);
+        crate::board3d::assets::status_ui(ui, self.board_3d_theme);
         adjustment_section(ui,"Piece proportions",|ui| {
             egui::Grid::new("piece_proportion_rows").min_col_width(145.0).spacing(Vec2::new(16.0,10.0)).show(ui,|ui| {
                 adjustment_slider(ui,"Size",&mut self.piece_appearance.size,65..=115,true);
@@ -213,9 +219,10 @@ impl ChessApp {
         let a = self.piece_appearance.normalized();
         let rect = egui::Rect::from_center_size(rect.center(),rect.size()*a.size as f32/100.0);
         let cell = cell*a.size as f32/100.0;
+        if !ui.is_rect_visible(rect.expand(cell * 0.2)) { return; }
         let color = if side == Color::White { a.white } else { a.black };
         if !a.custom_colors && !a.gradient && !a.outline && a.inner_shading==0 { Self::paint_piece(ui,rect,cell,self.piece_set,side,piece); return; }
-        if let Some(source) = Self::piece_image_for(self.piece_set,side,piece) {
+        if let Some((source, hybrid_shape)) = Self::piece_image_for(ui.ctx(),self.piece_set,side,piece) {
             let uri = source.uri().unwrap_or("").to_owned();
             let raster_width = 384; // Fixed resolution bounds processing and stabilizes the cache.
             let cache_settings = crate::board3d::PieceAppearance { custom_colors:a.custom_colors, white:a.white, black:a.black, outline:a.outline, inner_shading:a.inner_shading, gradient:a.gradient, gradient_direction:a.gradient_direction, white_end:a.white_end, black_end:a.black_end, ..Default::default() };
@@ -231,10 +238,10 @@ impl ChessApp {
                 } else { None }
             };
             if let Some(texture) = texture {
-                let rect = if self.piece_set.is_hybrid() { rect.translate(Vec2::new(0.0,-cell*0.17)) } else { rect };
+                let rect = if hybrid_shape { rect.translate(Vec2::new(0.0,-cell*0.17)) } else { rect };
                 egui::Image::new(&texture).maintain_aspect_ratio(true).paint_at(ui,rect.shrink(cell*0.06));
             }
-            else { Self::paint_piece(ui,rect,cell,self.piece_set,side,piece); ui.ctx().request_repaint(); }
+            else { Self::paint_piece(ui,rect,cell,self.piece_set,side,piece); }
         } else {
             let glyph = Self::piece_glyph_for(side,piece);
             let tint = if a.custom_colors { Color32::from_rgb(color[0],color[1],color[2]) } else if side == Color::White { Color32::from_rgb(250,246,224) } else { Color32::from_rgb(24,29,32) };

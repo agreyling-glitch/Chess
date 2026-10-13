@@ -4,6 +4,33 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { patchThreadPool } from '../scripts/stockfish-thread-pool.mjs';
 
+function engineWorkerHarness() {
+  const workers = [];
+  const context = vm.createContext({
+    URL, Date, SharedArrayBuffer, crossOriginIsolated: true,
+    self: { location: { href: 'https://ironwoodchess.com/engine-worker.js' } },
+    postMessage() {},
+    MessageChannel: class { port1 = {}; port2 = {}; },
+    Worker: class {
+      commands = [];
+      constructor() { workers.push(this); }
+      postMessage(command) { this.commands.push(command); }
+    },
+  });
+  vm.runInContext(readFileSync(new URL('../web/engine-worker.js', import.meta.url), 'utf8'), context);
+  return {
+    init() {
+      context.onmessage({ data: { type: 'init', threads: 8, hash: 64 } });
+      return workers.at(-1);
+    },
+    command(command) { context.onmessage({ data: { type: 'command', command } }); },
+    ready(worker) {
+      worker.onmessage({ data: 'uciok' });
+      worker.onmessage({ data: 'ironwood-thread-pool-ready' });
+    },
+  };
+}
+
 test('engine readiness waits for the asynchronous pthread pool', () => {
   const output = [];
   const commands = [];
@@ -27,6 +54,84 @@ test('engine readiness waits for the asynchronous pthread pool', () => {
   assert.ok(commands.includes('setoption name Threads value 8'));
   assert.equal(commands.at(-1), 'isready');
   assert.equal(output.at(-1).line, 'uciok');
+});
+
+test('queued searches reuse initial resource settings after pool preparation', () => {
+  const harness = engineWorkerHarness();
+  const worker = harness.init();
+  for (const command of [
+    'stop',
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+    'position startpos',
+    'isready',
+    'go nodes 1000',
+  ]) harness.command(command);
+  assert.deepEqual(worker.commands.filter(command => typeof command === 'string'), ['uci']);
+  harness.ready(worker);
+  assert.deepEqual(worker.commands.filter(command => typeof command === 'string'), [
+    'uci',
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+    'setoption name Skill Level value 20',
+    'setoption name UCI_LimitStrength value false',
+    'setoption name UCI_Elo value 1800',
+    'setoption name Ponder value false',
+    'stop',
+    'position startpos',
+    'isready',
+    'go nodes 1000',
+  ]);
+});
+
+test('resource changes apply once while search and reset commands retain their order', () => {
+  const harness = engineWorkerHarness();
+  const worker = harness.init();
+  harness.ready(worker);
+  worker.commands.length = 0;
+  for (const command of [
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+    'setoption name Threads value 4',
+    'setoption name Hash value 128',
+    'setoption name Threads value 4',
+    'setoption name Hash value 128',
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+  ]) harness.command(command);
+  const searchCommands = [
+    'stop', 'stop',
+    'ucinewgame', 'ucinewgame',
+    'setoption name Clear Hash', 'setoption name Clear Hash',
+    'isready', 'isready',
+    'position startpos',
+    'go nodes 1000', 'go nodes 1000',
+  ];
+  for (const command of searchCommands) harness.command(command);
+  harness.command('setoption name Threads value 8');
+  harness.command('setoption name Hash value 64');
+  assert.deepEqual(worker.commands, [
+    'setoption name Threads value 4',
+    'setoption name Hash value 128',
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+    ...searchCommands,
+  ]);
+});
+
+test('a replacement engine applies its initial resource settings again', () => {
+  const harness = engineWorkerHarness();
+  harness.ready(harness.init());
+  const replacement = harness.init();
+  harness.command('setoption name Threads value 8');
+  harness.command('setoption name Hash value 64');
+  assert.deepEqual(replacement.commands.filter(command => typeof command === 'string'), ['uci']);
+  harness.ready(replacement);
+  assert.deepEqual(replacement.commands.filter(command => typeof command === 'string'
+    && /^setoption name (Threads|Hash) /.test(command)), [
+    'setoption name Threads value 8',
+    'setoption name Hash value 64',
+  ]);
 });
 
 test('production serves patched glue from app assets and WASM from engine origin', async () => {

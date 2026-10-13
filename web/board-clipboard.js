@@ -113,13 +113,26 @@ export async function boardImage(fen, options = {}) {
   const set = hybridSets[options.pieceSet] || sets[options.pieceSet] || 'merida';
   const extension = hybrid ? 'png' : 'svg';
   const assets = new Map();
+  // Use the same downloaded bytes as the board, including offline. Starting
+  // this async work still leaves clipboard.write in the original click below.
+  const themePieces = pieces.length && ['sculpted-marble', 'hybrid-wood', 'hybrid-glass'].includes(set)
+    ? await window.ironwoodLoadPieceTheme(set) : null;
+  const themeOrder = ['wK', 'wQ', 'wR', 'wB', 'wN', 'wP', 'bK', 'bQ', 'bR', 'bB', 'bN', 'bP'];
   if (options.pieceSet !== 'System') {
-    await Promise.all([...new Set(pieces.map(item => item.piece))].map(piece => new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => { assets.set(piece, image); resolve(); };
-      image.onerror = () => reject(new Error('Could not load chess-piece artwork'));
-      image.src = `/pieces/${set}/${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}.${extension}`;
-    })));
+    await Promise.all([...new Set(pieces.map(item => item.piece))].map(async piece => {
+      const name = `${piece === piece.toUpperCase() ? 'w' : 'b'}${piece.toUpperCase()}`;
+      const blobUrl = themePieces ? URL.createObjectURL(new Blob([themePieces[themeOrder.indexOf(name)]], { type: 'image/png' })) : null;
+      try {
+        await new Promise((resolve, reject) => {
+          const image = new Image();
+          image.onload = () => { assets.set(piece, image); resolve(); };
+          image.onerror = () => reject(new Error('Could not load chess-piece artwork'));
+          image.src = blobUrl || `/pieces/${set}/${name}.${extension}`;
+        });
+      } finally {
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+      }
+    }));
   }
   const symbols = {K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
   for (const {piece,file,rank} of pieces) {

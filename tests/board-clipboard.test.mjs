@@ -49,6 +49,50 @@ test('annotated board draws selected markings with flipped coordinates and proje
   assert.equal(lines.length,0);
 });
 
+test('optional theme copies use cached PNG bytes, release blob URLs, and preserve clipboard activation', async t => {
+  const blobs = [], revoked = [], draws = [], requested = [];
+  const context = { fillRect(){}, save(){}, restore(){}, drawImage(image){ draws.push(image.src); }, fillText(){} };
+  const canvas = { getContext: () => context, toBlob: callback => callback(new Blob(['png'], { type: 'image/png' })) };
+  globalThis.document = { createElement: () => canvas };
+  globalThis.Image = class { set src(value) { this.url = value; queueMicrotask(() => this.onload()); } get src() { return this.url; } };
+  t.mock.method(URL, 'createObjectURL', blob => { blobs.push(blob); return `blob:piece-${blobs.length}`; });
+  t.mock.method(URL, 'revokeObjectURL', url => revoked.push(url));
+  const bytes = Array.from({ length: 12 }, (_, i) => new Uint8Array([i]));
+  globalThis.window = { ironwoodLoadPieceTheme: async theme => { requested.push(theme); return bytes; } };
+  const source = await readFile(new URL('../web/board-clipboard.js', import.meta.url), 'utf8');
+  const { boardImage } = await import(`data:text/javascript,${encodeURIComponent(source + '\n// theme cache test')}`);
+  const fen = '7k/8/8/8/8/8/8/K7 w - - 0 1';
+  for (const pieceSet of ['SculptedMarble', 'HybridWood', 'HybridGlass']) await boardImage(fen, { pieceSet });
+  assert.deepEqual(requested, ['sculpted-marble', 'hybrid-wood', 'hybrid-glass']);
+  assert.equal(draws.length, 6);
+  assert.ok(draws.every(url => url.startsWith('blob:piece-')));
+  assert.deepEqual(await Promise.all(blobs.map(async blob => [...new Uint8Array(await blob.arrayBuffer())])), [[6], [0], [6], [0], [6], [0]]);
+  assert.deepEqual(revoked, draws);
+  assert.ok(blobs.every(blob => blob.type === 'image/png'));
+
+  let release;
+  window.ironwoodLoadPieceTheme = () => new Promise(resolve => { release = resolve; });
+  let clipboardCalled = false, imagePromise;
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalItem = globalThis.ClipboardItem;
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: { write(items) {
+    clipboardCalled = true; imagePromise = items[0].types['image/png'];
+    // Stop before unrelated status-DOM code; the promise is still observed.
+    return new Promise(() => {});
+  } } } });
+  globalThis.ClipboardItem = class { constructor(types) { this.types = types; } };
+  t.after(() => {
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    else delete globalThis.navigator;
+    if (originalItem === undefined) delete globalThis.ClipboardItem;
+    else globalThis.ClipboardItem = originalItem;
+  });
+  void window.ironwoodCopyBoard(fen, JSON.stringify({ pieceSet: 'HybridGlass' }));
+  assert.equal(clipboardCalled, true, 'clipboard write must happen before theme loading finishes');
+  release(bytes);
+  assert.equal((await imagePromise).type, 'image/png');
+});
+
 test('styled arrows use dashed shafts and mirrored curves with solid arrowheads', async () => {
   const source = await readFile(new URL('../web/board-clipboard.js', import.meta.url), 'utf8');
   const { paintDrawings } = await import(`data:text/javascript,${encodeURIComponent(source)}`);

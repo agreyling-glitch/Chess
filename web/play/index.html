@@ -104,68 +104,16 @@
       message.append(title, description, link);
       message.style.cssText = 'box-sizing:border-box;position:relative;inset:auto;transform:none;max-width:620px;margin:12vh auto;padding:24px;font:16px/1.6 system-ui;color:#eee;white-space:normal;text-align:left';
     } else {
-    const loading = document.getElementById('loading');
-    window.ironwoodStoreCurrentGame = () => {};
-    window.ironwoodStoreImportedGame = () => {};
-    window.ironwoodStartNewStoredGame = () => {};
-    window.ironwoodIsImportedDuplicate = () => false;
-    window.ironwoodImportedIndexReady = () => false;
-    window.ironwoodEnsureImportedIndex = () => {};
-    window.ironwoodRefreshStorageStatus = () => {};
-    window.ironwoodStorageStatus = () => 'Browser storage estimate unavailable';
-    window.ironwoodBeginBatchImport = () => {};
-    window.ironwoodBatchImportStatus = () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
-    window.ironwoodEndBatchImport = () => {};
-    window.ironwoodOpenGameLibrary = () => alert('Saved games are unavailable. Please reload Ironwood.');
-    window.ironwoodBackupStorage = () => alert('Storage backup is unavailable. Please reload Ironwood.');
-    window.ironwoodRestoreStorage = () => alert('Storage restore is unavailable. Please reload Ironwood.');
-    window.ironwoodOpenStorageInfo = () => alert('Storage information is unavailable. Please reload Ironwood.');
-    window.ironwoodClearSavedGames = () => alert('Storage management is unavailable. Please reload Ironwood.');
-    window.ironwoodResetLocalData = () => alert('Storage management is unavailable. Please reload Ironwood.');
-    window.ironwoodVersionDiagnostics = () => '{"status":"Version diagnostics are loading"}';
-    window.ironwoodRefreshVersionDiagnostics = () => {};
-    window.ironwoodFicsConnect = () => {};
-    window.ironwoodFicsDisconnect = () => {};
-    window.ironwoodFicsSend = () => {};
-    window.ironwoodFicsSendCommand = () => {};
-    window.ironwoodFicsPoll = () => '';
-    try {
-      const localDevelopment = ['localhost', '127.0.0.1'].includes(location.hostname);
-      const storageUrl = localDevelopment ? `/game-storage.js?v=${Date.now()}` : '/game-storage.js';
-      const storage = await import(storageUrl).catch(error => {
-        console.warn('Ironwood game library is unavailable:', error);
-        return null;
-      });
-      if (storage) await storage.initializeGameStorage();
-      await import(localDevelopment ? `/fics/bridge.js?v=${Date.now()}` : '/fics/bridge.js');
-      await import(localDevelopment ? `/lichess/bridge.js?v=${Date.now()}` : '/lichess/bridge.js');
-      await import('/position-editor/editor.js');
-      await import('/scoresheet-import.js');
-      await import(localDevelopment ? `/tablebase.js?v=${Date.now()}` : '/tablebase.js');
-      await import(localDevelopment ? `/board-clipboard.js?v=${Date.now()}` : '/board-clipboard.js');
-      await import(localDevelopment ? `/background-image.js?v=${Date.now()}` : '/background-image.js');
-      const packageToken = localDevelopment ? Date.now() : null;
-      const packageUrl = packageToken ? `/pkg/battle_chess.js?v=${packageToken}` : '/pkg/battle_chess.js';
-      const { default: init, export_saved_game, validate_scoresheet_pgn, preview_scoresheet } = await import(packageUrl);
-      await (packageToken
-        ? init({ module_or_path: `/pkg/battle_chess_bg.wasm?v=${packageToken}` })
-        : init());
-      window.ironwoodExportSavedGame = export_saved_game;
-      window.ironwoodValidateScoresheet = validate_scoresheet_pgn;
-      window.ironwoodPreviewScoresheet = preview_scoresheet;
-      loading?.remove();
-    } catch (error) {
-      console.error('Ironwood could not start:', error);
-      if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
+      try {
+        const bootstrapUrl = ['localhost', '127.0.0.1'].includes(location.hostname)
+          ? `/app-bootstrap.js?v=${Date.now()}` : '/app-bootstrap.js';
+        const { startChessApp } = await import(bootstrapUrl);
+        await startChessApp();
+      } catch (error) {
+        console.error('Ironwood could not start:', error);
+        document.getElementById('loading').textContent = 'Ironwood could not start. Please reload the page.';
+      }
     }
-    }
-  </script>
-  <script type="module">
-    import { isMobileDevice } from '/device-support.js';
-    const pwaUrl = ['localhost', '127.0.0.1'].includes(location.hostname)
-      ? `/pwa.js?v=${Date.now()}`
-      : '/pwa.js';
-    if (!isMobileDevice()) import(pwaUrl);
   </script>
 </body>
 </html>
