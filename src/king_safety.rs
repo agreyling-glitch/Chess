@@ -1,3 +1,4 @@
+use crate::opening_explorer::sunken_section;
 use crate::{mobility, rules::Board};
 use chess::{Color, Piece, Square};
 use egui::{Color32, RichText, Sense, Vec2};
@@ -249,6 +250,8 @@ fn content(
     let mut side = ui
         .data_mut(|data| data.get_persisted::<usize>(side_id).unwrap_or(0))
         .min(1);
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("KING SHELTER & PRESSURE").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
     ui.horizontal(|ui| {
         ui.selectable_value(&mut side, 0, "White king");
         ui.selectable_value(&mut side, 1, "Black king");
@@ -265,9 +268,10 @@ fn content(
     );
     let width = ui.available_width();
     let gap = 18.0;
-    let board_width = (width * 0.42).min(280.0);
-    let details_width = (width - board_width - gap).max(100.0);
-    ui.horizontal_top(|ui| {
+    let wide = width >= 480.0;
+    let board_width = if wide { (width * 0.42).min(280.0) } else { width.min(280.0) };
+    let details_width = if wide { (width - board_width - gap).max(100.0) } else { width };
+    ui.with_layout(if wide { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) }, |ui| {
         ui.spacing_mut().item_spacing.x = gap;
         ui.allocate_ui_with_layout(
             Vec2::new(board_width, 0.0),
@@ -285,6 +289,7 @@ fn content(
                 for (name, value) in ["White", "Black"].iter().zip(values.iter()) {
                     egui::Frame::new()
                         .fill(Color32::from_rgb(25, 30, 36))
+                        .stroke(egui::Stroke::new(1.0, Color32::from_white_alpha(25)))
                         .corner_radius(6.0)
                         .inner_margin(8.0)
                         .show(ui, |ui| {
@@ -309,8 +314,11 @@ fn content(
     });
     ui.label(RichText::new("Gold: king · Green: shield pawns · Red: attacked squares · Amber: nearby pawn-open files").size(13.0).color(Color32::LIGHT_GRAY));
     ui.label(RichText::new("Pressure includes pinned attackers. Open files may still be blocked by other pieces; the assessment does not establish a forced attack.").size(13.0).color(Color32::LIGHT_GRAY));
-    ui.separator();
-    ui.label(RichText::new("Safety evolution").size(18.0).strong());
+    });
+    ui.add_space(10.0);
+    let mut jump = None;
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("SAFETY EVOLUTION").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
     ui.label("Click a row to inspect a change in either king’s shelter or pressure.");
     let width = (ui.available_width() - ui.spacing().scroll.allocated_width()).max(160.0);
     let (header, _) = ui.allocate_exact_size(Vec2::new(width, 30.0), Sense::hover());
@@ -325,7 +333,6 @@ fn content(
             Color32::WHITE,
         );
     }
-    let mut jump = None;
     egui::ScrollArea::vertical()
         .id_salt("king_safety_timeline")
         .max_height(300.0)
@@ -385,6 +392,7 @@ fn content(
                 row += 1;
             }
         });
+    });
     jump
 }
 fn diagram(ui: &mut egui::Ui, board: &Board, value: &Safety) {

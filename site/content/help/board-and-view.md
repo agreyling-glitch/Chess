@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -60,3 +60,7 @@ Start typing during your turn to open the translucent move-entry overlay. Enter 
 ## Resize the analysis panel
 
 Drag the left edge of the right panel to widen it; the panel can use roughly three quarters of the window width on a large screen. Scroll down to inspect lower content. Under **Game Analysis**, use **Summary**, **Pawn Structure**, **Piece Mobility**, and **King Safety** to switch between review and positional insights. See [Positional insights](/help/positional-insights/) for details.
+
+## Window styling
+
+The main menu is a compact sunken strip that ends after Help. Its gold-accented buttons keep a stable size on hover. Background controls, Board Theme, and About use matching recessed sections and gold borders; Board Theme cards expose an **Adjust** button for appearance settings.

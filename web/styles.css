@@ -137,3 +137,57 @@ canvas { display:block; }
 .game-preview-controls button[aria-pressed="true"] { background:#d3ad62; color:#171a1e; }
 .game-preview-controls button:focus-visible { outline:2px solid #d3ad62; outline-offset:2px; }
 #game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 72px),calc(100dvh - 260px)); }
+
+/* Saved Games uses the same recessed trays as the analysis and training screens. */
+#game-library-dialog { --library-inset:inset 1px 1px 2px #000d,inset 2px 2px 3px #0007,inset -1px -1px 1px #ffffff45,inset -2px -2px 2px #ffffff12; }
+#game-library-dialog .game-library-controls,
+#game-library-dialog .game-library-list,
+#game-library-dialog .game-library-entry {
+  background:#0d1116; border:1px solid #ffffff19; border-radius:6px; box-shadow:var(--library-inset);
+}
+#game-library-dialog .game-library-controls { flex:none; padding:14px; margin:6px 0 14px; }
+#game-library-dialog .game-library-selection { margin-bottom:0; padding-top:10px; border-top:1px solid #ffffff16; }
+#game-library-dialog .game-library-list { padding:12px; gap:12px; }
+#game-library-dialog .game-library-entry { padding:14px; background:#14191f; }
+#game-library-dialog .game-library-entry.selected { border-color:#d3ad62; background:#23231f; }
+#game-library-dialog .game-library-entry:hover { border-color:#887344; }
+#game-library-dialog .game-library-main strong { color:#f1ce83; }
+#game-library-dialog .game-library-tabs button {
+  color:#f1ce83; font-weight:600; border-color:#816b42;
+  background:linear-gradient(#414950,#252c33 50%,#222930 51%,#292f35);
+  box-shadow:0 2px 4px #d3ad6230,inset 0 1px #ffffff30;
+}
+#game-library-dialog .game-library-tabs button.selected {
+  border-color:#e4bd75; background:linear-gradient(#574a32,#393326); box-shadow:0 2px 6px #d3ad6245,inset 0 1px #f1ce8350;
+}
+#game-library-dialog :is(.game-library-tabs,.game-library-actions,.game-library-selection,.game-library-pager) button:hover:not(:disabled) { border-color:#d3ad62; filter:brightness(1.15); }
+#game-library-dialog button:focus-visible { outline:2px solid #d3ad62; outline-offset:2px; }
+#game-library-dialog .game-library-filters :is(select,input[type="search"]) { background:#080b0f; box-shadow:inset 1px 2px 3px #0008; }
+#game-library-dialog .game-library-pager { padding-top:14px; }
+@media (max-width:500px) {
+  #game-library-dialog .game-library-controls { padding:10px; }
+  #game-library-dialog .game-library-list { padding:8px; }
+  #game-library-dialog .game-library-entry { padding:10px; }
+}
+
+/* Enlarged game player: recessed information, board and playback trays. */
+#game-preview-dialog { --preview-inset:inset 1px 1px 2px #000d,inset 2px 2px 3px #0007,inset -1px -1px 1px #ffffff45,inset -2px -2px 2px #ffffff12; }
+#game-preview-dialog :is(.game-preview-info,.game-preview-board-tray,.game-preview-controls) {
+  box-sizing:border-box; padding:14px; border:1px solid #ffffff19; border-radius:6px;
+  background:#0d1116; box-shadow:var(--preview-inset);
+}
+#game-preview-dialog .game-preview-info { margin-bottom:14px; }
+#game-preview-dialog .game-preview-info h2 { color:#f1ce83; }
+#game-preview-dialog .game-preview-info p { margin:8px 0 0; }
+#game-preview-dialog .game-preview-board-tray { width:fit-content; margin:0 auto; }
+#game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 104px),calc(100dvh - 330px)); border-color:#ffffff28; }
+#game-preview-dialog .game-preview-controls { margin:14px 0 0; gap:10px; }
+#game-preview-dialog .game-preview-controls button {
+  min-width:76px; color:#f1ce83; border-color:#816b42; font-weight:600;
+  background:linear-gradient(#414950,#252c33 50%,#222930 51%,#292f35);
+  box-shadow:0 2px 4px #d3ad6230,inset 0 1px #ffffff30;
+}
+#game-preview-dialog .game-preview-controls button[aria-pressed] { min-width:104px; }
+#game-preview-dialog .game-preview-controls button:hover:not(:disabled) { border-color:#e4bd75; box-shadow:0 2px 6px #d3ad6250,inset 0 1px #ffffff40; }
+#game-preview-dialog .game-preview-controls button[aria-pressed="true"] { background:linear-gradient(#f1ce83,#b99652); color:#181b1f; }
+#game-preview-dialog .game-preview-controls button:disabled { box-shadow:none; }

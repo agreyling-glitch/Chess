@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-09T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Playing online"
 description: "Connect through FICS-Online to find an opponent, observe games, and use game controls."
 category: "using-ironwood"
@@ -19,3 +19,7 @@ Use a unique password for a FICS account. Guest play does not require you to cre
 ## FICS account statistics
 
 Beside **FICS · Connected**, Ironwood shows your handle and Lightning, Blitz, and Standard ratings. Hover over the summary to see each category’s wins, draws, losses, rated-game total, rating deviation (RD), and best rating when available. A dash means no rating is available. These records come from your own FICS `finger` rating table and refresh when you sign in and after your game finishes. Guest accounts show a **Guest** label because they have no permanent ratings or records. Disconnecting clears the displayed statistics.
+
+## Keep a Lichess account session
+
+You can sign in through **Lichess-Online** without disconnecting FICS or replacing its board. This supplies Opening Explorer access for later study. Tablebases work without a Lichess login. Only one game can control the board, and analysis tools remain unavailable during live play. See [Lichess account access alongside FICS](/help/play-on-lichess/#lichess-account-access-alongside-fics).

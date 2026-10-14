@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-10T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Taking notes and adding annotations"
 description: "Add Starting notes, record thoughts on individual moves, and use annotation symbols to review and share your games."
 category: "using-ironwood"
@@ -14,14 +14,14 @@ Notes help you remember what you were thinking, explain a plan, and record lesso
 Double-click a move in **Game Moves** to open its note editor directly, whether or not it already has a note. To use the floating Notes window instead:
 
 1. Select the move in **Game Moves** to display its position on the board.
-2. Click the **Notes icon** to the left of the Tactical Map bullseye above the board, select the **Note** tab, then double-click **No note for this position.** in the floating **Notes** window. You can also right-click the move and choose **Add note…**.
+2. Click the **Notes icon** to the left of the Tactical Map bullseye above the board, select the **Position note** tab, then choose **Add note** or double-click **No note for this position.** in the floating **Notes** window. You can also right-click the move and choose **Add note…**.
 3. Write your thoughts, then choose **Save note**.
 
 For example, a note after `Nf3` could say: “Develop the knight before moving the queen. Next, prepare castling.” The note belongs to that displayed position, so include the move or plan you mean when describing an earlier decision.
 
-The translucent Notes window follows the board as you step through the game. Drag it to reposition it, resize it, or close it with its close button or the Notes icon. Long notes scroll within the panel. Moves with notes have a small gold note marker; drawings have a separate blue drawing icon, and moves with both show both indicators; selecting the move displays its note. Double-click the note text to edit it. Hover **Note** for “Position Note” or **Start** for “Starting Note.”
+The Notes window follows the board as you step through the game. Drag it to reposition it, resize it, or close it with its close button or the Notes icon. Long notes scroll within the panel. Moves with notes have a small gold note marker; drawings have a separate blue drawing icon, and moves with both show both indicators; selecting the move displays its note. Double-click the note text to edit it. Use **Add note** or **Edit note** below the text; double-clicking the text still works.
 
-The title identifies the note’s position with the move and a plain-language description, for example **Notes: Nxb5 (Knight to B5)**. The note editor uses the same title style. The starting note is titled **Notes: Starting position**.
+The Notes window shows the move and a plain-language description below its draggable title. The editor is titled **Add note** or **Edit note**, with the position underneath. Both use gold borders and sunken content sections.
 
 ## Browse all notes
 
@@ -31,15 +31,15 @@ Clicking the **Starting note** entry selects the Start tab without moving the bo
 
 ## Add a Starting note
 
-Open the **Notes** window and select the **Start** tab. Double-click the note text, or **No note for this position.** if it is empty, write the introduction, and choose **Save note**. The board stays on the selected move. You can also right-click a move and choose **Starting position note…**.
+Open the **Notes** window and select the **Starting note** tab. Double-click the note text, or **No note for this position.** if it is empty, write the introduction, and choose **Save note**. The board stays on the selected move. You can also right-click a move and choose **Starting position note…**.
 
 A Starting note is useful for an opening plan, a puzzle's instructions, or context about a custom starting board. It describes the game's initial position, which may be a position imported from FEN rather than the usual chess setup.
 
-Use the first-position navigation button to return to that board and read the full note in **Notes**. The **Start** tab lets you read the starting note while the board stays on a later move.
+Use the first-position navigation button to return to that board and read the full note in **Notes**. The **Starting note** tab lets you read the starting note while the board stays on a later move.
 
 ## Edit or remove a note
 
-Select the **Note** or **Start** tab and double-click the note text. Choose **Save note** to keep your changes or **Delete note** to remove the note. Closing the editor without saving leaves the saved note unchanged.
+Select the **Position note** or **Starting note** tab and double-click the note text. Choose **Save note** to keep your changes or **Delete note** to remove the note. Closing the editor without saving leaves the saved note unchanged.
 
 Notes stay separate from engine analysis. Running or rerunning Stockfish does not replace your writing. If you use **Play from this position**, notes and annotations on the retained part of the game remain; those on discarded later moves are removed.
 
@@ -81,7 +81,7 @@ The text forms above keep the symbols readable with Ironwood's fonts. Annotated 
 
 ## Draw arrows and highlight squares
 
-Click the **pencil icon** to the left of Notes above the board to open the separate translucent **Draw on board** window. Choose colored square outlines, circles, filled squares, crosses, ghost pieces, or arrows to illustrate the displayed position. Keyboard users can also use Alt-click or Alt-drag. Tactical Map’s Attack vs Defense bubbles are automatic, temporary counts rather than personal drawings. Drawings stay attached to their positions and are preserved in saved games, annotated PGN, and Analysis JSON.
+Click the **pencil icon** to the left of Notes above the board to open the separate **Draw on board** window. Choose colored square outlines, circles, filled squares, crosses, ghost pieces, or arrows to illustrate the displayed position. Keyboard users can also use Alt-click or Alt-drag. Tactical Map’s Attack vs Defense bubbles are automatic, temporary counts rather than personal drawings. Drawings stay attached to their positions and are preserved in saved games, annotated PGN, and Analysis JSON.
 
 See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for shape and arrow styles, right-click switching while dragging, editing individual drawings, undo, and shortcuts.
 

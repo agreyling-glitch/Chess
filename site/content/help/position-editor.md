@@ -4,6 +4,7 @@ description: "Set up a board, import a screenshot, check position details, and s
 category: "using-ironwood"
 keywords: [Position Editor, screenshot, image, FEN, custom position, set up board, crop]
 weight: 90
+lastmod: 2026-10-14T00:00:00-05:00
 ---
 
 Use the Position Editor to build a puzzle or a custom starting position without typing a [FEN](/help/fen/) yourself.
@@ -29,3 +30,7 @@ An image cannot reveal game history. After importing, set **Side to move**, **Ca
 ## Use the position
 
 Click **Use in Ironwood** to send the FEN back to the game. For a new game, check that the New Game dialog says **Valid position**, then start it. **Copy FEN** copies the position text to share or save. **Load FEN** accepts an existing complete six-field FEN and fills the editor from it.
+
+## Editor layout
+
+Sunken sections separate **Arrange position**, **Piece palette**, **Import screenshot**, **Position details**, and the FEN controls. The gold **Use in Ironwood** button applies the position. The trash button aligns with the piece selectors; smaller screens wrap the palette and stack the sections. The editor scrolls when its contents exceed the window height.

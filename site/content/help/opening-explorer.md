@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-09T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Opening Explorer"
 description: "Explore common opening moves and game results without changing your game."
 category: "using-ironwood"
@@ -28,3 +28,7 @@ No matches may mean a rare position or restrictive filters. Connection errors of
 **My games** and **Player** show the selected player’s wins, draws, and losses at the displayed position, along with the existing White/draw/Black result bars for each continuation. Lichess indexes player games on demand; statistics update while indexing runs and may initially be incomplete. While waiting, Ironwood shows the indexing queue position when supplied and does not treat an empty initial response as a final zero result. Results are cached for the current sign-in session; **Refresh player statistics** fetches updated results once the current indexing request finishes.
 
 Up to eight matching recent games appear below the moves. Choose **Import for analysis…** to fetch a completed game into Ironwood’s existing Import window. Review and import it there, then use local Stockfish analysis and notes as usual. Duplicate checking and the restriction against importing unfinished games still apply. Your current board stays intact until you choose to import the game.
+
+## Layout and FICS connection
+
+Sunken **Database & filters** and **Moves & results** sections separate source selection from continuations. Signing in to your Lichess account does not disconnect FICS or replace its board. The account session supplies Opening Explorer access independently of online game ownership. Explorer remains unavailable during live online play and training; review afterward. Only one online game can control the board at a time.

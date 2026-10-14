@@ -2,7 +2,7 @@
 title: "Training vs AI"
 description: "Build a training profile, play both colors, and follow your progress against Stockfish."
 category: "using-ironwood"
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
@@ -54,3 +54,7 @@ When **Your next practice focus** recommends a phase, choose **Puzzle difficulty
 Profiles and their completed-result histories are included in **Storage → Backup all data**. Restoring a backup merges profile results by their unique game IDs to avoid counting a result twice. Deleting a game from Saved Games removes its replay record; its completed rating result and aggregate analysis remain in the profile history. **Reset all local data** removes profiles too.
 
 Profiles are stored in this browser on this device. Make a backup before clearing browser data or moving devices. Native development previews keep profiles in memory for the current session.
+
+## Training window layout
+
+Training profiles now groups profile management, ratings, progress, and practice recommendations into sunken sections. The rating graph has a gold paper surface, and the training result card uses the same recessed treatment. Primary actions such as **Next training game** use raised gold buttons.

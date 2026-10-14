@@ -17,7 +17,7 @@ impl ChessApp {
     fn sync_theme_adjustments(&mut self) {
         let key = theme_adjustment_key(self.board_3d_active,self.piece_set,self.board_3d_theme);
         if key == self.adjustment_theme_key { return; }
-        self.theme_adjustments.insert(self.adjustment_theme_key.clone(),self.render_piece_appearance());
+        self.theme_adjustments.insert(self.adjustment_theme_key.clone(),self.stored_piece_appearance());
         let settings = self.theme_adjustments.get(&key).copied().unwrap_or_default().normalized();
         self.piece_appearance=settings;
         self.piece_shadows=settings.shadows;
@@ -31,14 +31,21 @@ impl ChessApp {
         self.save_preferences();
     }
 
+    fn stored_piece_appearance(&self) -> crate::board3d::PieceAppearance {
+        crate::board3d::PieceAppearance { highlight_check: self.highlight_checked_king, shadows: self.piece_shadows, board_appearance:Some(self.board_3d_appearance), radial_light:Some(self.show_radial_light), ..self.piece_appearance.normalized() }
+    }
+
     fn render_piece_appearance(&self) -> crate::board3d::PieceAppearance {
-        crate::board3d::PieceAppearance { highlight_check: self.highlight_checked_king, outline: !self.board_3d_active && self.piece_appearance.outline, shadows: self.piece_shadows, board_appearance:Some(self.board_3d_appearance), radial_light:Some(self.show_radial_light), ..self.piece_appearance.normalized() }
+        let mut appearance = self.stored_piece_appearance();
+        // Suppress outlines only for this render, never in persisted theme settings.
+        appearance.outline &= !self.board_3d_active;
+        appearance
     }
 
     fn theme_adjustments_dialog(&mut self, ctx: &egui::Context) {
         if !self.theme_adjustments_open { return; }
         self.sync_theme_adjustments();
-        let before = self.render_piece_appearance();
+        let before = self.stored_piece_appearance();
         let mut open = true;
         let label = if self.board_3d_active { crate::board3d::Theme::ALL.iter().find(|(theme,_)| *theme == self.board_3d_theme).map_or("3D",|(_,label)| *label) } else { self.piece_set.label() };
         egui::Window::new(format!("Theme adjustments - {label}"))
@@ -47,7 +54,7 @@ impl ChessApp {
             .frame(Self::dialog_frame()).show(ctx, |ui| {
                 ui.label(RichText::new("Changes appear on the board immediately.").small().weak());
                 ui.add_space(10.0);
-                egui::ScrollArea::vertical().max_height((ctx.screen_rect().height()-160.0).max(200.0)).show(ui, |ui| {
+                egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-160.0).max(200.0)).show(ui, |ui| {
                     if self.board_3d_active { self.theme_adjustments_3d_ui(ui); } else { self.theme_adjustments_2d_ui(ui); }
                     ui.add_space(12.0);
                     ui.separator();
@@ -56,9 +63,9 @@ impl ChessApp {
                 });
             });
         self.theme_adjustments_open = open;
-        if before != self.render_piece_appearance() {
+        if before != self.stored_piece_appearance() {
             self.board_3d_gpu_key.clear(); self.board_3d_render_key.clear();
-            self.theme_adjustments.insert(self.adjustment_theme_key.clone(),self.render_piece_appearance());
+            self.theme_adjustments.insert(self.adjustment_theme_key.clone(),self.stored_piece_appearance());
             self.save_preferences(); ctx.request_repaint();
         }
     }

@@ -1,3 +1,4 @@
+use crate::opening_explorer::sunken_section;
 use crate::rules::Board;
 use chess::{Color, Piece, Square};
 use egui::{Color32, RichText, Sense, Vec2};
@@ -110,6 +111,9 @@ fn panel_content(
     let Some(board) = positions.get(current) else {
         return None;
     };
+    ui.label(RichText::new("Pawn Structure").size(22.0).strong());
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("PAWN FEATURES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
     ui.label(
         RichText::new(
             labels
@@ -145,9 +149,10 @@ fn panel_content(
     ui.add_space(6.0);
     let width = ui.available_width();
     let gap = 18.0;
-    let board_width = (width * 0.42).min(280.0);
-    let detail_width = (width - board_width - gap).max(100.0);
-    ui.horizontal_top(|ui| {
+    let wide = width >= 480.0;
+    let board_width = if wide { (width * 0.42).min(280.0) } else { width.min(280.0) };
+    let detail_width = if wide { (width - board_width - gap).max(100.0) } else { width };
+    ui.allocate_ui_with_layout(Vec2::new(width,0.0), if wide { egui::Layout::left_to_right(egui::Align::Min) } else { egui::Layout::top_down(egui::Align::Min) }, |ui| {
         ui.spacing_mut().item_spacing.x = gap;
         ui.allocate_ui_with_layout(
             Vec2::new(board_width, 0.0),
@@ -178,11 +183,12 @@ fn panel_content(
                 .size(14.0)
                 .color(Color32::from_rgb(185, 193, 201)),
         )
-        .extend(),
+        .wrap(),
     );
-    ui.add_space(8.0);
-    ui.separator();
-    ui.label(RichText::new("Structure evolution").size(18.0).strong());
+    });
+    ui.add_space(10.0);
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("STRUCTURE EVOLUTION").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
     ui.label(
         RichText::new("Select a row to inspect the position. Only pawn changes appear.")
             .size(14.0)
@@ -319,6 +325,7 @@ fn panel_content(
                 previous = Some(values);
             }
         });
+    });
     jump
 }
 

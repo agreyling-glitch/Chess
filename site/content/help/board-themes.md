@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Board themes and appearance"
 description: "Choose and customize 2D or 3D themes, with guidance on artwork downloads, Retry, and offline use."
 category: "using-ironwood"
@@ -9,7 +9,7 @@ weight: 13
 
 ## Choose a theme
 
-Open **View → Board → Theme…** to browse the **2D** and **3D** tabs. The chooser always opens on **2D**, so browsing flat-board themes does not load 3D previews. Select **3D** to load those previews. Switching tabs leaves your current board unchanged. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
+Open **View → Board → Theme…** to browse the **2D Pieces** and **3D Boards** tabs. The chooser always opens on **2D Pieces**, so browsing flat-board themes does not load 3D previews. Select **3D Boards** to load those previews. Switching tabs leaves your current board unchanged. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
 
 The flat-board themes are System (Unicode), Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. Several themes include coordinated square, frame, and coordinate colors:
 
@@ -86,3 +86,7 @@ Gradient colors and inner shading are available for illustrated piece sets; Syst
 - **Board lighting:** use **3D appearance** to adjust gloss, brightness, and contrast together. Enable or disable the radial light below the board here.
 
 Contrasting outlines are available only in 2D. The 3D appearance and radial-light controls are in the adjustments dialog rather than the Board menu.
+
+## Preview cards
+
+The chooser groups its tabs and theme previews in sunken sections. The active theme has a gold outline and **Selected** label. Choose **Adjust** on a card to apply that theme and open its appearance controls. Hybrid pieces render in front of the board rim, including pieces extending above the back rank.

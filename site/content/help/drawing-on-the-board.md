@@ -2,7 +2,7 @@
 title: "Drawing arrows and highlighting squares"
 description: "Draw arrows, square highlights, crosses, and ghost pieces; edit drawings, switch styles, and undo changes."
 category: "using-ironwood"
-lastmod: 2026-10-10T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 keywords: [ghost pieces, knight arrows, filled square, cross, black, white, arrows, highlights, squares, circles, drawing, draw on board, colors, dashed, dotted, curved, undo, Ctrl+Z, Alt, cal, csl, board annotations]
 weight: 17
 ---
@@ -11,11 +11,11 @@ Use board drawings to show plans, threats, routes, and important squares without
 
 ## Open the drawing window
 
-Click the **pencil icon** above the board, immediately to the left of the Notes icon, to open the translucent **Draw on board** window. Click it again, or the window’s close button, to close it. Drawing tools live in this window rather than in Game Moves or Notes.
+Click the **pencil icon** above the board, immediately to the left of the Notes icon, to open the **Draw on board** window. Click it again, or the window’s close button, to close it. Drawing tools live in this window rather than in Game Moves or Notes.
 
-Opening the window enables drawing. The slide control beside its title turns drawing on or off; hover it to see **Drawing Enabled** or **Drawing disabled**. Turn it off to play moves while keeping the tools visible. Closing the window also disables drawing and cancels an unfinished drag.
+Opening the window enables drawing. The slide control below its title turns drawing on or off; hover it to see **Drawing Enabled** or **Drawing disabled**. Turn it off to play moves while keeping the tools visible. Closing the window also disables drawing and cancels an unfinished drag.
 
-Drag the window to reposition it. Its width is fixed to fit the controls; resize it vertically to give the drawing list more room. The window opens tall enough to show the drawing controls on a typical desktop display. Colors, shapes, arrows, and ghost-piece buttons use matching sizes and aligned columns. Smaller windows and long drawing lists may still scroll. Hover a choice to see its name.
+Drag the **Draw on board** title to reposition the whole window. Its width is fixed to fit the controls; resize it vertically to give the drawing list more room. The window opens tall enough to show the drawing controls on a typical desktop display. Sunken sections group colors and shapes, ghost pieces, and saved drawings. The gold-bordered close button matches the other tool windows. Colors, shapes, arrows, and ghost-piece buttons use matching sizes and aligned columns. Smaller windows and long drawing lists may still scroll. Hover a choice to see its name.
 
 ## Choose a color and shape
 

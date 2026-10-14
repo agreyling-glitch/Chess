@@ -4,6 +4,7 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
+lastmod: 2026-10-14T00:00:00-05:00
 ---
 
 Use **Game → Save current game** to keep the current game, and **Game → Load saved game** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
@@ -31,3 +32,7 @@ After confirming a deletion, you return to Saved Games. Deleting the currently l
 ## Training profiles in backups
 
 **Backup all data** includes [training profiles](/help/training-vs-ai/), their completed results, per-color rating history, and progress statistics. Merge restores combine results by unique game ID so a repeated backup does not count the same result twice. Keep backups before clearing browser data or switching devices.
+
+## Saved-game windows
+
+The saved-game library uses recessed control and game-list sections. Enlarged playback uses matching inset areas for its heading, board, and navigation buttons. These visual changes keep the existing selection, backup, import, and playback behavior.

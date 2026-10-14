@@ -1,0 +1,6 @@
+Official egui logo, unmodified SVG
+Source: https://github.com/emilk/egui/blob/49fad9a7b2b8f99f0081b105e7fd4f5851238ac5/crates/egui_demo_lib/data/egui-logo.svg
+Designer: Studio Gruhl; commissioned by Rerun.io (upstream PR #7995).
+The egui_demo_lib package explicitly includes data/* and declares the workspace MIT OR Apache-2.0 license.
+Package declaration: https://github.com/emilk/egui/blob/49fad9a7b2b8f99f0081b105e7fd4f5851238ac5/crates/egui_demo_lib/Cargo.toml
+License selected for Ironwood: MIT. See egui-mit.txt for the retained notice.

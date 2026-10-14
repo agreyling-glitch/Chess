@@ -239,7 +239,7 @@ impl ChessApp {
     pub(super) fn draw_toggle_ui(&mut self, ui: &mut egui::Ui) {
         let id = egui::Id::new("draw_window_open");
         let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let response = ui.add(egui::Button::new("").selected(open).min_size(Vec2::new(29.0, 22.0)))
+        let response = Self::glossy_board_button(ui, "", open, true)
             .on_hover_text(if open { "Close drawing tools" } else { "Draw on board" });
         let center = response.rect.center();
         let stroke = ui.style().interact(&response).fg_stroke;
@@ -264,13 +264,13 @@ impl ChessApp {
         let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
         if !open { return; }
         let position = self.review_index.unwrap_or(self.review_moves.len());
-        if !ctx.wants_keyboard_input() && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
+        if !ctx.egui_wants_keyboard_input() && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
             self.undo_drawing(position);
         }
-        let frame = Frame::window(&ctx.style())
-            .fill(Color32::from_rgba_unmultiplied(17, 23, 33, 235))
+        let frame = Frame::window(&ctx.style_of(ctx.theme()))
+            .fill(Color32::from_rgb(23,28,33))
             .inner_margin(Margin::same(14)).corner_radius(CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(100, 195, 230, 100)));
+            .stroke(Stroke::new(1.0, Color32::from_rgb(211,173,98)));
         let mut close = false;
         egui::Window::new("Draw on board").id(egui::Id::new("draw_window_tall"))
             .open(&mut open).frame(frame).default_pos(egui::pos2(112.0, 220.0))
@@ -279,11 +279,8 @@ impl ChessApp {
             .vscroll(true).resizable([false, true]).collapsible(false).title_bar(false)
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
+                close = Self::dialog_header(ui, "Draw on board");
                 ui.horizontal(|ui| {
-                    // Leave pointer interaction to the floating window's move handler.
-                    ui.add(egui::Label::new(RichText::new("Draw on board").size(16.0).strong()
-                        .color(Color32::from_rgb(231, 221, 199))).selectable(false).sense(Sense::hover()))
-                        .on_hover_cursor(egui::CursorIcon::Grab);
                     let (switch_rect, switch) = ui.allocate_exact_size(Vec2::new(38.0, 22.0), Sense::click());
                     if switch.clicked() {
                         self.board_mark_mode = !self.board_mark_mode;
@@ -314,11 +311,19 @@ impl ChessApp {
                     ui.painter().line_segment([c + Vec2::new(-1.0, 0.0), c + Vec2::new(-5.0, -4.0)], stroke);
                     undo.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Undo drawing"));
                     if undo.clicked() { self.undo_drawing(index); }
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        close = ui.add(egui::Button::new(RichText::new("×").size(18.0)).frame(false)).on_hover_text("Close drawing tools").clicked();
-                    });
+
                 });
-                let control_size = Vec2::new((ui.available_width() - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
+                let ghost_id = egui::Id::new("draw_ghost_piece");
+                let mut ghost = ctx.data(|d| d.get_temp::<String>(ghost_id)).unwrap_or_default();
+                let tool_id = egui::Id::new("draw_tool_arrow");
+                let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
+                let mut shape_style = Self::drawing_shape_style(ctx);
+                let control_size = Vec2::new((ui.available_width() - 24.0 - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
+                let tools = Frame::new().fill(Color32::from_rgb(13,17,22))
+                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label(RichText::new("COLORS & SHAPES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.horizontal(|ui| {
                     for (color, name) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow"), ('B', "Blue"), ('K', "Black"), ('W', "White")] {
                         let response = ui.add_sized(control_size, egui::Button::new("").selected(self.board_mark_color == color))
@@ -330,11 +335,7 @@ impl ChessApp {
                         response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, self.board_mark_color == color, name));
                     }
                 });
-                let ghost_id = egui::Id::new("draw_ghost_piece");
-                let mut ghost = ctx.data(|d| d.get_temp::<String>(ghost_id)).unwrap_or_default();
-                let tool_id = egui::Id::new("draw_tool_arrow");
-                let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
-                let mut shape_style = Self::drawing_shape_style(ctx);
+
                 ui.horizontal(|ui| {
                     for (value, label) in [("", "Solid square"), ("dotted-square", "Dotted square"), ("circle", "Solid circle"), ("dotted-circle", "Dotted circle"), ("filled-square", "Filled square"), ("cross", "Cross")] {
                         let response = ui.add_sized(control_size, egui::Button::new("").selected(ghost.is_empty() && !arrow && shape_style == value)).on_hover_text(label);
@@ -357,8 +358,13 @@ impl ChessApp {
                 });
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("drawing_arrow_style"), style));
                 ctx.data_mut(|d| d.insert_temp(tool_id, arrow));
-                ui.separator();
-                ui.label(RichText::new("Ghost pieces").strong());
+                });
+                Self::paint_sunken_border(ui, tools.response.rect);
+                let ghosts = Frame::new().fill(Color32::from_rgb(13,17,22))
+                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.label(RichText::new("GHOST PIECES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.label(RichText::new("Choose a piece, then click a square. Click again to remove.").small().weak());
                 for (side, glyphs) in [("w", ['♙','♘','♗','♖','♕','♔']), ("b", ['♟','♞','♝','♜','♛','♚'])] {
                     ui.horizontal(|ui| {
@@ -372,7 +378,15 @@ impl ChessApp {
                     });
                 }
                 ctx.data_mut(|d| d.insert_temp(ghost_id, ghost));
-                self.drawn_shapes_list(ui);
+                });
+                Self::paint_sunken_border(ui, ghosts.response.rect);
+                let drawings = Frame::new().fill(Color32::from_rgb(13,17,22))
+                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    self.drawn_shapes_list(ui);
+                });
+                Self::paint_sunken_border(ui, drawings.response.rect);
             });
         if close { open = false; }
         if !open { self.board_mark_mode = false; self.board_mark_drag = None; }
@@ -477,7 +491,7 @@ mod tests {
             (end, egui::PointerButton::Primary, false)] {
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(500.0))),
                 events: vec![egui::Event::PointerMoved(pos), egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::default() }], ..Default::default() };
-            let _ = ctx.run(input, |ctx| {
+            let _ = crate::app::run_test_ui(&ctx, input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| app.board_mark_input(ui, rect));
             });
             if button == egui::PointerButton::Secondary {
@@ -512,7 +526,7 @@ mod tests {
             (end, egui::PointerButton::Primary, false)] {
             let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(500.0))),
                 events: vec![egui::Event::PointerMoved(pos), egui::Event::PointerButton { pos, button, pressed, modifiers: egui::Modifiers::default() }], ..Default::default() };
-            let _ = ctx.run(input, |ctx| {
+            let _ = crate::app::run_test_ui(&ctx, input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| app.board_mark_input(ui, rect));
             });
             if button == egui::PointerButton::Secondary {
@@ -613,7 +627,7 @@ mod tests {
                 let pos = rect.min + ChessApp::square_screen_offset(square, false, 50.0);
                 let input = egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::splat(500.0))),
                     events: vec![egui::Event::PointerMoved(pos), egui::Event::PointerButton {pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::default()}], ..Default::default() };
-                let _ = context.egui_ctx.run(input, |ctx| {
+                let _ = crate::app::run_test_ui(&context.egui_ctx, input, |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| app.board_mark_input(ui, rect));
                 });
             }

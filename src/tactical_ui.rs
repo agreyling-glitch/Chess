@@ -94,8 +94,7 @@ impl ChessApp {
     pub(super) fn tactical_toggle_ui(&self, ui: &mut egui::Ui) {
         let id = egui::Id::new("tactical_enabled");
         let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let response = ui.add_enabled(self.tactical_available(),
-            egui::Button::new("").selected(open).min_size(Vec2::new(29.0, 22.0)))
+        let response = Self::glossy_board_button(ui, "", open, self.tactical_available())
             .on_hover_text(if open { "Close Tactical Map" } else { "Open Tactical Map" })
             .on_disabled_hover_text("Tactical Map is available when reviewing or analyzing a position.");
         let center = response.rect.center();
@@ -115,48 +114,118 @@ impl ChessApp {
         let id = egui::Id::new("tactical_enabled");
         let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
         if !open { return; }
-        let width = (ctx.screen_rect().width() - 32.0).clamp(360.0, 420.0);
-        let frame = Frame::window(&ctx.style())
-            .fill(Color32::from_rgba_unmultiplied(17, 23, 33, 235))
+        let width = (ctx.content_rect().width() - 32.0).clamp(360.0, 420.0);
+        let frame = Frame::window(&ctx.style_of(ctx.theme()))
+            .fill(Color32::from_rgb(24, 28, 33))
             .inner_margin(Margin::same(14))
             .corner_radius(CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, Color32::from_rgba_unmultiplied(195, 155, 245, 100)));
-        egui::Window::new(RichText::new("Tactical Map").size(18.0).strong().color(Color32::from_rgb(231, 221, 199)))
+            .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)));
+        egui::Window::new(RichText::new("Tactical Map").size(18.0).strong().color(Color32::from_rgb(211, 173, 98)))
             .id(egui::Id::new("tactical_window"))
-            .open(&mut open)
             .frame(frame)
             .default_pos(egui::pos2(48.0, 100.0))
             .default_width(width)
+            .default_height(600.0)
             .min_width(360.0)
+            .min_height(240.0)
             .resizable(true)
-            .collapsible(true)
-            .title_bar(true)
-            .show(ctx, |ui| self.tactical_map_contents(ui));
+            .collapsible(false)
+            .title_bar(false)
+            .show(ctx, |ui| {
+                if Self::dialog_header(ui, "Tactical Map") { open = false; }
+                ui.add_space(6.0);
+                egui::ScrollArea::vertical().id_salt("tactical_window_content")
+                    .max_height(ui.available_height().max(0.0))
+                    .auto_shrink([false, false]).show_gold(ui, |ui| self.tactical_map_contents(ui));
+            });
         ctx.data_mut(|d| d.insert_temp(id, open));
+    }
+
+    fn tactical_legend_badge(ui: &mut egui::Ui, label: &str, color: Color32) {
+        Frame::new().fill(color.gamma_multiply(0.1)).stroke(Stroke::new(1.0, color.gamma_multiply(0.4)))
+            .corner_radius(4.0).inner_margin(Margin::symmetric(7, 4)).show(ui, |ui| {
+                ui.label(RichText::new(label).size(11.0).strong().color(color));
+            });
+    }
+
+    fn tactical_sunken_section<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> egui::InnerResponse<R> {
+        let section = Frame::new().fill(Color32::from_rgb(13, 17, 22))
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+            .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                contents(ui)
+            });
+        Self::paint_sunken_border(ui, section.response.rect);
+        section
     }
 
     fn tactical_map_contents(&self, ui: &mut egui::Ui) {
         let muted = Color32::from_rgb(160, 173, 190);
         ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
-        let findings = self.tactical_findings(ui.ctx());
+        let tab_id = egui::Id::new("tactical_map_tab");
+        let current_tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
+        let tab = Self::engine_settings_tabs(ui, &["Insights", "Activity", "Patterns"], current_tab);
+        ui.ctx().data_mut(|d| d.insert_temp(tab_id, tab));
+        ui.add_space(6.0);
         let mut filters = ui.ctx().data(|d| d.get_temp::<[bool; 3]>(egui::Id::new("tactical_filters"))).unwrap_or([true; 3]);
+        if tab == 0 {
+        let layout_id = egui::Id::new("tactical_insights_list_layout").with(ui.available_width().to_bits());
+        let (overhead, previous_demand) = ui.ctx().data(|d| d.get_temp::<(f32, [f32; 2])>(layout_id)).unwrap_or((260.0, [180.0; 2]));
+        let enabled = [
+            ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_show_opponent"))).unwrap_or(false),
+            ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_show_changes"))).unwrap_or(true),
+        ];
+        let start_y = ui.cursor().top();
+        let budget = (ui.clip_rect().bottom() - start_y - overhead - 4.0).max(0.0);
+        let mut list_limits = [0.0; 2];
+        match enabled {
+            [true, true] => {
+                let half = budget * 0.5;
+                list_limits = if previous_demand[0] < half {
+                    [previous_demand[0], budget - previous_demand[0]]
+                } else if previous_demand[1] < half {
+                    [budget - previous_demand[1], previous_demand[1]]
+                } else { [half, half] };
+            }
+            [true, false] => list_limits[0] = budget,
+            [false, true] => list_limits[1] = budget,
+            _ => {}
+        }
+        let mut list_heights = [0.0; 2];
+        let mut list_demand = previous_demand;
+        ui.label(RichText::new("POSITION INSIGHTS").strong().color(Color32::from_rgb(211, 173, 98)));
+        ui.add_space(3.0);
+        Self::tactical_sunken_section(ui, |ui| {
         let count_id = egui::Id::new("tactical_attack_defense");
         let mut show_counts = ui.ctx().data(|d| d.get_temp::<bool>(count_id)).unwrap_or(false);
-        if ui.checkbox(&mut show_counts, "Attack vs Defense").on_hover_text(
+        if ui.checkbox(&mut show_counts, RichText::new("Attack vs Defense").size(15.0).strong()).on_hover_text(
             "Red: geometric attackers. Green: geometric defenders/legal recapturers. Hover a piece for capture-specific legal recaptures. A dash means no legal capture to recapture."
         ).changed() { ui.ctx().request_repaint(); }
         ui.ctx().data_mut(|d| d.insert_temp(count_id, show_counts));
         if show_counts {
-                ui.label(RichText::new("Red: geometric attackers. Green: geometric defenders / legal recapturers.").size(12.0).color(muted));
-                ui.label(RichText::new("2/-: no legal enemy capture, so recaptures do not apply.\n2/0: no defender can legally recapture. 2/1: one can.\nHover a piece for capture-specific details.").size(11.0).color(muted));
+                ui.horizontal_wrapped(|ui| {
+                    Self::tactical_legend_badge(ui, "Attackers", Color32::from_rgb(240, 130, 105));
+                    Self::tactical_legend_badge(ui, "Defenders / recapturers", Color32::from_rgb(136, 194, 151));
+                });
+                ui.label(RichText::new("Hover a piece for capture-specific details.").size(12.0).color(muted));
+                ui.collapsing("How to read the counts", |ui| {
+                    ui.label("Counts show geometric control, including pinned pieces. Recapturers must be legal.");
+                    for (count, meaning) in [("2/-", "No legal enemy capture; recaptures do not apply."), ("2/0", "No defender can legally recapture."), ("2/1", "One defender can legally recapture.")] {
+                        ui.horizontal_wrapped(|ui| { ui.strong(count); ui.label(meaning); });
+                    }
+                });
         }
+        });
+        ui.add_space(6.0);
+        Self::tactical_sunken_section(ui, |ui| {
         let threats_id = egui::Id::new("tactical_show_opponent");
         let mut show_threats = ui.ctx().data(|d| d.get_temp::<bool>(threats_id)).unwrap_or(false);
-        ui.checkbox(&mut show_threats, "Opponent threats");
+        ui.checkbox(&mut show_threats, RichText::new("Opponent threats").size(15.0).strong());
         ui.ctx().data_mut(|d| d.insert_temp(threats_id, show_threats));
         if show_threats {
-            ui.label(RichText::new(format!("{} candidates if you leave the position unchanged. Click a row to trace its move and attacks; click again to clear. Captures and forks may be unsound.",
+            ui.label(RichText::new(format!("{} candidates · position unchanged",
                 if self.board.side_to_move() == Color::White { "Black" } else { "White" })).size(12.0).color(muted));
+            ui.label(RichText::new("Click to trace; click again to clear. Captures and forks may be unsound.").size(11.0).color(muted));
             let selection_id = egui::Id::new("tactical_opponent_selected");
             let mut selected = ui.ctx().data(|d| d.get_temp::<(Board, String)>(selection_id))
                 .filter(|(board, _)| *board == self.board).map(|(_, key)| key).unwrap_or_default();
@@ -164,56 +233,99 @@ impl ChessApp {
                 None => { ui.label("The side to move is in check. Resolve check before exploring a hypothetical opponent turn."); selected.clear(); }
                 Some(threats) => {
                     if !threats.iter().any(|t| t.key == selected) { selected.clear(); }
-                    egui::ScrollArea::vertical().id_salt("opponent_threats_list").max_height(180.0).show(ui, |ui| {
+                    let list_output = egui::ScrollArea::vertical().id_salt("opponent_threats_list")
+                        .max_height(list_limits[0].max(48.0)).min_scrolled_height(0.0).show_gold(ui, |ui| {
                         if threats.is_empty() { ui.label("No candidate checks, captures, or forks."); }
-                        for threat in threats {
-                            if ui.selectable_label(selected == threat.key, &threat.text).clicked() {
-                                selected = if selected == threat.key { String::new() } else { threat.key };
-                            }
+                        for (index, threat) in threats.into_iter().enumerate() {
+                            let active = selected == threat.key;
+                            let card = Frame::new().fill(if active { Color32::from_rgb(52, 44, 29) } else { Color32::from_rgb(25, 31, 38) })
+                                .stroke(Stroke::new(1.0, if active { Color32::from_rgb(211, 173, 98) } else { Color32::from_white_alpha(22) }))
+                                .corner_radius(5.0).inner_margin(9.0).show(ui, |ui| {
+                                    ui.set_min_width(ui.available_width());
+                                    let (mv, detail) = threat.text.split_once(": ").unwrap_or((&threat.text, ""));
+                                    ui.label(RichText::new(mv).strong().size(14.0).color(Color32::from_rgb(241, 206, 131)));
+                                    if !detail.is_empty() { ui.add(egui::Label::new(RichText::new(detail).size(12.0).color(Color32::from_rgb(218, 225, 235))).wrap()); }
+                                });
+                            let response = ui.interact(card.response.rect, ui.id().with(("opponent_threat_card", index)), Sense::click())
+                                .on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(&threat.text);
+                            if response.hovered() { ui.painter().rect_stroke(card.response.rect, 5, Stroke::new(1.0, Color32::from_rgb(211, 173, 98)), egui::StrokeKind::Inside); }
+                            if response.clicked() { selected = if active { String::new() } else { threat.key }; }
                         }
                     });
+                    list_heights[0] = list_output.inner_rect.height();
+                    list_demand[0] = list_output.content_size.y;
                 }
             }
             ui.ctx().data_mut(|d| d.insert_temp(selection_id, (self.board, selected)));
         }
+        });
+        ui.add_space(6.0);
+        Self::tactical_sunken_section(ui, |ui| {
         let changes_id = egui::Id::new("tactical_show_changes");
         let mut show_changes = ui.ctx().data(|d| d.get_temp::<bool>(changes_id)).unwrap_or(true);
-        ui.checkbox(&mut show_changes, "What changed?");
+        ui.checkbox(&mut show_changes, RichText::new("What changed?").size(15.0).strong());
         ui.ctx().data_mut(|d| d.insert_temp(changes_id, show_changes));
         if show_changes {
             match self.tactical_changes(ui.ctx()) {
                 None => { ui.label(RichText::new("Step forward in a game to compare with the previous position.").size(12.0).color(muted)); }
                 Some(changes) => {
-                    ui.label(RichText::new("Blue: opened attacks. Gold: lost support. Red: new threats. Geometric control, including pinned pieces.").size(12.0).color(muted));
-                    egui::ScrollArea::vertical().id_salt("tactical_changes_list").max_height(180.0).show(ui, |ui| {
-                        if changes.is_empty() { ui.label("No opened attack lines, lost defenders, or new threats after this move."); }
-                        for change in changes {
-                            ui.label(RichText::new(change.text).size(12.0).color(Self::tactical_change_color(change.kind)));
+                    ui.horizontal_wrapped(|ui| {
+                        for (label, color) in [("Opened attacks", Color32::from_rgb(102, 162, 226)), ("Lost support", Color32::from_rgb(211, 173, 98)), ("New threats", Color32::from_rgb(240, 130, 105))] {
+                            Self::tactical_legend_badge(ui, label, color);
                         }
                     });
+                    ui.label(RichText::new("Geometric control includes pinned pieces.").size(11.0).color(muted));
+                    let list_output = egui::ScrollArea::vertical().id_salt("tactical_changes_list")
+                        .max_height(list_limits[1].max(48.0)).min_scrolled_height(0.0).show_gold(ui, |ui| {
+                        if changes.is_empty() { ui.label("No opened attack lines, lost defenders, or new threats after this move."); }
+                        for change in changes {
+                            let color = Self::tactical_change_color(change.kind);
+                            let row = Frame::new().fill(Color32::from_rgb(25, 31, 38)).corner_radius(5.0).inner_margin(9.0).show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.add(egui::Label::new(RichText::new(change.text).size(12.0).color(color)).wrap());
+                            });
+                            ui.painter().line_segment([row.response.rect.left_top() + Vec2::new(2.0, 5.0), row.response.rect.left_bottom() + Vec2::new(2.0, -5.0)], Stroke::new(2.0, color));
+                        }
+                    });
+                    list_heights[1] = list_output.inner_rect.height();
+                    list_demand[1] = list_output.content_size.y;
                 }
             }
         }
-        ui.add_space(6.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.label(RichText::new("Positional activity").size(14.0).strong().color(Color32::from_rgb(231, 221, 199)));
-        ui.label(RichText::new("Click any piece on the main board to inspect its activity rating.").size(12.0).color(muted));
+        });
+        let measured_overhead = (ui.cursor().top() - start_y - list_heights.iter().sum::<f32>()).max(0.0);
+        if (measured_overhead - overhead).abs() > 0.5 || list_demand.iter().zip(previous_demand).any(|(a, b)| (*a - b).abs() > 0.5) {
+            ui.ctx().data_mut(|d| d.insert_temp(layout_id, (measured_overhead, list_demand)));
+            ui.ctx().request_repaint();
+        }
+        }
+        if tab == 1 {
+        Self::tactical_sunken_section(ui, |ui| {
+        ui.label(RichText::new("PIECE ACTIVITY").strong().color(Color32::from_rgb(211, 173, 98)));
+        ui.label(RichText::new("Choose a piece on the board").size(17.0).strong());
+        ui.label(RichText::new("Inspect its reach, influence, and position.").size(12.0).color(muted));
         if let Some((board, square)) = ui.ctx().data(|d| d.get_temp::<(Board, Square)>(egui::Id::new("tactical_activity_piece")))
             && board == self.board && let Some(activity) = crate::tactical::positional_activity(&board, square) {
             Frame::new().fill(Color32::from_rgb(24, 31, 42))
                 .stroke(Stroke::new(1.0, Color32::from_white_alpha(30)))
                 .corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(10)).show(ui, |ui| {
-                    ui.label(RichText::new(format!("{}: {} · {}/100", activity.title, activity.rating, activity.score)).strong());
-                    for reason in activity.reasons { ui.label(format!("- {reason}")); }
-                    ui.label(RichText::new("Positional heuristic, not material value or tactical safety. Geometric control includes pinned pieces.").size(11.0).color(muted));
+                    ui.label(RichText::new(&activity.title).size(17.0).strong().color(Color32::from_rgb(241, 206, 131)));
+                    ui.label(RichText::new(activity.rating).size(14.0).color(Color32::from_rgb(226, 231, 235)));
+                    Self::full_analysis_progress(ui, activity.score as f32 / 100.0, &format!("{} / 100 activity", activity.score));
+                    ui.collapsing("Why this rating?", |ui| {
+                        for reason in activity.reasons { ui.label(format!("• {reason}")); }
+                    });
+                    ui.label(RichText::new("Positional heuristic · not material value or tactical safety.").size(11.0).color(muted))
+                        .on_hover_text("Geometric control includes pinned pieces.");
                 });
         }
-        ui.add_space(4.0);
-        ui.separator();
+        });
+        ui.add_space(6.0);
+        Self::tactical_sunken_section(ui, |ui| {
+        ui.label(RichText::new("KNIGHT EXPLORER").strong().color(Color32::from_rgb(211, 173, 98)));
         let reach_id = egui::Id::new("tactical_knight_reach");
         let mut reach = ui.ctx().data(|d| d.get_temp::<bool>(reach_id)).unwrap_or(false);
-        ui.checkbox(&mut reach, "Knight reach · two hops");
+        ui.checkbox(&mut reach, RichText::new("Explore two-hop routes").size(15.0).strong());
         ui.ctx().data_mut(|d| d.insert_temp(reach_id, reach));
         if reach {
             let knight_id = egui::Id::new("tactical_knight_source");
@@ -224,8 +336,13 @@ impl ChessApp {
                 source = self.selected.filter(|s| knights.contains(s)).or_else(|| knights.first().copied());
             }
             ui.horizontal_wrapped(|ui| {
-                ui.label("Knight:");
-                for square in &knights { ui.selectable_value(&mut source, Some(*square), square.to_string()); }
+                ui.label(RichText::new("Knight").small().color(muted));
+                for square in &knights {
+                    let active = source == Some(*square);
+                    if ui.add(egui::Button::new(RichText::new(square.to_string()).strong().color(Color32::from_rgb(241, 206, 131)))
+                        .selected(active).min_size(Vec2::new(44.0, 32.0)).corner_radius(5.0)
+                        .stroke(Stroke::new(1.0, if active { Color32::from_rgb(211, 173, 98) } else { Color32::from_white_alpha(35) }))).clicked() { source = Some(*square); }
+                }
             });
             ui.ctx().data_mut(|d| {
                 d.remove::<Square>(knight_id);
@@ -246,18 +363,36 @@ impl ChessApp {
             }
             let safety_id = egui::Id::new("tactical_destination_safety");
             let mut safety = ui.ctx().data(|d| d.get_temp::<bool>(safety_id)).unwrap_or(true);
-            ui.checkbox(&mut safety, "Destination safety");
+            ui.checkbox(&mut safety, RichText::new("Show destination safety").strong());
             ui.ctx().data_mut(|d| d.insert_temp(safety_id, safety));
             ui.label(RichText::new(if self.review_index.is_some() {
                 "Click a ghost to lock/unlock its route."
             } else { "Live game: board clicks select and move pieces. Hover ghosts to preview; route locking is available in review." }).size(12.0).color(muted));
-            ui.label(RichText::new("Safety: red attackers, green legal recapturers, amber unavailable defenders, gray geometric support. Hover for capture-specific recaptures.").size(12.0).color(muted));
-            ui.label(RichText::new(if knights.is_empty() { "No knights on the board." }
-            else { "Click any knight on the board or choose its square above. Ghosts: first hop; outlines: next hop. Hover a ghost to focus. Gold: potential major-piece fork. Off-turn knights show geometric reach, including pinned moves. Other pieces stay put; replies can change reach." }).size(12.0).color(muted));
+            if safety {
+                ui.horizontal_wrapped(|ui| {
+                    for (label, color) in [("Attackers", Color32::from_rgb(240, 130, 105)), ("Legal recapturers", Color32::from_rgb(136, 194, 151)), ("Unavailable", Color32::from_rgb(211, 173, 98)), ("Geometric support", muted)] {
+                        Self::tactical_legend_badge(ui, label, color);
+                    }
+                });
+            }
+            if knights.is_empty() { ui.label(RichText::new("No knights in this position.").color(muted)); }
+            else {
+                ui.horizontal_wrapped(|ui| {
+                    Self::tactical_legend_badge(ui, "Ghost · first hop", Color32::from_rgb(181, 195, 215));
+                    Self::tactical_legend_badge(ui, "Outline · second hop", muted);
+                    Self::tactical_legend_badge(ui, "Gold · possible fork", Color32::from_rgb(211, 173, 98));
+                });
+                ui.collapsing("How to explore routes", |ui| {
+                    ui.label("Click a knight or choose its square above. Hover a ghost to focus its route and inspect capture-specific recaptures.");
+                    ui.label("Off-turn knights show geometric reach, including pinned moves. Other pieces stay put; replies can change reach.");
+                });
+            }
         }
-        ui.add_space(4.0);
-        ui.separator();
-        ui.label(RichText::new("Patterns").size(14.0).strong().color(Color32::from_rgb(231, 221, 199)));
+        });
+        }
+        if tab == 2 {
+        let findings = self.tactical_findings(ui.ctx());
+        ui.label(RichText::new("Patterns").size(14.0).strong().color(Color32::from_rgb(211, 173, 98)));
         ui.horizontal_wrapped(|ui| {
             for (index, kind, label) in [
                 (0, crate::tactical::Kind::Danger, "Danger"),
@@ -293,7 +428,7 @@ impl ChessApp {
                 let description = f.text.split_once(": ").map_or(f.text.as_str(), |(_, body)| body)
                     .split(". ").next().unwrap_or(&f.text);
                 let card = Frame::new()
-                    .fill(if active { color.gamma_multiply(0.12) } else { Color32::from_rgba_unmultiplied(33, 42, 55, 210) })
+                    .fill(if active { color.gamma_multiply(0.12) } else { Color32::from_rgb(13, 17, 22) })
                     .stroke(Stroke::new(1.0, if active { color.gamma_multiply(0.75) } else { Color32::from_rgba_unmultiplied(100, 119, 143, 65) }))
                     .corner_radius(CornerRadius::same(9)).inner_margin(Margin::same(11))
                     .show(ui, |ui| {
@@ -313,6 +448,7 @@ impl ChessApp {
                             }
                         }
                     });
+                Self::paint_sunken_border(ui, card.response.rect);
                 let response = ui.interact(card.response.rect, ui.id().with(("tactical_card", index)), egui::Sense::click())
                     .on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text(&f.text);
                 if response.hovered() {
@@ -321,14 +457,14 @@ impl ChessApp {
                 if response.clicked() { selected = if active { String::new() } else { f.text.clone() }; }
             }
             if visible.is_empty() {
-                Frame::new().fill(Color32::from_rgba_unmultiplied(33, 42, 55, 170))
-                    .corner_radius(CornerRadius::same(9)).inner_margin(Margin::same(16)).show(ui, |ui| {
+                Self::tactical_sunken_section(ui, |ui| {
                         ui.label(RichText::new("No patterns to show").strong().color(Color32::from_rgb(218, 225, 235)));
                         ui.label(RichText::new("Try another position or enable more filters.").size(12.0).color(muted));
                     });
             }
         });
         ui.ctx().data_mut(|d| d.insert_temp(selection, selected));
+        }
     }
     fn tactical_filter(kind: crate::tactical::Kind) -> usize {
         match kind { crate::tactical::Kind::Danger => 0, crate::tactical::Kind::Pin => 1, crate::tactical::Kind::Fork => 2 }
@@ -658,7 +794,7 @@ mod tests {
             app.board_3d_yaw = yaw;
             app.board_3d_distance = distance;
             let mut bounds = None;
-            let output = ctx.run(egui::RawInput::default(), |ctx| {
+            let output = crate::app::run_test_ui(&ctx, egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     bounds = app.paint_surface_count(ui, rect, Square::E4, Vec2::new(0.28, 0.28), "2/-", Color32::GREEN);
                     app.paint_tactical_bubbles(ui, rect);
@@ -701,7 +837,7 @@ mod tests {
             previous_bounds = Some(bounds);
             assert!(app.tactical_knight_selection(&ctx, Square::F3));
             assert_eq!(app.board, original);
-            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let _ = crate::app::run_test_ui(&ctx, egui::RawInput::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| app.paint_tactical_map(ui, rect));
             });
         }

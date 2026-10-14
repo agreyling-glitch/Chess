@@ -4,7 +4,7 @@ description: "Explore the positional insight tabs, compare pieces, and follow ch
 category: "analysis"
 keywords: [pawn, structure, chains, isolated, passed, mobility, piece, compare, shift, king, safety, shelter, pressure, timeline]
 weight: 75
-lastmod: 2026-10-05T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 ---
 
 ## Open the positional insight tabs
@@ -62,3 +62,7 @@ King Safety is a structural guide, independent of Stockfish’s evaluation. Pres
 Above the evaluation graph, **Expand** opens the full-screen evaluation view. The positional insight tabs remain in the main analysis panel. The gold **Print analysis** button beside Expand opens the report prompt once at least one position has engine analysis; pause or stop a running analysis first. Choose **Save as PDF** in the browser’s Print dialog to save the report.
 
 See the [Analysis gallery](/gallery/#analysis) for screenshots of all three positional views.
+
+## Reading the analysis panels
+
+Pawn Structure, Piece Mobility, and King Safety use sunken sections with gold headings to separate controls, diagrams, and history. Pawn and king diagrams sit beside details in wide panes and stack above them in narrow panes. Piece Mobility stacks its piece selectors in narrow panes and keeps the wide selector row compact. Only the content below the Game Analysis tabs scrolls; the controls above remain in place.

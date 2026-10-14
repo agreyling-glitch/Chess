@@ -2,7 +2,7 @@
 title: "Tactical Map"
 description: "Explore patterns, opponent threats, move changes, positional activity, knight routes, and pin-aware safety."
 category: "analysis"
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 keywords: [attack vs defense, defenders, legal recaptures, pins, knight reach, destination safety, positional activity, opponent threats, what changed, tactical map]
 weight: 18
 ---
@@ -13,7 +13,7 @@ Tactical Map helps you inspect the displayed position without running engine ana
 
 Click the **bullseye icon** immediately to the left of **2D/3D** above the board. Notes and Draw on board have separate icons to its left. Drag or resize the floating window to arrange your workspace. Click the bullseye again or its close button to hide the map and overlays.
 
-Each tool has separate controls. **Positional activity** has its own heading. **Danger**, **Pins**, and **Forks** filters sit directly above the cards in **Patterns**.
+The map has three tabs: **Insights** for Attack vs Defense, Opponent threats, and What changed; **Activity** for positional activity and Knight reach; and **Patterns** for Danger, Pins, and Forks. Each group sits in a sunken section. Resize the window vertically to give the threat and change lists more room. The lists share available height; a shorter list leaves spare room for the longer one, and excess entries scroll.
 
 ## Attack vs Defense
 

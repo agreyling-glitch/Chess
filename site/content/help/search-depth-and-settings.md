@@ -4,6 +4,7 @@ description: "Set up Stockfish for play, realtime analysis, and full-game analys
 category: "terms"
 keywords: [engine settings, depth, nodes, nps, threads, hash, quality, quick, standard, deep, custom, performance, verification]
 weight: 60
+lastmod: 2026-10-14T00:00:00-05:00
 ---
 
 ## Open engine settings
@@ -99,3 +100,7 @@ Select a settings tab, click **Reset this context**, then **Apply**.
 - **Play** resets the opponent's settings.
 - **Realtime Analysis** resets realtime settings, including the threads and hash shared with full-game analysis.
 - **Full game Analysis** resets its quality to Standard and its custom budget to 1,000,000. It does **not** reset the shared thread or hash settings.
+
+## Full-game progress
+
+**Analyze full game** uses a raised gold button and a beveled progress bar. The balance bar holds its displayed value while full-game analysis runs and resumes realtime updates afterward. This reduces animation work; it does not change the engine’s analysis budget or establish a measured speed increase.

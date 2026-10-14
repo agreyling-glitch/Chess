@@ -2,6 +2,7 @@
 name = "battle-chess"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 [lib]
@@ -10,9 +11,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 chess = "3.2"
 shakmaty = "0.30.1"
-eframe = { version = "0.32", default-features = false, features = ["default_fonts", "wgpu"] }
-egui = "0.32"
-egui_extras = { version = "0.32", features = ["svg", "webp"] }
+eframe = { version = "=0.36.1", default-features = false, features = ["default_fonts", "wgpu", "links"] }
+egui = "=0.36.1"
+egui_extras = { version = "=0.36.1", features = ["svg", "webp"] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 log = "0.4"
 image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
@@ -27,10 +28,10 @@ web-sys = { version = "0.3", features = ["Blob", "BlobPropertyBag", "Document", 
 env_logger = "0.11"
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wgpu = { version = "25", default-features = false, features = ["webgpu"] }
+wgpu = { version = "30", default-features = false, features = ["webgpu"] }
 
 [dev-dependencies]
-naga = { version = "25", features = ["wgsl-in"] }
+naga = { version = "30", features = ["wgsl-in"] }
 
 [profile.release]
 lto = "thin"

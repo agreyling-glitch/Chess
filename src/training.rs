@@ -91,6 +91,13 @@ pub struct AnalysisStats {
 }
 
 impl AnalysisStats {
+    pub fn practice_focus(&self) -> Option<usize> {
+        self.phases.iter().enumerate()
+            .filter(|(_, phase)| phase.cp_moves >= 20 && phase.mistakes + phase.blunders > 0)
+            .max_by(|(_, a), (_, b)| a.mean_loss().total_cmp(&b.mean_loss()))
+            .map(|(index, _)| index)
+    }
+
     pub fn analyzed_moves(&self) -> usize {
         self.phases.iter().map(|p| p.moves).sum()
     }

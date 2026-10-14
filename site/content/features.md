@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -35,7 +35,7 @@ Hover a continuation to show its arrow on the live board; click to explore the r
 
 ## Understand pawn structure
 
-Open **Pawn Structure** below the Game Analysis graph to highlight chains, isolated pawns, and passed pawns. A pawn diagram sits beside compact White and Black panels with counts and square lists. Follow pawn changes in an aligned evolution table with ten visible rows and click a row to inspect its position. These insights work without waiting for engine analysis. [Using Pawn Structure](/help/positional-insights/#pawn-structure).
+Open **Pawn Structure** below the Game Analysis graph to highlight chains, isolated pawns, and passed pawns. A pawn diagram sits beside, or in narrow panes above, compact White and Black panels with counts and square lists. Follow pawn changes in an aligned evolution table with ten visible rows and click a row to inspect its position. These insights work without waiting for engine analysis. [Using Pawn Structure](/help/positional-insights/#pawn-structure).
 
 ## Compare piece mobility
 
@@ -203,3 +203,11 @@ Ironwood saves games, personal annotations, uploaded backgrounds, and display pr
 Phones and tablets can browse the website, but Ironwood blocks app startup, installation, and offline engine setup on mobile devices. Open the app on a desktop or laptop computer.
 
 Ironwood is currently designed for desktop and laptop screens. Use a current browser and graphics device with WebGPU support and hardware acceleration enabled. WebGPU availability and 3D performance vary by browser, operating system, and graphics hardware. The full Stockfish 19 engine is a separate 94.5 MiB download; allow space for it if you enable offline play. We have not established a reliable minimum CPU, RAM, or GPU model, so those are not listed as requirements.
+
+## A consistent study workspace
+
+Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
+
+Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. Game Analysis keeps its controls and tabs above the scrolling content.
+
+Lichess account sign-in can remain available alongside FICS without replacing the current board. Opening Explorer uses that account session; tablebases require no sign-in. One game controls the board at a time, and study tools remain unavailable during live online play and training.

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-09T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -13,7 +13,7 @@ Open **Lichess-Online → Lichess lobby and game controls…**, then choose **Si
 
 The lobby opens manually. Being connected does not make it reopen whenever you start a local game or load a saved game. Refreshing reconnects your account without automatically engaging an existing correspondence game. Open the lobby and select a game when you want to resume it.
 
-The status bar shows whether Lichess is connected. The account link opens Lichess in a new browser tab. Your authorization stays in this browser session and is excluded from saved games and backups.
+The lobby shows the Lichess account connection; the status bar follows the active online board. The account link opens Lichess in a new browser tab. Your authorization stays in this browser session and is excluded from saved games and backups.
 
 ## Quick pairing and creating a game
 
@@ -99,3 +99,9 @@ The [Lichess Board API documentation](https://lichess-org.github.io/api/#tag/Boa
 ## Profile statistics in the status bar
 
 After **Connected**, the bottom status bar shows your username, total games, overall wins/draws/losses, and Bullet, Blitz, Rapid, Classical, and Correspondence ratings. Hover over the summary for rated-game counts, puzzle statistics, and playing time. Ratings with `?` are provisional; `—` means no rating has been established in that category. Casual games count toward your overall record but do not establish a rated time-control rating. Statistics are fetched at sign-in or account reconnect and cleared when you disconnect.
+
+## Lichess account access alongside FICS
+
+Signing in to Lichess preserves an existing FICS connection and board. You can keep the Lichess account session for Opening Explorer while using FICS. Tablebases do not require a sign-in.
+
+Only one game controls the board. An active FICS game cannot be replaced by a background Lichess game event. Finish the current game before opening another service’s game. Opening a Lichess game switches board ownership and disconnects FICS; account sign-in alone does not. Analysis tools remain unavailable during live games.

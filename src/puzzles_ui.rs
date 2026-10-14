@@ -122,12 +122,11 @@ struct State {
     storage_error: String,
     linked: bool,
     synced_board: Option<Board>,
-    collapsed: bool,
 }
 impl Default for State {
     fn default() -> Self {
         let history = serde_json::from_str::<Vec<Record>>(&bridge("history", "")).unwrap_or_default();
-        Self { tab: 0, theme: 0, difficulty: 2, session: None, history, loading: false, error: String::new(), storage_error: String::new(), linked: false, synced_board: None, collapsed: false }
+        Self { tab: 0, theme: 0, difficulty: 2, session: None, history, loading: false, error: String::new(), storage_error: String::new(), linked: false, synced_board: None }
     }
 }
 impl State {
@@ -139,6 +138,17 @@ impl State {
         if self.history.len() > 500 { self.history.remove(0); }
         self.storage_error = bridge("save", &serde_json::to_string(&self.history).unwrap_or_default());
     }
+    fn theme_results(&self, theme: &str) -> (usize, usize) {
+        let mut solved = 0;
+        let mut review = 0;
+        for record in &self.history {
+            if theme == "mix" || record.data.puzzle.themes.iter().any(|tag| tag == theme) {
+                if record.solved { solved += 1; } else { review += 1; }
+            }
+        }
+        (solved, review)
+    }
+
     fn request(&mut self, daily: bool, theme: &str, difficulty: &str) {
         self.error.clear();
         self.loading = true;
@@ -164,7 +174,59 @@ const THEMES: &[(&str, &str)] = &[("Mixed", "mix"), ("Forks", "fork"), ("Pins", 
     ("Mate in two", "mateIn2"), ("Endgames", "endgame"), ("Opening", "opening"), ("Middlegame", "middlegame")];
 const DIFFICULTIES: &[(&str, &str)] = &[("Easiest", "easiest"), ("Easier", "easier"), ("Normal", "normal"), ("Harder", "harder"), ("Hardest", "hardest")];
 
+fn training_emphasis(stats: &crate::training::AnalysisStats, theme: &str) -> Option<&'static str> {
+    if stats.practice_focus().is_some_and(|i| ["opening", "middlegame", "endgame"][i] == theme) {
+        Some("Recommended phase")
+    } else if stats.missed_mates > 0 && matches!(theme, "mateIn1" | "mateIn2") {
+        Some("Mate practice")
+    } else { None }
+}
+
 impl ChessApp {
+    pub(super) fn puzzle_mode(&self) -> bool {
+        self.puzzle_context.data(|d| d.get_temp::<bool>(egui::Id::new("puzzles_open"))).unwrap_or(false)
+    }
+
+    pub(super) fn exit_puzzle_mode(&mut self) {
+        self.puzzle_context.data_mut(|data| {
+            data.insert_temp(egui::Id::new("puzzles_open"), false);
+            let id = egui::Id::new("puzzles_state");
+            if let Some(mut state) = data.get_temp::<State>(id) {
+                state.session = None;
+                state.loading = false;
+                state.linked = false;
+                state.synced_board = None;
+                state.error.clear();
+                data.insert_temp(id, state);
+            }
+        });
+    }
+
+    pub(super) fn puzzle_navigation_locked(&self) -> bool {
+        self.puzzle_mode() && self.puzzle_context.data(|d| {
+            d.get_temp::<State>(egui::Id::new("puzzles_state"))
+                .is_none_or(|state| state.loading || state.session.is_none_or(|session| !session.done))
+        })
+    }
+
+    pub(super) fn play_puzzle_move(&mut self, mv: ChessMove) {
+        let ctx = self.puzzle_context.clone();
+        let id = egui::Id::new("puzzles_state");
+        let mut state = ctx.data(|d| d.get_temp::<State>(id)).unwrap_or_default();
+        if !state.loading {
+            if let Some(session) = state.session.as_mut().filter(|session| !session.done) {
+                let result = session.submit(mv);
+                let _ = self.sync_puzzle_position(session);
+                state.synced_board = Some(session.board);
+                if let Some(solved) = result { state.record(solved); }
+            }
+        }
+        self.selected = None;
+        self.legal_targets.clear();
+        self.promotion = None;
+        ctx.data_mut(|d| d.insert_temp(id, state));
+    }
+
     pub(super) fn phase_practice_ui(ui: &mut egui::Ui, phase: usize, enabled: bool) -> bool {
         let mut launched = false;
         let state_id = egui::Id::new("puzzles_state");
@@ -182,7 +244,6 @@ impl ChessApp {
                 let theme = ["opening", "middlegame", "endgame"][phase];
                 state.theme = THEMES.iter().position(|(_, key)| *key == theme).unwrap();
                 state.tab = 1;
-                state.collapsed = false;
                 state.session = None;
                 state.linked = false;
                 state.synced_board = None;
@@ -200,10 +261,14 @@ impl ChessApp {
         self.load_pgn(&session.review_pgn());
         if let Some(error) = self.pgn_error.as_ref() { return Err(error.clone()); }
         self.flipped = session.start.side_to_move() == Color::Black;
-        self.engine_status = "Puzzle position synced · ready to analyze".into();
+        self.review_index = None;
+        self.engine_enabled = false;
+        self.local_clock = None;
+        self.engine_status = "Puzzle: find the best move".into();
         Ok(())
     }
-    pub(super) fn puzzles_window(&mut self, ctx: &egui::Context) {
+    pub(super) fn puzzles_panel(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         let open_id = egui::Id::new("puzzles_open");
         let mut open = ctx.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
         if !open { return; }
@@ -212,28 +277,16 @@ impl ChessApp {
         state.poll();
         if state.loading { ctx.request_repaint_after(std::time::Duration::from_millis(150)); }
         let mut close = false;
-        let mut load_position = None;
-        egui::Window::new("Puzzles").id(egui::Id::new("puzzles_window")).open(&mut open).title_bar(false)
-            .default_width(650.0).resizable(true)
-            .frame(Frame::window(&ctx.style()).fill(Color32::from_rgb(17, 20, 24)).inner_margin(16.0))
-            .show(ctx, |ui| {
+        egui::ScrollArea::vertical().id_salt("puzzle_panel_scroll")
+            .auto_shrink([false, false]).show_gold(ui, |ui| {
                 ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
                 ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
                 ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(14.0));
                 ui.spacing_mut().item_spacing = Vec2::new(12.0, 12.0);
                 ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    let (_, toggle) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
-                    let openness = ui.ctx().animate_bool(egui::Id::new("puzzles_expanded"), !state.collapsed);
-                    let mut icon = toggle.clone();
-                    icon.rect = egui::Rect::from_center_size(toggle.rect.center(), Vec2::splat(ui.spacing().icon_width));
-                    egui::collapsing_header::paint_default_icon(ui, openness, &icon);
-                    if toggle.on_hover_text(if state.collapsed { "Expand puzzles" } else { "Collapse puzzles" }).clicked() {
-                        state.collapsed = !state.collapsed;
-                    }
-                    if ui.add(egui::Label::new(RichText::new("Puzzles").heading()).sense(Sense::click())).clicked() {
-                        state.collapsed = !state.collapsed;
-                    }
+                    ui.label(RichText::new("Puzzles").size(19.0).strong());
                     ui.label("(");
                     if ui.link("by Lichess").on_hover_text("Open Lichess puzzle data and licensing in a new tab").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab("https://database.lichess.org/#puzzles"));
@@ -248,37 +301,125 @@ impl ChessApp {
                         close = response.on_hover_text("Close puzzles").clicked();
                     });
                 });
-                if state.collapsed { return; }
                 ui.separator();
-                ui.label(if state.linked { "Linked to main board · solve here to update both boards." } else { "Practice on a separate board. Your current game stays in place." });
-                ui.horizontal_wrapped(|ui| {
+                let body_rect = egui::Rect::from_min_max(
+                    egui::pos2(ui.clip_rect().left(), ui.cursor().top()),
+                    ui.clip_rect().right_bottom(),
+                );
+                ui.painter().rect_filled(body_rect, 0.0, Color32::from_rgb(17, 20, 24));
+                let body = Frame::new().fill(Color32::from_rgb(17, 20, 24))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(12, 14, 17)))
+                    .corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.set_min_height((body_rect.height() - 18.0).max(0.0));
+                ui.label("Find the best moves on the live board.");
+                let tabs_background = ui.painter().add(egui::Shape::Noop);
+                let tabs = ui.horizontal_wrapped(|ui| {
                     for (tab, label) in ["Daily puzzle", "Practice", "Review mistakes", "Progress"].iter().enumerate() {
                         ui.selectable_value(&mut state.tab, tab, *label);
                     }
                 });
+                ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
                 ui.separator();
                 if state.tab == 0 {
-                    if ui.add_enabled(!state.loading, egui::Button::new("Load daily puzzle")).clicked() { state.request(true, "mix", "normal"); }
+                    if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Load daily puzzle").strong().color(Color32::from_rgb(30, 26, 20)))
+                        .fill(Color32::from_rgb(211, 173, 98))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                        .corner_radius(6.0).min_size(Vec2::new(150.0, 40.0)).raised_gold()).clicked() { state.request(true, "mix", "normal"); }
                 } else if state.tab == 1 {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().interact_size.y = 36.0;
-                        egui::ComboBox::from_id_salt("puzzle_theme").selected_text(THEMES[state.theme].0).show_ui(ui, |ui| {
-                            for (i, (name, _)) in THEMES.iter().enumerate() { ui.selectable_value(&mut state.theme, i, *name); }
-                        });
-                        egui::ComboBox::from_id_salt("puzzle_difficulty").selected_text(DIFFICULTIES[state.difficulty].0).show_ui(ui, |ui| {
-                            for (i, (name, _)) in DIFFICULTIES.iter().enumerate() { ui.selectable_value(&mut state.difficulty, i, *name); }
-                        });
-                        if ui.add_enabled(!state.loading, egui::Button::new("New puzzle")).clicked() {
-                            state.request(false, THEMES[state.theme].1, DIFFICULTIES[state.difficulty].1);
+                    let gold = Color32::from_rgb(211, 173, 98);
+                    let ink = Color32::from_rgb(30, 26, 20);
+                    let amber = Color32::from_rgb(232, 188, 114);
+                    let training_stats = self.training_profiles.selected()
+                        .map(|profile| profile.analysis_totals()).unwrap_or_default();
+                    let card = Frame::new().fill(Color32::from_rgb(27, 33, 41))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(49, 59, 71)))
+                        .corner_radius(8.0).inner_margin(14.0).show(ui, |ui| {
+                        ui.set_min_width(ui.available_width());
+                    Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Puzzle type", true);
+                    for (group, indices) in [
+                        ("", &[0][..]),
+                        ("Tactics", &[1, 2, 3, 4, 5][..]),
+                        ("Checkmates", &[6, 7][..]),
+                        ("Game phases", &[9, 10, 8][..]),
+                    ] {
+                        if !group.is_empty() { ui.label(RichText::new(group).small().strong()); }
+                        ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+                        for &i in indices {
+                            let (name, theme) = THEMES[i];
+                            let selected = state.theme == i;
+                            let emphasis = training_emphasis(&training_stats, theme);
+                            let accent = match emphasis {
+                                Some("Recommended phase") => gold,
+                                Some(_) => amber,
+                                None => Color32::from_rgb(164, 171, 180),
+                            };
+                            let fill = if selected {
+                                if emphasis.is_some() { accent } else { Color32::from_rgb(0, 104, 139) }
+                            } else { Color32::from_rgb(27, 33, 41) };
+                            let text = if selected && emphasis.is_some() { ink }
+                                else if selected { Color32::WHITE } else { accent };
+                            let chip = egui::Button::new(RichText::new(name).color(text))
+                                .fill(fill)
+                                .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, accent))
+                                .corner_radius(16.0)
+                                .min_size(Vec2::new(0.0, 32.0));
+                            if ui.add(chip).on_hover_text(emphasis.unwrap_or("Practice this puzzle type")).clicked() {
+                                state.theme = i;
+                            }
                         }
                     });
-                    ui.small("Difficulty is relative to Lichess's anonymous baseline of 1500, not your Ironwood rating.");
+                    }
+                    ui.separator();
+                    if let Some(profile) = self.training_profiles.selected() {
+                        ui.small(format!("Training profile: {}", profile.name));
+                        if let Some(i) = training_stats.practice_focus() {
+                            ui.colored_label(gold, format!("Recommended phase: {}", ["Opening", "Middlegame", "Endgames"][i]));
+                        }
+                        if training_stats.missed_mates > 0 {
+                            ui.colored_label(amber, "Mate practice: missed mates in analyzed training games");
+                        }
+                    }
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.strong("Difficulty").on_hover_text("Difficulty is relative to Lichess's anonymous baseline of 1500, not your Ironwood rating.");
+                        ui.label(RichText::new(DIFFICULTIES[state.difficulty].0).color(gold));
+                    });
+                    ui.scope(|ui| {
+                        ui.spacing_mut().slider_width = (ui.available_width() - 12.0).max(120.0);
+                        ui.visuals_mut().selection.bg_fill = gold;
+                        ui.visuals_mut().widgets.active.bg_fill = gold;
+                        ui.visuals_mut().widgets.hovered.bg_fill = gold;
+                        ui.add(egui::Slider::new(&mut state.difficulty, 0..=DIFFICULTIES.len() - 1)
+                            .integer().show_value(false).step_by(1.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.small("Easiest");
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.small("Hardest");
+                        });
+                    });
+                    ui.add_space(4.0);
+                    if ui.add_enabled(!state.loading, egui::Button::new(
+                        RichText::new("New puzzle").strong().color(ink))
+                        .fill(gold).stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                        .corner_radius(6.0).min_size(Vec2::new(150.0, 40.0)).raised_gold()).clicked() {
+                        state.request(false, THEMES[state.theme].1, DIFFICULTIES[state.difficulty].1);
+                    }
+                    });
+                    Self::paint_sunken_border(ui, card.response.rect);
                 } else if state.tab == 2 {
                     ui.label("Missed or assisted puzzles saved on this device. A clean retry removes them from this list.");
                     let mut retry = None;
                     egui::ScrollArea::vertical().id_salt("puzzle_mistakes").max_height(120.0).show(ui, |ui| {
                         for record in state.history.iter().rev().filter(|r| !r.solved) {
-                            if ui.button(format!("Retry {} · {}", record.data.puzzle.id, record.data.puzzle.rating)).clicked() { retry = Some(record.data.clone()); }
+                            if ui.add_enabled(!state.loading, egui::Button::new(
+                                RichText::new(format!("Retry {} · {}", record.data.puzzle.id, record.data.puzzle.rating))
+                                    .strong().color(Color32::from_rgb(30, 26, 20)))
+                                .fill(Color32::from_rgb(211, 173, 98))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                                .corner_radius(6.0).min_size(Vec2::new(150.0, 40.0)).raised_gold()).clicked() { retry = Some(record.data.clone()); }
                         }
                         if !state.history.iter().any(|r| !r.solved) { ui.label("No missed puzzles saved yet."); }
                     });
@@ -292,15 +433,69 @@ impl ChessApp {
                             (solved, "Solved cleanly", Color32::from_rgb(136, 205, 158)),
                             (state.history.len() - solved, "To review", Color32::from_rgb(232, 188, 114)),
                         ] {
-                            Frame::new().fill(Color32::from_rgb(27, 33, 41))
+                            let card = Frame::new().fill(Color32::from_rgb(27, 33, 41))
                                 .stroke(Stroke::new(1.0, Color32::from_rgb(49, 59, 71)))
                                 .corner_radius(8.0).inner_margin(14.0).show(ui, |ui| {
                                     ui.set_min_width(145.0);
                                     ui.label(egui::RichText::new(value.to_string()).size(30.0).strong().color(color));
                                     ui.label(label);
                                 });
+                    Self::paint_sunken_border(ui, card.response.rect);
                         }
                     });
+                    ui.add_space(4.0);
+                    ui.strong("Results by puzzle type");
+                    let profile = self.training_profiles.selected();
+                    let training_stats = profile.map(|p| p.analysis_totals()).unwrap_or_default();
+                    let gold = Color32::from_rgb(211, 173, 98);
+                    let amber = Color32::from_rgb(232, 188, 114);
+                    if let Some(profile) = profile {
+                        ui.small(format!("Training profile: {}", profile.name));
+                        if let Some(i) = training_stats.practice_focus() {
+                            ui.colored_label(gold, format!("Recommended phase: {}", ["Opening", "Middlegame", "Endgames"][i]));
+                        } else {
+                            ui.small("No phase focus yet: analyze at least 20 numerical move evaluations in a phase with a mistake or blunder.");
+                        }
+                        if training_stats.missed_mates > 0 {
+                            ui.colored_label(amber, format!("Mate practice: {} missed mates in analyzed training games", training_stats.missed_mates));
+                        }
+                    } else {
+                        ui.small("Select a training profile to highlight recommended practice areas.");
+                    }
+
+                    let card = Frame::new().fill(Color32::from_rgb(27, 33, 41))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(49, 59, 71)))
+                        .corner_radius(8.0).inner_margin(14.0).show(ui, |ui| {
+                            ui.set_min_width(ui.available_width());
+                    egui::Grid::new("puzzle_theme_progress").num_columns(4)
+                        .striped(true).spacing(Vec2::new(16.0, 8.0)).show(ui, |ui| {
+                            let header_background = ui.painter().add(egui::Shape::Noop);
+                            let mut header_rect = ui.strong("Type").rect;
+                            for label in ["Solved cleanly", "To review", "Total tracked"] {
+                                header_rect = header_rect.union(ui.strong(label).rect);
+                            }
+                            ui.painter().set(header_background, Self::glass_surface(header_rect.expand(3.0)));
+                            ui.end_row();
+                            for &(name, theme) in THEMES {
+                                let (solved, review) = state.theme_results(theme);
+                                let emphasis = training_emphasis(&training_stats, theme);
+                                let color = match emphasis {
+                                    Some("Recommended phase") => gold,
+                                    Some(_) => amber,
+                                    None => ui.visuals().text_color(),
+                                };
+                                let label = if theme == "mix" { "Mixed (all puzzles)" } else { name };
+                                ui.label(RichText::new(label).color(color))
+                                    .on_hover_text(emphasis.unwrap_or("No specific training recommendation for this type."));
+                                ui.colored_label(color, solved.to_string());
+                                ui.colored_label(color, review.to_string());
+                                ui.colored_label(color, (solved + review).to_string());
+                                ui.end_row();
+                            }
+                        });
+                        });
+                    Self::paint_sunken_border(ui, card.response.rect);
+                    ui.small("Types use each puzzle's Lichess tags, including puzzles fetched through Mixed. A puzzle can count toward several types; Mixed counts each puzzle once.");
                     ui.add_space(4.0);
                     ui.strong("How results are counted");
                     ui.label("A wrong move, hint, or revealed solution adds a puzzle to Review mistakes. Solve it cleanly on a retry to update its result.");
@@ -316,90 +511,34 @@ impl ChessApp {
                         ui.strong(format!("Puzzle {} · {} to move", session.data.puzzle.id, if session.board.side_to_move() == Color::White { "White" } else { "Black" }));
                         if session.done { ui.label(format!("Rating {} · {}", session.data.puzzle.rating, session.data.puzzle.themes.join(", "))); }
                     });
-                    let size = ui.available_width().min((ctx.screen_rect().height() - 420.0).max(240.0)).min(520.0);
-                    let cell = size / 8.0;
-                    let flipped = session.start.side_to_move() == Color::Black;
-                    let mut clicked = None;
-                    ui.spacing_mut().item_spacing = Vec2::ZERO;
-                    for row in 0..8 {
-                        ui.horizontal(|ui| {
-                            for col in 0..8 {
-                                let rank = if flipped { row } else { 7 - row };
-                                let file = if flipped { 7 - col } else { col };
-                                let square = Square::make_square(Rank::from_index(rank), File::from_index(file));
-                                let mut color = if (file + rank) % 2 == 1 { Color32::from_rgb(207, 216, 190) } else { Color32::from_rgb(76, 111, 89) };
-                                if session.selected == Some(square) { color = Color32::from_rgb(211, 173, 98); }
-                                let (rect, response) = ui.allocate_exact_size(Vec2::splat(cell), Sense::click());
-                                ui.painter().rect_filled(rect, 0.0, color);
-                                if let Some((piece, side)) = session.board.piece_on(square).zip(session.board.color_on(square)) {
-                                    Self::paint_piece(ui, rect, cell, PieceSet::Merida, side, piece);
-                                }
-                                if session.selected.is_some_and(|source| MoveGen::new_legal(&session.board).any(|mv| mv.get_source() == source && mv.get_dest() == square)) {
-                                    ui.painter().circle_filled(rect.center(), cell * 0.07, Color32::from_black_alpha(110));
-                                }
-                                if col == 0 { ui.painter().text(rect.left_top() + Vec2::splat(3.0), Align2::LEFT_TOP, rank + 1, FontId::proportional(11.0), Color32::BLACK); }
-                                if row == 7 { ui.painter().text(rect.right_bottom() - Vec2::splat(3.0), Align2::RIGHT_BOTTOM, (b'a' + file as u8) as char, FontId::proportional(11.0), Color32::BLACK); }
-                                if response.clicked() && !session.done && !state.loading { clicked = Some(square); }
-                            }
-                        });
-                    }
-                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
-                    if let Some(square) = clicked {
-                        if let Some(source) = session.selected {
-                            let legal: Vec<_> = MoveGen::new_legal(&session.board).filter(|mv| mv.get_source() == source && mv.get_dest() == square).collect();
-                            if legal.iter().any(|mv| mv.get_promotion().is_some()) { session.promotion = Some((source, square)); }
-                            else if let Some(&mv) = legal.first() { result = session.submit(mv); }
-                            else { session.selected = session.board.color_on(square).filter(|c| *c == session.board.side_to_move()).map(|_| square); session.promotion = None; }
-                        } else if session.board.color_on(square) == Some(session.board.side_to_move()) { session.selected = Some(square); }
-                    }
-                    if let Some((source, target)) = session.promotion {
-                        ui.horizontal(|ui| {
-                            ui.label("Promote to:");
-                            for (piece, name) in [(Piece::Queen, "Queen"), (Piece::Rook, "Rook"), (Piece::Bishop, "Bishop"), (Piece::Knight, "Knight")] {
-                                if ui.button(name).clicked() { result = session.submit(ChessMove::new(source, target, Some(piece))); }
-                            }
-                        });
-                    }
                     ui.label(&session.message);
                     ui.horizontal(|ui| {
                         if !session.done {
-                            if ui.add_enabled(!state.loading, egui::Button::new("Hint")).clicked() {
+                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Hint").strong().color(Color32::from_rgb(30, 26, 20)))
+                                .fill(Color32::from_rgb(211, 173, 98))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                                .corner_radius(6.0).min_size(Vec2::new(110.0, 40.0)).raised_gold()).clicked() {
                                 if let Some(mv) = session.moves.get(session.step) { session.message = format!("Look at the piece on {}.", mv.get_source()); result = Some(false); }
                             }
-                            if ui.add_enabled(!state.loading, egui::Button::new("Show solution")).clicked() { session.reveal(); result = Some(false); }
+                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Show solution").strong().color(Color32::from_rgb(30, 26, 20)))
+                                .fill(Color32::from_rgb(211, 173, 98))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                                .corner_radius(6.0).min_size(Vec2::new(110.0, 40.0)).raised_gold()).clicked() { session.reveal(); result = Some(false); }
                         }
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let online_playing = self.fics_active && self.fics_playing
-                                && !self.fics_observing && !self.fics_game_finished;
-                            let enabled = !state.loading && !self.training_live() && !online_playing;
-                            if ui.add_enabled(enabled, egui::Button::new("Load into IRONWOOD"))
-                                .on_hover_text(if online_playing { "Finish the active online game before loading a puzzle" }
-                                    else { "Open the displayed puzzle position on the main board for analysis" })
-                                .clicked() { load_position = Some(session.board); }
-                        });
+
                     });
                 }
                 if let Some(solved) = result { state.record(solved); }
+                });
+                Self::paint_sunken_border(ui, body.response.rect);
             });
         if close { open = false; }
-        if let Some(board) = load_position {
-            self.save_game();
-            if self.fics_active { self.stop_fics(); }
-            if let Some(session) = state.session.as_ref() { let _ = self.sync_puzzle_position(session); }
-            if let Some(error) = self.pgn_error.as_ref() {
-                state.error = format!("Could not load puzzle: {error}");
-            } else {
-                self.flipped = board.side_to_move() == Color::Black;
-                self.engine_status = "Puzzle position loaded · ready to analyze".into();
-                state.linked = true;
-                state.synced_board = Some(board);
-            }
-        }
-        if state.linked && !self.training_live() && !(self.fics_active && self.fics_playing && !self.fics_game_finished) {
-            if let Some(board) = state.session.as_ref().map(|session| session.board)
-                .filter(|board| Some(*board) != state.synced_board) {
-                match self.sync_puzzle_position(state.session.as_ref().unwrap()) {
-                    Ok(()) => state.synced_board = Some(board),
+        if let Some(session) = state.session.as_ref() {
+            if state.synced_board != Some(session.board) {
+                if !state.linked { self.save_game(); }
+                if self.fics_active { self.stop_fics(); }
+                match self.sync_puzzle_position(session) {
+                    Ok(()) => { state.linked = true; state.synced_board = Some(session.board); }
                     Err(error) => state.error = format!("Could not sync puzzle: {error}"),
                 }
             }
@@ -411,6 +550,97 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn starting_a_normal_game_exits_puzzles_and_routes_moves_to_the_game() {
+        for side in [PlayerSide::White, PlayerSide::Black] {
+            let context = egui::Context::default();
+            let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(context.clone()));
+            let mut state = State::default();
+            state.session = Some(Session::new(example()).unwrap());
+            state.record(false);
+            state.loading = true;
+            state.linked = true;
+            context.data_mut(|data| {
+                data.insert_temp(egui::Id::new("puzzles_open"), true);
+                data.insert_temp(egui::Id::new("puzzles_state"), state);
+            });
+            app.reset_for_side(side);
+            assert!(!app.puzzle_mode());
+            assert!(!app.puzzle_navigation_locked());
+            let state = context.data(|data| data.get_temp::<State>(egui::Id::new("puzzles_state"))).unwrap();
+            assert!(state.session.is_none());
+            assert!(!state.loading && !state.linked);
+            assert_eq!(state.history.len(), 1);
+            app.engine_enabled = false;
+            app.play(ChessMove::new(Square::E2, Square::E4, None));
+            assert_eq!(app.board.piece_on(Square::E4), Some(Piece::Pawn));
+            assert_eq!(app.review_moves, vec!["e4"]);
+        }
+    }
+
+    #[test]
+    fn training_colors_follow_supported_profile_evidence() {
+        let mut stats = crate::training::AnalysisStats::default();
+        assert_eq!(training_emphasis(&stats, "opening"), None);
+        stats.phases[0].cp_moves = 19;
+        stats.phases[0].loss_cp = 5000;
+        stats.phases[0].mistakes = 1;
+        assert_eq!(training_emphasis(&stats, "opening"), None);
+        stats.phases[0].cp_moves = 20;
+        assert_eq!(training_emphasis(&stats, "opening"), Some("Recommended phase"));
+        assert_eq!(training_emphasis(&stats, "fork"), None);
+        assert_eq!(training_emphasis(&stats, "mix"), None);
+        stats.missed_mates = 1;
+        assert_eq!(training_emphasis(&stats, "mateIn1"), Some("Mate practice"));
+        assert_eq!(training_emphasis(&stats, "mateIn2"), Some("Mate practice"));
+    }
+    #[test]
+    fn theme_progress_includes_all_tags_and_zero_result_types() {
+        let mut state = State::default();
+        let mut data = example();
+        data.puzzle.themes = vec!["fork".into(), "middlegame".into()];
+        state.history.push(Record { data: data.clone(), solved: true });
+        data.puzzle.themes = vec!["fork".into()];
+        state.history.push(Record { data, solved: false });
+        assert_eq!(state.theme_results("mix"), (1, 1));
+        assert_eq!(state.theme_results("fork"), (1, 1));
+        assert_eq!(state.theme_results("middlegame"), (1, 0));
+        assert_eq!(state.theme_results("pin"), (0, 0));
+    }
+    #[test]
+    fn live_board_attempts_validate_and_apply_automatic_replies() {
+        let context = egui::Context::default();
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(context.clone()));
+        let session = Session::new(example()).unwrap();
+        let start = session.start;
+        app.sync_puzzle_position(&session).unwrap();
+        context.data_mut(|d| {
+            d.insert_temp(egui::Id::new("puzzles_open"), true);
+            d.insert_temp(egui::Id::new("puzzles_state"), State { session: Some(session), ..State::default() });
+        });
+        let wrong = MoveGen::new_legal(&start).find(|mv| mv.to_string() != "f5f3").unwrap();
+        app.play(wrong);
+        assert_eq!(app.board, start);
+        app.select(Square::F5);
+        assert_eq!(app.selected, Some(Square::F5));
+        assert!(app.puzzle_mode());
+        app.select(Square::F3);
+        assert_eq!(app.board.king_square(Color::White), Square::F3);
+        assert_eq!(app.review_moves, vec!["Qxf3+", "Kxf3"]);
+        assert!(app.review_index.is_none());
+        app.review_to(0);
+        assert_eq!(app.board.king_square(Color::White), Square::F3);
+        app.play(ChessMove::from_str("c6e5").unwrap());
+        app.play(ChessMove::from_str("e5c4").unwrap());
+        app.review_to(0);
+        assert_eq!(app.board, start);
+        app.review_to(app.review_moves.len());
+        assert_eq!(app.review_index, Some(app.review_moves.len()));
+        let state = context.data(|d| d.get_temp::<State>(egui::Id::new("puzzles_state"))).unwrap();
+        assert!(state.session.unwrap().done);
+        assert_eq!(state.history.len(), 1);
+        assert!(!state.history[0].solved);
+    }
     #[test]
     fn solving_and_revealing_sync_exact_positions_to_main_board() {
         let mut session = Session::new(example()).unwrap();

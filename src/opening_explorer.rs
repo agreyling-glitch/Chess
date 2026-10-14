@@ -105,6 +105,26 @@ pub fn preview(ctx: &egui::Context, root: Board) -> Option<Board> {
         .filter(|s| s.root == root.to_string())
         .and_then(|s| s.path.last().copied())
 }
+pub(crate) fn sunken_section<R>(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui) -> R) -> R {
+    let section = egui::Frame::new().fill(Color32::from_rgb(13,17,22))
+        .stroke(egui::Stroke::new(1.0, Color32::from_white_alpha(25)))
+        .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
+            content(ui)
+        });
+    for (offset, shadow, light) in [(0.0,210,75),(1.0,140,30),(2.0,75,12)] {
+        let edge = section.response.rect.shrink(1.5 + offset);
+        let radius = 5.0 - offset;
+        ui.painter().add(egui::Shape::line(vec![egui::pos2(edge.left(),edge.bottom()-radius),
+            egui::pos2(edge.left(),edge.top()+radius),egui::pos2(edge.left()+radius,edge.top()),
+            egui::pos2(edge.right()-radius,edge.top())],egui::Stroke::new(1.0,Color32::from_black_alpha(shadow))));
+        ui.painter().add(egui::Shape::line(vec![egui::pos2(edge.right(),edge.top()+radius),
+            egui::pos2(edge.right(),edge.bottom()-radius),egui::pos2(edge.right()-radius,edge.bottom()),
+            egui::pos2(edge.left()+radius,edge.bottom())],egui::Stroke::new(1.0,Color32::from_white_alpha(light))));
+    }
+    section.inner
+}
+
 pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
     let mut open_game = None;
     let mut state = ui
@@ -136,6 +156,8 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
         ui.label("Sign in from the Lichess-Online menu to use Opening Explorer.");
     }
     ui.add_space(4.0);
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("DATABASE & FILTERS").size(11.0).strong().color(gold));
     ui.horizontal_wrapped(|ui| {
         for (index, label) in ["Masters", "Lichess games", "My games", "Player"]
             .iter()
@@ -154,6 +176,8 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                     } else {
                         ui.visuals().faint_bg_color
                     })
+                    .stroke(egui::Stroke::new(1.0, if selected { gold } else { Color32::from_rgb(87,78,58) }))
+                    .corner_radius(5.0)
                     .min_size(Vec2::new(105.0, 30.0)),
                 )
                 .clicked()
@@ -270,6 +294,10 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                 .weak(),
         );
     }
+    });
+    ui.add_space(10.0);
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("MOVES & RESULTS").size(11.0).strong().color(gold));
     let board = state.path.last().copied().unwrap_or(root);
     if !state.labels.is_empty() {
         ui.label(
@@ -376,7 +404,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                             egui::Align2::LEFT_CENTER,
                             text,
                             egui::FontId::proportional(13.0),
-                            ui.visuals().weak_text_color(),
+                            gold,
                         );
                     }
                 });
@@ -506,6 +534,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
         ui.ctx()
             .open_url(egui::OpenUrl::new_tab("https://lichess.org"));
     }
+    });
     ui.ctx().data_mut(|d| d.insert_temp(id(), state));
     open_game
 }

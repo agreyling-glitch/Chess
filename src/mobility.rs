@@ -1,3 +1,4 @@
+use crate::opening_explorer::sunken_section;
 use crate::rules::{Board, MoveGen};
 use chess::{Color, Piece, Square};
 use egui::{Color32, RichText, Sense, Vec2};
@@ -317,6 +318,11 @@ fn content(
             }
         }
     }
+    let gold = Color32::from_rgb(230,178,65);
+    let blue = Color32::from_rgb(106,190,231);
+    ui.label(RichText::new("Piece Mobility").size(22.0).strong());
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("PIECE SELECTION").size(11.0).strong().color(gold));
     ui.label(
         RichText::new(
             "Click a piece on either board to select it. Shift-click a piece to compare it.",
@@ -324,9 +330,10 @@ fn content(
         .size(14.0)
         .color(Color32::LIGHT_GRAY),
     );
-    ui.horizontal(|ui| {
+    let stacked = ui.available_width() < 360.0;
+    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 0.0), if stacked { egui::Layout::top_down(egui::Align::Min) } else { egui::Layout::left_to_right(egui::Align::Center) }, |ui| {
         egui::ComboBox::from_id_salt("mobility_piece")
-            .width((ui.available_width() - 8.0) * 0.5)
+            .width(if stacked { ui.available_width() } else { (ui.available_width() - 8.0) * 0.5 })
             .selected_text(&data.tracks[selected].name)
             .show_ui(ui, |ui| {
                 for (i, track) in data.tracks.iter().enumerate() {
@@ -354,8 +361,11 @@ fn content(
     }
     ui.data_mut(|data| data.insert_persisted(selection_id, (selected, comparison)));
     ui.label(RichText::new("Available destinations · respects pins and king safety · excludes castling and en passant").size(14.0).color(Color32::LIGHT_GRAY));
-    let gold = Color32::from_rgb(230, 178, 65);
-    let blue = Color32::from_rgb(106, 190, 231);
+    });
+    ui.add_space(10.0);
+    let mut jump = None;
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("MOBILITY HISTORY").size(11.0).strong().color(gold));
     for (track, color) in std::iter::once((selected, gold)).chain(comparison.map(|i| (i, blue))) {
         ui.horizontal(|ui| {
             let (marker, _) = ui.allocate_exact_size(Vec2::splat(12.0), Sense::hover());
@@ -439,7 +449,6 @@ fn content(
             Color32::LIGHT_GRAY,
         );
     }
-    let mut jump = None;
     if let Some(pos) = response.hover_pos().or(response.interact_pointer_pos()) {
         let index =
             (((pos.x - plot.left()) / plot.width()).clamp(0.0, 1.0) * last as f32).round() as usize;
@@ -472,6 +481,11 @@ fn content(
         .size(14.0)
         .color(Color32::LIGHT_GRAY),
     );
+    });
+    ui.add_space(10.0);
+    sunken_section(ui, |ui| {
+    ui.label(RichText::new("AVAILABLE DESTINATIONS").size(11.0).strong().color(gold));
+    let last = positions.len().saturating_sub(1);
     let index = current.min(last);
     ui.label(
         RichText::new(labels.get(index).map(String::as_str).unwrap_or("Position"))
@@ -563,6 +577,7 @@ fn content(
             .size(14.0)
             .color(Color32::LIGHT_GRAY),
     );
+    });
     jump
 }
 

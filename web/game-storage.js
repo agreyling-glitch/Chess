@@ -659,6 +659,142 @@ function storageDialog(titleText) {
   return dialog;
 }
 
+// Portable profile bundles keep stable profile/session IDs for safe repeated imports.
+export function buildTrainingProfileExport(profiles, games, ids) {
+  const validated = validateTrainingProfiles(profiles);
+  const selected = new Set(ids);
+  const chosen = validated.profiles.filter(profile => selected.has(profile.id));
+  if (!chosen.length) throw new Error('Select at least one profile.');
+  const chosenIds = new Set(chosen.map(profile => profile.id));
+  return {
+    format: 'ironwood-training-profiles', version: 1,
+    exported_at: new Date().toISOString(),
+    training_profiles: { selected_id: chosenIds.has(validated.selected_id) ? validated.selected_id : chosen[0].id, profiles: chosen },
+    games: games.filter(game => chosenIds.has(JSON.parse(game.json).training?.profile_id)),
+  };
+}
+
+export function validateTrainingProfileImport(raw) {
+  if (raw?.format !== 'ironwood-training-profiles' || raw.version !== 1 || !raw.training_profiles) {
+    throw new Error('Choose an Ironwood training profile export (.json).');
+  }
+  const backup = validateBackup({ ...raw, format: BACKUP_FORMAT });
+  const ids = new Set(backup.trainingProfiles.profiles.map(profile => profile.id));
+  if (!ids.has(backup.trainingProfiles.selected_id)) throw new Error('The export has no valid selected training profile.');
+  if (!ids.size || backup.games.some(game => !ids.has(JSON.parse(game.json).training?.profile_id))) {
+    throw new Error('The export contains games outside its training profiles.');
+  }
+  return backup;
+}
+
+export function removeTrainingProfiles(profiles, games, ids, deleteHistory) {
+  const next = validateTrainingProfiles(profiles);
+  const selected = new Set(ids);
+  next.profiles = next.profiles.filter(profile => !selected.has(profile.id));
+  if (!next.profiles.some(profile => profile.id === next.selected_id)) next.selected_id = next.profiles[0]?.id || '';
+  return {
+    profiles: next,
+    deleteIds: deleteHistory ? games.filter(game => selected.has(JSON.parse(game.json).training?.profile_id)).map(game => game.id) : [],
+  };
+}
+
+export function newTrainingGames(existing, incoming) {
+  const sessions = new Set(existing.map(game => JSON.parse(game.json).training?.id).filter(Boolean));
+  const ids = new Set(existing.map(game => game.id));
+  return incoming.filter(game => {
+    const session = JSON.parse(game.json).training?.id;
+    if (session && sessions.has(session)) return false;
+    if (!session && ids.has(game.id)) return false;
+    if (session) sessions.add(session);
+    return true;
+  }).map(game => {
+    let id = game.id;
+    while (ids.has(id)) id = newId();
+    ids.add(id);
+    return { ...game, id };
+  });
+}
+
+async function commitTrainingProfiles(profiles, games = [], deleteIds = []) {
+  await pendingWrite;
+  const db = await openDatabase();
+  const previous = localStorage.getItem(TRAINING_KEY);
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    for (const id of deleteIds) store.delete(id);
+    for (const game of games) store.put(game);
+    let saved = false;
+    const rollback = () => {
+      if (saved) {
+        try { if (previous === null) localStorage.removeItem(TRAINING_KEY); else localStorage.setItem(TRAINING_KEY, previous); }
+        catch (error) { console.error('Could not roll back profile storage:', error); }
+      }
+      reject(transaction.error || new Error('Profile update was interrupted.'));
+    };
+    transaction.oncomplete = resolve;
+    transaction.onerror = rollback;
+    transaction.onabort = rollback;
+    try { localStorage.setItem(TRAINING_KEY, JSON.stringify(profiles)); saved = true; }
+    catch (error) { transaction.abort(); reject(error); }
+  });
+}
+
+let profileActionStatus = { busy: false };
+window.ironwoodTrainingProfilesAction = (command, payload = '') => {
+  if (command === 'poll') {
+    const result = JSON.stringify(profileActionStatus);
+    profileActionStatus.changed = false;
+    return result;
+  }
+  if (profileActionStatus.busy) return JSON.stringify(profileActionStatus);
+  profileActionStatus = { busy: true, message: 'Working…' };
+  const run = async () => {
+    if (command === 'import') {
+      const file = await new Promise(resolve => {
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = '.json,application/json';
+        input.addEventListener('change', () => resolve(input.files?.[0]), { once: true });
+        input.addEventListener('cancel', () => resolve(null), { once: true });
+        input.click();
+      });
+      if (!file) return { message: 'Import cancelled.' };
+      if (file.size > 100 * 1024 * 1024) throw new Error('Profile export exceeds 100 MB.');
+      const bundle = validateTrainingProfileImport(JSON.parse(await file.text()));
+      const current = JSON.parse(localStorage.getItem(TRAINING_KEY) || 'null');
+      const profiles = mergeTrainingProfiles(current, bundle.trainingProfiles);
+      const games = newTrainingGames(await readAllGameRecords(), bundle.games);
+      await commitTrainingProfiles(profiles, games);
+      return { changed: true, message: `Imported ${bundle.trainingProfiles.profiles.length} profiles and ${games.length} new saved games. Existing results were merged by session ID.` };
+    }
+    const options = JSON.parse(payload);
+    const profiles = validateTrainingProfiles(JSON.parse(localStorage.getItem(TRAINING_KEY) || '{"selected_id":"","profiles":[]}'));
+    const games = await readAllGameRecords();
+    if (command === 'export') {
+      const bundle = buildTrainingProfileExport(profiles, games, options.ids);
+      downloadJson(`ironwood-training-profiles-${new Date().toISOString().slice(0,10)}.json`, bundle);
+      return { message: `Exported ${bundle.training_profiles.profiles.length} profiles with ${bundle.games.length} saved games.` };
+    }
+    if (command === 'delete') {
+      const next = removeTrainingProfiles(profiles, games, options.ids, options.deleteGames);
+      await commitTrainingProfiles(next.profiles, [], next.deleteIds);
+      let current;
+      try { current = JSON.parse(localStorage.getItem(CURRENT_GAME_KEY) || 'null'); } catch { /* A damaged board snapshot must not hide a completed deletion. */ }
+      if (options.ids.includes(current?.training?.profile_id)) {
+        localStorage.removeItem(CURRENT_GAME_KEY);
+        localStorage.removeItem(ACTIVE_ID_KEY);
+        localStorage.removeItem(ACTIVE_CATEGORY_KEY);
+      }
+      return { changed: true, message: options.deleteGames ? `Profiles and ${next.deleteIds.length} saved games deleted.` : 'Profiles deleted. Saved game history kept.' };
+    }
+    throw new Error('Unknown profile action.');
+  };
+  // Start file picking synchronously, preserving the user's click activation.
+  void run().then(result => { profileActionStatus = { busy: false, ...result }; })
+    .catch(error => { profileActionStatus = { busy: false, error: error.message || 'Profile operation failed.' }; });
+  return JSON.stringify(profileActionStatus);
+};
+
 window.ironwoodBackupStorage = async () => {
   try {
     const games = await readAllGameRecords();
@@ -1119,6 +1255,7 @@ async function showGamePreview(game, trigger) {
   heading.append(title, close);
   const caption = document.createElement('p');
   const boardHost = document.createElement('div');
+  boardHost.className = 'game-preview-board-tray';
   const controls = document.createElement('div');
   controls.className = 'game-preview-controls';
   let positions = [game.finalFen];
@@ -1171,7 +1308,10 @@ async function showGamePreview(game, trigger) {
     autoplay.disabled = positions.length < 2;
   };
   render();
-  dialog.append(heading, caption, boardHost, controls);
+  const info = document.createElement('section');
+  info.className = 'game-preview-info';
+  info.append(heading, caption);
+  dialog.append(info, boardHost, controls);
   const note = startingNoteElement(game);
   if (note) dialog.append(note);
   dialog.addEventListener('close', () => {
@@ -1285,7 +1425,11 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   pager.className = 'game-library-pager';
   const selection = document.createElement('div');
   selection.className = 'game-library-selection';
-  dialog.append(heading, tabs, filters, selection, list, pager);
+  const controls = document.createElement('section');
+  controls.className = 'game-library-controls';
+  controls.setAttribute('aria-label', 'Find and manage saved games');
+  controls.append(tabs, filters, selection);
+  dialog.append(heading, controls, list, pager);
   dialog.showModal();
   try {
     const games = await listGames();

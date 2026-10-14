@@ -135,6 +135,7 @@ function installFallbacks(target) {
   for (const name of ['IsImportedDuplicate', 'ImportedIndexReady', 'HasDeferredUpdate', 'ExplorerSignedIn'])
     target[`ironwood${name}`] ??= () => false;
   target.ironwoodStorageStatus ??= () => 'Browser storage estimate unavailable';
+  target.ironwoodTrainingProfilesAction ??= () => JSON.stringify({error:'Training profile storage is unavailable. Reload and try again.'});
   target.ironwoodBatchImportStatus ??= () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
   target.ironwoodVersionDiagnostics ??= () => '{"status":"Version diagnostics are loading"}';
   target.ironwoodExplorer ??= () => '{"error":"Opening Explorer is unavailable. Please reload Ironwood."}';

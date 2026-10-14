@@ -436,7 +436,7 @@ fn targets(
 
 impl Gpu {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene) -> Self {
-        device.on_uncaptured_error(Box::new(|error| log::error!("3D GPU error: {error:?}")));
+        device.on_uncaptured_error(std::sync::Arc::new(|error| log::error!("3D GPU error: {error:?}")));
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("3D chess shader"),
             source: wgpu::ShaderSource::Wgsl(SCENE_SHADER.into()),
@@ -517,8 +517,8 @@ impl Gpu {
         });
         let scene_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&textures_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&textures_layout)],
+            immediate_size: 0,
         });
         let vertex_attributes = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x2, 2 => Float32x4, 3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4];
         let make_pipeline = |depth_write_enabled, blend: Option<wgpu::BlendState>, vertex_entry| {
@@ -529,11 +529,11 @@ impl Gpu {
                     module: &shader,
                     entry_point: Some(vertex_entry),
                     compilation_options: Default::default(),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: VERTEX_STRIDE as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &vertex_attributes,
-                    }],
+                    })],
                 },
                 fragment: Some(wgpu::FragmentState {
                     module: &shader,
@@ -551,13 +551,13 @@ impl Gpu {
                 },
                 depth_stencil: Some(wgpu::DepthStencilState {
                     format: wgpu::TextureFormat::Depth24Plus,
-                    depth_write_enabled,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    depth_write_enabled: Some(depth_write_enabled),
+                    depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: Default::default(),
                     bias: Default::default(),
                 }),
                 multisample: Default::default(),
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             })
         };
@@ -587,8 +587,8 @@ impl Gpu {
         });
         let blit_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: None,
-            bind_group_layouts: &[&blit_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&blit_layout)],
+            immediate_size: 0,
         });
         let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("3D chess blit"),
@@ -618,7 +618,7 @@ impl Gpu {
             primitive: Default::default(),
             depth_stencil: None,
             multisample: Default::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
         let (color_texture, color_view, depth_texture, depth_view) = targets(device, scene.size);
@@ -769,8 +769,10 @@ impl CallbackTrait for Scene {
         let c = self.background;
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("3D chess scene"),
+            multiview_mask: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &gpu.color_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {

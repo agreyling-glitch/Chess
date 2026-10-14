@@ -217,7 +217,7 @@ mod tests {
         egui_extras::install_image_loaders(&ctx);
         let (source, _) = super::super::ChessApp::piece_image_for(&ctx, PieceSet::SculptedMarble, Color::White, Piece::King).unwrap();
         let image_uri = source.uri().unwrap().to_owned();
-        let _ = ctx.run(egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0))), ..Default::default() }, |ctx| {
+        let _ = crate::app::run_test_ui(&ctx, egui::RawInput { screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 400.0))), ..Default::default() }, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
                 ui.add_space(1_000.0);
                 let rect = super::super::ChessApp::theme_2d_preview(ui, PieceSet::SculptedMarble, 200.0);

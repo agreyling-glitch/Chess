@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 
 globalThis.window = globalThis;
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const { gameDetails, gameMatchesCategory, backupSummary, mergeTrainingProfiles, validateTrainingProfiles } =
+const { gameDetails, gameMatchesCategory, backupSummary, mergeTrainingProfiles, validateTrainingProfiles, buildTrainingProfileExport, validateTrainingProfileImport, removeTrainingProfiles, newTrainingGames } =
   await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const session = (id, side = 'White') => ({ id, profile_id:'p', profile_name:'Player <One>', side,
   opponent_elo:1320, rating_before:1320, rating_after:1336,
@@ -73,4 +73,46 @@ test('saved training games display the renamed profile by stable ID', () => {
   } finally {
     delete globalThis.localStorage;
   }
+});
+
+const saved = (id, profileId = 'p', sessionId = id) => ({ id, category:'training', json:JSON.stringify({board:'start', training:{...session(sessionId), profile_id:profileId}}) });
+
+test('profile export includes only selected profiles and linked games and round trips', () => {
+  const current = profiles([result('g')]);
+  current.profiles.push({id:'q', name:'Other', results:[]});
+  const bundle = buildTrainingProfileExport(current, [saved('g'),saved('h','q')], ['p']);
+  assert.equal(bundle.training_profiles.profiles.length,1);
+  assert.deepEqual(bundle.games.map(g=>g.id),['g']);
+  const restored = validateTrainingProfileImport(JSON.parse(JSON.stringify(bundle)));
+  assert.deepEqual(restored.trainingProfiles,profiles([result('g')]));
+  assert.equal(restored.games.length,1);
+  assert.throws(()=>buildTrainingProfileExport(current,[],[]),/Select/);
+  bundle.games.push(saved('bad','q'));
+  assert.throws(()=>validateTrainingProfileImport(bundle),/outside/);
+});
+
+test('profile deletion supports preserving games, selecting a survivor, and deleting multiple profiles', () => {
+  const current = profiles([result('g')]);
+  current.profiles.push({id:'q',name:'Other',results:[]});
+  const games = [saved('g'),saved('h','q')];
+  const kept = removeTrainingProfiles(current,games,['p'],false);
+  assert.equal(kept.profiles.selected_id,'q');
+  assert.deepEqual(kept.deleteIds,[]);
+  const removed = removeTrainingProfiles(current,games,['p'],true);
+  assert.deepEqual(removed.deleteIds,['g']);
+  const all = removeTrainingProfiles(current,games,['p','q'],true);
+  assert.equal(all.profiles.profiles.length,0);
+  assert.equal(all.profiles.selected_id,'');
+  assert.deepEqual(all.deleteIds,['g','h']);
+  assert.equal(current.profiles.length,2);
+});
+
+test('repeated profile imports deduplicate saved game sessions and remap unrelated ID collisions', () => {
+  const existing = [saved('original','p','g')];
+  assert.deepEqual(newTrainingGames(existing,[saved('different','p','g')]),[]);
+  const imported = newTrainingGames(existing,[saved('original','p','h')]);
+  assert.equal(imported.length,1);
+  assert.notEqual(imported[0].id,'original');
+  assert.equal(JSON.parse(imported[0].json).training.id,'h');
+  assert.equal(newTrainingGames([...existing,...imported],[saved('original','p','h')]).length,0);
 });

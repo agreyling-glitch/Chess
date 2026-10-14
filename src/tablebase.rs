@@ -1,3 +1,4 @@
+use crate::opening_explorer::sunken_section;
 use crate::rules::{Board, MoveGen};
 use eframe::egui::{self, Color32, RichText, Stroke, Vec2};
 use serde::Deserialize;
@@ -143,7 +144,7 @@ fn exploration_tree(ui: &mut egui::Ui, state: &mut State, root: Board, root_fen:
         return false;
     }
     let mut lookup_selected = false;
-    card().show(ui, |ui| {
+    sunken_section(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
             ui.label(RichText::new("Exploration tree").size(15.0).strong());
@@ -326,13 +327,6 @@ fn result_color(label: &str) -> Color32 {
         Color32::from_rgb(189, 191, 203)
     }
 }
-fn card() -> egui::Frame {
-    egui::Frame::new()
-        .fill(Color32::from_rgb(27, 29, 32))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(65, 62, 54)))
-        .corner_radius(8)
-        .inner_margin(12)
-}
 pub fn preview(ctx: &egui::Context, root: Board) -> Option<Board> {
     if ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) != Some(5)
     {
@@ -385,6 +379,8 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             .weak(),
     );
     ui.add_space(3.0);
+    let tree_request = sunken_section(ui, |ui| {
+    ui.label(RichText::new("EXPLORATION").size(11.0).strong().color(GOLD));
     ui.horizontal_wrapped(|ui| {
         if ui
             .add_enabled(!state.path.is_empty(), egui::Button::new("Back"))
@@ -408,7 +404,9 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             .color(GOLD),
         );
     });
-    let tree_request = exploration_tree(ui, &mut state, root, root_fen, &display_san);
+    exploration_tree(ui, &mut state, root, root_fen, &display_san)
+    });
+    ui.add_space(10.0);
     let continuation_request = std::mem::take(&mut state.pending_lookup);
     let board = state.path.last().copied().unwrap_or(root);
     let root_clock = state.root_clock.get_or_insert_with(|| {
@@ -419,6 +417,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             .unwrap_or(0)
     });
     let mut refresh = false;
+    sunken_section(ui, |ui| {
     egui::CollapsingHeader::new("Position settings & API details").id_salt("tablebase_settings").show(ui, |ui| {
     ui.horizontal_wrapped(|ui| {
         ui.label("50-move clock at root (plies):");
@@ -448,6 +447,8 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
         .on_hover_text("Bypass Ironwood’s cache and request a fresh result from Lichess.")
         .clicked();
     });
+    });
+    ui.add_space(10.0);
     let clock = state.clocks.last().copied().unwrap_or(*root_clock);
     let fen = position_fen(board, clock, root_fen, state.path.len());
     let fields: Vec<_> = fen.split_whitespace().collect();
@@ -459,7 +460,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             <= 7
         && fields[2] == "-";
     if !eligible {
-        card().show(ui, |ui| {
+        sunken_section(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(
                 RichText::new("Outside tablebase coverage")
@@ -495,7 +496,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             let response =
                 "{\"error\":\"Tablebases are available in the browser app.\"}".to_owned();
             if response.is_empty() {
-                card().show(ui, |ui| {
+                sunken_section(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spinner();
@@ -506,7 +507,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                     .request_repaint_after(std::time::Duration::from_millis(200));
             } else if let Ok(data) = serde_json::from_str::<Data>(&response) {
                 if let Some(error) = data.error {
-                    card().show(ui, |ui| {
+                    sunken_section(ui, |ui| {
                         ui.set_width(ui.available_width());
                         ui.label(RichText::new("Lookup unavailable").strong().color(GOLD));
                         ui.label(error);
@@ -514,7 +515,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                     });
                 } else {
                     let result = outcome(data.category.as_deref().unwrap_or("unknown"), false);
-                    card().show(ui, |ui| {
+                    sunken_section(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal_wrapped(|ui| {
                         let (label, color, help) = if data.source.as_deref() == Some("cache") {
@@ -538,6 +539,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                     ui.label(RichText::new("Tablebase outcome · assumes best play").size(13.0));
                     });
                     ui.add_space(5.0);
+                    sunken_section(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Continuations").size(16.0).strong());
                         ui.label(
@@ -656,6 +658,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                             }
                         });
                     ui.label(RichText::new("Ranked by Lichess · DTZ favors progress toward a pawn move, capture or mate.").size(13.0));
+                    });
                 }
             } else {
                 ui.label("Unexpected tablebase response. Retry when ready.");

@@ -1,6 +1,41 @@
 use super::*;
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen::prelude::wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrainingProfilesAction)]
+    fn profile_action(command: &str, payload: &str) -> String;
+}
+#[cfg(not(target_arch = "wasm32"))]
+fn profile_action(_: &str, _: &str) -> String { r#"{"error":"Profile transfer is available in the browser app."}"#.into() }
+
+#[derive(Clone, Default)]
+struct ProfileManager {
+    selected: Vec<String>,
+    message: String,
+    busy: bool,
+    delete_open: bool,
+    delete_games: bool,
+}
+
 impl ChessApp {
+    fn training_sunken_section<R>(
+        ui: &mut egui::Ui,
+        contents: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> egui::InnerResponse<R> {
+        let section = Frame::new()
+            .fill(Color32::from_rgb(13, 17, 22))
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::same(14))
+            .show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                contents(ui)
+            });
+        Self::paint_sunken_border(ui, section.response.rect);
+        section
+    }
+
     pub(super) fn training_draw(&self) -> bool {
         let positions = &self.review_positions;
         let board = positions.last().unwrap_or(&self.board);
@@ -180,6 +215,8 @@ impl ChessApp {
         let Some(session) = self.training.clone() else {
             return;
         };
+        // Retained history from a deleted profile remains available for review.
+        if session.rating_after.is_some() && !self.training_profiles.profiles.iter().any(|p| p.id == session.profile_id) { return; }
         let result = self.game_result();
         if result == "*" {
             return;
@@ -239,7 +276,13 @@ impl ChessApp {
         }
     }
 
+    pub(super) fn profile_management_busy(&self) -> bool {
+        self.puzzle_context.data(|d| d.get_temp::<ProfileManager>(egui::Id::new("training_profile_manager")))
+            .is_some_and(|manager| manager.busy || manager.delete_open)
+    }
+
     pub(super) fn start_training_game(&mut self) {
+        if self.profile_management_busy() { return; }
         self.settle_training();
         if self.training_error.is_some() {
             return;
@@ -298,6 +341,27 @@ impl ChessApp {
     }
 
     pub(super) fn training_setup_ui(&mut self, ui: &mut egui::Ui) {
+        let manager_id = egui::Id::new("training_profile_manager");
+        let mut manager = ui.ctx().data(|d| d.get_temp::<ProfileManager>(manager_id)).unwrap_or_default();
+        if let Ok(status) = serde_json::from_str::<serde_json::Value>(&profile_action("poll", "")) {
+            manager.busy = status["busy"].as_bool().unwrap_or(false);
+            if let Some(message) = status["message"].as_str().or(status["error"].as_str()) { manager.message = message.into(); }
+            if status["changed"].as_bool() == Some(true) {
+                match Self::read_training_profiles() {
+                    Ok(profiles) => {
+                        self.training_profiles = profiles;
+                        self.training_error = None;
+                        manager.selected.retain(|id| self.training_profiles.profiles.iter().any(|p| &p.id == id));
+                        if self.training.as_ref().is_some_and(|session| !self.training_profiles.profiles.iter().any(|p| p.id == session.profile_id)) {
+                            self.training = None;
+                        }
+                        self.training_profile_rename = None;
+                    }
+                    Err(error) => self.training_error = Some(error),
+                }
+            }
+        }
+        if manager.busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(150)); }
         let roomy = self.training_dialog_open && !self.new_game_dialog_open;
         let gold = Color32::from_rgb(211, 173, 98);
         let muted = Color32::from_rgb(164, 171, 180);
@@ -312,11 +376,7 @@ impl ChessApp {
                 .color(muted),
         );
         ui.add_space(if roomy { 24.0 } else { 14.0 });
-        egui::Frame::new()
-            .fill(Color32::from_rgb(32, 37, 43))
-            .corner_radius(8.0)
-            .inner_margin(14.0)
-            .show(ui, |ui| {
+        Self::training_sunken_section(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.label(
                     RichText::new("TRAINING PROFILE")
@@ -326,26 +386,67 @@ impl ChessApp {
                 );
                 ui.add_space(7.0);
                 let old_selected = self.training_profiles.selected_id.clone();
-                if !self.training_profiles.profiles.is_empty() {
-                    egui::ComboBox::from_id_salt("training_profile")
-                        .selected_text(
-                            self.training_profiles
-                                .selected()
-                                .map(|p| p.name.as_str())
-                                .unwrap_or("Choose a profile"),
-                        )
-                        .width(ui.available_width())
-                        .show_ui(ui, |ui| {
-                            for p in &self.training_profiles.profiles {
-                                ui.selectable_value(
-                                    &mut self.training_profiles.selected_id,
-                                    p.id.clone(),
-                                    &p.name,
-                                );
+                ui.add_enabled_ui(!manager.busy && !manager.delete_open && !self.training_live(), |ui| {
+                    let table = Frame::new().fill(Color32::from_rgb(19, 24, 30))
+                        .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
+                    let usable = (ui.available_width() - 28.0 - 40.0).max(240.0);
+                    let name_width = usable * 0.43;
+                    let stat_width = usable * 0.19;
+                    ui.spacing_mut().interact_size.y = 32.0;
+                    egui::ScrollArea::vertical().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
+                        egui::Grid::new("training_profiles_table").striped(true).num_columns(5).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
+                            let mut all = !self.training_profiles.profiles.is_empty() && manager.selected.len() == self.training_profiles.profiles.len();
+                            if ui.checkbox(&mut all, "").on_hover_text("Select all profiles").changed() {
+                                manager.selected = if all { self.training_profiles.profiles.iter().map(|p| p.id.clone()).collect() } else { Vec::new() };
+                            }
+                            for (label, width) in [("Profile", name_width), ("White Elo", stat_width), ("Black Elo", stat_width), ("Games", stat_width)] {
+                                Self::game_moves_glass_label(ui, Vec2::new(width, 30.0), label, true);
+                            }
+                            ui.end_row();
+                            for profile in &self.training_profiles.profiles {
+                                let mut selected = manager.selected.contains(&profile.id);
+                                if ui.checkbox(&mut selected, "").changed() {
+                                    if selected { manager.selected.push(profile.id.clone()); } else { manager.selected.retain(|id| id != &profile.id); }
+                                }
+                                let active = self.training_profiles.selected_id == profile.id;
+                                if ui.add_sized([name_width, 34.0], egui::RadioButton::new(active,
+                                    RichText::new(&profile.name).strong().color(if active { gold } else { Color32::from_rgb(228, 231, 234) })))
+                                    .on_hover_text("Use this profile for training and puzzle focus").clicked() {
+                                    self.training_profiles.selected_id = profile.id.clone();
+                                }
+                                for value in [profile.rating(TrainingSide::White).to_string(), profile.rating(TrainingSide::Black).to_string(), profile.results.len().to_string()] {
+                                    ui.add_sized([stat_width, 34.0], egui::Label::new(RichText::new(value).size(18.0).color(Color32::from_rgb(235, 226, 205))));
+                                }
+                                ui.end_row();
                             }
                         });
-                    ui.add_space(7.0);
-                }
+                    });
+                    });
+                    Self::paint_sunken_border(ui, table.response.rect);
+                });
+                ui.add_space(4.0);
+                ui.small("Choose a profile by its name. Check rows for rename, delete, or export.");
+                if self.training_live() { ui.small("Finish your active training game to manage profiles."); }
+                ui.horizontal_wrapped(|ui| {
+                    let enabled = !manager.busy && !manager.delete_open && !self.training_live() && self.training_error.is_none();
+                    if ui.add_enabled(enabled && manager.selected.len() == 1, egui::Button::new(RichText::new("Rename").color(gold)).min_size(Vec2::new(88.0, 34.0)).fill(Color32::from_rgb(34, 41, 47)).stroke(Stroke::new(1.0, Color32::from_rgb(103, 88, 59))).corner_radius(5.0))
+                        .on_disabled_hover_text("Select one profile to rename; finish any active training game first.").clicked() {
+                        self.training_profiles.selected_id = manager.selected[0].clone();
+                        self.training_profile_rename = self.training_profiles.selected().map(|p| p.name.clone());
+                    }
+                    if ui.add_enabled(enabled && !manager.selected.is_empty(), egui::Button::new(RichText::new("Delete").color(Color32::from_rgb(225, 163, 151))).min_size(Vec2::new(88.0, 34.0)).fill(Color32::from_rgb(34, 41, 47)).stroke(Stroke::new(1.0, Color32::from_rgb(103, 88, 59))).corner_radius(5.0)).clicked() {
+                        manager.delete_open = true; manager.delete_games = false;
+                    }
+                    if ui.add_enabled(enabled && !manager.selected.is_empty(), egui::Button::new(RichText::new("Export").color(gold)).min_size(Vec2::new(88.0, 34.0)).fill(Color32::from_rgb(34, 41, 47)).stroke(Stroke::new(1.0, Color32::from_rgb(103, 88, 59))).corner_radius(5.0)).clicked() {
+                        profile_action("export", &serde_json::json!({"ids":manager.selected}).to_string());
+                        manager.busy = true;
+                    }
+                    if ui.add_enabled(enabled, egui::Button::new(RichText::new("Import").color(gold)).min_size(Vec2::new(88.0, 34.0)).fill(Color32::from_rgb(34, 41, 47)).stroke(Stroke::new(1.0, Color32::from_rgb(103, 88, 59))).corner_radius(5.0)).clicked() {
+                        profile_action("import", ""); manager.busy = true;
+                    }
+                });
+                if manager.busy { ui.spinner(); }
+                if !manager.message.is_empty() { ui.label(&manager.message); }
                 if old_selected != self.training_profiles.selected_id {
                     self.training_profile_rename = None;
                     if let Err(error) = self.write_training_profiles(&self.training_profiles) {
@@ -353,16 +454,14 @@ impl ChessApp {
                     }
                 }
                 if let Some(profile) = self.training_profiles.selected().cloned() {
-                    if self.training_profile_rename.is_none() && ui.button("Rename profile").clicked() {
-                        self.training_profile_rename = Some(profile.name.clone());
-                    }
+                    let rename_enabled = !manager.busy && !manager.delete_open && !self.training_live();
                     if let Some(name) = &mut self.training_profile_rename {
                         let mut save = false;
                         let mut cancel = false;
                         ui.horizontal_wrapped(|ui| {
                             ui.add(egui::TextEdit::singleline(name).desired_width((ui.available_width() - 160.0).max(100.0)).char_limit(60)
                                 .text_color(Color32::from_rgb(238, 238, 238)));
-                            save = ui.add_enabled(!name.trim().is_empty() && self.training_error.is_none(), egui::Button::new("Save name")).clicked();
+                            save = ui.add_enabled(!name.trim().is_empty() && self.training_error.is_none() && rename_enabled, egui::Button::new("Save name")).clicked();
                             cancel = ui.button("Cancel").clicked();
                         });
                         if save {
@@ -384,10 +483,14 @@ impl ChessApp {
                     }
                     ui.add_space(7.0);
                 }
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(4.0);
+                ui.label(RichText::new("Create a new profile").strong().color(gold));
                 ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 128.0).max(100.0);
+                    let width = (ui.available_width() - 148.0).max(100.0);
                     ui.add_sized(
-                        [width, 34.0],
+                        [width, 40.0],
                         egui::TextEdit::singleline(&mut self.training_profile_name)
                             .hint_text(
                                 RichText::new("New profile name")
@@ -400,9 +503,11 @@ impl ChessApp {
                     if ui
                         .add_enabled(
                             !self.training_profile_name.trim().is_empty()
-                                && self.training_error.is_none(),
-                            egui::Button::new(RichText::new("Create profile").size(if roomy { 16.0 } else { 14.0 }))
-                                .min_size(Vec2::new(120.0, 34.0)),
+                                && self.training_error.is_none() && !manager.busy && !self.training_live(),
+                            egui::Button::new(RichText::new("Create profile").size(if roomy { 16.0 } else { 14.0 }).strong().color(Color32::from_rgb(25, 29, 35)))
+                                .min_size(Vec2::new(140.0, 40.0))
+                                .fill(gold).stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
+                                .corner_radius(5.0).raised_gold(),
                         )
                         .clicked()
                     {
@@ -416,6 +521,24 @@ impl ChessApp {
                         .color(muted),
                 );
             });
+        if manager.delete_open {
+            egui::Modal::new(egui::Id::new("delete_training_profiles_confirmation")).show(ui.ctx(), |ui| {
+                    ui.heading("Delete training profiles?");
+                    ui.set_max_width(460.0);
+                    ui.label("Delete these profiles and their ratings and progress? This cannot be undone.");
+                    for profile in self.training_profiles.profiles.iter().filter(|p| manager.selected.contains(&p.id)) { ui.label(&profile.name); }
+                    ui.checkbox(&mut manager.delete_games, "Also delete saved game history for these profiles");
+                    ui.label(if manager.delete_games { "Linked saved games and their analysis will be removed." } else { "Linked saved games will remain in Saved Games > Training." });
+                    ui.horizontal(|ui| {
+                        if ui.button("Cancel").clicked() { manager.delete_open = false; }
+                        if ui.add_enabled(!manager.busy && !self.training_live(), egui::Button::new("Delete selected profiles")).clicked() {
+                            profile_action("delete", &serde_json::json!({"ids":manager.selected,"deleteGames":manager.delete_games}).to_string());
+                            manager.busy = true; manager.delete_open = false;
+                        }
+                    });
+                });
+        }
+        ui.ctx().data_mut(|d| d.insert_temp(manager_id, manager));
         if let Some(error) = &self.training_error {
             ui.colored_label(Color32::from_rgb(240, 150, 130), error);
             if ui.button("Retry storage").clicked() {
@@ -446,11 +569,7 @@ impl ChessApp {
                 ("BLACK", black, "Second side"),
                 ("OVERALL", overall, "Lower of both"),
             ]) {
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(32, 37, 43))
-                    .corner_radius(8.0)
-                    .inner_margin(12.0)
-                    .show(column, |ui| {
+                Self::training_sunken_section(column, |ui| {
                         ui.set_width(ui.available_width());
                         ui.label(
                             RichText::new(label)
@@ -470,6 +589,7 @@ impl ChessApp {
         let target = profile
             .map(|p| p.target(side))
             .unwrap_or(training::START_RATING);
+        Self::training_sunken_section(ui, |ui| {
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new(format!("NEXT: {}", side.label().to_uppercase()))
@@ -501,6 +621,7 @@ impl ChessApp {
         );
         #[cfg(not(target_arch = "wasm32"))]
         ui.label("Native preview: profiles remain in memory for this session. Use the web app for saved profiles.");
+        });
     }
 
     pub(super) fn training_game_summary_ui(&mut self, ui: &mut egui::Ui) {
@@ -510,9 +631,9 @@ impl ChessApp {
         let gold = Color32::from_rgb(211, 173, 98);
         let muted = Color32::from_rgb(175, 182, 191);
         let finished = !self.training_live();
-        Frame::new().fill(Color32::from_rgb(29, 32, 36))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(87, 73, 48)))
-            .corner_radius(8.0).inner_margin(10.0).show(ui, |ui| {
+        let summary = Frame::new().fill(Color32::from_rgb(13, 17, 22))
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+            .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 8.0;
         ui.label(RichText::new(if finished { "TRAINING RESULT" } else { "TRAINING GAME" }).size(10.0).strong().color(gold));
@@ -535,7 +656,7 @@ impl ChessApp {
         ui.add_space(2.0);
             if finished && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
                 RichText::new("Next training game").size(13.0).strong().color(Color32::from_rgb(24, 27, 31)))
-                .fill(gold).corner_radius(6.0)).clicked() {
+                .fill(gold).corner_radius(6.0).raised_gold()).clicked() {
                 self.training_profiles.selected_id = session.profile_id.clone();
                 self.start_training_game();
             }
@@ -546,14 +667,37 @@ impl ChessApp {
                 self.training_dialog_open = true;
             }
         });
-        ui.separator();
+        Self::paint_sunken_border(ui, summary.response.rect);
+        ui.add_space(8.0);
     }
 
     fn training_rating_graph(ui: &mut egui::Ui, profile: &Profile) {
         let (rect, _) =
             ui.allocate_exact_size(Vec2::new(ui.available_width(), 160.0), Sense::hover());
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 6.0, Color32::from_rgb(16, 18, 22));
+        painter.rect_filled(rect, 6.0, Color32::from_rgb(207, 177, 113));
+        // Procedural paper fibers keep the gold grain subtle and stable between frames.
+        let paper = rect.shrink(4.0);
+        let mut grain = egui::Mesh::default();
+        for row in 0..(paper.height() / 4.0).ceil() as u32 {
+            for column in 0..(paper.width() / 4.0).ceil() as u32 {
+                let hash = column.wrapping_mul(374761393)
+                    .wrapping_add(row.wrapping_mul(668265263));
+                let hash = (hash ^ (hash >> 13)).wrapping_mul(1274126177);
+                let x = paper.left() + column as f32 * 4.0 + (hash & 3) as f32 * 0.5;
+                let y = paper.top() + row as f32 * 4.0 + ((hash >> 2) & 3) as f32 * 0.5;
+                let color = if hash & 16 == 0 {
+                    Color32::from_rgba_unmultiplied(87, 56, 20, 20)
+                } else {
+                    Color32::from_rgba_unmultiplied(255, 241, 193, 32)
+                };
+                grain.add_colored_rect(
+                    egui::Rect::from_min_size(egui::pos2(x, y), Vec2::new(1.0 + ((hash >> 5) & 3) as f32, 0.7)).intersect(paper),
+                    color,
+                );
+            }
+        }
+        painter.add(egui::Shape::mesh(grain));
         let mut white = training::START_RATING;
         let mut black = white;
         let mut points = vec![(white, black, white)];
@@ -586,20 +730,20 @@ impl ChessApp {
                     egui::pos2(plot.left(), y(rating)),
                     egui::pos2(plot.right(), y(rating)),
                 ],
-                Stroke::new(1.0, Color32::from_gray(55)),
+                Stroke::new(1.0, Color32::from_rgba_unmultiplied(83, 58, 24, 55)),
             );
             painter.text(
                 egui::pos2(rect.left() + 4.0, y(rating)),
                 Align2::LEFT_CENTER,
                 rating.to_string(),
                 FontId::proportional(15.0),
-                Color32::LIGHT_GRAY,
+                Color32::from_rgb(65, 46, 23),
             );
         }
         for (line, color) in [
-            Color32::LIGHT_GRAY,
-            Color32::from_rgb(102, 162, 226),
-            Color32::from_rgb(211, 173, 98),
+            Color32::from_rgb(255, 245, 215),
+            Color32::from_rgb(36, 73, 105),
+            Color32::from_rgb(128, 81, 26),
         ]
         .into_iter()
         .enumerate()
@@ -615,9 +759,13 @@ impl ChessApp {
                 })
                 .collect();
             if data.len() > 1 {
+                if line == 0 {
+                    painter.add(egui::Shape::line(data.clone(), Stroke::new(3.5, Color32::from_rgb(110, 83, 42))));
+                }
                 painter.add(egui::Shape::line(data, Stroke::new(2.0, color)));
             }
         }
+        Self::paint_sunken_border(ui, rect);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(Color32::LIGHT_GRAY, "White");
             ui.colored_label(Color32::from_rgb(102, 162, 226), "Black");
@@ -665,7 +813,8 @@ impl ChessApp {
         egui::Frame::new().fill(Color32::from_rgb(42, 39, 31)).stroke(Stroke::new(1.0, gold)).corner_radius(8.0).inner_margin(16.0).show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.label(RichText::new("YOUR NEXT PRACTICE FOCUS").size(16.0).strong().color(gold));
-            if let Some((i, phase)) = stats.phases.iter().enumerate().filter(|(_, p)| p.cp_moves >= 20 && p.mistakes + p.blunders > 0).max_by(|(_, a), (_, b)| a.mean_loss().total_cmp(&b.mean_loss())) {
+            if let Some(i) = stats.practice_focus() {
+                let phase = &stats.phases[i];
                 ui.label(RichText::new(["Opening play", "Middlegame decisions", "Endgame technique"][i]).size(22.0).strong());
                 ui.label(["Review development, king safety, and early tactical errors.", "Review your largest errors and compare the engine's alternative lines.", "Practice converting advantages and defending simplified positions."][i]);
                 ui.add_space(6.0);
@@ -690,12 +839,12 @@ impl ChessApp {
             ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(15.0));
             ui.spacing_mut().item_spacing.y = 8.0;
-            let available_width = (ctx.screen_rect().width() - 64.0).max(260.0);
+            let available_width = (ctx.content_rect().width() - 64.0).max(260.0);
             ui.set_width(if self.training_dialog_maximized { available_width } else { available_width.min(740.0) });
             let window_height = if self.training_dialog_maximized {
-                ctx.screen_rect().height() - 40.0
+                ctx.content_rect().height() - 40.0
             } else {
-                (ctx.screen_rect().height() * 0.85).min(ctx.screen_rect().height() - 64.0)
+                (ctx.content_rect().height() * 0.85).min(ctx.content_rect().height() - 64.0)
             }.max(200.0);
             ui.set_min_height(window_height - 36.0);
             close = Self::dialog_header_with_maximize(ui, "Training profiles", Some(&mut self.training_dialog_maximized));
@@ -706,11 +855,13 @@ impl ChessApp {
                 self.training_setup_ui(ui);
                 let Some(profile) = self.training_profiles.selected().cloned() else { return; };
                 ui.add_space(24.0);
-                if ui.add_enabled(self.training_error.is_none() && !self.training_live(), egui::Button::new(RichText::new("Start next training game").size(20.0).strong().color(Color32::from_rgb(24, 27, 31)))
-                    .min_size(Vec2::new(280.0, 48.0)).fill(Color32::from_rgb(211, 173, 98)).corner_radius(8.0)).clicked() { self.start_training_game(); }
+                if ui.add_enabled(self.training_error.is_none() && !self.training_live() && !self.profile_management_busy(), egui::Button::new(RichText::new("Start next training game").size(20.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                    .min_size(Vec2::new(280.0, 48.0)).fill(Color32::from_rgb(211, 173, 98)).corner_radius(8.0).raised_gold()).clicked() { self.start_training_game(); }
                 if self.training_live() { ui.label("Finish the current game to update progress and unlock the next color."); }
                 let [wins, draws, losses] = profile.counts(None);
-                ui.add_space(20.0); ui.separator(); ui.add_space(16.0);
+                ui.add_space(20.0);
+                Self::training_sunken_section(ui, |ui| {
+                ui.label(RichText::new("PROGRESS").strong().color(Color32::from_rgb(211, 173, 98)));
                 ui.label(RichText::new(format!("{} completed · {} wins · {} draws · {} losses", profile.results.len(), wins, draws, losses)).strong());
                 egui::Grid::new("training_color_stats").striped(true).spacing(Vec2::new(24.0, 12.0)).show(ui, |ui| {
                     for label in ["Color", "Rating", "W / D / L", "Last 10 games"] { ui.strong(label); } ui.end_row();
@@ -728,8 +879,10 @@ impl ChessApp {
                     ui.label(format!("Score rate {:.0}% · 95% descriptive range {:.0}–{:.0}% · n={}", score*100.0, lower*100.0, upper*100.0, profile.results.len()));
                     ui.label(RichText::new("Draws count as half a point. This broad bounded-score range assumes independent results; adaptive opponents and changing skill limit interpretation. It is not Elo uncertainty or proof of improvement.").small().weak());
                 }
-                ui.add_space(20.0); ui.separator(); ui.add_space(16.0);
-                ui.label(RichText::new("Areas to focus on").size(19.0).strong());
+                });
+                ui.add_space(16.0);
+                Self::training_sunken_section(ui, |ui| {
+                ui.label(RichText::new("Areas to focus on").size(19.0).strong().color(Color32::from_rgb(211, 173, 98)));
                 let stats = profile.analysis_totals();
                 let analyzed_games = profile.results.iter().filter(|r| r.analysis.analyzed_moves() > 0).count();
                 if Self::training_focus_ui(ui, &stats, analyzed_games, !self.training_live() && !(self.fics_active && self.fics_playing)) { close = true; }
@@ -745,12 +898,16 @@ impl ChessApp {
                 ui.collapsing("How these statistics are calculated", |ui| {
                     ui.label("Opening means the first 10 moves; endgame means at most 26 points of non-pawn material. Average loss uses raw centipawns and excludes mate scores. Mistakes and blunders use Ironwood's move-quality scale. Partial analysis can bias the results.");
                 });
-                ui.add_space(20.0); ui.separator(); ui.add_space(16.0); ui.label(RichText::new("Recent games").size(19.0).strong());
+                });
+                ui.add_space(16.0);
+                Self::training_sunken_section(ui, |ui| {
+                ui.label(RichText::new("Recent games").size(19.0).strong().color(Color32::from_rgb(211, 173, 98)));
                 for r in profile.results.iter().rev().take(20) {
                     ui.label(format!("{} · {} · {} vs {} · {} to {} ({:+})", r.session.completed_at.as_deref().unwrap_or("").get(..10).unwrap_or(""), r.session.side.label(), r.result, r.session.opponent_elo, r.session.rating_before, r.session.rating_after.unwrap_or(r.session.rating_before), r.session.rating_after.unwrap_or(r.session.rating_before)-r.session.rating_before));
                 }
                 ui.add_space(16.0);
                 ui.label("Open Saved Games > Training to replay games, add notes, and analyze mistakes. Profiles and progress are included in Storage > Backup all data.");
+                });
             });
         });
         if close {
@@ -773,6 +930,26 @@ mod tests {
     fn play(app: &mut ChessApp, san: &str) {
         let mv = ChessApp::parse_san_move(&app.board, san).unwrap();
         app.play(mv);
+    }
+    #[test]
+    fn profile_transfer_blocks_starting_a_training_game() {
+        let mut app = app();
+        app.training = None;
+        app.puzzle_context.data_mut(|d| d.insert_temp(egui::Id::new("training_profile_manager"), ProfileManager { busy: true, ..ProfileManager::default() }));
+        app.start_training_game();
+        assert!(app.training.is_none());
+    }
+    #[test]
+    fn retained_history_after_profile_deletion_does_not_block_training_storage() {
+        let mut app = app();
+        for san in ["f3", "e5", "g4", "Qh4#"] { play(&mut app, san); }
+        app.settle_training();
+        assert!(app.training.as_ref().unwrap().rating_after.is_some());
+        app.training_profiles.profiles.clear();
+        app.training_profiles.selected_id.clear();
+        app.settle_training();
+        assert!(app.training_error.is_none());
+        assert!(app.training_profiles.profiles.is_empty());
     }
     #[test]
     fn training_checkmate_settles_once_and_next_game_uses_black() {

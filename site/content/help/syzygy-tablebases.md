@@ -4,7 +4,7 @@ description: "Read exact endgame outcomes, understand DTZ and DTM, and explore b
 category: "analysis"
 keywords: [Syzygy, tablebases, endgame, seven pieces, DTZ, DTM, half-moves, cursed win, blessed loss, 50-move rule, continuation, hover, arrow, exploration tree]
 weight: 76
-lastmod: 2026-10-11T00:00:00-05:00
+lastmod: 2026-10-14T00:00:00-05:00
 ---
 
 ## Look up an endgame
@@ -95,3 +95,7 @@ If a request fails, check your connection and use Refresh. A rate-limit message 
 Stockfish's evaluation and prediction line come from its engine search. Tablebases give endgame outcomes for covered positions. The engine panel and tablebase preview can refer to different positions while you explore; return to **Game position** before comparing the original game position with its engine analysis.
 
 For a useful study exercise, identify which moves preserve the result, compare their DTZ/DTM badges, then explore the opponent's replies. A drawn endgame may still demand a precise defense, and a winning one may require careful clock management.
+
+## Panel layout
+
+Sunken sections group exploration controls, position settings, outcomes, and continuations. Tablebase access requires internet but no Lichess sign-in, so it does not need to replace a FICS connection. Tablebases remain unavailable during live online play and training.
