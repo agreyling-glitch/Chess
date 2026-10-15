@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -105,3 +105,21 @@ After **Connected**, the bottom status bar shows your username, total games, ove
 Signing in to Lichess preserves an existing FICS connection and board. You can keep the Lichess account session for Opening Explorer while using FICS. Tablebases do not require a sign-in.
 
 Only one game controls the board. An active FICS game cannot be replaced by a background Lichess game event. Finish the current game before opening another service’s game. Opening a Lichess game switches board ownership and disconnects FICS; account sign-in alone does not. Analysis tools remain unavailable during live games.
+
+## Player profiles and followed players
+
+Open **Lichess-Online → Player profile…**, or click your connected account summary. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID.
+
+Choose Bullet, Blitz, Rapid, Classical, or Correspondence and a date range (**1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**). Hover the graph to inspect a date and rating. If a period has no history, try **ALL** or another time control. The graph has its own sunken paper-grain surface. Game-record counters and recent-game cards adapt to narrow windows.
+
+Biography and website links open in new tabs. Clicking the FIDE rating opens the player's FIDE page when an ID is available, or the FIDE ratings directory otherwise.
+
+**Follow** and **Unfollow** update your Lichess following list. Expand **Following** to search followed players and open their profiles. Older sign-in sessions may need **Sign in again for follow access** before these controls work.
+
+Use **Load in new window**, or open the menu item again, to compare players in independent windows. Each green-bordered window keeps its own player, filters, size, and position.
+
+### Preview or review a recent game
+
+Hover a recent-game mini board for its gold outline and magnifying-glass indicator, then click to open the larger move viewer. It shows White and Black, the result, step controls, and autoplay without importing the game into Saved Games. The two controls in the right column offer **Open game on Lichess** in a new tab or **Review on Ironwood** on the full board.
+
+**Review on Ironwood** opens a temporary review. To keep it, choose **Game → Save current game**; this saves the full game even when you are viewing its starting position. Merely previewing or opening the review does not add it to Saved Games. Finish active online play or training before opening a full-board review.

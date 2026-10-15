@@ -12,7 +12,7 @@ test('deleting the active game restores the saved-games view after reset', async
   let reloaded = 0;
   const context = vm.createContext({
     deleting:false, games, selectedIds:new Set(['test-game']), importedFingerprints:new Set(),
-    category:'training', profileFilter:'profile', playerFilter:'*', searchQuery:'test', analysisFilter:'complete', page:2,
+    category:'training', profileFilter:'profile', playerFilter:'*', searchQuery:'test', analysisFilter:'complete', sortOrder:'moves-asc', page:2,
     ACTIVE_ID_KEY:'active', CURRENT_GAME_KEY:'current', ACTIVE_CATEGORY_KEY:'category', LIBRARY_RETURN_KEY:'return',
     localStorage:{getItem:key=>local.get(key),removeItem:key=>local.delete(key)},
     sessionStorage:{setItem:(key,value)=>session.set(key,value)},
@@ -28,6 +28,7 @@ test('deleting the active game restores the saved-games view after reset', async
   const restored = JSON.parse(session.get('return'));
   assert.equal(restored.category,'training');
   assert.equal(restored.page,2);
+  assert.equal(restored.sortOrder,'moves-asc');
   assert.equal(restored.maximized,true);
   let opened;
   const startup = source.slice(source.indexOf("if (typeof document !== 'undefined')", source.indexOf('// Deleting the active game resets')));

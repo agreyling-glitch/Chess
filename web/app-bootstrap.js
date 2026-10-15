@@ -139,6 +139,7 @@ function installFallbacks(target) {
   target.ironwoodBatchImportStatus ??= () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
   target.ironwoodVersionDiagnostics ??= () => '{"status":"Version diagnostics are loading"}';
   target.ironwoodExplorer ??= () => '{"error":"Opening Explorer is unavailable. Please reload Ironwood."}';
+  target.ironwoodShowProfileGamePreview ??= () => target.alert('Move preview is unavailable. Please reload Ironwood.');
   target.ironwoodCopyBoard ??= () => target.alert('Image clipboard is unavailable. Please reload Ironwood.');
   target.ironwoodBeginBoardPngCopy ??= () => false;
   target.ironwoodFinishBoardPngCopy ??= () => {};

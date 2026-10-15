@@ -399,7 +399,7 @@ async function listGames() {
       }
       const { json, ...summary } = cursor.value;
       const details = gameDetails(json);
-      games.push({ ...summary, ...details, category: details.trainingProfileId ? 'training' : summary.category || details.category, source: summary.source, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
+      games.push({ ...summary, ...details, category: details.category === 'puzzles' ? 'puzzles' : details.trainingProfileId ? 'training' : summary.category || details.category, source: summary.source, favorite: Boolean(summary.favorite), fingerprint: storedFingerprint(cursor.value) });
       cursor.continue();
     };
     request.onerror = () => reject(request.error || new Error('Could not list saved games'));
@@ -483,7 +483,7 @@ function validateBackup(value) {
     return {
       ...record,
       id: record.id,
-      category: gameDetails(record.json).trainingProfileId ? 'training' : ['imported', 'observed'].includes(record.category) ? record.category : 'mine',
+      category: gameDetails(record.json).category === 'puzzles' ? 'puzzles' : gameDetails(record.json).trainingProfileId ? 'training' : ['imported', 'observed', 'puzzles'].includes(record.category) ? record.category : 'mine',
       favorite: Boolean(record.favorite),
       updatedAt: Number(record.updatedAt) || Date.now(),
     };
@@ -504,6 +504,7 @@ export function backupSummary(value) {
     imported: backup.games.filter(game => game.category === 'imported').length,
     observed: backup.games.filter(game => game.category === 'observed').length,
     training: backup.games.filter(game => game.category === 'training').length,
+    puzzles: backup.games.filter(game => game.category === 'puzzles').length,
     profiles: backup.trainingProfiles?.profiles.length || 0,
     favorites: backup.games.filter(game => game.favorite).length,
     hasPreferences: Boolean(backup.preferences),
@@ -829,7 +830,7 @@ window.ironwoodRestoreStorage = () => {
       const summary = backupSummary(raw);
       const dialog = storageDialog('Restore backup');
       const message = document.createElement('p');
-      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.observed} observed, ${summary.training} training, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
+      message.textContent = `${file.name} contains ${summary.games} games (${summary.mine} personal, ${summary.imported} imported, ${summary.observed} observed, ${summary.training} training, ${summary.puzzles} puzzles, ${summary.favorites} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
       const guidance = document.createElement('p');
       guidance.className = 'storage-guidance';
       guidance.textContent = `Merge keeps existing games and adds the backup. Replace removes existing games first. Both options restore included preferences and training profiles (${summary.profiles}). Training results are merged by game ID so ratings are not counted twice.`;
@@ -889,6 +890,7 @@ window.ironwoodOpenStorageInfo = async () => {
       ['Imported games', String(games.filter(game => game.category === 'imported').length)],
       ['Observed games', String(games.filter(game => game.category === 'observed').length)],
       ['Training games', String(games.filter(game => game.category === 'training').length)],
+      ['Puzzles', String(games.filter(game => game.category === 'puzzles').length)],
       ['Favorites', String(games.filter(game => game.favorite).length)],
       ['Browser usage', format(estimate?.usage)],
       ['Browser quota', format(estimate?.quota)],
@@ -1037,6 +1039,8 @@ function pgnMoveCount(pgn) {
 export function gameDetails(json) {
   const game = JSON.parse(json);
   const imported = Boolean(game.review_pgn);
+  const puzzle = pgnTag(game.review_pgn, 'Event') === 'Lichess puzzle';
+  const puzzleId = puzzle ? pgnTag(game.review_pgn, 'PuzzleId') : null;
   // Preserve historical opponent names for games saved before the engine was removed.
   const training = game.training;
   const opponent = training ? `Stockfish ${training.opponent_elo} Elo` : game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
@@ -1057,16 +1061,16 @@ export function gameDetails(json) {
   const venue = rawSite && rawSite !== '-' && rawSite !== '?' ? rawSite : null;
   const recordedResult = pgnTag(game.review_pgn, 'Result') || game.result;
   const result = ['1-0', '0-1', '1/2-1/2', '*'].includes(recordedResult) ? recordedResult : '*';
-  const moves = game.live_moves?.length || pgnMoveCount(game.review_pgn) || Math.max(0, (game.game_analysis?.length || 1) - 1);
+  const moves = game.live_moves?.length || pgnMoveCount(game.review_pgn);
   const analyzed = game.game_analysis?.filter(Boolean).length || 0;
   const analysisStatus = analyzed === 0 ? 'Not analyzed' : analyzed >= moves + 1 ? 'Complete' : 'Partial';
   const whiteFideId = pgnTag(game.review_pgn, 'WhiteFideId') || null;
   const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
   const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
-  return { startingNote, analysisStatus, title: `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
+  return { startingNote, analysisStatus, puzzleId, title: puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
     trainingProfileId: training?.profile_id || null, trainingProfileName: profileName, trainingSide: training?.side || null,
     trainingOpponentElo: training?.opponent_elo, ratingBefore: training?.rating_before, ratingAfter: training?.rating_after,
-    finalFen: game.final_board || game.board, category: training ? 'training' : imported ? 'imported' : 'mine' };
+    finalFen: game.final_board || game.board, category: puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
 }
 
 export function fideProfileUrl(id) {
@@ -1088,6 +1092,15 @@ export function playerNameElement(player, fideId) {
   return element;
 }
 
+export function sortSavedGames(games, order = 'recent') {
+  return [...games].sort((a, b) => {
+    const moves = (a.moves || 0) - (b.moves || 0);
+    if (order === 'moves-asc' && moves) return moves;
+    if (order === 'moves-desc' && moves) return -moves;
+    return (b.updatedAt || 0) - (a.updatedAt || 0) || String(a.id).localeCompare(String(b.id));
+  });
+}
+
 export function gameMatchesCategory(game, category) {
   return category === 'all' || (category === 'favorites' ? Boolean(game.favorite) : game.category === category);
 }
@@ -1096,10 +1109,12 @@ function queueGameRecord(json, id, category, trackBatch = false, source) {
   const batch = trackBatch ? batchImport : null;
   try {
     const details = gameDetails(json);
+    // Session restoration is separate; only played games belong in the library.
+    if (details.moves === 0) return;
     const fingerprint = importFingerprint(JSON.parse(json).review_pgn);
     if (fingerprint) importedFingerprints.add(fingerprint);
     if (batch) batch.pending++;
-    const write = putGame({ id, ...details, category, fingerprint, ...(source ? { source } : {}), updatedAt: Date.now(), json });
+    const write = putGame({ id, ...details, category: details.category === 'puzzles' ? 'puzzles' : category, fingerprint, ...(source ? { source } : {}), updatedAt: Date.now(), json });
     if (batch) write.then(() => {
       batch.pending--;
       batch.saved++;
@@ -1138,7 +1153,7 @@ window.ironwoodStoreImportedGame = json => {
 window.ironwoodStartNewStoredGame = category => {
   try {
     localStorage.setItem(ACTIVE_ID_KEY, newId());
-    localStorage.setItem(ACTIVE_CATEGORY_KEY, ['imported', 'observed', 'training'].includes(category) ? category : 'mine');
+    localStorage.setItem(ACTIVE_CATEGORY_KEY, ['imported', 'observed', 'training', 'puzzles'].includes(category) ? category : 'mine');
   } catch (error) {
     console.warn('Ironwood could not start a new saved game:', error);
   }
@@ -1240,6 +1255,7 @@ function startingNoteElement(game, compact = false) {
 }
 
 async function showGamePreview(game, trigger) {
+  document.getElementById('game-preview-dialog')?.close();
   const dialog = document.createElement('dialog');
   dialog.id = 'game-preview-dialog';
   dialog.setAttribute('aria-labelledby', 'game-preview-title');
@@ -1253,13 +1269,26 @@ async function showGamePreview(game, trigger) {
   close.setAttribute('aria-label', 'Close board preview');
   close.addEventListener('click', () => dialog.close());
   heading.append(title, close);
+  const players = document.createElement('div');
+  players.className = 'game-preview-players';
+  for (const [color, label] of [['white', 'White'], ['black', 'Black']]) {
+    const player = document.createElement('div');
+    player.className = `game-preview-player ${color}`;
+    const side = document.createElement('strong'); side.textContent = label;
+    const name = document.createElement('span'); name.textContent = game[color] || 'Unknown player';
+    player.append(side, name); players.append(player);
+  }
+  const outcome = document.createElement('p'); outcome.className = 'game-preview-outcome';
+  outcome.textContent = game.result === '1-0' ? `${game.white || 'White'} won as White · 1–0`
+    : game.result === '0-1' ? `${game.black || 'Black'} won as Black · 0–1`
+    : game.result === '1/2-1/2' ? 'Draw · ½–½' : 'Unfinished / result unavailable';
   const caption = document.createElement('p');
   const boardHost = document.createElement('div');
   boardHost.className = 'game-preview-board-tray';
   const controls = document.createElement('div');
   controls.className = 'game-preview-controls';
-  let positions = [game.finalFen];
-  let moves = [];
+  let positions = game.preview?.positions || [game.finalFen];
+  let moves = game.preview?.moves || [];
   let index = 0;
   let timer = null;
   const stop = () => {
@@ -1310,18 +1339,19 @@ async function showGamePreview(game, trigger) {
   render();
   const info = document.createElement('section');
   info.className = 'game-preview-info';
-  info.append(heading, caption);
+  info.append(heading, players, outcome, caption);
   dialog.append(info, boardHost, controls);
   const note = startingNoteElement(game);
   if (note) dialog.append(note);
   dialog.addEventListener('close', () => {
     stop();
     dialog.remove();
-    if (trigger.isConnected) trigger.focus();
+    if (trigger?.isConnected) trigger.focus();
   }, { once: true });
   document.body.append(dialog);
   dialog.showModal();
   close.focus();
+  if (game.preview) return;
   try {
     const stored = await readGame(game.id);
     if (!dialog.open) return;
@@ -1339,6 +1369,8 @@ async function showGamePreview(game, trigger) {
     caption.textContent += ` · Move preview unavailable: ${error.message}`;
   }
 }
+
+window.ironwoodShowProfileGamePreview = raw => showGamePreview(JSON.parse(raw), document.getElementById('chess_canvas'));
 
 function confirmDeleteGames(games, active) {
   return new Promise(resolve => {
@@ -1438,6 +1470,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     let playerFilter = restore?.playerFilter || '*';
     let searchQuery = restore?.searchQuery || '';
     let analysisFilter = restore?.analysisFilter || '*';
+    let sortOrder = restore?.sortOrder || localStorage.getItem('ironwood.chess.library-sort.v1') || 'recent';
+    if (!['recent', 'moves-asc', 'moves-desc'].includes(sortOrder)) sortOrder = 'recent';
     let page = Number.isSafeInteger(restore?.page) ? Math.max(0, restore.page) : 0;
     const pageSize = 10;
     const selectedIds = new Set();
@@ -1460,7 +1494,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           localStorage.removeItem(ACTIVE_ID_KEY);
           localStorage.removeItem(ACTIVE_CATEGORY_KEY);
           sessionStorage.setItem(LIBRARY_RETURN_KEY, JSON.stringify({
-            category, profileFilter, playerFilter, searchQuery, analysisFilter, page,
+            category, profileFilter, playerFilter, searchQuery, analysisFilter, sortOrder, page,
             maximized: dialog.classList.contains('maximized'),
           }));
           location.reload();
@@ -1478,6 +1512,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         ['all', 'All Games'],
         ['mine', 'My Games'],
         ['training', 'Training'],
+        ['puzzles', 'Puzzles'],
         ['observed', 'Observed'],
         ['imported', 'Imported Games'],
         ['favorites', 'Favorites'],
@@ -1546,14 +1581,25 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       analysisSelect.addEventListener('change', () => { analysisFilter = analysisSelect.value; selectedIds.clear(); page = 0; render(); });
       analysisLabel.append(analysisSelect);
       filters.append(analysisLabel);
+      const sortLabel = document.createElement('label'); sortLabel.textContent = 'Sort ';
+      const sortSelect = document.createElement('select'); sortSelect.setAttribute('aria-label', 'Sort saved games');
+      for (const [value, text] of [['recent', 'Recently saved'], ['moves-asc', 'Fewest moves first'], ['moves-desc', 'Most moves first']]) {
+        const option = document.createElement('option'); option.value = value; option.textContent = text; sortSelect.append(option);
+      }
+      sortSelect.value = sortOrder;
+      sortSelect.addEventListener('change', () => {
+        sortOrder = sortSelect.value; localStorage.setItem('ironwood.chess.library-sort.v1', sortOrder);
+        page = 0; render(); list.scrollTop = 0;
+      });
+      sortLabel.append(sortSelect); filters.append(sortLabel);
       list.replaceChildren();
       pager.replaceChildren();
-      const visible = games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
+      const visible = sortSavedGames(games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
         analysisFilter === 'partial' && game.analysisStatus === 'Partial' ||
-        analysisFilter === 'unanalyzed' && !(game.analyzed > 0)));
+        analysisFilter === 'unanalyzed' && !(game.analyzed > 0))), sortOrder);
       // Selection stays across pages, but never includes games hidden by filters.
       const matchingIds = new Set(visible.map(game => game.id));
       for (const id of selectedIds) if (!matchingIds.has(id)) selectedIds.delete(id);
@@ -1637,6 +1683,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
           category === 'all' ? 'No saved games yet.' :
           category === 'training' ? 'Start Training vs AI from New game to add games under a profile.' :
+          category === 'puzzles' ? 'Puzzle move history appears here after the first move or a revealed solution.' :
           category === 'observed' ? 'Finished games you watch are saved here automatically.' :
           category === 'mine' ? 'No games here yet. Finished online games and games against Stockfish are saved automatically.' :
             category === 'imported' ? 'No imported games here yet. Import a PGN or analysis JSON to add one.' :
@@ -1688,7 +1735,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         const name = document.createElement('strong');
         // listGames reads these from the original PGN, including older saved records.
         const fide = game;
-        name.append(game.favorite ? '★ ' : '', playerNameElement(game.white, fide.whiteFideId),
+        if (game.category === 'puzzles') name.append(game.favorite ? '★ ' : '', game.title);
+        else name.append(game.favorite ? '★ ' : '', playerNameElement(game.white, fide.whiteFideId),
           ' vs ', playerNameElement(game.black, fide.blackFideId));
         const players = document.createElement('div');
         players.className = 'game-library-players';
@@ -1699,7 +1747,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         }
         const result = document.createElement('span');
         result.className = 'game-library-result';
-        result.textContent = game.result === '1-0' ? `${game.white} won (White)` :
+        result.textContent = game.category === 'puzzles' ? 'Puzzle move history' : game.result === '1-0' ? `${game.white} won (White)` :
           game.result === '0-1' ? `${game.black} won (Black)` :
           game.result === '1/2-1/2' ? 'Draw' : 'Result unknown / unfinished';
         const details = document.createElement('span');
@@ -1722,7 +1770,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         });
         const move = document.createElement('button');
         move.type = 'button';
-        move.hidden = game.category === 'observed' || game.category === 'training';
+        move.hidden = ['observed', 'training', 'puzzles'].includes(game.category);
         move.textContent = game.category === 'mine' ? 'Move to Imported' : 'Move to My Games';
         move.addEventListener('click', async () => {
           const oldCategory = game.category;

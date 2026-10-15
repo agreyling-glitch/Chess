@@ -36,7 +36,7 @@ test('sign-in generates a unique S256 PKCE request with only the required scopes
   const url = new URL(f.assigned()), saved = JSON.parse(f.data.get('ironwood.lichess.pkce'));
   assert.equal(url.origin, 'https://lichess.org'); assert.equal(url.pathname, '/oauth');
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
-  assert.equal(url.searchParams.get('scope'), 'board:play challenge:read challenge:write');
+  assert.equal(url.searchParams.get('scope'), 'board:play challenge:read challenge:write follow:read follow:write');
   assert.equal(url.searchParams.get('state'), saved.state); assert.ok(saved.verifier.length >= 43);
   const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode(saved.verifier))).toString('base64url');
   assert.equal(url.searchParams.get('code_challenge'), hash);

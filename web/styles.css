@@ -191,3 +191,12 @@ canvas { display:block; }
 #game-preview-dialog .game-preview-controls button:hover:not(:disabled) { border-color:#e4bd75; box-shadow:0 2px 6px #d3ad6250,inset 0 1px #ffffff40; }
 #game-preview-dialog .game-preview-controls button[aria-pressed="true"] { background:linear-gradient(#f1ce83,#b99652); color:#181b1f; }
 #game-preview-dialog .game-preview-controls button:disabled { box-shadow:none; }
+
+/* Shared saved-game and player-profile move viewer metadata. */
+.game-preview-players { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
+.game-preview-player { display:flex; flex-direction:column; gap:4px; padding:10px 12px; background:#171d22; border:1px solid #303a43; border-radius:5px; min-width:0; overflow-wrap:anywhere; }
+.game-preview-player.white { border-left:3px solid #eee9dd; }
+.game-preview-player.black { border-left:3px solid #78828c; }
+.game-preview-player strong { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#aab5bf; }
+.game-preview-player span { font-size:15px; color:#eee9dd; }
+#game-preview-dialog .game-preview-outcome { color:#f1ce83; font-weight:600; }

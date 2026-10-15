@@ -15,8 +15,11 @@ test('preview navigation and 500ms autoplay stop at end and on close', async () 
     finalBoard:fen=>{const el=window.document.createElement('div');el.textContent=fen;return el;},
     startingNoteElement:()=>null, setInterval:(fn,ms)=>{tick=fn;interval=ms;return 1;},clearInterval:()=>cleared++});
   vm.runInContext(preview,context);
-  await context.showGamePreview({id:'test',title:'Test',finalFen:'e5'},window.document.querySelector('#trigger'));
+  await context.showGamePreview({id:'test',title:'Test',white:'Ada',black:'Ben',result:'0-1',finalFen:'e5'},window.document.querySelector('#trigger'));
   const dialog = window.document.querySelector('dialog');
+  assert.equal(dialog.querySelector('.game-preview-player.white').textContent,'WhiteAda');
+  assert.equal(dialog.querySelector('.game-preview-player.black').textContent,'BlackBen');
+  assert.match(dialog.querySelector('.game-preview-outcome').textContent,/Ben won as Black/);
   const buttons = [...dialog.querySelectorAll('.game-preview-controls button')];
   buttons[2].click(); assert.equal(interval,500); assert.match(dialog.textContent,/Starting position/);
   tick(); assert.match(dialog.textContent,/Move 1 of 2/);
@@ -28,4 +31,26 @@ test('preview navigation and 500ms autoplay stop at end and on close', async () 
   assert.match(dialog.textContent,/Move 2 of 2/);
   buttons[1].click(); assert.match(dialog.textContent,/Move 1 of 2/);
   buttons[2].click(); dialog.close(); assert.equal(cleared,2); assert.equal(window.document.querySelector('dialog'),null);
+});
+
+
+test('profile move viewer uses an in-memory timeline without reading or writing saved games', async () => {
+  const {window}=new JSDOM('<canvas id="chess_canvas"></canvas>');
+  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+  window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new window.Event('close'));};
+  let tick,cleared=0;
+  const context=vm.createContext({window,document:window.document,readGame:()=>assert.fail('Profile preview must not access saved games'),
+    finalBoard:fen=>{const el=window.document.createElement('div');el.textContent=fen;return el;},startingNoteElement:()=>null,
+    setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>cleared++});
+  vm.runInContext(preview,context);
+  await window.ironwoodShowProfileGamePreview(JSON.stringify({title:'Alice vs Bob',white:'Alice',black:'Bob',result:'1/2-1/2',preview:{positions:['start','e4','e5'],moves:['e4','e5']}}));
+  const dialog=window.document.querySelector('dialog');
+  assert.match(dialog.textContent,/Starting position/);
+  assert.equal(dialog.querySelector('.game-preview-player.white').textContent,'WhiteAlice');
+  assert.equal(dialog.querySelector('.game-preview-player.black').textContent,'BlackBob');
+  assert.match(dialog.querySelector('.game-preview-outcome').textContent,/Draw/);
+  const buttons=[...dialog.querySelectorAll('.game-preview-controls button')];
+  buttons[2].click();tick();assert.match(dialog.textContent,/Move 1 of 2/);
+  tick();assert.match(dialog.textContent,/Move 2 of 2/);assert.equal(cleared,1);
+  dialog.close();assert.equal(window.document.querySelector('dialog'),null);
 });

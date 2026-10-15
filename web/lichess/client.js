@@ -1,6 +1,6 @@
 // Original Ironwood client. Uses the public Lichess API; no SDK or assets bundled.
 export const HOST = 'https://lichess.org';
-export const SCOPES = 'board:play challenge:read challenge:write';
+export const SCOPES = 'board:play challenge:read challenge:write follow:read follow:write';
 export const CLIENT_ID = 'ironwood-chess';
 const ACTIVE = new Set(['created', 'started']);
 export const isPlaying = state => ACTIVE.has(state?.status);
@@ -44,7 +44,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
   let tail = Promise.resolve(), pendingMove = false, outgoing = [];
   let sessionController = new AbortController();
   const state = { connected: false, account: '', profile: null, status: 'Sign in to play on Lichess',
-    seeking: false, challenges: [], outgoing: [], games: [], chat: [], game: null };
+    seeking: false, challenges: [], outgoing: [], games: [], chat: [], game: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {} };
   const publish = () => emit({ type: 'lobby', ...state, outgoing: [...outgoing] });
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function checked(path, options = {}) {
@@ -66,14 +66,19 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     return response;
   }
   // Serialize finite requests. The account/game/seek streams must remain open concurrently.
-  function api(path, params, method = 'POST') {
+  function api(path, params, method = 'POST', accept = 'application/json', maxRecords = 12) {
     const session = generation;
     const task = tail.then(async () => {
       if (session !== generation || !token) throw new Error('Lichess session changed');
-      const response = await checked(path, { method, headers: { Accept: 'application/json' },
+      const response = await checked(path, { method, headers: { Accept: accept },
         signal: sessionController.signal,
         ...(params ? { body: new URLSearchParams(params) } : {}) });
       if (session !== generation) throw new Error('Lichess session changed');
+      if (accept === 'application/x-ndjson') {
+        const records = [];
+        await readNdjson(response, record => { if (records.length < maxRecords) records.push(record); }, sessionController.signal);
+        return records;
+      }
       return response.status === 204 ? {} : response.json();
     });
     tail = task.catch(() => {});
@@ -260,6 +265,109 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       void enrichOngoingGames();
     } catch (err) { if (session === generation) error(err); }
   }
+  const followedPlayer = user => ({ id: user.id || (user.username || user.name || '').toLowerCase(),
+    username: user.username || user.name || user.id || '', title: user.title || '', realName: user.profile?.realName || '' });
+  function followFailure(err) {
+    state.followPermissionNeeded = err.status === 403;
+    state.followError = err.status === 403 ? 'Sign in again to grant access to follow and unfollow players.' : err.message;
+  }
+  async function loadFollowing(refresh = false) {
+    if (!account || state.followingLoading || state.followBusy || (state.following !== null && !refresh)) return;
+    const session = generation;
+    state.followingLoading = true; state.followError = ''; state.followPermissionNeeded = false; publish();
+    try {
+      const users = await api('/api/rel/following', null, 'GET', 'application/x-ndjson', Infinity);
+      if (session !== generation) return;
+      state.following = users.map(followedPlayer).filter(user => user.username)
+        .sort((a,b) => a.username.localeCompare(b.username));
+      for (const target of [state, ...Object.values(state.profileWindows)]) {
+        if (target.playerProfile) target.playerProfile.following = state.following.some(user => user.username.toLowerCase() === target.playerProfile.username.toLowerCase());
+      }
+    } catch (err) { if (session === generation) followFailure(err); }
+    finally { if (session === generation) { state.followingLoading = false; publish(); } }
+  }
+  async function setFollowing(username, follow) {
+    if (!account || state.followBusy || state.followingLoading) return;
+    username = String(username || '').trim();
+    if (!/^[a-zA-Z0-9_-]{2,30}$/.test(username) || typeof follow !== 'boolean') {
+      state.followError = 'Enter a valid Lichess username.'; publish(); return;
+    }
+    if (username.toLowerCase() === account.username.toLowerCase()) {
+      state.followError = 'You cannot follow your own account.'; publish(); return;
+    }
+    const session = generation;
+    const profile = [state, ...Object.values(state.profileWindows)].find(target => target.playerProfile?.username?.toLowerCase() === username.toLowerCase())?.playerProfile;
+    const viewed = followedPlayer(profile || {username});
+    state.followBusy = true; state.followError = ''; state.followPermissionNeeded = false; publish();
+    try {
+      await api(`/api/rel/${follow ? 'follow' : 'unfollow'}/${encodeURIComponent(username)}`);
+      if (session !== generation) return;
+      for (const target of [state, ...Object.values(state.profileWindows)]) {
+        if (target.playerProfile?.username?.toLowerCase() === username.toLowerCase()) target.playerProfile.following = follow;
+      }
+      if (state.following !== null) {
+        state.following = state.following.filter(user => user.username.toLowerCase() !== username.toLowerCase());
+        if (follow) state.following.push(viewed);
+        state.following.sort((a,b) => a.username.localeCompare(b.username));
+      }
+    } catch (err) { if (session === generation) followFailure(err); }
+    finally { if (session === generation) { state.followBusy = false; publish(); } }
+  }
+  async function playerProfile(refresh = false, username = '', windowId = '') {
+    windowId = String(windowId || '');
+    const target = windowId ? state.profileWindows[windowId] ||= {playerProfile:null,recentGames:null,ratingHistory:null,profileUsername:'',historyUsername:'',profileLoading:false,historyLoading:false,profileError:'',historyError:''} : state;
+    if (!account || target.profileLoading || target.historyLoading) return;
+    username = String(username || account.username).trim();
+    if (!/^[a-zA-Z0-9_-]{2,30}$/.test(username)) {
+      target.profileError = 'Enter a valid Lichess username.'; publish(); return;
+    }
+    if (!refresh && target.profileUsername.toLowerCase() === username.toLowerCase()
+      && target.playerProfile && target.recentGames !== null && target.ratingHistory !== null && !target.profileError && !target.historyError) return;
+    const session = generation;
+    const current = () => session === generation && (!windowId || state.profileWindows[windowId] === target);
+    const changed = target.profileUsername.toLowerCase() !== username.toLowerCase();
+    if (changed) { target.playerProfile = null; target.recentGames = null; target.ratingHistory = null; }
+    target.profileUsername = username; target.historyUsername = username;
+    target.profileLoading = true; target.profileError = ''; target.historyError = ''; publish();
+    // Keep requests sequential, and preserve successful sections if another section fails.
+    try {
+      const profile = await api(`/api/user/${encodeURIComponent(username)}?fideId=true`, null, 'GET');
+      if (!current()) return;
+      if (!profile.username) throw new Error('Invalid player profile response');
+      target.playerProfile = profile; publish();
+      await ratingHistory(refresh, username, target);
+      if (!current()) return;
+      try {
+        const games = await api(`/api/games/user/${encodeURIComponent(username)}?max=12&opening=true&lastFen=true&moves=true&pgnInJson=true&ongoing=false`, null, 'GET', 'application/x-ndjson');
+        if (!current()) return;
+        target.recentGames = games;
+      } catch (err) { if (current()) target.profileError = `Recent games: ${err.message}`; }
+    } catch (err) { if (current()) target.profileError = err.message; }
+    finally { if (current()) { target.profileLoading = false; publish(); } }
+  }
+  async function ratingHistory(refresh = false, username = '', target = state) {
+    if (!account || target.historyLoading) return;
+    username = String(username || account.username).trim();
+    if (!/^[a-zA-Z0-9_-]{2,30}$/.test(username)) {
+      target.historyError = 'Enter a valid Lichess username.'; publish(); return;
+    }
+    if (target.ratingHistory !== null && target.historyUsername.toLowerCase() === username.toLowerCase() && !refresh) return;
+    if (target.historyUsername.toLowerCase() !== username.toLowerCase()) target.ratingHistory = null;
+    target.historyUsername = username;
+    const session = generation;
+    target.historyLoading = true; target.historyError = ''; publish();
+    try {
+      const data = await api(`/api/user/${encodeURIComponent(username)}/rating-history`, null, 'GET');
+      if (session !== generation) return;
+      if (!Array.isArray(data)) throw new Error('Invalid rating history response');
+      target.ratingHistory = data;
+    } catch (err) {
+      if (session !== generation) return;
+      target.historyError = err.message;
+    } finally {
+      if (session === generation) { target.historyLoading = false; publish(); }
+    }
+  }
   function cancelSeek() { seekStream?.abort(); seekStream = null; state.seeking = false; publish(); }
   function disconnect() {
     generation++; eventStream?.abort(); gameStream?.abort(); seekStream?.abort();
@@ -267,7 +375,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     eventStream = gameStream = seekStream = null; token = ''; account = null; game = null;
     pendingMove = false; outgoing = [];
     Object.assign(state, { connected: false, account: '', profile: null, seeking: false, challenges: [], outgoing: [],
-      games: [], chat: [], game: null, opponentGone: null, status: 'Disconnected from Lichess' }); publish();
+      games: [], chat: [], game: null, opponentGone: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {}, status: 'Disconnected from Lichess' }); publish();
   }
   async function seek(options) {
     if (!state.connected || state.seeking || isPlaying(game?.state)) throw new Error('Connect before finding a new game');
@@ -335,6 +443,6 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       throw new Error('Unsupported game action');
     await api(`/api/board/game/${game.id}/${action}`, action === 'chat' ? { room: 'player', text: text.slice(0, 140) } : null);
   }
-  return { connect, disconnect, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
+  return { connect, disconnect, closeProfileWindow: id => { delete state.profileWindows[String(id)]; publish(); }, loadFollowing, setFollowing, playerProfile, ratingHistory, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
     revoke: () => api('/api/token', null, 'DELETE'), reportError: error, snapshot: () => structuredClone(state) };
 }

@@ -3,7 +3,7 @@ title: "Puzzles"
 description: "Solve Lichess puzzles and review mistakes with local progress."
 category: "play"
 keywords: [puzzles, daily puzzle, practice, tactics, hints, progress, review mistakes]
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 weight: 12
 ---
 
@@ -22,3 +22,7 @@ Select a piece and its destination on the puzzle board. Ironwood plays the oppon
 **Review mistakes** lets you retry saved puzzles without downloading them again. **Progress** summarizes the latest result for each of up to 500 puzzles stored in this browser. A clean retry replaces the earlier missed result. Clearing browser site data removes this history. Results are not submitted to Lichess and do not affect your Lichess rating.
 
 Puzzle data is supplied by [Lichess](https://database.lichess.org/#puzzles) under CC0. If the service limits requests, wait a minute before trying again.
+
+## Puzzle move history
+
+Puzzle attempts with played moves appear under **Puzzles** in Saved Games, where you can replay the recorded moves. These playback records are separate from the puzzle progress used by **Progress** and **Review mistakes**. Deleting a saved playback record does not reset those counts.

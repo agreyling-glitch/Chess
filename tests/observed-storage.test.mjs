@@ -35,7 +35,7 @@ globalThis.indexedDB = { open() {
 const local = new Map([['ironwood.chess.active-game-id.v1', 'personal-game'], ['ironwood.chess.active-game-category.v1', 'mine']]);
 globalThis.localStorage = { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value) };
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const { gameDetails } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { gameDetails, sortSavedGames } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const makeGame = analysis => JSON.stringify({ review_pgn: '[White "Ada"]\n[Black "Ben"]\n[Site "freechess.org"]\n\n1.e4 e5 1-0', game_analysis: analysis, game_analysis_paused: true });
 
@@ -82,4 +82,41 @@ test('reopened observed games keep their category and source when analysis is sa
   assert.equal(records.get(saved.id).category, 'observed');
   assert.equal(records.get(saved.id).favorite, true);
   assert.equal(JSON.parse(records.get(saved.id).json).game_analysis[0].eval_cp, 18);
+});
+
+
+test('zero-move games do not enter the library, including analysis-only positions', async () => {
+  const before=records.size, beforeWrites=writes;
+  const empty=JSON.stringify({live_moves:[],game_analysis:[{eval_cp:0},{eval_cp:10}]});
+  ironwoodStoreCurrentGame(empty); ironwoodStoreObservedGame(empty,'empty-observed');
+  ironwoodStoreImportedGame(JSON.stringify({review_pgn:'[White "Ada"]\n[Black "Ben"]\n\n*'}));
+  await flush(); assert.equal(records.size,before); assert.equal(writes,beforeWrites);
+  assert.equal(gameDetails(empty).moves,0);
+  local.set('ironwood.chess.active-game-id.v1','first-move-game');
+  ironwoodStoreCurrentGame(JSON.stringify({live_moves:['e4']})); await flush();
+  assert.equal(records.get('first-move-game').moves,1);
+});
+
+test('move sorting is numeric, includes existing empty games and breaks ties by recency', () => {
+  const games=[{id:'long',moves:100,updatedAt:1},{id:'short-old',moves:2,updatedAt:2},{id:'empty',moves:0,updatedAt:3},{id:'short-new',moves:2,updatedAt:4}];
+  assert.deepEqual(sortSavedGames(games,'moves-asc').map(g=>g.id),['empty','short-new','short-old','long']);
+  assert.deepEqual(sortSavedGames(games,'moves-desc').map(g=>g.id),['long','short-new','short-old','empty']);
+  assert.deepEqual(sortSavedGames(games).map(g=>g.id),['short-new','empty','short-old','long']);
+  assert.equal(games[0].id,'long');
+});
+
+
+test('puzzle autosaves update one attempt in Puzzles and empty attempts remain unsaved', async () => {
+  const before=records.size;
+  const pgn=moves=>JSON.stringify({review_pgn:`[Event "Lichess puzzle"]\n[PuzzleId "abc12"]\n\n${moves} *`});
+  ironwoodStartNewStoredGame('puzzles');
+  const id=local.get('ironwood.chess.active-game-id.v1');
+  ironwoodStoreCurrentGame(pgn('')); await flush(); assert.equal(records.size,before);
+  ironwoodStoreCurrentGame(pgn('1. e4 e5')); await flush();
+  ironwoodStoreCurrentGame(pgn('1. e4 e5 2. Nf3')); await flush();
+  assert.equal(records.size,before+1); assert.equal(records.get(id).category,'puzzles');
+  assert.equal(records.get(id).moves,3); assert.equal(records.get(id).title,'Lichess puzzle abc12');
+  assert.equal(local.get('ironwood.chess.active-game-category.v1'),'puzzles');
+  ironwoodStartNewStoredGame('puzzles'); ironwoodStoreCurrentGame(pgn('1. e4')); await flush();
+  assert.equal(records.size,before+2);
 });

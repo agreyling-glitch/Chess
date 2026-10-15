@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
 layout: "features"
 url: "/features/"
@@ -14,6 +14,16 @@ Open **Game → Puzzles…** for the Lichess daily puzzle or practice by theme a
 ## Analyze without limits
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
+
+## Compare engine lines on mini boards
+
+Click the gold **Expand** button beneath Engine prediction to see one board after each predicted move. The title identifies the variation, evaluation, first move, and depth. Open multiple independent prediction snapshots to compare lines; resize or maximize each window and click a board to inspect its position. Boards scale with the available space inside a shared sunken paper-grain panel. The bottom Full Game Analysis details panel uses the same stronger grain. [Engine prediction help](/help/engine-line/#expand-the-prediction-into-boards).
+
+## Explore Lichess player profiles
+
+Open your account or any username from **Lichess-Online → Player profile…**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate green-bordered windows, each with independent graph filters and a sunken paper-grain chart.
+
+Click a recent-game mini board for enlarged playback with player colors and outcome, or choose **Review on Ironwood** for the full board. Reviews stay temporary until **Save current game** adds the complete game to your library. [Player profile help](/help/play-on-lichess/#player-profiles-and-followed-players).
 
 ## Print and share a complete review
 
@@ -211,3 +221,7 @@ Sunken sections, gold accents, and raised primary controls now unify the menus, 
 Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. Game Analysis keeps its controls and tabs above the scrolling content.
 
 Lichess account sign-in can remain available alongside FICS without replacing the current board. Opening Explorer uses that account session; tablebases require no sign-in. One game controls the board at a time, and study tools remain unavailable during live online play and training.
+
+## Find games by length and replay puzzle attempts
+
+Sort Saved Games by move count or recency, and browse puzzle move history in its own **Puzzles** category. Empty games with zero moves are excluded. Enlarged playback identifies White, Black, and the result; deleting puzzle playback does not reset puzzle progress. [Saved Games help](/help/saved-games-and-backups/).

@@ -21,6 +21,28 @@ struct LichessSession {
     ai_time: usize,
     pending_preview: Option<ChessMove>,
     lobby_tab: usize,
+    profile_windows: Vec<PlayerProfileWindow>,
+    next_profile_window_id: u64,
+    profile_action_error: String,
+    profile_review_requested: bool,
+}
+
+struct PlayerProfileWindow {
+    id: u64,
+    open: bool,
+    username: String,
+    control: usize,
+    shown_username: String,
+    range: usize,
+    following_search: String,
+}
+impl PlayerProfileWindow {
+    fn new(id: u64, username: &str) -> Self {
+        Self {id,open:true,username:username.into(),control:0,shown_username:String::new(),range:5,following_search:String::new()}
+    }
+    fn load(&self, refresh: bool) {
+        lichess_command(serde_json::json!({"type":"playerProfile","windowId":self.id.to_string(),"username":self.username.trim(),"refresh":refresh}));
+    }
 }
 
 impl LichessSession {
@@ -559,6 +581,11 @@ impl ChessApp {
             self.lichess.open = true;
             ui.close();
         }
+        if ui.add_enabled(self.lichess.connected(), egui::Button::new("Player profile…"))
+            .on_disabled_hover_text("Connect your Lichess account to view player profiles.").clicked() {
+            self.open_lichess_history();
+            ui.close();
+        }
         if !self.lichess.active && ui.button("Connect Lichess account").clicked() {
             self.start_lichess();
             ui.close();
@@ -676,6 +703,7 @@ impl ChessApp {
     }
 
     fn lichess_ui(&mut self, ctx: &egui::Context) {
+        self.lichess_history_ui(ctx);
         if !self.lichess.open {
             return;
         }
@@ -737,6 +765,7 @@ impl ChessApp {
                     ui.colored_label(green, self.lichess.lobby["account"].as_str().unwrap_or("Connected"));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         Self::lichess_account_link(ui);
+                        if ui.button("Player profile").clicked() { self.open_lichess_history(); }
                     });
                 });
                 ui.add_space(2.0);
@@ -1191,4 +1220,791 @@ fn lichess_profile_summary(lobby: &serde_json::Value) -> Option<(String, String)
     }
     details.push("? = provisional rating · — = no rating established. Profile fetched at sign-in/reconnect.".into());
     Some((parts.join(" · "), details.join("\n")))
+}
+
+
+impl ChessApp {
+    fn open_lichess_history(&mut self) {
+        let username=self.lichess.lobby["account"].as_str().unwrap_or_default().to_owned();
+        self.open_lichess_profile_window(&username);
+    }
+    fn open_lichess_profile_window(&mut self, username: &str) {
+        self.lichess.next_profile_window_id+=1;
+        let window=PlayerProfileWindow::new(self.lichess.next_profile_window_id,username);
+        window.load(false);
+        self.lichess.profile_windows.push(window);
+        lichess_command(serde_json::json!({"type":"following"}));
+    }
+    fn lichess_history_ui(&mut self, ctx: &egui::Context) {
+        let mut windows=std::mem::take(&mut self.lichess.profile_windows);
+        for window in &mut windows {
+            self.lichess_profile_window(ctx,window);
+        }
+        if self.lichess.profile_review_requested {
+            for window in &mut windows {window.open=false;}
+            self.lichess.profile_review_requested=false;
+        }
+        for window in &windows {
+            if !window.open { lichess_command(serde_json::json!({"type":"closeProfileWindow","windowId":window.id.to_string()})); }
+        }
+        windows.retain(|window|window.open);
+        windows.append(&mut self.lichess.profile_windows);
+        self.lichess.profile_windows=windows;
+    }
+    fn lichess_profile_window(&mut self, ctx: &egui::Context, window: &mut PlayerProfileWindow) {
+        let data=lichess_profile_window_data(&self.lichess.lobby,window.id);
+        let mut open = true;
+        let title = lichess_profile_window_title(&data["playerProfile"]);
+        egui::Window::new(title).id(egui::Id::new(("lichess_player_profile_window",window.id))).open(&mut open)
+            .frame(Frame::window(&ctx.style_of(ctx.theme())).stroke(Stroke::new(2.0,Color32::from_rgb(70,255,120)))
+                .shadow(egui::epaint::Shadow{offset:[0,0],blur:10,spread:1,color:Color32::from_rgba_unmultiplied(70,255,120,65)}))
+            .default_pos(egui::pos2(32.0+(window.id%8) as f32*28.0,40.0+(window.id%8) as f32*28.0))
+            .default_width(1020.0).default_height(750.0)
+            .min_size(Vec2::new(360.0,240.0)).resizable(true).vscroll(true)
+            .max_width((ctx.content_rect().width() - 32.0).max(280.0))
+            .max_height((ctx.content_rect().height() - 32.0).max(280.0))
+            .show(ctx, |ui| {
+            if !data["connected"].as_bool().unwrap_or(false) { ui.label("Reconnect to view a player profile."); return; }
+            let loading = data["profileLoading"].as_bool().unwrap_or(false);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Player");
+                let input = ui.add(egui::TextEdit::singleline(&mut window.username).desired_width(180.0).hint_text("Lichess username"));
+                let enter = input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if ui.add_enabled(!loading, egui::Button::new("Load")).clicked() || (enter && !loading) {
+                    window.load(false);
+                }
+                if ui.add_enabled(!loading, egui::Button::new("My account")).clicked() {
+                    window.username=data["account"].as_str().unwrap_or_default().to_owned(); window.load(false);
+                }
+                if ui.button("Load in new window").clicked() { self.open_lichess_profile_window(&window.username); }
+                if ui.add_enabled(!loading, egui::Button::new("Refresh")).clicked() {
+                    let username=window.username.clone();
+                    window.username=data["profileUsername"].as_str().unwrap_or(&username).to_owned(); window.load(true);
+                }
+                if loading { ui.spinner(); ui.label("Loading player profile…"); }
+            });
+            for key in ["profileError", "historyError"] {
+                if let Some(error) = data[key].as_str().filter(|s| !s.is_empty()) {
+                    ui.colored_label(Color32::from_rgb(230,150,120), error);
+                }
+            }
+            if !self.lichess.profile_action_error.is_empty() { ui.colored_label(Color32::from_rgb(230,150,120),&self.lichess.profile_action_error); }
+            self.lichess_following_ui(ui, loading, window, &data);
+            ui.scope(|ui| {
+                let profile = data["playerProfile"].clone();
+                if profile.is_null() { if !loading { ui.label("Load a Lichess username to view their profile."); } return; }
+                let gold = Color32::from_rgb(211,173,98);
+                ui.horizontal_wrapped(|ui| {
+                    if let Some(title) = profile["title"].as_str() { ui.label(RichText::new(title).size(28.0).strong().color(gold)); }
+                    ui.label(RichText::new(profile["username"].as_str().unwrap_or("Player")).size(28.0));
+                    ui.add(egui::Hyperlink::from_label_and_url("View on Lichess",format!("https://lichess.org/@/{}",profile["username"].as_str().unwrap_or_default())).open_in_new_tab(true));
+                    let username = profile["username"].as_str().unwrap_or_default();
+                    let own = data["account"].as_str().is_some_and(|account|account.eq_ignore_ascii_case(username));
+                    if !own {
+                        let following = profile["following"].as_bool().or_else(||data["following"].as_array().map(|users|users.iter().any(|user|user["username"].as_str().is_some_and(|name|name.eq_ignore_ascii_case(username)))));
+                        let busy = data["followBusy"].as_bool().unwrap_or(false) || data["followingLoading"].as_bool().unwrap_or(false);
+                        let allowed = !busy && !loading && following.is_some() && (following == Some(true) || profile["followable"].as_bool() != Some(false));
+                        if ui.add_enabled(allowed,egui::Button::new(if following==Some(true) {"Unfollow"} else {"Follow"}))
+                            .on_hover_text("Updates your Lichess following list.").clicked() {
+                            lichess_command(serde_json::json!({"type":"setFollowing","username":username,"follow":following!=Some(true)}));
+                        }
+                        if busy { ui.spinner(); }
+                    }
+
+                });
+                ui.separator();
+                self.lichess_profile_ratings(ui, &profile, window);
+                ui.add_space(10.0);
+                if ui.available_width() >= 720.0 {
+                    let graph_width = ui.available_width()*0.64;
+                    ui.horizontal_top(|ui| {
+                        ui.allocate_ui_with_layout(Vec2::new(graph_width,370.0),Layout::top_down(Align::Min),|ui| {
+                            Self::lichess_profile_section(ui, |ui| self.lichess_profile_graph(ui, window, &data));
+                        });
+                        ui.add_space(12.0);
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width());
+                            Self::lichess_profile_section(ui, |ui| lichess_profile_bio(ui,&profile));
+                        });
+                    });
+                } else {
+                    Self::lichess_profile_section(ui, |ui| self.lichess_profile_graph(ui, window, &data));
+                    ui.add_space(10.0);
+                    Self::lichess_profile_section(ui, |ui| lichess_profile_bio(ui,&profile));
+                }
+                ui.separator();
+                Self::lichess_profile_record(ui, &profile);
+                ui.add_space(10.0); ui.heading("Recent games"); ui.small("Latest 12 completed games · all time controls");
+                let games = data["recentGames"].as_array().cloned().unwrap_or_default();
+                if games.is_empty() && !loading { ui.label("No recent games available."); }
+                for game in &games { self.lichess_profile_game(ui, game); }
+            });
+        });
+        window.open = open;
+    }
+
+    fn lichess_following_ui(&mut self, ui: &mut egui::Ui, profile_loading: bool, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
+        let loading = data["followingLoading"].as_bool().unwrap_or(false);
+        let busy = data["followBusy"].as_bool().unwrap_or(false);
+        if let Some(error) = data["followError"].as_str().filter(|error|!error.is_empty()) {
+            ui.colored_label(Color32::from_rgb(230,150,120),error);
+        }
+        if data["followPermissionNeeded"].as_bool()==Some(true)
+            && ui.button("Sign in again for follow access").clicked() {
+            #[cfg(target_arch="wasm32")]
+            lichess_sign_in();
+        }
+        let users = data["following"].as_array().cloned();
+        egui::CollapsingHeader::new(users.as_ref().map(|users|format!("Following ({})",users.len())).unwrap_or_else(||"Following".into()))
+            .id_salt("lichess_following_list").show(ui,|ui| {
+            Self::lichess_profile_section(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(egui::TextEdit::singleline(&mut window.following_search).desired_width(180.0).hint_text("Find followed player"));
+                    if ui.add_enabled(!loading && !busy,egui::Button::new("Refresh following")).clicked() {
+                        lichess_command(serde_json::json!({"type":"following","refresh":true}));
+                    }
+                    if loading { ui.spinner(); }
+                });
+                let query = window.following_search.trim().to_lowercase();
+                if let Some(users) = &users {
+                    if users.is_empty() { ui.label("You are not following any players."); }
+                    egui::ScrollArea::vertical().id_salt("lichess_following_scroll").max_height(180.0).show(ui,|ui| {
+                        let mut matches = 0;
+                        for user in users {
+                            let username=user["username"].as_str().unwrap_or_default();
+                            let label=format!("{} {}{}",user["title"].as_str().unwrap_or(""),username,user["realName"].as_str().filter(|name|!name.is_empty()).map(|name|format!(" · {name}")).unwrap_or_default());
+                            if !label.to_lowercase().contains(&query) {continue;}
+                            matches+=1;
+                            if ui.add_enabled(!profile_loading,egui::Button::new(label.trim())).clicked() {
+                                window.username=username.to_owned();
+                                window.load(false);
+                            }
+                        }
+                        if matches==0 && !users.is_empty() {ui.label("No followed players match.");}
+                    });
+                } else if !loading { ui.label("Refresh to load the players you follow on Lichess."); }
+            });
+        });
+    }
+
+    fn lichess_profile_ratings(&mut self, ui: &mut egui::Ui, profile: &serde_json::Value, window: &mut PlayerProfileWindow) {
+        let gold = Color32::from_rgb(211,173,98);
+        // Reserve the complete chip before entering its frame so wrapping happens between chips.
+        ui.horizontal_wrapped(|ui| {
+            for (i,key,label) in [(0,"bullet","Bullet"),(1,"blitz","Blitz"),(2,"rapid","Rapid"),(3,"classical","Classical"),(4,"correspondence","Correspondence"),(5,"puzzle","Puzzles")] {
+                let perf = &profile["perfs"][key];
+                let count = perf["games"].as_u64().unwrap_or(0);
+                let rating = if count > 0 { format!("{}{}",perf["rating"].as_u64().unwrap_or(0),if perf["prov"].as_bool()==Some(true) {"?"} else {""}) } else { "—".into() };
+                ui.allocate_ui_with_layout(Vec2::new(184.0,64.0),Layout::top_down(Align::Min),|ui| {
+                    let card = Frame::new().fill(Color32::from_rgb(13,17,22)).inner_margin(10.0).corner_radius(6.0).show(ui, |ui| {
+                        ui.set_width(164.0);
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        if i < 5 {
+                            if ui.selectable_label(window.control==i,RichText::new(format!("{label}  {rating}")).color(gold)).clicked() { window.control=i; }
+                        } else {
+                            ui.label(RichText::new(format!("{label}  {rating}")).color(gold));
+                        }
+                        ui.small(format!("{count} {}",if key=="puzzle" {"attempts"} else {"rated games"}));
+                    });
+                    Self::paint_sunken_border(ui, card.response.rect);
+                });
+            }
+        });
+    }
+
+    fn lichess_profile_graph(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
+        let loading = data["historyLoading"].as_bool().unwrap_or(false);
+            let controls = ["Bullet", "Blitz", "Rapid", "Classical", "Correspondence"];
+            let shown = data["historyUsername"].as_str().unwrap_or_default();
+            if !loading && data["ratingHistory"].is_array() && window.shown_username != shown {
+                window.shown_username = shown.to_owned();
+                window.control = controls.iter().enumerate()
+                    .max_by_key(|(_, name)| lichess_history_points(&data, name).len())
+                    .map(|(index, _)| index).unwrap_or(0);
+            }
+
+            ui.horizontal_wrapped(|ui| { for (i, name) in controls.iter().enumerate() {
+                ui.selectable_value(&mut window.control, i, format!("{name}"));
+            }});
+
+            if loading { ui.spinner(); ui.label("Loading rating history…"); }
+            if let Some(error) = data["historyError"].as_str().filter(|s| !s.is_empty()) { ui.label(error); }
+            let name = controls[window.control.min(4)];
+            ui.horizontal_wrapped(|ui| {
+                for (i, label) in ["1M", "3M", "6M", "YTD", "1Y", "ALL"].iter().enumerate() {
+                    ui.selectable_value(&mut window.range, i, *label);
+                }
+            });
+            let all_points = lichess_history_points(&data, name);
+            let today = profile_today_day();
+            let cutoff = match window.range {
+                0 => today - 30.0, 1 => today - 90.0, 2 => today - 180.0,
+                3 => profile_year_start(today), 4 => today - 365.0, _ => f64::NEG_INFINITY,
+            };
+            let points: Vec<_> = all_points.into_iter().filter(|point| point.0 >= cutoff).collect();
+            if points.is_empty() { if !loading { ui.label(format!("No {name} rating history in this period. Try ALL or another time control.")); } return; }
+            let first = &points[0]; let last = &points[points.len()-1];
+            ui.label(format!("Latest {:.0} · Change {:+.0}", last.1, last.1-first.1));
+            ui.add_space(6.0);
+            let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(180.0), 250.0), Sense::hover());
+            ui.painter().rect_filled(rect,6.0,Color32::from_rgb(13,17,22));
+            let paper=Self::paper_grain_texture(ui.ctx());
+            let surface=rect.shrink(4.0);
+            ui.painter().image(paper.id(),surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),
+                Color32::from_white_alpha(110));
+            Self::paint_sunken_border(ui,rect);
+            let plot = rect.shrink2(Vec2::new(44.0,22.0));
+            let low = points.iter().map(|p| p.1).fold(f32::INFINITY,f32::min)-25.0;
+            let high = points.iter().map(|p| p.1).fold(f32::NEG_INFINITY,f32::max)+25.0;
+            let position = |p: &(f64,f32,String)| egui::pos2(plot.left()+((p.0-first.0)/(last.0-first.0).max(1.0)) as f32*plot.width(),plot.bottom()-(p.1-low)/(high-low)*plot.height());
+            let painter=ui.painter(); let gold=Color32::from_rgb(211,173,98);
+            for step in 0..=4 {
+                let y=plot.bottom()-plot.height()*step as f32/4.0;
+                painter.line_segment([egui::pos2(plot.left(),y),egui::pos2(plot.right(),y)],Stroke::new(1.0,Color32::from_gray(55)));
+                painter.text(egui::pos2(plot.left()-6.0,y),egui::Align2::RIGHT_CENTER,format!("{:.0}",low+(high-low)*step as f32/4.0),egui::FontId::proportional(11.0),Color32::GRAY);
+            }
+            for pair in points.windows(2) { painter.line_segment([position(&pair[0]),position(&pair[1])],Stroke::new(2.0,gold)); }
+            painter.circle_filled(position(last),3.0,gold);
+            painter.text(plot.left_bottom()+Vec2::new(0.0,6.0),egui::Align2::LEFT_TOP,&first.2,egui::FontId::proportional(11.0),Color32::GRAY);
+            painter.text(plot.right_bottom()+Vec2::new(0.0,6.0),egui::Align2::RIGHT_TOP,&last.2,egui::FontId::proportional(11.0),Color32::GRAY);
+            if let Some(pointer)=response.hover_pos() {
+                if let Some(point)=points.iter().min_by(|a,b| (position(a).x-pointer.x).abs().total_cmp(&(position(b).x-pointer.x).abs())) {
+                    painter.circle_filled(position(point),4.0,gold);
+                    response.on_hover_text(format!("{} · {:.0}",point.2,point.1));
+                }
+            }
+
+        ui.small("Daily rating history · hover to inspect · ? = provisional rating");
+    }
+
+    fn lichess_profile_record(ui: &mut egui::Ui, profile: &serde_json::Value) {
+        Self::lichess_profile_section(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Game record").strong().size(15.0));
+                ui.label(RichText::new("All time · rated and casual").small().color(Color32::from_rgb(150,160,169)));
+            });
+            ui.add_space(8.0);
+            let gap = 8.0;
+            let columns = ((ui.available_width()+gap)/118.0).floor().clamp(1.0,5.0);
+            let width = (ui.available_width()-gap*(columns-1.0))/columns;
+            let gold=Color32::from_rgb(225,186,111);
+            let green=Color32::from_rgb(116,204,151);
+            let red=Color32::from_rgb(226,132,126);
+            let blue=Color32::from_rgb(134,179,218);
+            ui.spacing_mut().item_spacing = Vec2::splat(gap);
+            let metrics=[("all","Games",gold),("rated","Rated",Color32::from_rgb(207,214,221)),("win","Wins",green),("loss","Losses",red),("draw","Draws",blue)];
+            // Explicit rows avoid fractional-width auto-wrap oscillation during a resize.
+            for row in metrics.chunks(columns as usize) {
+                ui.horizontal_top(|ui| {
+                for &(key,label,color) in row {
+                    ui.allocate_ui_with_layout(Vec2::new(width.floor()-1.0,76.0),Layout::top_down(Align::Min),|ui| {
+                        let tile=Frame::new().fill(Color32::from_rgb(23,29,34)).stroke(Stroke::new(1.0,Color32::from_rgb(45,54,62)))
+                            .corner_radius(5.0).inner_margin(12.0).show(ui,|ui| {
+                            ui.set_width((width.floor()-27.0).max(60.0));
+                            ui.style_mut().wrap_mode=Some(egui::TextWrapMode::Extend);
+                            ui.label(RichText::new(label).size(12.0).color(Color32::from_rgb(172,183,193)));
+                            ui.add_space(2.0);
+                            ui.label(RichText::new(profile["count"][key].as_u64().map(profile_record_number).unwrap_or_else(||"—".into())).size(24.0).strong().color(color));
+                        });
+                        let accent=egui::Rect::from_min_size(tile.response.rect.left_top()+Vec2::new(8.0,1.0),Vec2::new((tile.response.rect.width()-16.0).max(0.0),2.0));
+                        ui.painter().rect_filled(accent,1.0,color.gamma_multiply(0.8));
+                    });
+                }
+            });
+            }
+            if let (Some(wins),Some(losses),Some(draws))=(profile["count"]["win"].as_u64(),profile["count"]["loss"].as_u64(),profile["count"]["draw"].as_u64()) {
+                let total=wins as f64+losses as f64+draws as f64;
+                if total>0.0 {
+                    ui.add_space(4.0);
+                    let (bar,response)=ui.allocate_exact_size(Vec2::new(ui.available_width(),6.0),Sense::hover());
+                    let mut x=bar.left();
+                    for (count,color) in [(wins,green),(losses,red),(draws,blue)] {
+                        let right=x+bar.width()*(count as f64/total) as f32;
+                        ui.painter().rect_filled(egui::Rect::from_min_max(egui::pos2(x,bar.top()),egui::pos2(right,bar.bottom())),1.0,color);
+                        x=right;
+                    }
+                    response.on_hover_text(format!("Wins {:.1}% · Losses {:.1}% · Draws {:.1}%",wins as f64/total*100.0,losses as f64/total*100.0,draws as f64/total*100.0));
+                }
+            }
+        });
+    }
+
+    fn lichess_profile_section(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
+        let section = Frame::new().fill(Color32::from_rgb(13,17,22))
+            .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                content(ui);
+            });
+        Self::paint_sunken_border(ui, section.response.rect);
+    }
+
+    fn review_lichess_profile_game(&mut self, pgn: &str) {
+        if (self.fics_active && !self.fics_game_finished) || self.training.is_some() || self.puzzle_navigation_locked() {
+            self.lichess.profile_action_error="Finish active play or training before opening another game.".into(); return;
+        }
+        if Self::parse_pgn_mainline(pgn).is_err() {self.lichess.profile_action_error="Could not read the game moves.".into();return;}
+        self.save_game();
+        self.exit_puzzle_mode();
+        self.transient_profile_review=true;
+        self.load_pgn_with_storage(pgn,false);
+        self.engine_enabled=false;
+        self.review_to(0);
+        self.engine_status="Lichess game review · not saved".into();
+        self.lichess.profile_action_error.clear();
+        self.lichess.profile_review_requested=true;
+    }
+
+    fn lichess_profile_game(&mut self, ui: &mut egui::Ui, game: &serde_json::Value) {
+        Self::lichess_profile_section(ui, |ui| {
+            let pgn=game["pgn"].as_str().filter(|pgn|!pgn.is_empty());
+            ui.horizontal_top(|ui| {
+                let controls_width = 144.0;
+                let details_width = (ui.available_width()-controls_width-ui.spacing().item_spacing.x).max(120.0);
+                ui.allocate_ui_with_layout(Vec2::new(details_width,0.0),egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                    ui.set_min_width(details_width);
+                    let side = 112.0;
+                    let (rect,preview_response) = ui.allocate_exact_size(Vec2::splat(side),Sense::click());
+                    let preview_response=preview_response.on_hover_text("Watch moves in the enlarged board preview").on_hover_cursor(egui::CursorIcon::ZoomIn);
+                    if preview_response.clicked() {
+                        self.lichess.profile_action_error.clear();
+                        match lichess_recent_game_preview(game) {
+                            Ok(payload) => {
+                                #[cfg(target_arch="wasm32")]
+                                if let Err(error)=show_profile_game_preview(&payload.to_string()) {self.lichess.profile_action_error=format!("Could not open preview: {error:?}");}
+                                #[cfg(not(target_arch="wasm32"))]
+                                let _=payload;
+                            }
+                            Err(error)=>self.lichess.profile_action_error=error,
+                        }
+                    }
+                    if let Some(board) = game["lastFen"].as_str().filter(|_|ui.is_rect_visible(rect)).and_then(|fen|Board::from_str(fen).ok()) {
+                        let cell = side/8.0;
+                        for square in chess::ALL_SQUARES {
+                            let file=square.get_file().to_index(); let rank=square.get_rank().to_index();
+                            let tile=egui::Rect::from_min_size(rect.min+Vec2::new(file as f32*cell,(7-rank) as f32*cell),Vec2::splat(cell));
+                            ui.painter().rect_filled(tile,0.0,if (file+rank)%2==0 {Color32::from_rgb(173,133,92)} else {Color32::from_rgb(235,211,174)});
+                            if let (Some(piece),Some(color))=(board.piece_on(square),board.color_on(square)) {
+                                Self::paint_piece(ui,tile,cell,PieceSet::Merida,color,piece);
+                            }
+                        }
+                    } else if ui.is_rect_visible(rect) { ui.painter().text(rect.center(),egui::Align2::CENTER_CENTER,"Position unavailable",egui::FontId::proportional(11.0),Color32::GRAY); }
+                    if preview_response.hovered() || preview_response.has_focus() {
+                        let gold=Color32::from_rgb(211,173,98);
+                        ui.painter().rect_stroke(rect.expand(3.0),2.0,Stroke::new(2.0,gold),egui::StrokeKind::Outside);
+                        let badge=egui::Rect::from_min_size(rect.right_top()+Vec2::new(-30.0,4.0),Vec2::splat(26.0));
+                        ui.painter().rect_filled(badge,4.0,Color32::from_black_alpha(210));
+                        let center=badge.center()-Vec2::splat(2.0);
+                        ui.painter().circle_stroke(center,5.0,Stroke::new(2.0,gold));
+                        ui.painter().line_segment([center+Vec2::splat(4.0),center+Vec2::splat(9.0)],Stroke::new(2.0,gold));
+                    }
+                    ui.vertical(|ui| {
+                        ui.set_max_width(ui.available_width());
+                        let time = if let Some(seconds)=game["clock"]["initial"].as_u64() { format!("{}+{}",seconds as f64/60.0,game["clock"]["increment"].as_u64().unwrap_or(0)) }
+                            else { game["daysPerTurn"].as_u64().map(|d|format!("{d} days/move")).unwrap_or_else(||"Unlimited".into()) };
+                        ui.add(egui::Label::new(RichText::new(format!("{time} · {} · {}",game["speed"].as_str().unwrap_or("Chess"),if game["rated"].as_bool()==Some(true) {"Rated"} else {"Casual"})).strong()).truncate());
+                        if let Some(ms)=game["createdAt"].as_u64() { ui.small(profile_date(ms)); }
+                        for color in ["white","black"] {
+                                let player=&game["players"][color]; let user=&player["user"];
+                                let label=format!("{} {}  {}{}",user["title"].as_str().unwrap_or(""),user["name"].as_str().unwrap_or("Anonymous"),player["rating"].as_u64().map(|r|r.to_string()).unwrap_or_else(||"—".into()),player["ratingDiff"].as_i64().map(|d|format!(" ({d:+})")).unwrap_or_default());
+                                let label=format!("{} · {}",if color=="white" {"White"} else {"Black"},label.trim());
+                                ui.add(egui::Label::new(&label).truncate()).on_hover_text(&label);
+                        }
+                        let result=match game["winner"].as_str() { Some("white")=>"1–0 · White wins",Some("black")=>"0–1 · Black wins",_ if matches!(game["status"].as_str(),Some("draw"|"stalemate"))=>"½–½ · Draw",_=>"No decisive result" };
+                        let result=format!("{result} · {}",game["status"].as_str().unwrap_or("Finished"));
+                        ui.add(egui::Label::new(&result).truncate()).on_hover_text(&result);
+                        if let Some(opening)=game["opening"]["name"].as_str() { ui.add(egui::Label::new(RichText::new(opening).strong()).truncate()).on_hover_text(opening); }
+                        if let Some(moves)=game["moves"].as_str() { let summary=format!("{} moves · {}",moves.split_whitespace().count().div_ceil(2),moves.split_whitespace().take(10).collect::<Vec<_>>().join(" ")); ui.add(egui::Label::new(RichText::new(&summary).small()).truncate()).on_hover_text(&summary); }
+                    });
+                });
+                let id=game["id"].as_str().unwrap_or_default();
+                ui.allocate_ui_with_layout(Vec2::new(controls_width,0.0),egui::Layout::top_down(egui::Align::Max), |ui| {
+                        ui.set_min_width(ui.available_width());
+                        if !id.is_empty() { ui.add(egui::Hyperlink::from_label_and_url("Open game on Lichess",format!("https://lichess.org/{id}")).open_in_new_tab(true)); }
+                        let allowed=pgn.is_some() && !(self.fics_active && !self.fics_game_finished) && self.training.is_none() && !self.puzzle_navigation_locked();
+                        if ui.add_enabled(allowed,egui::Button::new("Review on Ironwood"))
+                            .on_hover_text("Review this game without adding it to Saved Games").on_disabled_hover_text("Finish active play or training before reviewing another game; refresh this profile if move data is missing.").clicked() {
+                            self.review_lichess_profile_game(pgn.unwrap());
+                        }
+                });
+            });
+        });
+        ui.add_space(6.0);
+    }
+
+}
+fn lichess_rating_point(value: &serde_json::Value) -> Option<(f64,f32,String)> {
+    let p=value.as_array()?;
+    let year=p.first()?.as_i64()?; let month=p.get(1)?.as_i64()?+1; let day=p.get(2)?.as_i64()?;
+    let rating=p.get(3)?.as_u64()? as f32;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) { return None; }
+    // Gregorian day index keeps gaps between games proportional. API months are zero-based.
+    let y=year-if month<=2 {1} else {0}; let era=y.div_euclid(400); let yoe=y-era*400;
+    let m=month+if month>2 {-3} else {9};
+    let days=era*146097+yoe*365+yoe/4-yoe/100+(153*m+2)/5+day-1;
+    Some((days as f64,rating,format!("{year:04}-{month:02}-{day:02}")))
+}
+
+#[cfg(test)]
+mod rating_history_tests {
+    use super::*;
+    #[test]
+    fn history_dates_use_zero_based_months_and_real_calendar_spacing() {
+        let a=lichess_rating_point(&serde_json::json!([2024,1,28,1500])).unwrap();
+        let b=lichess_rating_point(&serde_json::json!([2024,2,1,1550])).unwrap();
+        assert_eq!(a.2,"2024-02-28"); assert_eq!(b.0-a.0,2.0);
+        assert!(lichess_rating_point(&serde_json::json!([2024,12,1,1500])).is_none());
+        assert!(lichess_rating_point(&serde_json::json!([2024,0])).is_none());
+    }
+}
+
+fn lichess_history_points(lobby: &serde_json::Value, name: &str) -> Vec<(f64, f32, String)> {
+    lobby["ratingHistory"].as_array()
+        .and_then(|series| series.iter().find(|series| series["name"].as_str().is_some_and(|key| key.eq_ignore_ascii_case(name))))
+        .and_then(|series| series["points"].as_array())
+        .map(|points| points.iter().filter_map(lichess_rating_point).collect()).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod rating_history_api_tests {
+    use super::*;
+    #[test]
+    fn lowercase_api_time_controls_populate_display_tabs() {
+        let lobby = serde_json::json!({"ratingHistory":[
+            {"name":"blitz","points":[[2026,9,14,2997]]},
+            {"name":"rapid","points":[]},
+            {"name":"correspondence","points":[[2023,6,21,1258]]}
+        ]});
+        assert_eq!(lichess_history_points(&lobby,"Blitz")[0].1,2997.0);
+        assert_eq!(lichess_history_points(&lobby,"Correspondence").len(),1);
+        assert!(lichess_history_points(&lobby,"Rapid").is_empty());
+    }
+}
+
+fn lichess_profile_bio(ui: &mut egui::Ui, profile: &serde_json::Value) {
+    let bio=&profile["profile"];
+    if let Some(name)=bio["realName"].as_str() { ui.strong(name); }
+    if let Some(text)=bio["bio"].as_str().filter(|s|!s.is_empty()) { profile_link_text(ui,text); } else { ui.weak("No biography provided."); }
+    ui.add_space(8.0);
+    if let Some(rating)=bio["fideRating"].as_u64() {
+        let url=profile["fideId"].as_u64().map(|id|format!("https://ratings.fide.com/profile/{id}")).unwrap_or_else(||"https://ratings.fide.com/".into());
+        ui.add(egui::Hyperlink::from_label_and_url(format!("FIDE rating: {rating} ↗"),url).open_in_new_tab(true));
+    }
+    if let Some(flag)=bio["flag"].as_str() { ui.label(format!("Country / flag: {flag}")); }
+    if let Some(ms)=profile["createdAt"].as_u64() { ui.label(format!("Member since {}",profile_date(ms))); }
+    if let Some(ms)=profile["seenAt"].as_u64() { ui.label(format!("Last active {}",profile_date(ms))); }
+    if let Some(seconds)=profile["playTime"]["total"].as_u64() { ui.label(format!("Time spent playing: {} days, {} hours",seconds/86400,seconds%86400/3600)); }
+    if let Some(links)=bio["links"].as_str().filter(|s|!s.is_empty()) { ui.add_space(6.0); ui.strong("Links"); profile_link_text(ui,links); }
+}
+fn profile_link_text(ui: &mut egui::Ui, text: &str) {
+    for line in text.lines() {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x=3.0;
+            for word in line.split_whitespace() {
+                if let Some(url)=profile_word_url(word) {ui.add(egui::Hyperlink::from_label_and_url(word,url).open_in_new_tab(true));}
+                else {ui.label(word);}
+            }
+        });
+    }
+}
+fn profile_word_url(word: &str) -> Option<String> {
+    let word=word.trim_matches(|c:char|matches!(c,','|'.'|';'|'!'|'?'|'('|')'|'['|']'));
+    if word.starts_with("https://") || word.starts_with("http://") {Some(word.into())}
+    else if word.starts_with("www.") {Some(format!("https://{word}"))}
+    else if !word.starts_with('@') && word.split_once('@').is_some_and(|(name,host)|!name.is_empty() && host.contains('.')) {Some(format!("mailto:{word}"))}
+    else {
+        let host=word.split('/').next().unwrap_or_default();
+        let tld=host.rsplit('.').next().unwrap_or_default();
+        if host.contains('.') && host.chars().all(|c|c.is_ascii_alphanumeric() || matches!(c,'.'|'-')) && tld.len()>=2 && tld.chars().all(|c|c.is_ascii_alphabetic()) {Some(format!("https://{word}"))} else {None}
+    }
+}
+fn lichess_recent_game_preview(game: &serde_json::Value) -> Result<serde_json::Value,String> {
+    let pgn=game["pgn"].as_str().ok_or("Move data is missing. Refresh the player profile.")?;
+    let (positions,moves)=ChessApp::parse_pgn_mainline(pgn)?;
+    let white=ChessApp::pgn_tag(pgn,"White").unwrap_or_else(||"White".into());
+    let black=ChessApp::pgn_tag(pgn,"Black").unwrap_or_else(||"Black".into());
+    Ok(serde_json::json!({"title":format!("{white} vs {black}"),"white":white,"black":black,"result":ChessApp::pgn_tag(pgn,"Result"),"playedAt":ChessApp::pgn_tag(pgn,"Date"),"finalFen":positions.last().map(ToString::to_string),"preview":{"positions":positions.iter().map(ToString::to_string).collect::<Vec<_>>(),"moves":moves}}))
+}
+
+fn profile_today_day() -> f64 {
+    #[cfg(target_arch="wasm32")]
+    let ms=js_sys::Date::now();
+    #[cfg(not(target_arch="wasm32"))]
+    let ms=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as f64;
+    (ms/86400000.0).floor()+719468.0
+}
+fn profile_date(ms: u64) -> String {
+    let (year,month,day)=profile_civil_date((ms/86400000) as i64+719468);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+fn profile_civil_date(days: i64) -> (i64,i64,i64) {
+    let era=days.div_euclid(146097); let doe=days-era*146097;
+    let yoe=(doe-doe/1460+doe/36524-doe/146096)/365;
+    let y=yoe+era*400; let doy=doe-(365*yoe+yoe/4-yoe/100);
+    let mp=(5*doy+2)/153; let d=doy-(153*mp+2)/5+1;
+    let m=mp+if mp<10 {3} else {-9};
+    (y+if m<=2 {1} else {0},m,d)
+}
+fn profile_year_start(today: f64) -> f64 {
+    let (year,_,_)=profile_civil_date(today as i64);
+    lichess_rating_point(&serde_json::json!([year,0,1,0])).unwrap().0
+}
+
+#[cfg(test)]
+mod player_profile_date_tests {
+    use super::*;
+    #[test]
+    fn unix_dates_and_year_filter_align_with_history_calendar() {
+        assert_eq!(profile_date(0), "1970-01-01");
+        let day=lichess_rating_point(&serde_json::json!([2024,1,29,1500])).unwrap().0;
+        assert_eq!(profile_civil_date(day as i64),(2024,2,29));
+        assert_eq!(profile_civil_date(profile_year_start(day) as i64),(2024,1,1));
+    }
+}
+
+#[cfg(test)]
+mod player_profile_layout_tests {
+    use super::*;
+    #[test]
+    fn profile_without_history_still_displays_bio_record_and_recent_games_at_both_widths() {
+        for width in [600.0, 1200.0] {
+            let ctx=egui::Context::default();
+            let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+            app.lichess.profile_windows.push(PlayerProfileWindow::new(0,""));
+            app.lichess.lobby=serde_json::json!({"connected":true,"profileUsername":"Example","historyUsername":"Example","ratingHistory":[],
+                "playerProfile":{"username":"Example","title":"GM","profile":{"realName":"Example Player","bio":"A player biography"},"count":{"all":42,"rated":40,"win":20,"loss":12,"draw":10}},
+                "recentGames":[{"id":"abcd1234","speed":"blitz","rated":true,"status":"resign","winner":"black","clock":{"initial":180,"increment":0},"lastFen":"8/8/1N1k4/1Pp3p1/2P2nP1/3bp1KP/8/8 w - - 0 1","opening":{"name":"English Defense"},"players":{"white":{"user":{"name":"WhitePlayer"},"rating":2800},"black":{"user":{"name":"Example"},"rating":2997}}}]
+            });
+            let mut output=None;
+            for _ in 0..3 {
+                output=Some(run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,1200.0))),..Default::default()},|_|app.lichess_history_ui(&ctx)));
+            }
+            let output=output.unwrap();
+            let texts:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.as_str())} else {None}).collect();
+            assert!(texts.iter().any(|text|*text=="biography"),"Biography absent at {width}");
+            assert!(texts.contains(&"Recent games"),"Games heading absent at {width}: {texts:?}");
+            // The card can be below the scroll viewport; inspect it independently.
+            let card_ctx=egui::Context::default();
+            let game=app.lichess.lobby["recentGames"][0].clone();
+            let card=run_test_ui(&card_ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,600.0))),..Default::default()},|ui|app.lichess_profile_game(ui,&game));
+            assert!(card.shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::Text(text) if text.galley.job.text=="English Defense")),"Recent-game card absent at {width}");
+            assert!(texts.contains(&"Wins"),"Record absent at {width}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod player_profile_resize_tests {
+    use super::*;
+    fn profile() -> serde_json::Value {
+        serde_json::json!({"username":"cutemouse83","title":"GM","profile":{"bio":"A biography with words that must wrap in the available column. ".repeat(12)},"count":{"all":19642,"rated":19598,"win":12270,"loss":4246,"draw":3126},"perfs":{
+            "bullet":{"rating":1756,"games":2,"prov":true},"blitz":{"rating":2997,"games":19590},"rapid":{"games":0},"classical":{"games":0},"correspondence":{"rating":1258,"games":1,"prov":true},"puzzle":{"rating":2300,"games":41,"prov":true}
+        }})
+    }
+    #[test]
+    fn rating_chips_wrap_as_complete_cards_without_vertical_letter_stacking() {
+        for width in [360.0,600.0,960.0] {
+            let ctx=egui::Context::default();
+            let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+            let data=profile();
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,1000.0))),..Default::default()},|ui|app.lichess_profile_ratings(ui,&data,&mut PlayerProfileWindow::new(0,"")));
+            let labels:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text)} else {None})
+                .filter(|text| ["Bullet","Blitz","Rapid","Classical","Correspondence","Puzzles"].iter().any(|name|text.galley.job.text.starts_with(name))).collect();
+            assert_eq!(labels.len(),6);
+            for label in &labels {
+                assert_eq!(label.galley.rows.len(),1,"Chip text wrapped at {width}: {}",label.galley.job.text);
+                assert!(label.pos.x+label.galley.size().x<=width,"Chip outside viewport at {width}");
+            }
+            assert!(labels[5].pos.y>labels[0].pos.y,"Last chip should wrap at {width}");
+        }
+    }
+    #[test]
+    fn resized_profile_stays_small_after_drag_release_and_idle_frames() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.lichess.profile_windows.push(PlayerProfileWindow::new(0,""));
+        app.lichess.lobby=serde_json::json!({"connected":true,"playerProfile":profile(),"historyUsername":"cutemouse83","ratingHistory":[],"recentGames":[]});
+        let id=egui::Id::new(("lichess_player_profile_window",0u64));
+        let mut time=0.0;
+        let mut frame=|events| {
+            time+=0.1;
+            run_test_ui(&ctx,egui::RawInput{time:Some(time),events,screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1400.0,1100.0))),..Default::default()},|_|app.lichess_history_ui(&ctx));
+        };
+        for _ in 0..4 {frame(vec![]);}
+        let original=ctx.memory(|m|m.area_rect(id)).unwrap();
+        let handle=original.right_bottom()-Vec2::splat(2.0);
+        let target=handle-Vec2::new(420.0,300.0);
+        frame(vec![egui::Event::PointerMoved(handle)]);
+        frame(vec![egui::Event::PointerButton{pos:handle,button:egui::PointerButton::Primary,pressed:true,modifiers:Default::default()}]);
+        frame(vec![egui::Event::PointerMoved(target)]);
+        frame(vec![egui::Event::PointerButton{pos:target,button:egui::PointerButton::Primary,pressed:false,modifiers:Default::default()}]);
+        for _ in 0..3 {frame(vec![]);}
+        let resized=ctx.memory(|m|m.area_rect(id)).unwrap();
+        assert!(resized.width()<original.width()-200.0,"Window failed to shrink: {original:?} -> {resized:?}");
+        assert!(resized.height()<original.height()-150.0,"Window height failed to shrink: {original:?} -> {resized:?}");
+        for _ in 0..10 {frame(vec![]);}
+        let idle=ctx.memory(|m|m.area_rect(id)).unwrap();
+        assert!((idle.width()-resized.width()).abs()<1.0,"Window regrew horizontally");
+        assert!((idle.height()-resized.height()).abs()<1.0,"Window regrew vertically");
+    }
+}
+
+fn lichess_profile_window_title(profile: &serde_json::Value) -> String {
+    let Some(username)=profile["username"].as_str() else {return "Lichess player profile".into();};
+    let id=profile["id"].as_str().unwrap_or(username);
+    let name=profile["profile"]["realName"].as_str().filter(|name|!name.is_empty()).unwrap_or(username);
+    format!("Lichess player profile · {name} [{id}]")
+}
+
+#[cfg(test)]
+mod player_profile_follow_tests {
+    use super::*;
+    #[test]
+    fn window_title_includes_real_name_and_id_with_username_fallback() {
+        assert_eq!(lichess_profile_window_title(&serde_json::json!({"id":"cutemouse83","username":"cutemouse83","profile":{"realName":"Michael Roiz"}})),"Lichess player profile · Michael Roiz [cutemouse83]");
+        assert_eq!(lichess_profile_window_title(&serde_json::json!({"id":"alice","username":"Alice"})),"Lichess player profile · Alice [alice]");
+        assert_eq!(lichess_profile_window_title(&serde_json::Value::Null),"Lichess player profile");
+    }
+}
+
+fn lichess_profile_window_data(lobby: &serde_json::Value, id: u64) -> serde_json::Value {
+    let mut data=if lobby["profileWindows"].is_object() {lobby["profileWindows"][id.to_string()].clone()} else {lobby.clone()};
+    if !data.is_object() {data=serde_json::json!({});}
+    for key in ["connected","account","following","followingLoading","followBusy","followError","followPermissionNeeded"] {
+        data[key]=lobby[key].clone();
+    }
+    data
+}
+
+#[cfg(test)]
+mod player_profile_comparison_tests {
+    use super::*;
+    #[test]
+    fn record_counters_wrap_without_stacking_digits_or_label_letters() {
+        for width in [360.0,560.0,960.0] {
+            let ctx=egui::Context::default();
+            let profile=serde_json::json!({"count":{"all":19642,"rated":19598,"win":12270,"loss":4246,"draw":3126}});
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,700.0))),..Default::default()},|ui|ChessApp::lichess_profile_record(ui,&profile));
+            let texts:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text)} else {None}).collect();
+            for label in ["19,642","19,598","12,270","4,246","3,126","Games","Rated","Wins","Losses","Draws"] {
+                let text=texts.iter().find(|text|text.galley.job.text==label).unwrap();
+                assert_eq!(text.galley.rows.len(),1,"Stacked {label} at {width}");
+                assert!(text.pos.x+text.galley.size().x<=width,"Counter outside viewport");
+            }
+        }
+    }
+    #[test]
+    fn comparison_windows_keep_separate_geometry_and_graph_filters() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        let mut first=PlayerProfileWindow::new(1,"Alice"); first.control=1;first.range=0;first.shown_username="Alice".into();
+        let mut second=PlayerProfileWindow::new(2,"Bob"); second.control=2;second.range=5;second.shown_username="Bob".into();
+        app.lichess.profile_windows=vec![first,second];
+        app.lichess.lobby=serde_json::json!({"connected":true,"account":"Alice","profileWindows":{
+            "1":{"playerProfile":{"id":"alice","username":"Alice"},"historyUsername":"Alice","ratingHistory":[]},
+            "2":{"playerProfile":{"id":"bob","username":"Bob"},"historyUsername":"Bob","ratingHistory":[]}
+        }});
+        for _ in 0..3 {run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1600.0,1200.0))),..Default::default()},|_|app.lichess_history_ui(&ctx));}
+        let a=ctx.memory(|m|m.area_rect(egui::Id::new(("lichess_player_profile_window",1u64)))).unwrap();
+        let b=ctx.memory(|m|m.area_rect(egui::Id::new(("lichess_player_profile_window",2u64)))).unwrap();
+        assert_ne!(a.min,b.min);
+        assert_eq!((app.lichess.profile_windows[0].control,app.lichess.profile_windows[0].range),(1,0));
+        assert_eq!((app.lichess.profile_windows[1].control,app.lichess.profile_windows[1].range),(2,5));
+        assert_eq!(lichess_profile_window_data(&app.lichess.lobby,1)["playerProfile"]["username"],"Alice");
+        assert_eq!(lichess_profile_window_data(&app.lichess.lobby,2)["playerProfile"]["username"],"Bob");
+    }
+}
+
+fn profile_record_number(value: u64) -> String {
+    let digits=value.to_string();
+    let mut output=String::new();
+    for (index,digit) in digits.chars().enumerate() {
+        if index>0 && (digits.len()-index)%3==0 {output.push(',');}
+        output.push(digit);
+    }
+    output
+}
+
+#[cfg(test)]
+mod player_profile_review_tests {
+    use super::*;
+    const PGN:&str="[White \"Alice\"]\n[Black \"Bob\"]\n[Result \"*\"]\n\n1. e4 e5 2. Nf3 *";
+    #[test]
+    fn preview_contains_every_position_without_changing_the_board() {
+        let ctx=egui::Context::default();let app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        let board=app.board;
+        let preview=lichess_recent_game_preview(&serde_json::json!({"pgn":PGN})).unwrap();
+        assert_eq!(preview["title"],"Alice vs Bob");
+        assert_eq!(preview["white"],"Alice");assert_eq!(preview["black"],"Bob");
+        assert_eq!(preview["preview"]["positions"].as_array().unwrap().len(),4);
+        assert_eq!(preview["preview"]["moves"].as_array().unwrap().len(),3);
+        assert_eq!(app.board,board);
+    }
+    #[test]
+    fn full_board_review_is_transient_until_a_normal_game_is_started() {
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        app.review_lichess_profile_game(PGN);
+        assert!(app.transient_profile_review);assert_eq!(app.review_index,Some(0));assert_eq!(app.review_moves.len(),3);
+        app.review_to(3);app.save_game();assert!(app.transient_profile_review);
+        app.load_pgn("not a valid PGN with chess moves");assert!(app.transient_profile_review);
+        app.reset_for_side(PlayerSide::White);assert!(!app.transient_profile_review);
+    }
+    #[test]
+    fn explicitly_saving_profile_review_preserves_full_game_at_first_move() {
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        app.review_lichess_profile_game(PGN);
+        assert!(app.transient_profile_review);
+        assert_eq!(app.review_index,Some(0));
+        let before=app.persisted_game();
+        app.save_current_game();
+        assert!(!app.transient_profile_review);
+        let saved=app.persisted_game();
+        assert_eq!(saved.review_pgn,before.review_pgn);
+        assert!(saved.review_pgn.as_ref().is_some_and(|pgn|pgn.contains("1. e4")));
+        assert_eq!(app.review_moves.len(),3);
+        assert_eq!(app.review_index,Some(0));
+    }
+    #[test]
+    fn active_online_play_cannot_be_replaced_by_profile_review() {
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        app.fics_active=true;app.fics_game_finished=false;
+        let board=app.board;app.review_lichess_profile_game(PGN);
+        assert_eq!(app.board,board);assert!(!app.transient_profile_review);assert!(!app.lichess.profile_action_error.is_empty());
+    }
+    #[test]
+    fn profile_urls_support_sites_email_and_punctuation_without_executable_schemes() {
+        assert_eq!(profile_word_url("www.chessbasic.com,"),Some("https://www.chessbasic.com".into()));
+        assert_eq!(profile_word_url("https://x.com/RoizMichael83"),Some("https://x.com/RoizMichael83".into()));
+        assert_eq!(profile_word_url("name@example.com"),Some("mailto:name@example.com".into()));
+        assert_eq!(profile_word_url("chessbasic.com"),Some("https://chessbasic.com".into()));
+        assert_eq!(profile_word_url("javascript:alert(1)"),None);
+    }
+}
+
+#[cfg(test)]
+mod player_profile_reflow_tests {
+    use super::*;
+    #[test]
+    fn repeated_resize_frames_keep_record_rows_and_recent_game_height_stable() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        let profile=serde_json::json!({"count":{"all":19642,"rated":19598,"win":12270,"loss":4246,"draw":3126}});
+        let game=serde_json::json!({"id":"abcd1234","speed":"blitz","rated":true,"status":"resign","winner":"black","createdAt":1792003006187i64,"clock":{"initial":180,"increment":0},"lastFen":"8/8/1N1k4/1Pp3p1/2P2nP1/3bp1KP/8/8 w - - 0 1","opening":{"name":"A long opening name with several words and variations"},"moves":"e4 e5 Nf3 Nc6 Bb5 a6","players":{"white":{"user":{"name":"LongPlayerNameWhite","title":"GM"},"rating":2800},"black":{"user":{"name":"LongPlayerNameBlack","title":"GM"},"rating":2997}}});
+        let mut card_height:Option<f32>=None;
+        for width in [360.0,479.5,480.0,560.0,600.0,960.0,560.0,360.0] {
+            let mut record_height:Option<f32>=None;
+            for _ in 0..4 {
+                run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,1200.0))),..Default::default()},|ui| {
+                    let top=ui.cursor().top(); ChessApp::lichess_profile_record(ui,&profile);
+                    let height=ui.cursor().top()-top;
+                    if let Some(previous)=record_height {assert!((height-previous).abs()<0.1,"Record oscillated at width {width}");}
+                    record_height=Some(height);
+                    let top=ui.cursor().top(); app.lichess_profile_game(ui,&game);
+                    let height=ui.cursor().top()-top;
+                    if let Some(previous)=card_height {assert!((height-previous).abs()<0.1,"Game card changed height at width {width}");}
+                    card_height=Some(height);
+                });
+            }
+        }
+    }
 }

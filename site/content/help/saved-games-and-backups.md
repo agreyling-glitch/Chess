@@ -4,7 +4,7 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 ---
 
 Use **Game → Save current game** to keep the current game, and **Game → Load saved game** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
@@ -36,3 +36,13 @@ After confirming a deletion, you return to Saved Games. Deleting the currently l
 ## Saved-game windows
 
 The saved-game library uses recessed control and game-list sections. Enlarged playback uses matching inset areas for its heading, board, and navigation buttons. These visual changes keep the existing selection, backup, import, and playback behavior.
+
+## Sort and review your library
+
+Use the move-count sort to find short or long games, or return to the most recent order. Games with zero moves are not added to Saved Games.
+
+Hover a small board for the gold outline and magnifying-glass indicator. The larger move viewer identifies White, Black, and the game result. The same viewer is available from recent games in [Lichess player profiles](/help/play-on-lichess/#player-profiles-and-followed-players).
+
+A profile game's **Review on Ironwood** session stays temporary until you choose **Game → Save current game**. Saving keeps the complete game, regardless of the move currently displayed.
+
+The **Puzzles** category stores puzzle move history separately from ordinary games and training games. Removing a saved puzzle playback entry does not reset puzzle progress counts.

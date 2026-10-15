@@ -41,7 +41,7 @@ test('backup validation summarizes restorable data', () => {
       { id: 'two', category: 'imported', favorite: false, json },
     ],
   });
-  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, observed: 0, training: 0, profiles: 0, favorites: 1, hasPreferences: true });
+  assert.deepEqual(summary, { games: 2, mine: 1, imported: 1, observed: 0, training: 0, puzzles: 0, profiles: 0, favorites: 1, hasPreferences: true });
 });
 
 test('backup validation rejects unknown formats and incomplete games', () => {
@@ -68,4 +68,15 @@ test('PGN library analysis status distinguishes partial and complete results', (
   assert.equal(gameDetails(JSON.stringify(game)).analysisStatus, 'Partial');
   game.game_analysis.fill({ eval_cp: 10 });
   assert.equal(gameDetails(JSON.stringify(game)).analysisStatus, 'Complete');
+});
+
+
+test('puzzles keep their category through backup restore, including older imported puzzle entries', () => {
+  const json=JSON.stringify({review_pgn:'[Event "Lichess puzzle"]\n[PuzzleId "abc12"]\n\n1. e4 *'});
+  assert.equal(gameDetails(json).category,'puzzles');
+  assert.equal(gameDetails(json).puzzleId,'abc12');
+  for (const category of ['puzzles','imported']) {
+    const summary=backupSummary({format:'ironwood-backup',version:1,games:[{id:'p',category,json}]});
+    assert.equal(summary.puzzles,1); assert.equal(summary.imported,0); assert.equal(summary.mine,0);
+  }
 });

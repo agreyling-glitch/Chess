@@ -13,7 +13,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   };
   const records = new Map(Array.from({ length: 12 }, (_, i) => [String(i), {
     id: String(i), category: i === 11 ? 'imported' : 'mine', updatedAt: 100 - i,
-    json: JSON.stringify({ move_notes: i === 0 ? ['Opening plan\n<img src=x onerror=alert(1)>'] : [], board: '8/8/8/8/8/8/8/8 w - - 0 1', review_pgn: `[White "Player${i}"]\n[Black "Opponent"]\n[Date "2026.09.27"]\n\n1. e4 *` }),
+    json: JSON.stringify({ live_moves: Array(i + 1).fill('e4'), move_notes: i === 0 ? ['Opening plan\n<img src=x onerror=alert(1)>'] : [], board: '8/8/8/8/8/8/8/8 w - - 0 1', review_pgn: `[White "Player${i}"]\n[Black "Opponent"]\n[Date "2026.09.27"]\n\n1. e4 *` }),
   }]));
   let failDelete = false;
   let deletes = [];
@@ -49,6 +49,20 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   const click = text => { const b = button(text); assert.ok(b, text); b.click(); };
   const settle = () => new Promise(resolve => setTimeout(resolve, 15));
   assert.equal(document.querySelectorAll('.game-library-select').length, 10);
+  const chooseSort = value => {
+    const select = document.querySelector('[aria-label="Sort saved games"]');
+    assert.ok(select); select.value = value; select.dispatchEvent(new window.Event('change'));
+  };
+  chooseSort('moves-desc');
+  assert.match(document.querySelector('.game-library-main strong').textContent, /Player11 vs/);
+  assert.equal(localStorage.getItem('ironwood.chess.library-sort.v1'), 'moves-desc');
+  click('Next ▶');
+  assert.match(document.querySelector('.game-library-main strong').textContent, /Player1 vs/);
+  chooseSort('moves-asc');
+  assert.match(document.querySelector('.game-library-pager').textContent, /Page 1 of 2/);
+  assert.match(document.querySelector('.game-library-main strong').textContent, /Player0 vs/);
+  chooseSort('recent');
+
   const notePreview = document.querySelector('.game-starting-note-preview');
   assert.equal(notePreview.textContent, 'Opening plan\n<img src=x onerror=alert(1)>');
   assert.equal(document.querySelectorAll('.game-starting-note-preview').length, 1);
@@ -105,5 +119,13 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.equal(records.size, 9);
   assert.equal(button('Delete selected (0)').disabled, true);
   assert.match(document.querySelector('.game-library-list').textContent, /No games match/);
+  records.set('puzzle',{id:'puzzle',category:'imported',updatedAt:200,json:JSON.stringify({board:'8/8/8/8/8/8/8/8 w - - 0 1',review_pgn:'[Event "Lichess puzzle"]\n[PuzzleId "abc12"]\n\n1. e4 *'})});
+  document.getElementById('game-library-dialog').close();
+  await window.ironwoodOpenGameLibrary();
+  click('Puzzles (1)');
+  assert.equal(document.querySelectorAll('.game-library-select').length,1);
+  assert.equal(document.querySelector('.game-library-main strong').textContent,'Lichess puzzle abc12');
+  assert.equal(button('Move to My Games').hidden,true);
+  assert.match(document.querySelector('.game-library-result').textContent,/Puzzle move history/);
   dom.window.close();
 });

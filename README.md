@@ -70,7 +70,7 @@ games cannot be imported. No additional libraries or Lichess assets are bundled.
 
 Choose **Game → New game → Online → Lichess**, or open **Lichess-Online → Lichess
 lobby and game controls…**. Sign in on Lichess to grant the Board API and
-challenge permissions. Ironwood uses OAuth with PKCE; it never asks for your
+challenge and follow permissions. Ironwood uses OAuth with PKCE; it never asks for your
 Lichess password. The token stays in session storage, separate from saved games
 and backups. **Sign out** revokes the token. **Leave online play**
 disconnects streams while preserving authorization; it does not resign or abort the game on Lichess.
@@ -309,3 +309,29 @@ Session replay, automatic interaction capture, surveys, performance capture, and
 Maintain separate Production and Local Test dashboards. Use `environment = production` and
 `environment = local_test` respectively, including filters embedded in SQL queries. Use separate
 copies of insights so changing a test chart does not change the production chart.
+
+### Lichess player profiles
+
+Click your account summary in the connected status bar, or **Player profile** in the signed-in Lichess lobby. Load your account or any Lichess username. The profile shows public biography, ratings, total/rated games and wins/losses/draws, daily history by time control, and the latest 12 completed games with final-position boards and links to Lichess. Graph filters offer 1M, 3M, 6M, YTD, 1Y and ALL; hover to inspect a date and rating. Narrow windows stack the biography below the graph.
+
+Profile, history and games load on demand using the existing sign-in, remain in memory for the session, and can be refreshed. Viewing another player does not change your account or board. Missing profile fields and unavailable time controls are shown explicitly; successful sections remain visible if a later request fails. No additional dependencies, artwork, or account permissions are required.
+
+### Saved-game move counts
+
+Games enter Saved Games after their first move; a zero-move board can still be restored as your current session. Existing library entries are retained. Use **Sort → Fewest moves first** or **Most moves first** to order filtered results before pagination. **Recently saved** restores the default order. The sort choice is remembered on this device. Move counts follow the existing library convention: each move by either player counts once (half-moves).
+
+### Saved puzzle move history
+
+**Saved Games → Puzzles** contains puzzle move lines, with one saved record per attempt. Correct moves, automatic replies, and revealed solutions update that attempt; loading a new puzzle or retry starts another. Empty attempts are not added. Entries can be opened, previewed, sorted, favorited, exported, and deleted like other saved games. Older entries identified as Lichess puzzles also appear in this category. Backups preserve the category. Deleting a saved puzzle line does not change puzzle progress counts or Review mistakes, which remain in separate device-wide puzzle history.
+
+### Following Lichess players
+
+Open **Lichess-Online → Player profile…**, then expand **Following** to search the players followed by your signed-in account and open their profiles. **Follow** and **Unfollow** update your actual Lichess list. The profile window title includes the player’s name and account ID. New sign-ins request `follow:read` and `follow:write`; older sessions can use **Sign in again for follow access** if Lichess reports missing permissions. Requests use the existing session-only token and add no dependencies or assets.
+
+Player profiles support multiple independent windows for comparison. Use **Load in new window** with the desired username, or open **Lichess-Online → Player profile…** again. Each window keeps its own player, graph filters, size, and position, with a fluorescent green border. Record counters wrap as complete blocks on narrow windows. Follow status stays synchronized across open profiles.
+
+Profile biography and website links open in new tabs. The FIDE rating opens the linked FIDE player profile when Lichess provides an ID, or the FIDE ratings directory otherwise. Click a recent-game mini board to use the Saved Games move viewer directly from memory, with step controls and autoplay. **Review on Ironwood** closes profile overlays and opens a temporary analysis session without adding the game to Saved Games; **Game → Save current game** explicitly saves the full reviewed game, even from its starting position. Starting or importing a normal game resumes normal saving. Active online play and training must finish first.
+
+### Expanded engine prediction windows
+
+The raised gold **Expand** button beneath Engine prediction opens a snapshot with one mini board after each predicted move. Each title includes variation, evaluation, first move, and depth. Open multiple snapshots for comparison; each has its own size, position, maximize/restore state, and captured line. Boards scale to available space and scroll when needed. Clicking a board navigates the captured prediction when active play permits it. Gold borders and a shared sunken panel with stronger procedural paper grain match the bottom Full Game Analysis details panel; profile rating graphs use a subtler grain in their own sunken section.

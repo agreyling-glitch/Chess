@@ -4,6 +4,7 @@ description: "Read Stockfish's suggestion and the sample continuation without tr
 category: "analysis"
 keywords: [best move, engine line, PV, principal variation, variation, multipv]
 weight: 50
+lastmod: 2026-10-15T00:00:00-05:00
 ---
 
 ## Best move
@@ -19,3 +20,11 @@ For example, `1. e4 e5 2. Nf3` means White moves a pawn to e4, Black responds by
 ## Multiple lines
 
 **MultiPV** asks Stockfish to show several leading candidate moves instead of only its top choice. This helps compare plans. The second line is not necessarily bad; it is simply ranked below the first by that search. Showing more lines may reduce how deeply each one can be examined with the same time or computing budget.
+
+## Expand the prediction into boards
+
+Click the gold **Expand** button beneath the **Engine prediction** table in Real-Time Analysis. A separate window shows one mini board after each predicted move, with its move label and highlighted source and destination squares. Click a mini board to inspect that position on the main board when active play or training does not prevent navigation.
+
+The title includes the variation number, evaluation, first move, and search depth. Each **Expand** click captures a separate prediction: change the selected variation or analyze another position, then expand again to compare lines side by side. Existing windows keep their captured moves rather than following later engine updates.
+
+Resize a window to scale its boards and change the grid layout, or use the title's **Maximize** and **Restore** controls. Small windows keep pieces readable and scroll additional rows. Each window has a gold border and one shared sunken panel with a visible paper-grain background. Closing one leaves the others open.

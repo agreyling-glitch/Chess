@@ -64,6 +64,11 @@ window.ironwoodLichessMove = move => run(() => client.move(move));
 window.ironwoodLichessCommand = raw => run(async () => {
   const cmd = JSON.parse(raw);
   switch (cmd.type) {
+    case 'closeProfileWindow': return client.closeProfileWindow(cmd.windowId);
+    case 'following': return client.loadFollowing(!!cmd.refresh);
+    case 'setFollowing': return client.setFollowing(cmd.username, cmd.follow);
+    case 'playerProfile': return client.playerProfile(!!cmd.refresh, cmd.username, cmd.windowId);
+    case 'ratingHistory': return client.ratingHistory(!!cmd.refresh, cmd.username);
     case 'seek': return client.seek(cmd.options);
     case 'cancelSeek': return client.cancelSeek();
     case 'open': return client.openGame(cmd.id);

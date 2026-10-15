@@ -42,6 +42,7 @@ struct Session {
     selected: Option<Square>,
     promotion: Option<(Square, Square)>,
     recorded: bool,
+    storage_started: bool,
     done: bool,
     message: String,
 }
@@ -63,7 +64,7 @@ impl Session {
             board = board.make_move_new(mv);
         }
         Ok(Self { data, start, board: start, moves, played: Vec::new(), step: 0, selected: None,
-            promotion: None, recorded: false, done: false, message: "Find the best move.".into() })
+            promotion: None, recorded: false, storage_started: false, done: false, message: "Find the best move.".into() })
     }
     fn submit(&mut self, mv: ChessMove) -> Option<bool> {
         if self.done || !MoveGen::new_legal(&self.board).any(|legal| legal == mv) { return None; }
@@ -98,7 +99,8 @@ impl Session {
         self.message = format!("Solution: {}", self.data.puzzle.solution.join(" "));
     }
     fn review_pgn(&self) -> String {
-        let mut pgn = format!("[Event \"Lichess puzzle\"]\n[SetUp \"1\"]\n[FEN \"{}\"]\n[Result \"*\"]\n\n", self.start);
+        let mut pgn = format!("[Event \"Lichess puzzle\"]\n[SetUp \"1\"]\n[FEN \"{}\"]\n[Result \"*\"]\n", self.start);
+        pgn.push_str(&format!("[PuzzleId \"{}\"]\n[Site \"https://lichess.org/training/{}\"]\n\n", self.data.puzzle.id, self.data.puzzle.id));
         let mut board = self.start;
         for mv in &self.played {
             pgn.push_str(&ChessApp::san_for_move(&board, *mv));
@@ -257,8 +259,15 @@ impl ChessApp {
         launched
     }
 
-    fn sync_puzzle_position(&mut self, session: &Session) -> Result<(), String> {
-        self.load_pgn(&session.review_pgn());
+    fn sync_puzzle_position(&mut self, session: &mut Session) -> Result<(), String> {
+        self.transient_profile_review = false;
+        if !session.storage_started {
+            #[cfg(target_arch = "wasm32")]
+            start_new_stored_game("puzzles");
+            session.storage_started = true;
+        }
+        // Board synchronization updates the same attempt rather than importing a new game per move.
+        self.load_pgn_with_storage(&session.review_pgn(), false);
         if let Some(error) = self.pgn_error.as_ref() { return Err(error.clone()); }
         self.flipped = session.start.side_to_move() == Color::Black;
         self.review_index = None;
@@ -533,7 +542,7 @@ impl ChessApp {
                 Self::paint_sunken_border(ui, body.response.rect);
             });
         if close { open = false; }
-        if let Some(session) = state.session.as_ref() {
+        if let Some(session) = state.session.as_mut() {
             if state.synced_board != Some(session.board) {
                 if !state.linked { self.save_game(); }
                 if self.fics_active { self.stop_fics(); }
@@ -611,9 +620,9 @@ mod tests {
     fn live_board_attempts_validate_and_apply_automatic_replies() {
         let context = egui::Context::default();
         let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(context.clone()));
-        let session = Session::new(example()).unwrap();
+        let mut session = Session::new(example()).unwrap();
         let start = session.start;
-        app.sync_puzzle_position(&session).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
         context.data_mut(|d| {
             d.insert_temp(egui::Id::new("puzzles_open"), true);
             d.insert_temp(egui::Id::new("puzzles_state"), State { session: Some(session), ..State::default() });
@@ -645,9 +654,9 @@ mod tests {
     fn solving_and_revealing_sync_exact_positions_to_main_board() {
         let mut session = Session::new(example()).unwrap();
         let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
-        app.sync_puzzle_position(&session).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
         session.submit(ChessMove::from_str("f5f3").unwrap());
-        app.sync_puzzle_position(&session).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
         assert_eq!(app.board, session.board);
         assert_eq!(app.board.king_square(Color::White), Square::F3);
         assert_eq!(app.review_moves, vec!["Qxf3+", "Kxf3"]);
@@ -655,10 +664,14 @@ mod tests {
         app.review_index = Some(0);
         assert_eq!(app.review_positions[0], session.start);
         session.reveal();
-        app.sync_puzzle_position(&session).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
         assert_eq!(app.board, session.board);
         assert_eq!(app.review_positions.len(), session.played.len() + 1);
         assert_eq!(app.review_moves.len(), session.played.len());
+        assert!(session.storage_started);
+        assert_eq!(ChessApp::pgn_tag(&app.pgn_input,"PuzzleId"),Some(session.data.puzzle.id.clone()));
+        assert!(!Session::new(example()).unwrap().storage_started);
+        assert_eq!(ChessApp::pgn_tag(&app.annotated_pgn(),"PuzzleId"),Some(session.data.puzzle.id.clone()));
     }
     #[test]
     fn puzzle_position_loads_into_main_board_without_solution_moves() {

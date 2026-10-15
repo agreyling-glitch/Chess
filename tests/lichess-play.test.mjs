@@ -277,3 +277,172 @@ test('profile statistics share the account request and are cleared on disconnect
   f.client.disconnect();
   assert.equal(f.client.snapshot().profile,null);
 });
+
+
+test('rating history is authenticated, lazy, cached, and refreshable', async t => {
+  const f = fixture(); t.after(() => f.client.disconnect());
+  let requests = 0;
+  const history = [{ name: 'rapid', points: [[2026, 0, 1, 1500], [2026, 1, 1, 1550]] }];
+  f.replies.set('/api/user/Alice/rating-history', () => { requests++; return json(history); });
+  await f.client.connect('secret'); await tick();
+  assert.equal(requests, 0);
+  await f.client.ratingHistory(); await f.client.ratingHistory();
+  assert.equal(requests, 1);
+  assert.deepEqual(f.client.snapshot().ratingHistory, history);
+  await f.client.ratingHistory(true); assert.equal(requests, 2);
+  assert.equal(f.calls.at(-1).options.headers.Authorization, 'Bearer secret');
+});
+
+test('rating history errors stay local and stale replies cannot cross sessions', async t => {
+  const f = fixture(); t.after(() => f.client.disconnect());
+  await f.client.connect('secret'); await tick();
+  f.replies.set('/api/user/Alice/rating-history', () => json({ error: 'Unavailable' }, 503));
+  await f.client.ratingHistory();
+  assert.equal(f.client.snapshot().connected, true);
+  assert.equal(f.client.snapshot().historyError, 'Unavailable');
+  let resolve;
+  f.replies.set('/api/user/Alice/rating-history', () => new Promise(r => { resolve = r; }));
+  const pending = f.client.ratingHistory(); await tick();
+  f.client.disconnect(); resolve(json([{ name: 'rapid', points: [[2026,0,1,1500]] }]));
+  await pending;
+  assert.equal(f.client.snapshot().ratingHistory, null);
+  assert.equal(f.client.snapshot().historyLoading, false);
+});
+
+
+test('another player history replaces the cache without changing signed-in account', async t => {
+  const f = fixture(); t.after(() => f.client.disconnect());
+  await f.client.connect('secret'); await tick();
+  f.replies.set('/api/user/Alice/rating-history', () => json([{name:'rapid',points:[[2026,0,1,1500]]}]));
+  f.replies.set('/api/user/DrNykterstein/rating-history', () => json([{name:'blitz',points:[[2026,0,1,3000]]}]));
+  await f.client.ratingHistory();
+  await f.client.ratingHistory(false, 'DrNykterstein');
+  assert.equal(f.client.snapshot().account, 'Alice');
+  assert.equal(f.client.snapshot().historyUsername, 'DrNykterstein');
+  assert.equal(f.client.snapshot().ratingHistory[0].name, 'blitz');
+  await f.client.ratingHistory();
+  assert.equal(f.client.snapshot().historyUsername, 'Alice');
+  await f.client.ratingHistory(false, '../bad');
+  assert.match(f.client.snapshot().historyError, /valid Lichess username/);
+});
+
+
+test('player profile loads public data, lowercase history and bounded NDJSON games', async t => {
+  const f = fixture(); t.after(() => f.client.disconnect());
+  await f.client.connect('secret'); await tick();
+  f.replies.set('/api/user/cutemouse83', () => json({username:'cutemouse83',title:'GM',profile:{bio:'Biography'},count:{all:19642}}));
+  f.replies.set('/api/user/cutemouse83/rating-history', () => json([{name:'blitz',points:[[2026,9,14,2997]]}]));
+  f.replies.set('/api/games/user/cutemouse83', () => new Response(Array.from({length:15},(_,i)=>JSON.stringify({id:`game${i}`,speed:'blitz'})).join('\n')));
+  await f.client.playerProfile(false, 'cutemouse83');
+  const state=f.client.snapshot();
+  assert.equal(state.playerProfile.profile.bio,'Biography');
+  assert.equal(state.profileUsername,'cutemouse83'); assert.equal(state.account,'Alice');
+  assert.equal(state.recentGames.length,12); assert.equal(state.profileLoading,false);
+  const call=f.calls.at(-1);
+  assert.equal(call.options.headers.Accept,'application/x-ndjson');
+  const count=f.calls.length; await f.client.playerProfile(false,'cutemouse83'); assert.equal(f.calls.length,count);
+});
+
+test('profile retains successful sections on recent-game errors and clears data on user change', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  f.replies.set('/api/user/Alice',()=>json({username:'Alice'}));
+  f.replies.set('/api/user/Alice/rating-history',()=>json([]));
+  f.replies.set('/api/games/user/Alice',()=>json({error:'Unavailable'},503));
+  await f.client.playerProfile();
+  assert.equal(f.client.snapshot().playerProfile.username,'Alice');
+  assert.match(f.client.snapshot().profileError,/Recent games/); assert.equal(f.client.snapshot().connected,true);
+  f.replies.set('/api/user/Missing',()=>json({error:'No such player'},404));
+  await f.client.playerProfile(false,'Missing');
+  assert.equal(f.client.snapshot().playerProfile,null); assert.equal(f.client.snapshot().recentGames,null);
+  assert.equal(f.client.snapshot().ratingHistory,null); assert.match(f.client.snapshot().profileError,/No such player/);
+});
+
+test('disconnect prevents a delayed profile response from restoring another session', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  let resolve; f.replies.set('/api/user/Alice',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.playerProfile(); await tick(); f.client.disconnect(); resolve(json({username:'Alice'}));
+  await pending; assert.equal(f.client.snapshot().playerProfile,null); assert.equal(f.client.snapshot().profileLoading,false);
+});
+
+
+test('following list loads all players beyond recent-game limit and is cached', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  const users=Array.from({length:25},(_,i)=>({id:`player${i}`,username:`Player${i}`,title:'GM'}));
+  f.replies.set('/api/rel/following',()=>new Response(users.map(u=>JSON.stringify(u)).join('\n')));
+  await f.client.loadFollowing(); assert.equal(f.client.snapshot().following.length,25);
+  assert.equal(f.calls.at(-1).options.headers.Accept,'application/x-ndjson');
+  const count=f.calls.length; await f.client.loadFollowing(); assert.equal(f.calls.length,count);
+  f.client.disconnect(); assert.equal(f.client.snapshot().following,null);
+});
+
+test('follow and unfollow update server relation and cached list only after success', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  f.replies.set('/api/rel/following',()=>new Response(''));
+  await f.client.loadFollowing();
+  f.replies.set('/api/user/Bob',()=>json({id:'bob',username:'Bob',following:false,followable:true}));
+  f.replies.set('/api/user/Bob/rating-history',()=>json([]));
+  f.replies.set('/api/games/user/Bob',()=>new Response(''));
+  await f.client.playerProfile(false,'Bob');
+  await f.client.setFollowing('Bob',true);
+  assert.equal(f.calls.at(-1).path,'/api/rel/follow/Bob'); assert.equal(f.calls.at(-1).options.method,'POST');
+  assert.equal(f.client.snapshot().playerProfile.following,true); assert.equal(f.client.snapshot().following[0].username,'Bob');
+  f.replies.set('/api/rel/unfollow/Bob',()=>json({error:'Unavailable'},503));
+  await f.client.setFollowing('Bob',false);
+  assert.equal(f.client.snapshot().playerProfile.following,true); assert.equal(f.client.snapshot().following.length,1);
+  f.replies.set('/api/rel/unfollow/Bob',()=>json({ok:true}));
+  await f.client.setFollowing('Bob',false);
+  assert.equal(f.client.snapshot().playerProfile.following,false); assert.equal(f.client.snapshot().following.length,0);
+  const count=f.calls.length; await f.client.setFollowing('Alice',true); await f.client.setFollowing('../bad',true);
+  assert.equal(f.calls.length,count);
+});
+
+test('missing follow permission gives reauthorization guidance without disconnecting play', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('old-token'); await tick();
+  f.replies.set('/api/rel/following',()=>json({error:'Missing scope'},403));
+  await f.client.loadFollowing();
+  assert.equal(f.client.snapshot().followPermissionNeeded,true); assert.match(f.client.snapshot().followError,/Sign in again/);
+  assert.equal(f.client.snapshot().connected,true); assert.equal(f.client.snapshot().followingLoading,false);
+  f.replies.set('/api/rel/follow/Bob',()=>json({error:'Missing scope'},403));
+  await f.client.setFollowing('Bob',true);
+  assert.equal(f.client.snapshot().followPermissionNeeded,true); assert.equal(f.client.snapshot().followBusy,false);
+});
+
+test('in-flight follow requests cannot duplicate or leak into another session', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  let resolve; f.replies.set('/api/rel/follow/Bob',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.setFollowing('Bob',true); await tick();
+  const count=f.calls.length; await f.client.setFollowing('Bob',true); assert.equal(f.calls.length,count);
+  f.client.disconnect(); resolve(json({ok:true})); await pending;
+  assert.equal(f.client.snapshot().following,null); assert.equal(f.client.snapshot().followBusy,false);
+});
+
+
+test('comparison windows load concurrently without replacing each other and share follow updates', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  for (const [username,rating] of [['Bob',2000],['Carol',2500]]) {
+    f.replies.set(`/api/user/${username}`,()=>json({id:username.toLowerCase(),username,following:false}));
+    f.replies.set(`/api/user/${username}/rating-history`,()=>json([{name:'blitz',points:[[2026,9,14,rating]]}]));
+    f.replies.set(`/api/games/user/${username}`,()=>new Response(JSON.stringify({id:username+'game'})));
+  }
+  await Promise.all([f.client.playerProfile(false,'Bob','one'),f.client.playerProfile(false,'Carol','two')]);
+  let windows=f.client.snapshot().profileWindows;
+  assert.equal(windows.one.playerProfile.username,'Bob'); assert.equal(windows.two.playerProfile.username,'Carol');
+  assert.equal(windows.one.ratingHistory[0].points[0][3],2000); assert.equal(windows.two.ratingHistory[0].points[0][3],2500);
+  assert.equal(windows.one.recentGames[0].id,'Bobgame'); assert.equal(windows.two.recentGames[0].id,'Carolgame');
+  await f.client.playerProfile(false,'Bob','three');
+  await f.client.setFollowing('Bob',true);
+  windows=f.client.snapshot().profileWindows;
+  assert.equal(windows.one.playerProfile.following,true); assert.equal(windows.three.playerProfile.following,true);
+  assert.equal(windows.two.playerProfile.following,false);
+  f.client.closeProfileWindow('one'); assert.equal(f.client.snapshot().profileWindows.one,undefined);
+  assert.equal(f.client.snapshot().profileWindows.two.playerProfile.username,'Carol');
+});
+
+test('closing a loading comparison window ignores its late reply', async t => {
+  const f=fixture(); t.after(()=>f.client.disconnect()); await f.client.connect('secret'); await tick();
+  let resolve; f.replies.set('/api/user/Bob',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.playerProfile(false,'Bob','closed'); await tick();
+  f.client.closeProfileWindow('closed'); resolve(json({id:'bob',username:'Bob'})); await pending;
+  assert.equal(f.client.snapshot().profileWindows.closed,undefined);
+  assert.ok(!f.calls.some(call=>call.path==='/api/user/Bob/rating-history'));
+});
