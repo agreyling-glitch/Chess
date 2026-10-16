@@ -615,6 +615,7 @@ export function buildGameExport(records, format, exporter) {
     content: contents.map(value => value.trim()).join('\n\n') + '\n' };
 }
 
+let storageGrainUrl;
 function storageDialog(titleText) {
   if (!document.getElementById('ironwood-storage-styles')) {
     const style = document.createElement('style');
@@ -632,6 +633,23 @@ function storageDialog(titleText) {
       #storage-management-dialog .storage-info-grid{display:grid;grid-template-columns:minmax(130px,max-content) 1fr;gap:9px 20px;align-items:baseline;padding:4px 0}
       #storage-management-dialog .storage-info-grid strong{color:#b9bdb8;font-weight:600}
       #storage-management-dialog .storage-info-grid span{min-width:0;overflow-wrap:anywhere}
+      #storage-management-dialog.storage-information{width:min(620px,calc(100vw - 24px));padding:22px;background:#171a1e;border-radius:12px}
+      #storage-management-dialog.storage-information .game-library-heading h2{margin:0;color:#ecebe4}
+      #storage-management-dialog.storage-information .game-library-heading button{width:34px;height:34px;display:grid;place-items:center;padding:0;line-height:1;box-sizing:border-box;border:1px solid #887044;border-radius:5px;font-size:22px;background:linear-gradient(#30363c,#1d2329)}
+      #storage-management-dialog .storage-info-intro{margin:10px 0 18px;color:#aeb7bd}
+      #storage-management-dialog .storage-info-panel{margin-top:14px;padding:17px 18px;background:#0d1116;border:1px solid #30373c;border-top-color:#080b0e;border-left-color:#080b0e;border-bottom-color:#52595e;border-right-color:#52595e;border-radius:7px;box-shadow:inset 2px 3px 7px #0009,0 1px 0 #ffffff08}
+      #storage-management-dialog .storage-info-panel h3{margin:0 0 13px;color:#d3ad62;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+      #storage-management-dialog .storage-info-panel .storage-info-grid{gap:10px 24px}
+      #storage-management-dialog .storage-info-panel .storage-info-grid strong{color:#aeb7bd;font-weight:400}
+      #storage-management-dialog .storage-info-panel .storage-info-grid span{color:#ecebe4;font-variant-numeric:tabular-nums}
+      #storage-management-dialog.storage-information{max-height:calc(100vh - 40px);overflow-y:auto}
+      #storage-management-dialog .storage-capacity{display:flex;align-items:center;gap:22px;margin:4px 0 20px}
+      #storage-management-dialog .storage-pie{width:110px;height:110px;flex:0 0 110px;border-radius:50%;background:conic-gradient(#d3ad62 0 var(--used),#506675 var(--used) 100%);border:1px solid #73828a;box-shadow:0 4px 12px #0007}
+      #storage-management-dialog .storage-capacity strong{display:block;font-size:22px;color:#ecebe4;font-variant-numeric:tabular-nums}
+      #storage-management-dialog .storage-capacity p{margin:5px 0;color:#aeb7bd}
+      #storage-management-dialog .storage-capacity-key{display:flex;gap:18px;margin-top:12px;color:#c2cbd0}
+      #storage-management-dialog .storage-capacity-key span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;background:#d3ad62}
+      #storage-management-dialog .storage-capacity-key span+span::before{background:#506675}
       @media(max-width:520px){#storage-management-dialog .storage-info-grid{grid-template-columns:1fr;gap:2px}#storage-management-dialog .storage-info-grid span{margin-bottom:8px}}
     `;
     document.head.append(style);
@@ -643,6 +661,27 @@ function storageDialog(titleText) {
     document.body.append(dialog);
   }
   dialog.replaceChildren();
+  dialog.classList.toggle('storage-information', titleText === 'Storage information');
+  if (titleText === 'Storage information' && !storageGrainUrl) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d');
+    if (context) {
+      const pixels = context.createImageData(256, 256);
+      let seed = 19741029;
+      for (let i = 0; i < pixels.data.length; i += 4) {
+        seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
+        const light = seed & 1;
+        pixels.data[i] = light ? 238 : 0;
+        pixels.data[i + 1] = light ? 222 : 0;
+        pixels.data[i + 2] = light ? 194 : 0;
+        pixels.data[i + 3] = (seed >>> 8) % 18;
+      }
+      context.putImageData(pixels, 0, 0);
+      storageGrainUrl = canvas.toDataURL();
+    }
+  }
+  dialog.style.backgroundImage = titleText === 'Storage information' && storageGrainUrl ? `url("${storageGrainUrl}")` : '';
   const heading = document.createElement('div');
   heading.className = 'game-library-heading';
   const title = document.createElement('h2');
@@ -874,6 +913,10 @@ window.ironwoodRestoreStorage = () => {
 
 window.ironwoodOpenStorageInfo = async () => {
   const dialog = storageDialog('Storage information');
+  const intro = document.createElement('p');
+  intro.className = 'storage-info-intro';
+  intro.textContent = 'Your game library and browser storage on this device.';
+  dialog.append(intro);
   const content = document.createElement('div');
   content.textContent = 'Checking storage…';
   dialog.append(content);
@@ -898,13 +941,48 @@ window.ironwoodOpenStorageInfo = async () => {
       ['Offline engine', 'Managed separately by the offline-play control'],
     ];
     content.replaceChildren();
-    content.className = 'storage-info-grid';
-    for (const [label, value] of rows) {
+    for (const [title, start, end] of [['Game library', 0, 8], ['Browser storage', 8, 11], ['Offline play', 11, 12]]) {
+      const panel = document.createElement('section');
+      panel.className = 'storage-info-panel';
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      const grid = document.createElement('div');
+      grid.className = 'storage-info-grid';
+      for (const [label, value] of rows.slice(start, end)) {
       const term = document.createElement('strong');
       term.textContent = label;
       const detail = document.createElement('span');
       detail.textContent = value;
-      content.append(term, detail);
+        grid.append(term, detail);
+      }
+      panel.append(heading);
+      if (title === 'Browser storage' && Number.isFinite(estimate?.usage) && Number.isFinite(estimate?.quota) && estimate.quota > 0) {
+        const percent = Math.max(0, Math.min(100, estimate.usage / estimate.quota * 100));
+        const available = Math.max(0, estimate.quota - estimate.usage);
+        const capacity = document.createElement('div');
+        capacity.className = 'storage-capacity';
+        const pie = document.createElement('div');
+        pie.className = 'storage-pie';
+        pie.style.setProperty('--used', `${percent}%`);
+        pie.setAttribute('role', 'img');
+        const percentage = percent > 0 && percent < 0.01 ? '<0.01' : percent.toFixed(2);
+        pie.setAttribute('aria-label', `Browser storage: ${percentage}% used, ${format(available)} available within the browser quota`);
+        const summary = document.createElement('div');
+        const amount = document.createElement('strong');
+        amount.textContent = `${percentage}% used`;
+        const remaining = document.createElement('p');
+        remaining.textContent = `${format(available)} available`;
+        const key = document.createElement('div');
+        key.className = 'storage-capacity-key';
+        for (const label of ['Used', 'Available']) {
+          const item = document.createElement('span'); item.textContent = label; key.append(item);
+        }
+        summary.append(amount, remaining, key);
+        capacity.append(pie, summary);
+        panel.append(capacity);
+      }
+      panel.append(grid);
+      content.append(panel);
     }
   } catch (error) {
     content.textContent = `Storage information is unavailable: ${error.message}`;

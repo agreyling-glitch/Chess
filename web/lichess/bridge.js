@@ -68,6 +68,8 @@ window.ironwoodLichessCommand = raw => run(async () => {
     case 'following': return client.loadFollowing(!!cmd.refresh);
     case 'setFollowing': return client.setFollowing(cmd.username, cmd.follow);
     case 'playerProfile': return client.playerProfile(!!cmd.refresh, cmd.username, cmd.windowId);
+    case 'activity': return client.activity(cmd.username, cmd.windowId, !!cmd.refresh);
+    case 'performance': return client.performance(cmd.username, cmd.perf, cmd.windowId, !!cmd.refresh);
     case 'ratingHistory': return client.ratingHistory(!!cmd.refresh, cmd.username);
     case 'seek': return client.seek(cmd.options);
     case 'cancelSeek': return client.cancelSeek();

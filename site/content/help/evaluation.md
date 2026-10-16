@@ -4,6 +4,7 @@ description: "What a positive or negative score means, and how to read a swing i
 category: "analysis"
 keywords: [eval, score, graph, centipawn, white, black, mate]
 weight: 20
+lastmod: 2026-10-15T00:00:00-05:00
 ---
 
 ## The score is from White's point of view
@@ -16,6 +17,8 @@ A **centipawn** is one hundredth of a pawn in that scoring system. A score of +0
 
 The graph plots the score after each move. A rise means the position improved for White; a fall means it improved for Black. A large change after a move is a good place to investigate. Click or tap that point, then compare the played move with Stockfish's suggestion.
 
+In the expanded graph, a light ivory area between the line and zero shows White's advantage; a dark charcoal area shows Black's advantage. The slate background distinguishes both fills. Unanalyzed positions leave gaps, and the gold line shows the evaluation itself.
+
 The graph can move when the engine searches deeper. A flat graph also does not mean the moves were easy: both players may have found the only safe moves.
 
 ## Mate scores
@@ -27,3 +30,11 @@ The graph can move when the engine searches deeper. A flat graph also does not m
 Use **Expand** above the graph to open the full-screen evaluation view. **Print analysis**, the gold button beside it, opens the printable report prompt when engine results are available and analysis is paused or stopped.
 
 Below the graph, **Summary** contains the game-review details. **Pawn Structure**, **Piece Mobility**, and **King Safety** explore the position and how its patterns change through the game. They work without a completed engine analysis; see [Positional insights](/help/positional-insights/) for controls and how to read each view.
+
+## Expanded graph and position preview
+
+The expanded view includes move navigation, per-position details and notes, capture markers, and a framed board preview. Scroll down to advance a move or up to go back. The preview shows saved drawings and best-move arrows using the main board’s rules. Captured-piece markers always use Merida. See [Expanded game analysis graph](/help/expanded-analysis-graph/) for the full guide.
+
+## Real-Time Analysis versus Game Analysis
+
+**Analyze position** searches the displayed position and fills **Engine prediction** with candidate continuations. **Analyze full game** examines the played game and builds its evaluation graph and summary. The live score is labeled **White perspective** regardless of which side is at the bottom. Full-game analysis temporarily holds live position analysis so they do not compete. Search limits are configured in [Engine settings](/help/search-depth-and-settings/).

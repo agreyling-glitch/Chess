@@ -278,6 +278,7 @@ impl ChessApp {
             .min_width(320.0).max_width(320.0).min_height(120.0)
             .vscroll(true).resizable([false, true]).collapsible(false).title_bar(false)
             .show(ctx, |ui| {
+                let grain_background = ui.painter().add(egui::Shape::Noop);
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
                 close = Self::dialog_header(ui, "Draw on board");
                 ui.horizontal(|ui| {
@@ -387,6 +388,12 @@ impl ChessApp {
                     self.drawn_shapes_list(ui);
                 });
                 Self::paint_sunken_border(ui, drawings.response.rect);
+                let paper = Self::paper_grain_texture(ctx);
+                let surface = ui.min_rect().expand(6.0);
+                ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
+                    egui::Rect::from_min_max(egui::Pos2::ZERO,
+                        egui::pos2(surface.width() / 256.0, surface.height() / 256.0)),
+                    Color32::WHITE));
             });
         if close { open = false; }
         if !open { self.board_mark_mode = false; self.board_mark_drag = None; }

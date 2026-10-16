@@ -108,6 +108,8 @@ Only one game controls the board. An active FICS game cannot be replaced by a ba
 
 ## Player profiles and followed players
 
+See the dedicated [Lichess player profiles guide](/help/lichess-player-profiles/) for browsing, comparison windows, performance statistics, following, activity, and game playback.
+
 Open **Lichess-Online → Player profile…**, or click your connected account summary. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID.
 
 Choose Bullet, Blitz, Rapid, Classical, or Correspondence and a date range (**1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**). Hover the graph to inspect a date and rating. If a period has no history, try **ALL** or another time control. The graph has its own sunken paper-grain surface. Game-record counters and recent-game cards adapt to narrow windows.
@@ -118,8 +120,20 @@ Biography and website links open in new tabs. Clicking the FIDE rating opens the
 
 Use **Load in new window**, or open the menu item again, to compare players in independent windows. Each green-bordered window keeps its own player, filters, size, and position.
 
+### Detailed performance by time control
+
+Click a **Bullet**, **Blitz**, **Rapid**, **Classical**, or **Correspondence** rating chip to open **Performance details**. The section shows rating, rank and percentile when available, highest and lowest ratings with dates, game record, average opponent rating, playing time, and current/longest win and loss streaks.
+
+**Best wins** and **Worst losses** load up to five games each. Click a mini board for enlarged playback or use the game's **Review on Ironwood** control to review it on Ironwood's full board. Reviewing stays temporary until **Game → Save current game** saves it. **Refresh** retries statistics and game loading; **Close details** hides the section. Statistics are cached separately for each time control and player-profile window. The Puzzles chip has no performance-details endpoint.
+
 ### Preview or review a recent game
+
+Click **Recent games** to collapse or expand the list.
 
 Hover a recent-game mini board for its gold outline and magnifying-glass indicator, then click to open the larger move viewer. It shows White and Black, the result, step controls, and autoplay without importing the game into Saved Games. The two controls in the right column offer **Open game on Lichess** in a new tab or **Review on Ironwood** on the full board.
 
 **Review on Ironwood** opens a temporary review. To keep it, choose **Game → Save current game**; this saves the full game even when you are viewing its starting position. Merely previewing or opening the review does not add it to Saved Games. Finish active online play or training before opening a full-board review.
+
+### Daily activity
+
+Expand **Activity** beneath the profile graph to load recent daily game and puzzle results. Each date lists wins, losses, and draws by time control, plus solved and missed puzzles. Rating changes show the before/after ratings when Lichess supplies them. Activity loads only when expanded and is cached separately for each profile window. Use **Refresh activity** to reload it. This is the player's Lichess activity, separate from Ironwood's local puzzle progress.

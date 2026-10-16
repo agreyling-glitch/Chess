@@ -27,6 +27,6 @@ Fork cards also explain more of their immediate context. A checking fork against
 
 When the training dashboard has enough analyzed moves to recommend a phase, **Practice this phase** opens a puzzle with Opening, Middlegame, or Endgames selected. Choose the difficulty before launching, or change it later in the Practice tab. Those phase themes are also available directly in Puzzles.
 
-These are tactics drawn from the selected phase. Difficulty uses Lichess's anonymous baseline of 1500 rather than your Ironwood training rating, so the two numbers should not be read as equivalent. The separate Merida puzzle board preserves the game you were reviewing. Finish active training or online play before opening puzzles.
+These are tactics drawn from the selected phase. Difficulty uses Lichess's anonymous baseline of 1500 rather than your Ironwood training rating, so the two numbers should not be read as equivalent. Puzzles now load into the main board and record played attempts under Saved Games → Puzzles. Save any game you want to keep before switching, then reopen it from Saved Games afterward. Finish active training or online play before opening puzzles.
 
 See [board controls](/help/board-and-view/), [Tactical Map](/help/tactical-map/), and [training practice](/help/training-vs-ai/#finding-areas-to-focus-on) for the details, or browse the [complete release notes](/changelog/2026-10-13-board-controls-and-focused-practice/).

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../web/app-bootstrap.js', import.meta.url), 'utf8');
-const { startChessApp, installDeferredTools, compileAppWasm } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { startChessApp, installDeferredTools, compileAppWasm, install3dCompanion } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
   let resolve, reject;
@@ -22,6 +22,83 @@ function environment(url = 'http://localhost/play/') {
   };
   return { dom, target, warnings };
 }
+
+test('3D companion follows only its opener and reuses an open window', () => {
+  const main = environment(), other = environment(), view = environment('http://localhost/play/?view=3d-companion');
+  let opened = 0, focused = 0;
+  const child = { closed: false, focus: () => focused++ };
+  main.target.open = url => {
+    assert.equal(url, 'http://localhost/play/?view=3d-companion');
+    opened++;
+    return child;
+  };
+  for (const env of [main, other, view]) install3dCompanion(env.target);
+  view.target.opener = main.target;
+  main.target.ironwoodPublish3dPosition('first position');
+  other.target.ironwoodPublish3dPosition('unrelated game');
+  assert.equal(view.target.ironwoodCompanionMode(), true);
+  assert.equal(view.target.ironwoodRead3dPosition(), 'first position');
+  main.target.ironwoodPublish3dPosition('history position');
+  assert.equal(view.target.ironwoodRead3dPosition(), 'history position');
+  assert.equal(main.target.ironwoodOpen3dCompanion(), true);
+  assert.equal(main.target.ironwoodOpen3dCompanion(), true);
+  assert.equal(opened, 1);
+  assert.equal(focused, 1);
+  child.closed = true;
+  main.target.ironwoodOpen3dCompanion();
+  assert.equal(opened, 2);
+  main.target.closed = true;
+  assert.equal(view.target.ironwoodRead3dPosition(), '');
+  for (const env of [main, other, view]) env.dom.window.close();
+});
+
+test('blocked 3D companion displays a useful message', () => {
+  const { target, dom } = environment();
+  install3dCompanion(target);
+  target.open = () => null;
+  assert.equal(target.ironwoodOpen3dCompanion(), false);
+  assert.match(target.document.querySelector('[role=alert]').textContent, /Allow pop-ups/);
+  dom.window.close();
+});
+
+test('FICS pop-out reuses its window, follows its opener and queues commands without loading another connection', () => {
+  const main = environment(), view = environment('http://localhost/play/?view=fics-companion');
+  let opened = 0, focused = 0;
+  const child = { closed: false, focus: () => focused++ };
+  main.target.open = url => { assert.equal(url, 'http://localhost/play/?view=fics-companion'); opened++; return child; };
+  install3dCompanion(main.target);
+  const requests = [];
+  const deferred = installDeferredTools(view.target, path => { requests.push(path); return Promise.resolve({}); });
+  view.target.opener = main.target;
+  main.target.ironwoodPublishFicsCompanion('{"connected":true,"log":["Welcome"]}');
+  assert.equal(view.target.ironwoodCompanionMode(), true);
+  assert.equal(view.target.ironwoodFicsCompanionMode(), true);
+  assert.equal(view.target.ironwoodReadFicsCompanion(), '{"connected":true,"log":["Welcome"]}');
+  assert.equal(view.target.ironwoodFicsSendCommand('help'), true);
+  assert.equal(view.target.ironwoodFicsSendCommand('help\nquit'), false);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTakeFicsCompanionCommands()), ['help']);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTakeFicsCompanionCommands()), []);
+  deferred.afterPaint();
+  assert.deepEqual(requests, []);
+  assert.equal(main.target.ironwoodOpenFicsCompanion(), true);
+  assert.equal(main.target.ironwoodOpenFicsCompanion(), true);
+  assert.equal(opened, 1); assert.equal(focused, 1);
+  assert.equal(main.target.ironwoodFicsCompanionOpen(), true);
+  child.closed = true;
+  assert.equal(main.target.ironwoodFicsCompanionOpen(), false);
+  main.target.closed = true;
+  assert.equal(view.target.ironwoodReadFicsCompanion(), '');
+  main.dom.window.close(); view.dom.window.close();
+});
+
+test('companion startup leaves account restoration and background tools idle', () => {
+  const { target, dom } = environment('http://localhost/play/?view=3d-companion');
+  const requests = [];
+  const tools = installDeferredTools(target, path => { requests.push(path); return Promise.resolve({}); });
+  tools.afterPaint();
+  assert.deepEqual(requests, []);
+  dom.window.close();
+});
 
 test('core fetch/compile overlaps restoration; optional modules wait for the painted board or use', async () => {
   const { dom, target } = environment();
@@ -304,4 +381,48 @@ test('WASM compilation streams only valid WASM MIME responses and preserves byte
   assert.equal(await compileAppWasm('/app.wasm', async () => new Response('test', { headers: { 'Content-Type': 'application/octet-stream' } }), wasm), module);
   assert.deepEqual(calls, ['stream', 4]);
   await assert.rejects(compileAppWasm('/app.wasm', async () => new Response('', { status: 404 }), wasm), /404/);
+});
+
+
+test('player profile pop-outs preserve independent selections and share only their opener connection', () => {
+  const main = environment(), view = environment('http://localhost/play/?view=profile-companion&profile=7');
+  let opened = 0, focused = 0;
+  main.target.open = url => {
+    assert.match(url, /view=profile-companion&profile=(7|8)$/);
+    opened++; return { closed: false, focus: () => focused++ };
+  };
+  install3dCompanion(main.target);
+  const requested = [], commands = [];
+  main.target.ironwoodLichessCommand = value => commands.push(JSON.parse(value));
+  const tools = installDeferredTools(view.target, path => { requested.push(path); return Promise.resolve({}); });
+  view.target.opener = main.target;
+  const selection = JSON.stringify({ id: 7, username: 'cutemouse83', control: 1, range: 4 });
+  assert.equal(main.target.ironwoodOpenProfileCompanion(selection), true);
+  assert.equal(main.target.ironwoodOpenProfileCompanion(selection), true);
+  assert.equal(main.target.ironwoodOpenProfileCompanion(JSON.stringify({ id: 8, username: 'other' })), true);
+  assert.equal(opened, 2); assert.equal(focused, 1);
+  assert.equal(view.target.ironwoodProfileCompanionMode(), true);
+  assert.equal(view.target.ironwoodProfileCompanionInitial(), selection);
+  main.target.ironwoodPublishProfileState('{"connected":true}');
+  assert.equal(view.target.ironwoodReadProfileState(), '{"connected":true}');
+  view.target.ironwoodLichessCommand('{"type":"playerProfile","windowId":"7","username":"other"}');
+  view.target.ironwoodLichessCommand('{"type":"seek"}');
+  assert.equal(commands.length, 1);
+  assert.equal(view.target.ironwoodReviewProfileInMain('1. e4 *'), true);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTakeProfileReviews()), ['1. e4 *']);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTakeProfileReviews()), []);
+  tools.afterPaint(); assert.deepEqual(requested, []);
+  main.target.closed = true;
+  assert.equal(view.target.ironwoodReadProfileState(), '');
+  assert.equal(view.target.ironwoodReviewProfileInMain('1. d4 *'), false);
+  main.dom.window.close(); view.dom.window.close();
+});
+
+test('blocked player profile pop-out leaves the original available', () => {
+  const { target, dom, warnings } = environment();
+  install3dCompanion(target); target.open = () => null;
+  assert.equal(target.ironwoodOpenProfileCompanion('{"id":1}'), false);
+  assert.equal(target.ironwoodProfileCompanionOpen(), false);
+  assert.match(warnings[0], /Allow pop-ups/);
+  dom.window.close();
 });

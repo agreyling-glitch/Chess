@@ -48,9 +48,11 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
   const publish = () => emit({ type: 'lobby', ...state, outgoing: [...outgoing] });
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function checked(path, options = {}) {
+    // Public game exports reject OPTIONS preflights, so never attach the OAuth header.
+    const publicExport = path.startsWith('/game/export/') || path.startsWith('/api/games/export/_ids');
     if (now() < cooldown) throw new Error('Lichess rate limit: wait at least one minute before retrying');
     const response = await request(HOST + path, { credentials: 'omit', cache: 'no-store', ...options,
-      headers: { ...headers(), ...options.headers } });
+      headers: { ...(publicExport ? {} : headers()), ...options.headers } });
     if (response.status === 429) {
       cooldown = now() + Math.max(60000, (Number(response.headers.get('Retry-After')) || 0) * 1000);
     }
@@ -72,7 +74,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       if (session !== generation || !token) throw new Error('Lichess session changed');
       const response = await checked(path, { method, headers: { Accept: accept },
         signal: sessionController.signal,
-        ...(params ? { body: new URLSearchParams(params) } : {}) });
+        ...(params ? { body: typeof params === 'string' ? params : new URLSearchParams(params) } : {}) });
       if (session !== generation) throw new Error('Lichess session changed');
       if (accept === 'application/x-ndjson') {
         const records = [];
@@ -326,6 +328,8 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     const session = generation;
     const current = () => session === generation && (!windowId || state.profileWindows[windowId] === target);
     const changed = target.profileUsername.toLowerCase() !== username.toLowerCase();
+    if (changed) target.performance = {};
+    if (changed || refresh) target.activity = null;
     if (changed) { target.playerProfile = null; target.recentGames = null; target.ratingHistory = null; }
     target.profileUsername = username; target.historyUsername = username;
     target.profileLoading = true; target.profileError = ''; target.historyError = ''; publish();
@@ -344,6 +348,60 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       } catch (err) { if (current()) target.profileError = `Recent games: ${err.message}`; }
     } catch (err) { if (current()) target.profileError = err.message; }
     finally { if (current()) { target.profileLoading = false; publish(); } }
+  }
+  async function activity(username, windowId, refresh = false) {
+    const target = state.profileWindows[String(windowId)];
+    username = String(username || '').trim();
+    if (!account || !target || target.profileUsername.toLowerCase() !== username.toLowerCase()) return;
+    if (target.activity?.loading || (!refresh && target.activity?.days && !target.activity.error)) return;
+    const entry = target.activity = { loading: true, error: '', days: null };
+    const session = generation;
+    const current = () => session === generation && state.profileWindows[String(windowId)] === target
+      && target.profileUsername.toLowerCase() === username.toLowerCase() && target.activity === entry;
+    publish();
+    try {
+      const days = await api(`/api/user/${encodeURIComponent(username)}/activity`, null, 'GET');
+      if (!current()) return;
+      if (!Array.isArray(days)) throw new Error('Invalid player activity response.');
+      entry.days = days.sort((a,b) => (b.interval?.start || 0) - (a.interval?.start || 0));
+    } catch (err) { if (current()) entry.error = err.message; }
+    finally { if (current()) { entry.loading = false; publish(); } }
+  }
+  async function performance(username, perf, windowId, refresh = false) {
+    const target = state.profileWindows[String(windowId)];
+    username = String(username || '').trim();
+    if (!account || !target || target.profileUsername.toLowerCase() !== username.toLowerCase()) return;
+    if (!['bullet', 'blitz', 'rapid', 'classical', 'correspondence'].includes(perf)) return;
+    target.performance ||= {};
+    const previous = target.performance[perf];
+    if (previous?.loading || (!refresh && previous?.data && !previous.error && !Object.keys(previous.gameErrors || {}).length)) return;
+    const entry = target.performance[perf] = { loading: true, error: '', data: null, games: {}, gameErrors: {} };
+    const session = generation;
+    const current = () => session === generation && state.profileWindows[String(windowId)] === target
+      && target.profileUsername.toLowerCase() === username.toLowerCase() && target.performance?.[perf] === entry;
+    publish();
+    try {
+      const data = await api(`/api/user/${encodeURIComponent(username)}/perf/${perf}`, null, 'GET');
+      if (!current()) return;
+      if (!data.stat || !data.perf) throw new Error('No performance statistics available for this time control.');
+      entry.data = data; publish();
+      const ids = [...new Set(['bestWins', 'worstLosses'].flatMap(key =>
+        (data.stat[key]?.results || []).slice(0, 5).map(result => result.gameId)))].filter(id => /^[a-zA-Z0-9]{8}$/.test(id));
+      if (ids.length) {
+        // The /api route supports browser requests and returns all notable games at once.
+        const games = await api('/api/games/export/_ids?moves=true&pgnInJson=true&opening=true',
+          ids.join(','), 'POST', 'application/x-ndjson', ids.length);
+        if (!current()) return;
+        for (const game of games) {
+          if (ids.includes(game.id) && game.pgn && !['started', 'created'].includes(game.status)) entry.games[game.id] = game;
+        }
+        for (const id of ids) {
+          if (!entry.games[id]) entry.gameErrors[id] = 'Completed game moves are unavailable.';
+        }
+        publish();
+      }
+    } catch (err) { if (current()) entry.error = err.name === 'TypeError' ? 'Game previews could not be loaded. Select Refresh to retry.' : err.message; }
+    finally { if (current()) { entry.loading = false; publish(); } }
   }
   async function ratingHistory(refresh = false, username = '', target = state) {
     if (!account || target.historyLoading) return;
@@ -443,6 +501,6 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       throw new Error('Unsupported game action');
     await api(`/api/board/game/${game.id}/${action}`, action === 'chat' ? { room: 'player', text: text.slice(0, 140) } : null);
   }
-  return { connect, disconnect, closeProfileWindow: id => { delete state.profileWindows[String(id)]; publish(); }, loadFollowing, setFollowing, playerProfile, ratingHistory, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
+  return { connect, disconnect, closeProfileWindow: id => { delete state.profileWindows[String(id)]; publish(); }, loadFollowing, setFollowing, playerProfile, activity, performance, ratingHistory, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
     revoke: () => api('/api/token', null, 'DELETE'), reportError: error, snapshot: () => structuredClone(state) };
 }

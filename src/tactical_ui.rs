@@ -132,11 +132,16 @@ impl ChessApp {
             .collapsible(false)
             .title_bar(false)
             .show(ctx, |ui| {
+                let grain=ui.painter().add(egui::Shape::Noop);
                 if Self::dialog_header(ui, "Tactical Map") { open = false; }
                 ui.add_space(6.0);
                 egui::ScrollArea::vertical().id_salt("tactical_window_content")
                     .max_height(ui.available_height().max(0.0))
                     .auto_shrink([false, false]).show_gold(ui, |ui| self.tactical_map_contents(ui));
+                let paper=Self::paper_grain_texture(ui.ctx());
+                let surface=ui.min_rect().expand(6.0);
+                ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
+                    egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
             });
         ctx.data_mut(|d| d.insert_temp(id, open));
     }

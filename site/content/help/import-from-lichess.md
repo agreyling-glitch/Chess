@@ -4,6 +4,7 @@ description: "Filter completed Lichess games by date and time control, fetch up 
 category: "using-ironwood"
 keywords: [Lichess, import, username, profile, game URL, PGN, recent games, completed games, duplicates, analyze]
 weight: 13
+lastmod: 2026-10-15T00:00:00-05:00
 ---
 
 Bring completed Lichess games into Ironwood without downloading a PGN file first. You do not need to sign in to Lichess or provide an API token. Fetching games requires an internet connection.
@@ -50,3 +51,7 @@ You can still paste a [PGN game or collection](/help/pgn/) directly into **Paste
 - **Rate limit:** wait a full minute before trying again.
 
 Imported games are stored locally in this browser on this device. Use a [backup](/help/saved-games-and-backups/) to keep a separate copy.
+
+## Browse without importing
+
+Use [Lichess player profiles](/help/lichess-player-profiles/) when you only want to inspect a player or watch a recent or notable game. Mini-board playback does not add it to the library. **Review on Ironwood** opens a temporary full-board review; **Game → Save current game** keeps it locally. Import remains the workflow for adding selected games or a collection directly to Saved Games.

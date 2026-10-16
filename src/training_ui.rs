@@ -389,12 +389,14 @@ impl ChessApp {
                 ui.add_enabled_ui(!manager.busy && !manager.delete_open && !self.training_live(), |ui| {
                     let table = Frame::new().fill(Color32::from_rgb(19, 24, 30))
                         .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
-                    let usable = (ui.available_width() - 28.0 - 40.0).max(240.0);
+                    ui.style_mut().wrap_mode=Some(egui::TextWrapMode::Truncate);
+                    // Reserve checkbox, column gutters, and the radio indicator/padding.
+                    let usable = (ui.available_width() - 28.0 - 40.0 - 48.0).max(180.0);
                     let name_width = usable * 0.43;
                     let stat_width = usable * 0.19;
                     ui.spacing_mut().interact_size.y = 32.0;
                     egui::ScrollArea::vertical().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
-                        egui::Grid::new("training_profiles_table").striped(true).num_columns(5).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
+                        egui::Grid::new("training_profiles_table").striped(true).num_columns(5).min_col_width(0.0).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
                             let mut all = !self.training_profiles.profiles.is_empty() && manager.selected.len() == self.training_profiles.profiles.len();
                             if ui.checkbox(&mut all, "").on_hover_text("Select all profiles").changed() {
                                 manager.selected = if all { self.training_profiles.profiles.iter().map(|p| p.id.clone()).collect() } else { Vec::new() };
@@ -411,7 +413,7 @@ impl ChessApp {
                                 let active = self.training_profiles.selected_id == profile.id;
                                 if ui.add_sized([name_width, 34.0], egui::RadioButton::new(active,
                                     RichText::new(&profile.name).strong().color(if active { gold } else { Color32::from_rgb(228, 231, 234) })))
-                                    .on_hover_text("Use this profile for training and puzzle focus").clicked() {
+                                    .on_hover_text(format!("{}\nUse this profile for training and puzzle focus",profile.name)).clicked() {
                                     self.training_profiles.selected_id = profile.id.clone();
                                 }
                                 for value in [profile.rating(TrainingSide::White).to_string(), profile.rating(TrainingSide::Black).to_string(), profile.results.len().to_string()] {
@@ -488,7 +490,7 @@ impl ChessApp {
                 ui.add_space(4.0);
                 ui.label(RichText::new("Create a new profile").strong().color(gold));
                 ui.horizontal(|ui| {
-                    let width = (ui.available_width() - 148.0).max(100.0);
+                    let width = (ui.available_width() - 140.0 - ui.spacing().item_spacing.x - 2.0).max(80.0);
                     ui.add_sized(
                         [width, 40.0],
                         egui::TextEdit::singleline(&mut self.training_profile_name)
@@ -835,6 +837,7 @@ impl ChessApp {
         }
         let mut close = false;
         egui::Modal::new(egui::Id::new("training_profiles")).frame(Self::dialog_frame()).show(ctx, |ui| {
+            let grain=ui.painter().add(egui::Shape::Noop);
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(15.0));
@@ -909,6 +912,10 @@ impl ChessApp {
                 ui.label("Open Saved Games > Training to replay games, add notes, and analyze mistakes. Profiles and progress are included in Storage > Backup all data.");
                 });
             });
+            let paper=Self::paper_grain_texture(ui.ctx());
+            let surface=ui.min_rect().expand(6.0);
+            ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
         });
         if close {
             self.training_dialog_open = false;

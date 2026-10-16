@@ -2,7 +2,7 @@
 title: "Drawing arrows and highlighting squares"
 description: "Draw arrows, square highlights, crosses, and ghost pieces; edit drawings, switch styles, and undo changes."
 category: "using-ironwood"
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 keywords: [ghost pieces, knight arrows, filled square, cross, black, white, arrows, highlights, squares, circles, drawing, draw on board, colors, dashed, dotted, curved, undo, Ctrl+Z, Alt, cal, csl, board annotations]
 weight: 17
 ---
@@ -104,3 +104,7 @@ Right-click the desired move in **Game Moves** and choose **Copy Annotated Board
 - Turn drawing off or close the window when you want to play moves.
 
 See [Board and view settings](/help/board-and-view/) for display controls, or [Saving and sharing analysis](/help/saving-and-sharing/) for export formats.
+
+## Drawings in the expanded graph
+
+The [expanded game analysis graph](/help/expanded-analysis-graph/) displays the inspected position’s saved arrows, shapes, and ghost pieces on its framed mini board. Hover another graph position or select a different move to inspect its own drawings. Create or edit drawings on the main board; the preview does not change them.

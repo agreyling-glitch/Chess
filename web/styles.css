@@ -200,3 +200,19 @@ canvas { display:block; }
 .game-preview-player strong { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:#aab5bf; }
 .game-preview-player span { font-size:15px; color:#eee9dd; }
 #game-preview-dialog .game-preview-outcome { color:#f1ce83; font-weight:600; }
+
+/* Paper grain belongs to the outer windows; opaque inset trays stay clear. */
+:is(#game-library-dialog,#game-preview-dialog):is(dialog) {
+  background-color:#171a1e;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.2%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat:repeat;
+  background-size:256px 256px;
+}
+
+/* Original procedural linen, matching the finer About technology panel weave. */
+#game-library-dialog .game-library-controls {
+  background-color:#0d1116;
+  background-image:url("./linen-texture.png");
+  background-repeat:repeat;
+  background-size:128px 128px;
+}

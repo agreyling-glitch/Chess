@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Taking notes and adding annotations"
 description: "Add Starting notes, record thoughts on individual moves, and use annotation symbols to review and share your games."
 category: "using-ironwood"
@@ -46,7 +46,7 @@ Notes stay separate from engine analysis. Running or rerunning Stockfish does no
 ## Find your notes later
 
 - **Main board:** the floating Notes window shows the displayed position's note in either workspace layout.
-- **Expanded analysis graph:** select a position to read its note alongside the analysis details.
+- **Expanded analysis graph:** select a position to read its note alongside the analysis details. The framed mini board also displays that position’s saved drawings; see [Expanded game analysis graph](/help/expanded-analysis-graph/).
 - **Saved Games:** games with a Starting note show a two-line preview. Click the note preview to open the game at its starting position.
 - **Larger saved-game board preview:** click the small board to enlarge it and read the full Starting note beneath it. The preview initially shows the final position; its move controls and autoplay let you browse the game. The Starting note still describes the initial position.
 

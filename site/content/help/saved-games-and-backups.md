@@ -35,7 +35,7 @@ After confirming a deletion, you return to Saved Games. Deleting the currently l
 
 ## Saved-game windows
 
-The saved-game library uses recessed control and game-list sections. Enlarged playback uses matching inset areas for its heading, board, and navigation buttons. These visual changes keep the existing selection, backup, import, and playback behavior.
+The saved-game library uses a paper-grain outer surface, a fine-linen recessed control section, and sunken game-list sections. Enlarged playback uses a grain outer surface and matching inset areas for its heading, board, and navigation buttons. These visual changes keep the existing selection, backup, import, and playback behavior.
 
 ## Sort and review your library
 
@@ -46,3 +46,7 @@ Hover a small board for the gold outline and magnifying-glass indicator. The lar
 A profile game's **Review on Ironwood** session stays temporary until you choose **Game → Save current game**. Saving keeps the complete game, regardless of the move currently displayed.
 
 The **Puzzles** category stores puzzle move history separately from ordinary games and training games. Removing a saved puzzle playback entry does not reset puzzle progress counts.
+
+## Storage information
+
+Open **Storage → Storage information** for local record counts and the browser’s reported storage estimate. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.

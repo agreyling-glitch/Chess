@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess play and analysis help — Ironwood Chess"
 title: "Help center"
-description: "Plain-language guides to Ironwood Chess, with a focus on understanding game analysis."
+description: "Guides to playing, analysis, player profiles, puzzles, saved games, settings, and recovery."
 layout: "help-list"
 cascade:
   layout: "help-single"

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-09T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Keyboard move input"
 description: "Type chess moves with a translucent input overlay, and navigate game positions with arrow keys."
 category: "using-ironwood"
@@ -49,3 +49,7 @@ Voice move entry is not currently built into Ironwood.
 ## Focus mode
 
 **Shift+Enter** toggles focus mode when you are not editing a text field. **Escape** exits focus mode. The board toolbar’s focus icon provides the same toggle. See [Focus on the board](/help/playing-a-game/#focus-on-the-board).
+
+## Mouse-wheel move navigation
+
+Over the main board, scroll down to advance and up to go back. When inspecting an engine prediction, the wheel follows that line; selecting a Game Moves entry returns to game history. The expanded game graph also supports wheel navigation. On a 3D board, hold the right mouse button while scrolling to zoom instead. Active training and online play restrict history navigation.

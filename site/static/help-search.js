@@ -8,10 +8,11 @@
   let category = 'all';
   function update() {
     const query = input.value.trim().toLocaleLowerCase();
+    const terms = query.split(/\s+/).filter(Boolean);
     let visible = 0;
     for (const card of cards) {
       const matches = (category === 'all' || card.dataset.category === category)
-        && (!query || card.dataset.search.includes(query));
+        && terms.every(term => card.dataset.search.includes(term));
       card.hidden = !matches;
       if (matches) visible++;
     }

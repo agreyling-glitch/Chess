@@ -27,20 +27,25 @@ struct LichessSession {
     profile_review_requested: bool,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 struct PlayerProfileWindow {
     id: u64,
     open: bool,
+    #[serde(default)]
+    detached: bool,
     username: String,
     control: usize,
     shown_username: String,
     range: usize,
     following_search: String,
+    performance_control: Option<usize>,
 }
 impl PlayerProfileWindow {
     fn new(id: u64, username: &str) -> Self {
-        Self {id,open:true,username:username.into(),control:0,shown_username:String::new(),range:5,following_search:String::new()}
+        Self {id,open:true,detached:false,username:username.into(),control:0,shown_username:String::new(),range:5,following_search:String::new(),performance_control:None}
     }
-    fn load(&self, refresh: bool) {
+    fn load(&mut self, refresh: bool) {
+        if !refresh {self.performance_control=None;}
         lichess_command(serde_json::json!({"type":"playerProfile","windowId":self.id.to_string(),"username":self.username.trim(),"refresh":refresh}));
     }
 }
@@ -199,9 +204,15 @@ fn lichess_pgn(game: &serde_json::Value, moves: &[String], result: &str) -> Stri
 }
 
 impl ChessApp {
+    fn lichess_selection_border(ui: &egui::Ui, response: &egui::Response, selected: bool) {
+        if selected {
+            ui.painter().rect_stroke(response.rect.shrink(3.0), 4.0,
+                Stroke::new(2.0, Color32::from_rgb(55, 43, 23)), egui::StrokeKind::Inside);
+        }
+    }
+
     fn lichess_computer_setup(&mut self, ui: &mut egui::Ui, seeking: bool) {
         let gold = Color32::from_rgb(211, 173, 98);
-        let dark = Color32::from_rgb(43, 43, 40);
         ui.vertical_centered(|ui| {
             ui.spacing_mut().interact_size.y = 36.0;
             let title = match self.lichess.ai_variant.as_str() {
@@ -227,8 +238,9 @@ impl ChessApp {
             ui.horizontal(|ui| {
                 for (index, label) in ["Unlimited", "Real time", "Correspondence"].iter().enumerate() {
                     let selected = self.lichess.ai_time == index;
-                    if ui.add_sized([width, 38.0], egui::Button::new(RichText::new(*label).size(16.0))
-                        .fill(Color32::TRANSPARENT).stroke(Stroke::new(if selected { 2.0 } else { 0.0 }, gold))).clicked() {
+                    let response = ui.add_sized([width, 38.0], egui::Button::new(egui::WidgetText::from(RichText::new(*label).size(16.0)).color(Color32::from_rgb(25, 29, 35))).raised_gold());
+                    Self::lichess_selection_border(ui, &response, selected);
+                    if response.clicked() {
                         self.lichess.ai_time = index;
                     }
                 }
@@ -254,9 +266,11 @@ impl ChessApp {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for level in 1..=8 {
                     let selected = self.lichess.ai_level == level;
-                    if ui.add_sized([strength_width, 38.0], egui::Button::new(RichText::new(level.to_string()).size(16.0)
-                        .color(if selected { Color32::BLACK } else { Color32::LIGHT_GRAY }))
-                        .fill(if selected { gold } else { dark })).clicked() { self.lichess.ai_level = level; }
+                    let response = ui.add_sized([strength_width, 38.0], egui::Button::new(egui::WidgetText::from(RichText::new(level.to_string()).size(16.0)
+                        .color(if selected { Color32::BLACK } else { Color32::LIGHT_GRAY })).color(Color32::from_rgb(25, 29, 35)))
+                        .raised_gold());
+                    Self::lichess_selection_border(ui, &response, selected);
+                    if response.clicked() { self.lichess.ai_level = level; }
                 }
             });
             ui.add_space(18.0);
@@ -265,15 +279,16 @@ impl ChessApp {
             ui.horizontal(|ui| {
                 for (key, label, color) in [("white", "White", Color::White), ("random", "Random side", Color::White), ("black", "Black", Color::Black)] {
                     let selected = self.lichess.color == key;
-                    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, 78.0), egui::Sense::click());
-                    ui.painter().rect_filled(rect, 5.0, if selected { gold } else { dark });
+                    let response = ui.add_sized([width, 78.0], egui::Button::new("").raised_gold());
+                    let rect = response.rect;
+                    Self::lichess_selection_border(ui, &response, selected);
                     let icon = egui::Rect::from_center_size(rect.center_top() + Vec2::new(0.0, 27.0), Vec2::splat(36.0));
                     Self::paint_piece(ui, icon, 36.0, self.piece_set, color, Piece::King);
                     if key == "random" {
                         Self::paint_piece(ui, icon.translate(Vec2::new(10.0, 0.0)), 36.0, self.piece_set, Color::Black, Piece::King);
                     }
                     ui.painter().text(rect.center_bottom() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER,
-                        label, egui::FontId::proportional(15.0), if selected { Color32::BLACK } else { Color32::LIGHT_GRAY });
+                        label, egui::FontId::proportional(15.0), Color32::from_rgb(25, 29, 35));
                     if response.clicked() { self.lichess.color = key.into(); }
                 }
             });
@@ -284,7 +299,7 @@ impl ChessApp {
             if custom && !valid && !self.lichess.ai_fen.trim().is_empty() {
                 ui.colored_label(Color32::from_rgb(235, 130, 120), "Enter a valid standard-chess FEN.");
             }
-            if ui.add_enabled(!seeking && valid, egui::Button::new(RichText::new("Play against computer").size(17.0).strong().color(Color32::BLACK))
+            if ui.add_enabled(!seeking && valid, egui::Button::new(egui::WidgetText::from(RichText::new("Play against computer").size(17.0).strong().color(Color32::BLACK)).color(Color32::from_rgb(25, 29, 35)))
                 .fill(gold).corner_radius(6.0).min_size(Vec2::new(0.0, 42.0)).raised_gold()).clicked() {
                 let mut options = serde_json::json!({"level":self.lichess.ai_level, "color":self.lichess.color, "variant":self.lichess.ai_variant});
                 if custom { options["fen"] = self.lichess.ai_fen.trim().into(); }
@@ -714,6 +729,7 @@ impl ChessApp {
         egui::Window::new("Lichess lobby").title_bar(false).collapsible(false)
             .fixed_size(Vec2::new(width, if connected { 800.0 } else { 470.0 })).resizable(false).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .frame(Self::dialog_frame()).show(ctx, |ui| {
+            let grain_background = ui.painter().add(egui::Shape::Noop);
             if Self::dialog_header(ui, "Lichess lobby") { open = false; }
             ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
             ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
@@ -741,15 +757,15 @@ impl ChessApp {
                     }
                 });
                 ui.add_space(18.0);
-                if ui.add_sized([ui.available_width(), 46.0], egui::Button::new(
-                    RichText::new("Sign in with Lichess").size(17.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                if ui.add_sized([ui.available_width(), 46.0], egui::Button::new(egui::WidgetText::from(
+                    RichText::new("Sign in with Lichess").size(17.0).strong().color(Color32::from_rgb(24, 27, 31))).color(Color32::from_rgb(25, 29, 35)))
                     .fill(gold).corner_radius(7.0).raised_gold()).clicked() {
                     self.enter_lichess();
                     #[cfg(target_arch = "wasm32")]
                     lichess_sign_in();
                 }
-                if ui.add_sized([ui.available_width(), 38.0], egui::Button::new(RichText::new("Reconnect saved session").size(14.0))
-                    .fill(Color32::TRANSPARENT).stroke(Stroke::new(1.0, Color32::from_rgb(80, 84, 88))).corner_radius(7.0)).clicked() { self.start_lichess(); }
+                if ui.add_sized([ui.available_width(), 38.0], egui::Button::new(egui::WidgetText::from(RichText::new("Reconnect saved session").size(14.0)).color(Color32::from_rgb(25, 29, 35)))
+                    .fill(Color32::TRANSPARENT).stroke(Stroke::new(1.0, Color32::from_rgb(80, 84, 88))).corner_radius(7.0).raised_gold()).clicked() { self.start_lichess(); }
                 ui.add_space(6.0);
                 ui.label(RichText::new(status).size(13.0).color(muted));
                 });
@@ -758,16 +774,20 @@ impl ChessApp {
                 ui.label(RichText::new("Sign-in lasts for this browser session.").size(13.0).color(muted));
                 ui.label(RichText::new("Fair play · Engine assistance is disabled during online play.").size(13.0).color(muted));
             } else {
+                let account_panel = Frame::new().fill(Color32::from_rgb(13,17,22)).corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
                 ui.horizontal(|ui| {
                     let green = Color32::from_rgb(136, 194, 151);
                     let (indicator, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                     ui.painter().circle_filled(indicator.center(), 4.0, green);
                     ui.colored_label(green, self.lichess.lobby["account"].as_str().unwrap_or("Connected"));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.add(egui::Button::new(egui::WidgetText::from("Player profile").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() { self.open_lichess_history(); }
                         Self::lichess_account_link(ui);
-                        if ui.button("Player profile").clicked() { self.open_lichess_history(); }
                     });
                 });
+                });
+                Self::paint_sunken_border(ui, account_panel.response.rect);
                 ui.add_space(2.0);
                 egui::ScrollArea::vertical().id_salt("lichess_lobby_content").max_height(660.0).min_scrolled_height(660.0).auto_shrink([false, false]).show(ui, |ui| {
                 let lobby_frame = Frame::new().fill(Color32::from_rgb(13, 17, 22))
@@ -791,14 +811,14 @@ impl ChessApp {
                         else if let (Some(initial), Some(increment)) = (game["clock"]["initial"].as_u64(), game["clock"]["increment"].as_u64()) { details.push(format!("{}+{increment}", initial / 60)); }
                         let mut label = format!("{}\n{}", game["opponent"]["username"].as_str().unwrap_or("Opponent"), details.join(" · "));
                         if let Some(started) = game["startedLabel"].as_str() { label.push_str(&format!("\nStarted {started}")); }
-                        if ui.add_enabled(supported, egui::Button::new(RichText::new(label).size(15.0)).min_size(Vec2::new(ui.available_width(), 58.0))).on_hover_text(format!("Resume game {id}")).clicked() {
+                        if ui.add_enabled(supported, egui::Button::new(egui::WidgetText::from(RichText::new(label).size(15.0)).color(Color32::from_rgb(25, 29, 35))).min_size(Vec2::new(ui.available_width(), 58.0)).raised_gold()).on_hover_text(format!("Resume game {id}")).clicked() {
                             lichess_command(serde_json::json!({"type":"open", "id":id}));
                         }
                         if !supported { ui.hyperlink_to("Open game on Lichess", format!("https://lichess.org/{id}")); }
                     }
                     if self.fics_playing && self.lichess.active {
                         if self.lichess.game["speed"].as_str() == Some("correspondence") {
-                            if ui.add_enabled(!self.fics_pending_move, egui::Button::new("Return to lobby · keep this game ongoing")).clicked() {
+                            if ui.add_enabled(!self.fics_pending_move, egui::Button::new(egui::WidgetText::from("Return to lobby · keep this game ongoing").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                                 lichess_command(serde_json::json!({"type":"leaveCorrespondence"}));
                             }
                             ui.label("Your move deadline continues. Resume this game from Your ongoing games.");
@@ -828,7 +848,7 @@ impl ChessApp {
                                             (30, 0, "Classical"), (30, 20, "Classical"), (0, 0, "Custom"),
                                         ].into_iter().enumerate() {
                                             let label = if minutes == 0 { "Custom".to_owned() } else { format!("{minutes}+{increment}\n{speed}") };
-                                            if ui.add_enabled(!seeking, egui::Button::new(RichText::new(label).size(23.0).strong().color(Color32::from_rgb(25, 29, 35)))
+                                            if ui.add_enabled(!seeking, egui::Button::new(egui::WidgetText::from(RichText::new(label).size(23.0).strong().color(Color32::from_rgb(25, 29, 35))).color(Color32::from_rgb(25, 29, 35)))
                                                 .min_size(Vec2::new(145.0, 100.0)).fill(Color32::from_rgb(211, 173, 98))
                                                 .corner_radius(7.0).raised_gold()).clicked() {
                                                 if minutes == 0 { self.lichess.lobby_tab = 1; }
@@ -852,7 +872,7 @@ impl ChessApp {
                                     ui.set_width(210.0);
                                     ui.add_space(36.0);
                                     for (tab, label) in [(1, "Create a game"), (3, "Challenge a friend"), (4, "Play against computer")] {
-                                        if ui.add_sized([210.0, 46.0], egui::Button::new(RichText::new(label).size(15.0)).corner_radius(6.0)).clicked() {
+                                        if ui.add_sized([210.0, 46.0], egui::Button::new(egui::WidgetText::from(RichText::new(label).size(15.0)).color(Color32::from_rgb(25, 29, 35))).corner_radius(6.0).raised_gold()).clicked() {
                                             self.lichess.lobby_tab = tab;
                                             self.lichess.correspondence = false;
                                         }
@@ -862,7 +882,7 @@ impl ChessApp {
                         }
                         if seeking {
                             ui.label("Finding an opponent…");
-                            if ui.button("Cancel matchmaking").clicked() { lichess_command(serde_json::json!({"type":"cancelSeek"})); }
+                            if ui.add(egui::Button::new(egui::WidgetText::from("Cancel matchmaking").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() { lichess_command(serde_json::json!({"type":"cancelSeek"})); }
                         }
                         if self.lichess.lobby_tab == 4 { self.lichess_computer_setup(ui, seeking); }
                         if self.lichess.lobby_tab != 0 && self.lichess.lobby_tab != 4 {
@@ -879,10 +899,12 @@ impl ChessApp {
                             ui.horizontal_wrapped(|ui| {
                                 for days in [1, 2, 3, 5, 7, 10, 14] {
                                     let selected = self.lichess.days == days;
-                                    if ui.add_sized([84.0, 66.0], egui::Button::new(RichText::new(format!("{days}\n{}", if days == 1 { "day" } else { "days" })).size(18.0))
+                                    let response = ui.add_sized([84.0, 66.0], egui::Button::new(egui::WidgetText::from(RichText::new(format!("{days}\n{}", if days == 1 { "day" } else { "days" })).size(18.0)).color(Color32::from_rgb(25, 29, 35)))
                                         .fill(if selected { Color32::from_rgb(58, 49, 32) } else { Color32::from_rgb(43, 43, 40) })
                                         .stroke(Stroke::new(1.0, if selected { Color32::from_rgb(211, 173, 98) } else { Color32::from_white_alpha(28) }))
-                                        .corner_radius(6.0)).clicked() { self.lichess.days = days; }
+                                        .corner_radius(6.0).raised_gold());
+                                    Self::lichess_selection_border(ui, &response, selected);
+                                    if response.clicked() { self.lichess.days = days; }
                                 }
                             });
                             ui.add_space(10.0);
@@ -898,8 +920,9 @@ impl ChessApp {
                             ui.label(RichText::new("Resume from Your ongoing games in this lobby. Colors are assigned automatically.").size(14.0).color(Color32::from_rgb(185, 190, 195)));
                             ui.add_space(14.0);
                         } else {
-                        ui.horizontal(|ui| {
-                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        ui.add_space(8.0);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(18.0, 12.0);
                             ui.spacing_mut().interact_size.y = 34.0;
                             ui.spacing_mut().button_padding.y = 7.0;
                             if self.lichess.correspondence {
@@ -911,17 +934,20 @@ impl ChessApp {
                                 ui.add_sized([130.0, 34.0], egui::DragValue::new(&mut self.lichess.increment).range(0..=60).suffix(" sec increment"));
                             }
                             ui.checkbox(&mut self.lichess.rated, "Rated");
-                            ui.add_space(12.0);
+                            ui.add_space(6.0);
+                            ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 8.0;
                             ui.label("Play as");
                             egui::ComboBox::from_id_salt("lichess_color").selected_text(&self.lichess.color).show_ui(ui, |ui| {
                                 for color in ["random", "white", "black"] { ui.selectable_value(&mut self.lichess.color, color.into(), color); }
                             });
                             });
                         });
+                        ui.add_space(12.0);
                         }
                         if !seeking && self.lichess.lobby_tab <= 2 {
                             let rapid = self.lichess.correspondence || self.lichess.minutes * 60 + self.lichess.increment * 40 >= 480;
-                            if ui.add_enabled(rapid, egui::Button::new(RichText::new(if self.lichess.lobby_tab == 2 { "Find a correspondence opponent" } else { "Find opponent" }).size(16.0).strong().color(Color32::from_rgb(24, 27, 31))).fill(Color32::from_rgb(211, 173, 98)).min_size(Vec2::new(0.0, 40.0)).raised_gold()).clicked() {
+                            if ui.add_enabled(rapid, egui::Button::new(egui::WidgetText::from(RichText::new(if self.lichess.lobby_tab == 2 { "Find a correspondence opponent" } else { "Find opponent" }).size(16.0).strong().color(Color32::from_rgb(24, 27, 31))).color(Color32::from_rgb(25, 29, 35))).fill(Color32::from_rgb(211, 173, 98)).min_size(Vec2::new(0.0, 40.0)).raised_gold()).clicked() {
                                 let options = if self.lichess.correspondence { serde_json::json!({"days":self.lichess.days, "rated":self.lichess.rated}) }
                                 else { serde_json::json!({"time":self.lichess.minutes, "increment":self.lichess.increment, "color":self.lichess.color, "rated":self.lichess.rated}) };
                                 lichess_command(serde_json::json!({"type":"seek", "options":options}));
@@ -933,7 +959,7 @@ impl ChessApp {
                         ui.separator();
                         ui.horizontal(|ui| {
                             ui.add(egui::TextEdit::singleline(&mut self.lichess.opponent).desired_width(300.0).margin(Vec2::new(10.0, 8.0)).hint_text("Lichess username"));
-                            if ui.add_enabled(!seeking && !self.lichess.opponent.trim().is_empty(), egui::Button::new("Challenge")).clicked() {
+                            if ui.add_enabled(!seeking && !self.lichess.opponent.trim().is_empty(), egui::Button::new(egui::WidgetText::from("Challenge").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                                 let options = if self.lichess.correspondence { serde_json::json!({"days":self.lichess.days, "rated":self.lichess.rated, "color":self.lichess.color}) }
                                 else { serde_json::json!({"clock.limit":self.lichess.minutes * 60, "clock.increment":self.lichess.increment, "color":self.lichess.color, "rated":self.lichess.rated}) };
                                 lichess_command(serde_json::json!({"type":"challenge", "username":self.lichess.opponent.trim(), "options":options}));
@@ -957,7 +983,7 @@ impl ChessApp {
                         let supported = matches!(variant, "standard" | "fromPosition" | "chess960") && !matches!(speed, "bullet" | "ultraBullet");
                         ui.horizontal(|ui| {
                             for action in ["accept", "decline"] {
-                                if ui.add_enabled(action == "decline" || (supported && !self.fics_playing), egui::Button::new(action)).clicked() {
+                                if ui.add_enabled(action == "decline" || (supported && !self.fics_playing), egui::Button::new(egui::WidgetText::from(action).color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                                     lichess_command(serde_json::json!({"type":"challengeAction", "id":challenge["id"], "action":action}));
                                 }
                             }
@@ -967,7 +993,7 @@ impl ChessApp {
                     for challenge in outgoing {
                         ui.horizontal(|ui| {
                             ui.label(format!("Challenge pending: {}", challenge["destUser"]["name"].as_str().unwrap_or("opponent")));
-                            if ui.button("Cancel challenge").clicked() { lichess_command(serde_json::json!({"type":"challengeAction", "id":challenge["id"], "action":"cancel"})); }
+                            if ui.add(egui::Button::new(egui::WidgetText::from("Cancel challenge").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() { lichess_command(serde_json::json!({"type":"challengeAction", "id":challenge["id"], "action":"cancel"})); }
                         });
                     }
                     if let Some(id) = self.lichess.game["id"].as_str() {
@@ -979,19 +1005,27 @@ impl ChessApp {
                 });
             }
             ui.add_space(6.0);
-            ui.separator();
+            let actions_panel = Frame::new().fill(Color32::from_rgb(13,17,22)).corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+            ui.set_min_width(ui.available_width());
             ui.horizontal(|ui| {
-            if ui.button("Leave online play").clicked() {
+            if ui.add(egui::Button::new(egui::WidgetText::from("Leave online play").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                 if self.lichess.active { self.stop_fics(); }
                 close_after = true;
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if self.lichess.connected() && ui.add_enabled(!self.fics_playing, egui::Button::new("Sign out")).clicked() {
+                if self.lichess.connected() && ui.add_enabled(!self.fics_playing, egui::Button::new(egui::WidgetText::from("Sign out").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                     #[cfg(target_arch = "wasm32")]
                     lichess_sign_out();
                 }
             });
             });
+            });
+            Self::paint_sunken_border(ui, actions_panel.response.rect);
+            let paper = Self::paper_grain_texture(ctx);
+            let surface = ui.min_rect().expand(6.0);
+            ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO,
+                    egui::pos2(surface.width() / 256.0, surface.height() / 256.0)), Color32::WHITE));
         });
         self.lichess.open = open && !close_after;
     }
@@ -1224,13 +1258,60 @@ fn lichess_profile_summary(lobby: &serde_json::Value) -> Option<(String, String)
 
 
 impl ChessApp {
+    #[cfg(target_arch = "wasm32")]
+    fn lichess_profile_companion_ui(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        if let Ok(lobby) = serde_json::from_str(&read_profile_state()) { self.lichess.lobby = lobby; }
+        let initialized = egui::Id::new("profile_companion_initialized");
+        if !ctx.data(|data| data.get_temp::<bool>(initialized).unwrap_or(false)) {
+            if let Ok(window) = serde_json::from_str::<PlayerProfileWindow>(&profile_companion_initial()) {
+                self.lichess.next_profile_window_id = (window.id + 1) * 1000000;
+                self.lichess.profile_windows.push(window);
+                ctx.data_mut(|data| data.insert_temp(initialized, true));
+            }
+        }
+        if read_profile_state().is_empty() { ui.label("Keep the main Ironwood window open to use this player profile."); }
+        let mut windows = std::mem::take(&mut self.lichess.profile_windows);
+        if let Some(window) = windows.first_mut() {
+            let data = lichess_profile_window_data(&self.lichess.lobby, window.id);
+            let title = lichess_profile_window_title(&data["playerProfile"]);
+            let available = ui.available_size();
+            Frame::new().fill(Color32::from_rgb(23,26,30))
+                .stroke(Stroke::new(2.0, Color32::from_rgb(70,255,120)))
+                .corner_radius(6.0).inner_margin(12).show(ui, |ui| {
+                    ui.set_min_size((available - Vec2::splat(28.0)).max(Vec2::ZERO));
+                    let background = ui.painter().add(egui::Shape::Noop);
+                    ui.horizontal(|ui| {
+                        ui.add_sized([(ui.available_width()-40.0).max(0.0),28.0],
+                            egui::Label::new(RichText::new(&title).size(18.0).strong()).truncate());
+                        if Self::glossy_board_button(ui, "×", false, true)
+                            .on_hover_text("Close player profile window").clicked() { close_profile_companion(); }
+                    });
+                    ui.add_space(10.0);
+                    egui::ScrollArea::vertical().id_salt("profile_companion_scroll")
+                        .auto_shrink([false,false]).show(ui, |ui| {
+                            self.lichess_profile_contents(ui, window, &data);
+                        });
+                    let surface = ui.min_rect();
+                    let paper = Self::paper_grain_texture(&ctx);
+                    ui.painter().set(background, egui::Shape::image(paper.id(),surface,
+                        egui::Rect::from_min_max(egui::Pos2::ZERO,
+                            egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
+                });
+        }
+        for window in windows.iter_mut().skip(1) { self.lichess_profile_window(&ctx, window); }
+        windows.append(&mut self.lichess.profile_windows);
+        self.lichess.profile_windows = windows;
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+    }
+
     fn open_lichess_history(&mut self) {
         let username=self.lichess.lobby["account"].as_str().unwrap_or_default().to_owned();
         self.open_lichess_profile_window(&username);
     }
     fn open_lichess_profile_window(&mut self, username: &str) {
         self.lichess.next_profile_window_id+=1;
-        let window=PlayerProfileWindow::new(self.lichess.next_profile_window_id,username);
+        let mut window=PlayerProfileWindow::new(self.lichess.next_profile_window_id,username);
         window.load(false);
         self.lichess.profile_windows.push(window);
         lichess_command(serde_json::json!({"type":"following"}));
@@ -1245,7 +1326,7 @@ impl ChessApp {
             self.lichess.profile_review_requested=false;
         }
         for window in &windows {
-            if !window.open { lichess_command(serde_json::json!({"type":"closeProfileWindow","windowId":window.id.to_string()})); }
+            if !window.open && !window.detached { lichess_command(serde_json::json!({"type":"closeProfileWindow","windowId":window.id.to_string()})); }
         }
         windows.retain(|window|window.open);
         windows.append(&mut self.lichess.profile_windows);
@@ -1254,35 +1335,74 @@ impl ChessApp {
     fn lichess_profile_window(&mut self, ctx: &egui::Context, window: &mut PlayerProfileWindow) {
         let data=lichess_profile_window_data(&self.lichess.lobby,window.id);
         let mut open = true;
+        let mut detached = false;
         let title = lichess_profile_window_title(&data["playerProfile"]);
-        egui::Window::new(title).id(egui::Id::new(("lichess_player_profile_window",window.id))).open(&mut open)
+        egui::Window::new(&title).id(egui::Id::new(("lichess_player_profile_window",window.id)))
+            .title_bar(false).drag_area(egui::WindowDrag::Anywhere)
             .frame(Frame::window(&ctx.style_of(ctx.theme())).stroke(Stroke::new(2.0,Color32::from_rgb(70,255,120)))
                 .shadow(egui::epaint::Shadow{offset:[0,0],blur:10,spread:1,color:Color32::from_rgba_unmultiplied(70,255,120,65)}))
             .default_pos(egui::pos2(32.0+(window.id%8) as f32*28.0,40.0+(window.id%8) as f32*28.0))
             .default_width(1020.0).default_height(750.0)
             .min_size(Vec2::new(360.0,240.0)).resizable(true).vscroll(true)
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
             .max_width((ctx.content_rect().width() - 32.0).max(280.0))
             .max_height((ctx.content_rect().height() - 32.0).max(280.0))
             .show(ctx, |ui| {
+            let grain_background = ui.painter().add(egui::Shape::Noop);
+            ui.horizontal(|ui| {
+                ui.add_sized([(ui.available_width() - 82.0).max(80.0), 28.0],
+                    egui::Label::new(RichText::new(&title).size(18.0).strong()).selectable(false).truncate());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if Self::glossy_board_button(ui, "×", false, true)
+                        .on_hover_text("Close player profile").clicked() { open = false; }
+                    #[cfg(target_arch = "wasm32")]
+                    if !profile_companion_mode() && Self::glossy_board_button(ui, "↗", false, true)
+                        .on_hover_text("Move player profile to a separate window").clicked() {
+                        publish_profile_state(&self.lichess.lobby.to_string());
+                        if let Ok(state) = serde_json::to_string(window) {
+                            detached = open_profile_companion(&state);
+                        }
+                    }
+                });
+            });
+
+            ui.add_space(10.0);
+            Frame::new().inner_margin(egui::Margin::symmetric(12, 0)).show(ui, |ui| {
+                self.lichess_profile_contents(ui, window, &data);
+            });
+            let paper = Self::paper_grain_texture(ctx);
+            let surface = ui.min_rect().expand(6.0);
+            ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(surface.width()/256.0, surface.height()/256.0)), Color32::WHITE));
+        });
+        window.detached = detached;
+        window.open = open && !detached;
+    }
+
+    fn lichess_profile_contents(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
             if !data["connected"].as_bool().unwrap_or(false) { ui.label("Reconnect to view a player profile."); return; }
             let loading = data["profileLoading"].as_bool().unwrap_or(false);
+            Self::lichess_profile_section(ui, |ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
+            ui.label(RichText::new("FIND A PLAYER").small().strong().color(Color32::from_rgb(211,173,98)));
             ui.horizontal_wrapped(|ui| {
-                ui.label("Player");
-                let input = ui.add(egui::TextEdit::singleline(&mut window.username).desired_width(180.0).hint_text("Lichess username"));
+                let input = ui.add(egui::TextEdit::singleline(&mut window.username).desired_width(220.0).margin(Vec2::new(10.0,7.0)).hint_text("Lichess username"));
                 let enter = input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                if ui.add_enabled(!loading, egui::Button::new("Load")).clicked() || (enter && !loading) {
+                if ui.add_enabled(!loading, Self::lichess_profile_button("Load player")).clicked() || (enter && !loading) {
                     window.load(false);
                 }
-                if ui.add_enabled(!loading, egui::Button::new("My account")).clicked() {
+                if ui.add_enabled(!loading, Self::lichess_profile_button("My account")).clicked() {
                     window.username=data["account"].as_str().unwrap_or_default().to_owned(); window.load(false);
                 }
-                if ui.button("Load in new window").clicked() { self.open_lichess_profile_window(&window.username); }
-                if ui.add_enabled(!loading, egui::Button::new("Refresh")).clicked() {
+                if ui.add(Self::lichess_profile_button("Load in new window")).clicked() { self.open_lichess_profile_window(&window.username); }
+                if ui.add_enabled(!loading, Self::lichess_profile_button("Refresh")).clicked() {
                     let username=window.username.clone();
                     window.username=data["profileUsername"].as_str().unwrap_or(&username).to_owned(); window.load(true);
                 }
                 if loading { ui.spinner(); ui.label("Loading player profile…"); }
             });
+            });
+            ui.add_space(8.0);
             for key in ["profileError", "historyError"] {
                 if let Some(error) = data[key].as_str().filter(|s| !s.is_empty()) {
                     ui.colored_label(Color32::from_rgb(230,150,120), error);
@@ -1314,17 +1434,25 @@ impl ChessApp {
                 });
                 ui.separator();
                 self.lichess_profile_ratings(ui, &profile, window);
+                self.lichess_profile_performance(ui, window, &data);
                 ui.add_space(10.0);
                 if ui.available_width() >= 720.0 {
-                    let graph_width = ui.available_width()*0.64;
+                    let panel_gap = 12.0;
+                    let row_width = ui.available_width();
+                    let graph_width = (row_width-panel_gap)*0.64;
+                    let bio_width = row_width-panel_gap-graph_width;
                     ui.horizontal_top(|ui| {
-                        ui.allocate_ui_with_layout(Vec2::new(graph_width,370.0),Layout::top_down(Align::Min),|ui| {
+                        ui.spacing_mut().item_spacing.x = panel_gap;
+                        let graph_panel = ui.allocate_ui_with_layout(Vec2::new(graph_width,0.0),Layout::top_down(Align::Min),|ui| {
+                            ui.set_width(graph_width);
                             Self::lichess_profile_section(ui, |ui| self.lichess_profile_graph(ui, window, &data));
                         });
-                        ui.add_space(12.0);
                         ui.vertical(|ui| {
-                            ui.set_width(ui.available_width());
-                            Self::lichess_profile_section(ui, |ui| lichess_profile_bio(ui,&profile));
+                            ui.set_width(bio_width);
+                            Self::lichess_profile_section(ui, |ui| {
+                                ui.set_min_height((graph_panel.response.rect.height()-24.0).max(0.0));
+                                lichess_profile_bio(ui,&profile);
+                            });
                         });
                     });
                 } else {
@@ -1332,15 +1460,19 @@ impl ChessApp {
                     ui.add_space(10.0);
                     Self::lichess_profile_section(ui, |ui| lichess_profile_bio(ui,&profile));
                 }
+                ui.add_space(10.0);
+                self.lichess_profile_activity(ui,window,&data);
                 ui.separator();
                 Self::lichess_profile_record(ui, &profile);
-                ui.add_space(10.0); ui.heading("Recent games"); ui.small("Latest 12 completed games · all time controls");
-                let games = data["recentGames"].as_array().cloned().unwrap_or_default();
-                if games.is_empty() && !loading { ui.label("No recent games available."); }
-                for game in &games { self.lichess_profile_game(ui, game); }
+                ui.add_space(10.0);
+                egui::CollapsingHeader::new(RichText::new("Recent games").heading())
+                    .id_salt(("lichess_recent_games",window.id)).default_open(true).show(ui, |ui| {
+                        ui.small("Latest 12 completed games · all time controls");
+                        let games = data["recentGames"].as_array().cloned().unwrap_or_default();
+                        if games.is_empty() && !loading { ui.label("No recent games available."); }
+                        for game in &games { self.lichess_profile_game(ui, game); }
+                    });
             });
-        });
-        window.open = open;
     }
 
     fn lichess_following_ui(&mut self, ui: &mut egui::Ui, profile_loading: bool, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
@@ -1358,9 +1490,10 @@ impl ChessApp {
         egui::CollapsingHeader::new(users.as_ref().map(|users|format!("Following ({})",users.len())).unwrap_or_else(||"Following".into()))
             .id_salt("lichess_following_list").show(ui,|ui| {
             Self::lichess_profile_section(ui, |ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(10.0,10.0);
                 ui.horizontal_wrapped(|ui| {
-                    ui.add(egui::TextEdit::singleline(&mut window.following_search).desired_width(180.0).hint_text("Find followed player"));
-                    if ui.add_enabled(!loading && !busy,egui::Button::new("Refresh following")).clicked() {
+                    ui.add(egui::TextEdit::singleline(&mut window.following_search).desired_width(220.0).margin(Vec2::new(10.0,7.0)).hint_text("Find followed player"));
+                    if ui.add_enabled(!loading && !busy,Self::lichess_profile_button("Refresh following")).clicked() {
                         lichess_command(serde_json::json!({"type":"following","refresh":true}));
                     }
                     if loading { ui.spinner(); }
@@ -1375,7 +1508,7 @@ impl ChessApp {
                             let label=format!("{} {}{}",user["title"].as_str().unwrap_or(""),username,user["realName"].as_str().filter(|name|!name.is_empty()).map(|name|format!(" · {name}")).unwrap_or_default());
                             if !label.to_lowercase().contains(&query) {continue;}
                             matches+=1;
-                            if ui.add_enabled(!profile_loading,egui::Button::new(label.trim())).clicked() {
+                            if ui.add_enabled(!profile_loading,Self::lichess_profile_button(label.trim())).clicked() {
                                 window.username=username.to_owned();
                                 window.load(false);
                             }
@@ -1389,25 +1522,174 @@ impl ChessApp {
 
     fn lichess_profile_ratings(&mut self, ui: &mut egui::Ui, profile: &serde_json::Value, window: &mut PlayerProfileWindow) {
         let gold = Color32::from_rgb(211,173,98);
-        // Reserve the complete chip before entering its frame so wrapping happens between chips.
-        ui.horizontal_wrapped(|ui| {
-            for (i,key,label) in [(0,"bullet","Bullet"),(1,"blitz","Blitz"),(2,"rapid","Rapid"),(3,"classical","Classical"),(4,"correspondence","Correspondence"),(5,"puzzle","Puzzles")] {
+        let gap = 10.0;
+        let columns = ((ui.available_width()+gap)/184.0).floor().clamp(1.0,6.0);
+        let card_width = ((ui.available_width()-gap*(columns-1.0))/columns).floor()-1.0;
+        // Explicit rows cannot bounce between layouts on fractional pixel boundaries.
+        let chips=[(0,"bullet","Bullet"),(1,"blitz","Blitz"),(2,"rapid","Rapid"),(3,"classical","Classical"),(4,"correspondence","Correspondence"),(5,"puzzle","Puzzles")];
+        ui.scope(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::splat(gap);
+            for row in chips.chunks(columns as usize) {
+            ui.horizontal_top(|ui| {
+            for &(i,key,label) in row {
                 let perf = &profile["perfs"][key];
                 let count = perf["games"].as_u64().unwrap_or(0);
                 let rating = if count > 0 { format!("{}{}",perf["rating"].as_u64().unwrap_or(0),if perf["prov"].as_bool()==Some(true) {"?"} else {""}) } else { "—".into() };
-                ui.allocate_ui_with_layout(Vec2::new(184.0,64.0),Layout::top_down(Align::Min),|ui| {
-                    let card = Frame::new().fill(Color32::from_rgb(13,17,22)).inner_margin(10.0).corner_radius(6.0).show(ui, |ui| {
-                        ui.set_width(164.0);
-                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                let (card_rect, card_response) = ui.allocate_exact_size(Vec2::new(card_width,64.0), if i<5 {Sense::click()} else {Sense::hover()});
+                let mut clicked=card_response.clicked();
+                let mut card_ui = ui.new_child(egui::UiBuilder::new().max_rect(card_rect).layout(Layout::top_down(Align::Min)));
+                card_ui.set_clip_rect(ui.clip_rect().intersect(card_rect));
+                    let card = Frame::new().fill(Color32::from_rgb(13,17,22)).inner_margin(10.0).corner_radius(6.0).show(&mut card_ui, |ui| {
+                        ui.set_width(card_width-20.0);
+                        ui.set_min_height(44.0);
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
                         if i < 5 {
-                            if ui.selectable_label(window.control==i,RichText::new(format!("{label}  {rating}")).color(gold)).clicked() { window.control=i; }
+                            clicked |= ui.selectable_label(window.control==i,RichText::new(format!("{label}  {rating}")).color(gold)).on_hover_text("Show rating history and detailed performance statistics").clicked();
                         } else {
-                            ui.label(RichText::new(format!("{label}  {rating}")).color(gold));
+                            ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),ui.spacing().interact_size.y), Layout::left_to_right(Align::Center), |ui| {
+                                ui.label(RichText::new(format!("{label}  {rating}")).color(gold)).on_hover_text("Detailed performance statistics are available for game time controls.");
+                            });
                         }
-                        ui.small(format!("{count} {}",if key=="puzzle" {"attempts"} else {"rated games"}));
+                        let count_text = format!("{count} {}",if key=="puzzle" {"attempts"} else {"rated games"});
+                        ui.label(RichText::new(count_text).size(14.0));
                     });
                     Self::paint_sunken_border(ui, card.response.rect);
+                    if i<5 {
+                        card_response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Show detailed performance statistics");
+                        if clicked {
+                            window.control=i;window.performance_control=Some(i);
+                            lichess_command(serde_json::json!({"type":"performance","windowId":window.id.to_string(),"username":profile["username"].as_str().unwrap_or(window.username.trim()),"perf":key}));
+                        }
+                    }
+            }
+            });
+            }
+        });
+    }
+
+    fn lichess_profile_activity(&mut self, ui: &mut egui::Ui, window: &PlayerProfileWindow, data: &serde_json::Value) {
+        egui::CollapsingHeader::new(RichText::new("Activity").heading())
+            .id_salt(("lichess_player_activity",window.id)).default_open(false).show(ui, |ui| {
+                self.lichess_profile_activity_contents(ui,window,data);
+            });
+    }
+
+    fn lichess_profile_activity_contents(&mut self, ui: &mut egui::Ui, window: &PlayerProfileWindow, data: &serde_json::Value) {
+            Self::lichess_profile_section(ui, |ui| {
+                let activity=&data["activity"];
+                let request=|refresh|lichess_command(serde_json::json!({"type":"activity","windowId":window.id.to_string(),"username":data["profileUsername"].as_str().unwrap_or(window.username.trim()),"refresh":refresh}));
+                if activity.is_null() {request(false);}
+                ui.horizontal_wrapped(|ui| {
+                    ui.small("Recent daily game and puzzle activity");
+                    if ui.add_enabled(activity["loading"].as_bool()!=Some(true),egui::Button::new("Refresh activity")).clicked() {request(true);}
+                    if activity.is_null() || activity["loading"].as_bool()==Some(true) {ui.spinner();}
                 });
+                if let Some(error)=activity["error"].as_str().filter(|s|!s.is_empty()) {ui.colored_label(Color32::LIGHT_RED,error);}
+                let mut displayed=0;
+                for day in activity["days"].as_array().into_iter().flatten() {
+                    let games=day["games"].as_object();
+                    let puzzles=&day["puzzles"]["score"];
+                    if games.is_none_or(|games|games.is_empty()) && !puzzles.is_object() {continue;}
+                    if displayed>0 {ui.separator();}
+                    displayed+=1;
+                    ui.label(RichText::new(day["interval"]["start"].as_u64().map(profile_date).unwrap_or_else(||"Date unavailable".into())).strong().color(Color32::from_rgb(211,173,98)));
+                    for (control,score) in games.into_iter().flatten() {
+                        let label=match control.as_str() {"bullet"=>"Bullet","blitz"=>"Blitz","rapid"=>"Rapid","classical"=>"Classical","correspondence"=>"Correspondence","ultraBullet"=>"UltraBullet",other=>other};
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("{label}: {} wins · {} losses · {} draws",score["win"].as_u64().unwrap_or(0),score["loss"].as_u64().unwrap_or(0),score["draw"].as_u64().unwrap_or(0)));
+                            Self::lichess_activity_rating(ui,&score["rp"]);
+                        });
+                    }
+                    if puzzles.is_object() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("Puzzles: {} solved · {} missed",puzzles["win"].as_u64().unwrap_or(0),puzzles["loss"].as_u64().unwrap_or(0)));
+                            Self::lichess_activity_rating(ui,&puzzles["rp"]);
+                        });
+                    }
+                }
+                if displayed==0 && activity["days"].is_array() {ui.label("No recent game or puzzle activity available.");}
+            });
+    }
+
+    fn lichess_activity_rating(ui: &mut egui::Ui, rating: &serde_json::Value) {
+        if let (Some(before),Some(after))=(rating["before"].as_i64(),rating["after"].as_i64()) {
+            let change=after-before;
+            ui.colored_label(if change>0 {Color32::from_rgb(116,204,151)} else if change<0 {Color32::from_rgb(226,132,126)} else {Color32::GRAY},format!("Rating {before} to {after} ({change:+})"));
+        }
+    }
+
+    fn lichess_profile_performance(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
+        let Some(selected)=window.performance_control else {return;};
+        let (key,label)=[("bullet","Bullet"),("blitz","Blitz"),("rapid","Rapid"),("classical","Classical"),("correspondence","Correspondence")][selected.min(4)];
+        let entry=&data["performance"][key];
+        ui.add_space(10.0);
+        Self::lichess_profile_section(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(format!("{label} · Performance details")).strong().color(Color32::from_rgb(211,173,98)));
+                if ui.add_enabled(entry["loading"].as_bool()!=Some(true),egui::Button::new("Refresh")).clicked() {
+                    lichess_command(serde_json::json!({"type":"performance","windowId":window.id.to_string(),"username":data["profileUsername"].as_str().unwrap_or(window.username.trim()),"perf":key,"refresh":true}));
+                }
+                if ui.button("Close details").clicked() {window.performance_control=None;}
+            });
+            if entry["loading"].as_bool()==Some(true) {ui.horizontal(|ui| {ui.spinner();ui.label("Loading performance and notable games…");});}
+            if let Some(error)=entry["error"].as_str().filter(|s|!s.is_empty()) {ui.colored_label(Color32::LIGHT_RED,error);}
+            let stats=&entry["data"];
+            if stats.is_null() {return;}
+            let stat=&stats["stat"];
+            let number=|v:&serde_json::Value|v.as_f64().map(|n|format!("{n:.0}")).unwrap_or_else(||"—".into());
+            ui.horizontal_wrapped(|ui| {
+                for (name,value) in [("Rating",&stats["perf"]["glicko"]["rating"]),("Rank",&stats["rank"]),("Percentile",&stats["percentile"]),("Average opponent",&stat["count"]["opAvg"])] {
+                    ui.label(format!("{name}: {}{}",number(value),if name=="Percentile" && value.is_number() {"%"} else {""}));
+                    ui.add_space(10.0);
+                }
+            });
+            for (name,k) in [("Highest rating","highest"),("Lowest rating","lowest")] {
+                if !stat[k].is_null() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("{name}: {} · {}",number(&stat[k]["int"]),stat[k]["at"].as_str().unwrap_or("Date unavailable").split('T').next().unwrap_or_default()));
+                        if let Some(id)=stat[k]["gameId"].as_str() {ui.add(egui::Hyperlink::from_label_and_url("Game on Lichess",format!("https://lichess.org/{id}")).open_in_new_tab(true));}
+                    });
+                }
+            }
+            ui.horizontal_wrapped(|ui| {
+                for (name,k) in [("Games","all"),("Rated","rated"),("Wins","win"),("Losses","loss"),("Draws","draw"),("Tournament games","tour"),("Disconnects","disconnects")] {
+                    ui.label(format!("{name}: {}",number(&stat["count"][k])));ui.add_space(8.0);
+                }
+            });
+            if let Some(seconds)=stat["count"]["seconds"].as_u64() {ui.label(format!("Time playing: {}h {}m",seconds/3600,seconds%3600/60));}
+            ui.horizontal_wrapped(|ui| {
+                for (name,k) in [("Win streak","win"),("Loss streak","loss")] {
+                    ui.label(format!("{name}: {} current · {} longest",number(&stat["resultStreak"][k]["cur"]["v"]),number(&stat["resultStreak"][k]["max"]["v"])));
+                }
+            });
+            for (heading,k) in [("Best wins","bestWins"),("Worst losses","worstLosses")] {
+                ui.add_space(8.0);ui.label(RichText::new(heading).strong());
+                let results=stat[k]["results"].as_array();
+                if results.is_none_or(|r|r.is_empty()) {ui.small("No games available.");}
+                for result in results.into_iter().flatten().take(5) {
+                    let id=result["gameId"].as_str().unwrap_or_default();
+                    let game=&entry["games"][id];
+                    if game.is_object() {
+                        let mut game=game.clone();
+                        if game["lastFen"].as_str().is_none() {
+                            let cache_id=egui::Id::new(("lichess_performance_final_fen",id));
+                            let cached=ui.ctx().data(|d|d.get_temp::<String>(cache_id));
+                            let fen=cached.or_else(||game["pgn"].as_str().and_then(|pgn|Self::parse_pgn_mainline(pgn).ok())
+                                .and_then(|(positions,_)|positions.last().map(ToString::to_string)));
+                            if let Some(fen)=fen {
+                                ui.ctx().data_mut(|d|d.insert_temp(cache_id,fen.clone()));
+                                game["lastFen"]=fen.into();
+                            }
+                        }
+                        self.lichess_profile_game(ui,&game);
+                    } else {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(format!("{} · opponent {} · {}",result["opId"]["name"].as_str().unwrap_or("Anonymous"),number(&result["opRating"]),result["at"].as_str().unwrap_or_default().split('T').next().unwrap_or_default()));
+                            if !id.is_empty() {ui.add(egui::Hyperlink::from_label_and_url("Open game on Lichess",format!("https://lichess.org/{id}")).open_in_new_tab(true));}
+                        });
+                        if let Some(error)=entry["gameErrors"][id].as_str() {ui.colored_label(Color32::LIGHT_RED,error);}
+                    }
+                }
             }
         });
     }
@@ -1530,6 +1812,11 @@ impl ChessApp {
         });
     }
 
+    fn lichess_profile_button(label: &str) -> RaisedGoldButton<'_> {
+        egui::Button::new(RichText::new(label).color(Color32::from_rgb(25,29,35)))
+            .min_size(Vec2::new(0.0,32.0)).raised_gold()
+    }
+
     fn lichess_profile_section(ui: &mut egui::Ui, content: impl FnOnce(&mut egui::Ui)) {
         let section = Frame::new().fill(Color32::from_rgb(13,17,22))
             .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
@@ -1540,6 +1827,11 @@ impl ChessApp {
     }
 
     fn review_lichess_profile_game(&mut self, pgn: &str) {
+        #[cfg(target_arch = "wasm32")]
+        if profile_companion_mode() {
+            if !review_profile_in_main(pgn) { self.lichess.profile_action_error = "Keep the main Ironwood window open to review this game.".into(); }
+            return;
+        }
         if (self.fics_active && !self.fics_game_finished) || self.training.is_some() || self.puzzle_navigation_locked() {
             self.lichess.profile_action_error="Finish active play or training before opening another game.".into(); return;
         }
@@ -1622,7 +1914,7 @@ impl ChessApp {
                         ui.set_min_width(ui.available_width());
                         if !id.is_empty() { ui.add(egui::Hyperlink::from_label_and_url("Open game on Lichess",format!("https://lichess.org/{id}")).open_in_new_tab(true)); }
                         let allowed=pgn.is_some() && !(self.fics_active && !self.fics_game_finished) && self.training.is_none() && !self.puzzle_navigation_locked();
-                        if ui.add_enabled(allowed,egui::Button::new("Review on Ironwood"))
+                        if ui.add_enabled(allowed,Self::lichess_profile_button("Review"))
                             .on_hover_text("Review this game without adding it to Saved Games").on_disabled_hover_text("Finish active play or training before reviewing another game; refresh this profile if move data is missing.").clicked() {
                             self.review_lichess_profile_game(pgn.unwrap());
                         }
@@ -1780,15 +2072,23 @@ mod player_profile_layout_tests {
                 output=Some(run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,1200.0))),..Default::default()},|_|app.lichess_history_ui(&ctx)));
             }
             let output=output.unwrap();
-            let texts:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.as_str())} else {None}).collect();
-            assert!(texts.iter().any(|text|*text=="biography"),"Biography absent at {width}");
-            assert!(texts.contains(&"Recent games"),"Games heading absent at {width}: {texts:?}");
+            let mut texts:Vec<String>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.clone())} else {None}).collect();
+            // Narrow profiles legitimately scroll; verify the games heading is reachable.
+            for _ in 0..4 {
+                let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,1200.0))),events:vec![
+                    egui::Event::PointerMoved(egui::pos2(width*0.5,300.0)),
+                    egui::Event::MouseWheel{phase:egui::TouchPhase::Move,unit:egui::MouseWheelUnit::Point,delta:Vec2::new(0.0,-220.0),modifiers:egui::Modifiers::default()}
+                ],..Default::default()},|_|app.lichess_history_ui(&ctx));
+                texts.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.clone())} else {None}));
+            }
+            assert!(texts.iter().any(|text|text=="biography"),"Biography absent at {width}");
+            assert!(texts.iter().any(|text|text=="Recent games"),"Games heading absent at {width}: {texts:?}");
             // The card can be below the scroll viewport; inspect it independently.
             let card_ctx=egui::Context::default();
             let game=app.lichess.lobby["recentGames"][0].clone();
             let card=run_test_ui(&card_ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,600.0))),..Default::default()},|ui|app.lichess_profile_game(ui,&game));
             assert!(card.shapes.iter().any(|shape|matches!(&shape.shape,egui::Shape::Text(text) if text.galley.job.text=="English Defense")),"Recent-game card absent at {width}");
-            assert!(texts.contains(&"Wins"),"Record absent at {width}");
+            assert!(texts.iter().any(|text|text=="Wins"),"Record absent at {width}");
         }
     }
 }
@@ -1803,7 +2103,7 @@ mod player_profile_resize_tests {
     }
     #[test]
     fn rating_chips_wrap_as_complete_cards_without_vertical_letter_stacking() {
-        for width in [360.0,600.0,960.0] {
+        for width in [360.0,551.9,552.0,600.0,735.9,736.0,960.0] {
             let ctx=egui::Context::default();
             let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
             let data=profile();
@@ -1818,6 +2118,31 @@ mod player_profile_resize_tests {
             assert!(labels[5].pos.y>labels[0].pos.y,"Last chip should wrap at {width}");
         }
     }
+    #[test]
+    fn profile_header_can_drag_the_window() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.lichess.profile_windows.push(PlayerProfileWindow::new(0,""));
+        app.lichess.lobby=serde_json::json!({"connected":true,"playerProfile":profile(),"recentGames":[]});
+        let id=egui::Id::new(("lichess_player_profile_window",0u64));
+        let mut time=0.0;
+        let mut frame=|events| {
+            time+=0.1;
+            run_test_ui(&ctx,egui::RawInput{time:Some(time),events,screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1600.0,1200.0))),..Default::default()},|_|app.lichess_history_ui(&ctx));
+        };
+        for _ in 0..4 { frame(vec![]); }
+        let before=ctx.memory(|m|m.area_rect(id)).unwrap();
+        let start=before.min+Vec2::new(180.0,22.0);
+        let end=start+Vec2::new(120.0,90.0);
+        frame(vec![egui::Event::PointerMoved(start)]);
+        frame(vec![egui::Event::PointerButton{pos:start,button:egui::PointerButton::Primary,pressed:true,modifiers:Default::default()}]);
+        frame(vec![egui::Event::PointerMoved(end)]);
+        frame(vec![egui::Event::PointerButton{pos:end,button:egui::PointerButton::Primary,pressed:false,modifiers:Default::default()}]);
+        frame(vec![]);
+        let after=ctx.memory(|m|m.area_rect(id)).unwrap();
+        assert!(after.left()>before.left()+80.0 && after.top()>before.top()+50.0,"Header did not drag window: {before:?} -> {after:?}");
+    }
+
     #[test]
     fn resized_profile_stays_small_after_drag_release_and_idle_frames() {
         let ctx=egui::Context::default();
@@ -2005,6 +2330,57 @@ mod player_profile_reflow_tests {
                     card_height=Some(height);
                 });
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod player_profile_performance_tests {
+    use super::*;
+    #[test]
+    fn details_show_statistics_and_existing_game_controls_without_changing_board() {
+        for width in [360.0,960.0] {
+            let ctx=egui::Context::default();
+            let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+            let original=app.board;
+            let mut window=PlayerProfileWindow::new(7,"Bob");window.performance_control=Some(1);
+            let game=serde_json::json!({"id":"best1234","pgn":"[White \"Alice\"]\n[Black \"Bob\"]\n[Result \"1-0\"]\n\n1. e4 e5 2. Nf3 1-0","speed":"blitz","status":"resign","winner":"white","players":{"white":{"user":{"name":"Alice"}},"black":{"user":{"name":"Bob"}}}});
+            let data=serde_json::json!({"profileUsername":"Bob","performance":{"blitz":{"loading":false,"data":{"perf":{"glicko":{"rating":2000}},"rank":10,"percentile":99,"stat":{"highest":{"int":2200,"at":"2026-10-01T00:00:00Z"},"count":{"all":50,"win":30,"loss":15,"draw":5,"seconds":3600},"resultStreak":{"win":{"cur":{"v":2},"max":{"v":5}}},"bestWins":{"results":[{"gameId":"best1234"}]},"worstLosses":{"results":[{"gameId":"best1234"}]}}},"games":{"best1234":game}}}});
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(width,2200.0))),..Default::default()},|ui|app.lichess_profile_performance(ui,&mut window,&data));
+            let texts=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.as_str())}else{None}).collect::<Vec<_>>();
+            for expected in ["Blitz · Performance details","Rating: 2000","Rank: 10","Percentile: 99%","Best wins","Worst losses","Open game on Lichess","Review"] {
+                assert!(texts.contains(&expected),"Missing {expected} at {width}: {texts:?}");
+            }
+            assert_eq!(app.board,original);assert!(!app.transient_profile_review);
+            assert!(ctx.data(|d|d.get_temp::<String>(egui::Id::new(("lichess_performance_final_fen","best1234")))).is_some());
+        }
+    }
+    #[test]
+    fn loading_another_player_closes_previous_performance_details() {
+        let mut window=PlayerProfileWindow::new(3,"Alice");window.performance_control=Some(2);
+        window.username="Bob".into();window.load(false);
+        assert_eq!(window.performance_control,None);
+    }
+}
+
+#[cfg(test)]
+mod player_profile_activity_tests {
+    use super::*;
+    #[test]
+    fn activity_displays_daily_results_puzzles_and_rating_changes() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        let window=PlayerProfileWindow::new(1,"Alice");
+        let data=serde_json::json!({"profileUsername":"Alice","activity":{"loading":false,"days":[{"interval":{"start":0},"games":{"blitz":{"win":3,"loss":2,"draw":1,"rp":{"before":2000,"after":2010}}},"puzzles":{"score":{"win":2,"loss":1,"rp":{"before":1500,"after":1490}}}}]}});
+        let mut seen=Vec::new();
+        for frame in 0..3 {
+            let output=run_test_ui(&ctx,egui::RawInput{time:Some(frame as f64),..Default::default()},|ui| {
+                app.lichess_profile_activity_contents(ui,&window,&data);
+            });
+            seen.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.clone())}else{None}));
+        }
+        for expected in ["1970-01-01","Blitz: 3 wins · 2 losses · 1 draws","Puzzles: 2 solved · 1 missed","Rating 2000 to 2010 (+10)","Rating 1500 to 1490 (-10)"] {
+            assert!(seen.iter().any(|text|text==expected),"Missing {expected}: {seen:?}");
         }
     }
 }

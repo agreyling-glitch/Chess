@@ -1,6 +1,7 @@
 // Keep optional tools off the board's startup path. wasm-bindgen calls these
 // window functions synchronously, including polls before a tool has loaded.
 export function installDeferredTools(target, loadModule, asset = path => path) {
+  install3dCompanion(target);
   const document = target.document;
   const notice = (message, role) => {
     const status = document.createElement('div');
@@ -43,11 +44,27 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   for (const method of ['Connect', 'ConnectRegistered', 'Disconnect', 'Send', 'SendCommand'])
     fics.action(`ironwoodFics${method}`);
   target.ironwoodFicsPoll = () => '';
+  if (target.ironwoodFicsCompanionMode()) {
+    target.ironwoodFicsSendCommand = command => {
+      try { return target.opener?.ironwoodQueueFicsCompanionCommand(command) ?? false; }
+      catch { return false; }
+    };
+  }
 
   const lichess = tool('/lichess/bridge.js', 'Lichess');
   for (const method of ['Connect', 'SignIn', 'SignOut', 'Disconnect', 'Move', 'Command'])
     lichess.action(`ironwoodLichess${method}`);
   target.ironwoodLichessPoll = () => '';
+  if (target.ironwoodProfileCompanionMode()) {
+    target.ironwoodLichessCommand = raw => {
+      try {
+        const cmd = JSON.parse(raw);
+        if (!['playerProfile', 'following', 'setFollowing', 'performance', 'activity', 'closeProfileWindow'].includes(cmd.type)) return;
+        if (!target.opener || target.opener.closed) return;
+        target.opener.ironwoodLichessCommand(raw);
+      } catch { /* The main window may have closed. */ }
+    };
+  }
 
   const editor = tool('/position-editor/editor.js', 'Position Editor');
   editor.action('ironwoodOpenPositionEditor');
@@ -119,12 +136,104 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   return {
     lichess,
     afterPaint() {
+      if (target.ironwoodCompanionMode()) return;
       // Restore signed-in sessions and saved backgrounds without holding the
       // board's first paint. The other tools load only when explicitly opened.
       void lichess.load().catch(error => target.console.warn('Ironwood Lichess is unavailable:', error));
       void background.load().catch(error => target.console.warn('Ironwood background images are unavailable:', error));
     },
   };
+}
+
+export function install3dCompanion(target) {
+  const view = new URL(target.location.href).searchParams.get('view');
+  const companion = view === '3d-companion' || view === 'fics-companion' || view === 'profile-companion';
+  let child, ficsChild, state = '', ficsState = '', commands = [];
+  let profileState = '', profileReviews = [];
+  const profiles = new Map();
+  target.ironwoodProfileCompanionMode = () => view === 'profile-companion';
+  target.ironwoodCloseProfileCompanion = () => { if (view === 'profile-companion') target.close?.(); };
+  const profileId = new URL(target.location.href).searchParams.get('profile');
+  target.ironwoodPublishProfileState = value => { if (!companion) profileState = value; };
+  target.ironwoodReadProfileState = () => {
+    if (!companion) return profileState;
+    try { return target.opener && !target.opener.closed ? target.opener.ironwoodReadProfileState() : ''; } catch { return ''; }
+  };
+  target.ironwoodProfileCompanionInitial = () => {
+    try { return target.opener && !target.opener.closed ? target.opener.ironwoodProfileInitial(profileId) : ''; } catch { return ''; }
+  };
+  target.ironwoodProfileInitial = id => profiles.get(id)?.initial || '';
+  target.ironwoodProfileCompanionOpen = () => [...profiles.values()].some(p => !p.child.closed);
+  target.ironwoodOpenProfileCompanion = raw => {
+    if (companion) return false;
+    let data; try { data = JSON.parse(raw); } catch { return false; }
+    if (!Number.isSafeInteger(data.id)) return false;
+    const id = String(data.id), existing = profiles.get(id);
+    if (existing && !existing.child.closed) { existing.child.focus(); return true; }
+    const url = new URL(target.location.href);
+    url.search = '?view=profile-companion&profile=' + encodeURIComponent(id); url.hash = '';
+    const child = target.open(url.href, '_blank', 'popup,width=1100,height=850,resizable=yes,scrollbars=no');
+    if (!child) { target.alert('Allow pop-ups for Ironwood to open the player profile.'); return false; }
+    profiles.set(id, { child, initial: raw }); return true;
+  };
+  target.ironwoodQueueProfileReview = pgn => {
+    if (companion || typeof pgn !== 'string' || pgn.length > 200000 || profileReviews.length >= 8) return false;
+    profileReviews.push(pgn); target.focus?.(); return true;
+  };
+  target.ironwoodReviewProfileInMain = pgn => {
+    try { return target.opener && !target.opener.closed ? target.opener.ironwoodQueueProfileReview(pgn) : false; } catch { return false; }
+  };
+  target.ironwoodTakeProfileReviews = () => { const pending = profileReviews; profileReviews = []; return JSON.stringify(pending); };
+  target.ironwoodCompanionMode = () => companion;
+  target.ironwoodFicsCompanionMode = () => view === 'fics-companion';
+  target.ironwoodPublishFicsCompanion = value => { if (!companion) ficsState = value; };
+  target.ironwoodReadFicsCompanion = () => {
+    if (!companion) return ficsState;
+    try { return target.opener && !target.opener.closed ? target.opener.ironwoodReadFicsCompanion() : ''; }
+    catch { return ''; }
+  };
+  target.ironwoodQueueFicsCompanionCommand = command => {
+    if (companion || typeof command !== 'string' || !/^[\x20-\x7e]{1,256}$/.test(command) || commands.length >= 32) return false;
+    commands.push(command);
+    return true;
+  };
+  target.ironwoodTakeFicsCompanionCommands = () => {
+    const pending = commands; commands = []; return JSON.stringify(pending);
+  };
+  target.ironwoodFicsCompanionOpen = () => !!ficsChild && !ficsChild.closed;
+  target.ironwoodOpenFicsCompanion = () => {
+    if (ficsChild && !ficsChild.closed) { ficsChild.focus(); return true; }
+    const url = new URL(target.location.href);
+    url.search = '?view=fics-companion'; url.hash = '';
+    ficsChild = target.open(url.href, '_blank', 'popup,width=760,height=620,resizable=yes,scrollbars=no');
+    if (!ficsChild) target.alert('Allow pop-ups for Ironwood to open the FICS console.');
+    return !!ficsChild;
+  };
+  target.ironwoodPublish3dPosition = value => { if (!companion) state = value; };
+  target.ironwoodRead3dPosition = () => {
+    if (!companion) return state;
+    try {
+      return target.opener && !target.opener.closed
+        ? target.opener.ironwoodRead3dPosition() : '';
+    } catch { return ''; }
+  };
+  target.ironwoodOpen3dCompanion = () => {
+    if (child && !child.closed) { child.focus(); return true; }
+    const url = new URL(target.location.href);
+    url.search = '?view=3d-companion';
+    url.hash = '';
+    child = target.open(url.href, '_blank', 'popup,width=1000,height=900,resizable=yes,scrollbars=no');
+    if (!child) {
+      const notice = target.document.createElement('div');
+      notice.setAttribute('role', 'alert');
+      notice.textContent = 'Allow pop-ups for Ironwood to open the 3D view.';
+      notice.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:9999;padding:16px;background:#282f35;color:#ecebe4;font:16px system-ui';
+      target.document.body.append(notice);
+      target.setTimeout(() => notice.remove(), 8000);
+    }
+    return !!child;
+  };
+  if (companion) target.document.title = view === 'profile-companion' ? 'Ironwood — Player profile' : view === 'fics-companion' ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
 }
 
 function installFallbacks(target) {
@@ -215,12 +324,15 @@ export async function startChessApp({
     // during an update. Its legacy startup must still load PWA/update support.
     const paintedBoard = signalsFrame ? firstFrame.then(() => afterPaint()) : initializedPaint;
     void paintedBoard.then(() => {
+      if (target.ironwoodCompanionMode())
+        target.document.title = target.ironwoodProfileCompanionMode() ? 'Ironwood — Player profile' : target.ironwoodFicsCompanionMode() ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
       if (local && signalsFrame) {
         target.document.body.dataset.boardReadyMs = target.performance.now().toFixed(1);
         target.document.body.dataset.boardReadyResources = recordResources();
       }
       tools.afterPaint();
-      void loadModule(asset('/pwa.js')).catch(error => target.console.warn('Ironwood offline support is unavailable:', error));
+      if (!target.ironwoodCompanionMode())
+        void loadModule(asset('/pwa.js')).catch(error => target.console.warn('Ironwood offline support is unavailable:', error));
     });
     return true;
   } catch (error) {

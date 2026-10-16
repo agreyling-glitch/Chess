@@ -9,6 +9,7 @@
     <p class="help-category">{{ replace .Params.category "-" " " }}</p>
     <h1>{{ .Title }}</h1>
     <p class="lede">{{ .Description }}</p>
+    {{ if gt (len .Fragments.Headings) 1 }}<nav class="help-on-page" aria-label="On this page"><p class="eyebrow">On this page</p>{{ .TableOfContents }}</nav>{{ end }}
     <div class="prose">{{ .Content }}</div>
     <a class="help-back help-bottom" href="/help/">← Back to all help</a>
   </article>

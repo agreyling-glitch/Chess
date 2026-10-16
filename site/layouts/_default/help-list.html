@@ -2,11 +2,19 @@
 <section class="help-heading">
   <p class="eyebrow">Ironwood knowledge base</p>
   <h1>Understand your game.</h1>
-  <p class="lede">Clear guides to Ironwood's analysis, scores, move labels, and tools. Start with a question or browse the topics below.</p>
+  <p class="lede">Guides to playing, reviewing, saving, training, and online features. Start with a question or browse the topics below.</p>
+  <div class="help-quick-links" aria-label="Start here">
+    <a href="/help/getting-started/">Getting started</a>
+    <a href="/help/expanded-analysis-graph/">Explore the full graph</a>
+    <a href="/help/lichess-player-profiles/">Lichess profiles</a>
+    <a href="/help/troubleshooting/">Troubleshooting</a>
+  </div>
   <label class="help-search-label" for="help-search">Search help</label>
-  <input id="help-search" class="help-search" type="search" placeholder="Try CPL, accuracy, or engine line" autocomplete="off">
+  <input id="help-search" class="help-search" type="search" placeholder="Try player profile, captured pieces, backup, or CPL" autocomplete="off">
   <div class="help-filters" role="group" aria-label="Help topics">
     <button type="button" data-filter="all" aria-pressed="true">All</button>
+    <button type="button" data-filter="play" aria-pressed="false">Puzzles &amp; play</button>
+    <button type="button" data-filter="settings" aria-pressed="false">Settings &amp; recovery</button>
     <button type="button" data-filter="analysis" aria-pressed="false">Analysis</button>
     <button type="button" data-filter="terms" aria-pressed="false">Terms</button>
     <button type="button" data-filter="using-ironwood" aria-pressed="false">Using Ironwood</button>
@@ -18,10 +26,10 @@
     {{ range .Pages.ByWeight }}<a href="{{ .RelPermalink }}">{{ .Title }}</a>{{ end }}
   </nav>
   <section class="help-results" aria-label="Help articles">
-    <p class="help-count" id="help-count">{{ len .Pages }} articles</p>
+    <p class="help-count" id="help-count" aria-live="polite">{{ len .Pages }} articles</p>
     <div class="help-cards">
       {{ range .Pages.ByWeight }}
-      <article class="help-card" data-category="{{ .Params.category }}" data-search="{{ lower (printf "%s %s %s" .Title .Description (delimit .Params.keywords " ")) }}">
+      <article class="help-card" data-category="{{ .Params.category }}" data-search="{{ lower (printf "%s %s %s %s" .Title .Description (delimit .Params.keywords " ") .Plain) }}">
         <p class="help-category">{{ replace .Params.category "-" " " }}</p>
         <h2><a href="{{ .RelPermalink }}">{{ .Title }} <span aria-hidden="true">→</span></a></h2>
         <p>{{ .Description }}</p>

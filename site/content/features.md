@@ -2,34 +2,56 @@
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
 lastmod: 2026-10-15T00:00:00-05:00
-description: "Analyze with Stockfish, study tactics and positional ideas, illustrate plans, personalize your workspace, and play locally or online in 2D or 3D."
+description: "Play locally or online, analyze with Stockfish 19, compare Lichess players, practice puzzles, annotate positions, and keep your study library on your device."
 layout: "features"
 url: "/features/"
 ---
 
-## Practice with puzzles
+## Play your way
 
-Open **Game → Puzzles…** for the Lichess daily puzzle or practice by theme and difficulty, with automatic opponent replies, promotion choices, hints, and solution reveal. A separate puzzle board preserves your current game. Review missed puzzles and track results locally without signing in or submitting a Lichess rating. New puzzles require internet access; saved mistakes can be retried offline. [Puzzles help](/help/puzzles/).
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among nine flat-board themes: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
 
 ## Analyze without limits
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
 
+## Inspect the full game graph
+
+Expand **Game Analysis** for a full-screen evaluation graph with phase bands, move-quality markers, written-note markers, and a framed position preview. Hover to inspect a position, click or drag to select it, or navigate with Previous, Next, the Position slider, and the mouse wheel. Scroll down advances a move; scroll up goes back.
+
+Two move-aligned rows identify captured white and black pieces. Large **Merida** icons keep captures consistent across board themes; hover for the capture move. The preview follows board orientation and displays the inspected position’s saved drawings and the main board’s best-move arrows when applicable. Notes can be read and edited alongside move details. Separate sunken sections give the graph, details, notes, and board room to breathe. [Expanded graph guide](/help/expanded-analysis-graph/).
+
 ## Compare engine lines on mini boards
 
-Click the gold **Expand** button beneath Engine prediction to see one board after each predicted move. The title identifies the variation, evaluation, first move, and depth. Open multiple independent prediction snapshots to compare lines; resize or maximize each window and click a board to inspect its position. Boards scale with the available space inside a shared sunken paper-grain panel. The bottom Full Game Analysis details panel uses the same stronger grain. [Engine prediction help](/help/engine-line/#expand-the-prediction-into-boards).
+Click the gray raised **Expand** button beneath Engine prediction to see one board after each predicted move. The title identifies the variation, evaluation, first move, and depth. Open multiple independent prediction snapshots to compare lines; resize or maximize each window and click a board to inspect its position. Each board has a sunken frame and coordinates on all four sides. Boards scale with the available space inside a shared sunken paper-grain panel, with scrolling when needed to keep pieces readable. The bottom Full Game Analysis details panel uses the same stronger grain. [Engine prediction help](/help/engine-line/#expand-the-prediction-into-boards).
 
 ## Explore Lichess player profiles
 
-Open your account or any username from **Lichess-Online → Player profile…**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate green-bordered windows, each with independent graph filters and a sunken paper-grain chart.
+Open your account or any username from **Lichess-Online → Player profile…**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate green-bordered windows, each with independent graph filters and a sunken paper-grain chart. The raised **↗** title-bar button opens a profile in its own browser window for another monitor, sharing the main window’s Lichess connection; full-board reviews return to the main board.
 
-Click a recent-game mini board for enlarged playback with player colors and outcome, or choose **Review on Ironwood** for the full board. Reviews stay temporary until **Save current game** adds the complete game to your library. [Player profile help](/help/play-on-lichess/#player-profiles-and-followed-players).
+Click a time-control rating chip for detailed performance: peak and lowest ratings, rank and percentile, opponent averages, record, streaks, and playing time. Best wins and worst losses show up to five games each with the same enlarged playback and full-board review controls as recent games. Statistics are cached separately by player window and time control, with refresh controls for retrying loads. The Puzzles chip does not open performance details.
 
-## Print and share a complete review
+Expand or collapse **Recent games** to show the latest 12 completed games across time controls. Hover a mini board for its gold outline and magnifying-glass indicator, then click for enlarged playback with player colors and outcome, or choose **Review on Ironwood** for the full board. Reviews stay temporary until **Save current game** adds the complete game to your library. [Player profile help](/help/lichess-player-profiles/).
 
-Use **Print analysis** beside **Expand** to open a report with player accuracy, move quality, game phases, critical-position diagrams, and engine lines. **Your notes and drawings** brings your written notes, manual annotation symbols, and board drawings into the same report. Positions with arrows, shapes, or ghost pieces receive annotated diagrams even when they are outside the engine’s critical-position list. Starting-position annotations are included too.
+## Follow player activity
 
-Pause or stop full-game analysis before printing. Choose **Save as PDF** in your browser’s Print dialog to keep or share the report. [Saving and sharing analysis](/help/saving-and-sharing/).
+Expand **Activity** in a Lichess profile to load recent daily results, grouped by date and time control. See wins, losses, draws, before/after ratings when available, and puzzle results supplied by Lichess. Activity loads on demand, with its own refresh control and per-window cache. Expand **Following** to search your followed players and open their profiles directly; Follow and Unfollow update your list on Lichess after authorization. Public biography and website links, FIDE links, and original game links open in new tabs. [Profiles and activity](/help/lichess-player-profiles/).
+
+## Train against an adaptive opponent
+
+Create a local profile in **Training vs AI** and start at a 1320 training rating. Alternate White and Black games against Stockfish, whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, maximize the dashboard, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
+
+## Practice with puzzles
+
+Open **Game → Puzzles…** for the Lichess daily puzzle or practice by theme and difficulty, with automatic opponent replies, promotion choices, hints, and solution reveal. Puzzles load into the main board, and attempts with played moves are recorded under Saved Games → Puzzles. Save any game you want to keep before switching. Review missed puzzles and track results locally without signing in or submitting a Lichess rating. New puzzles require internet access; saved mistakes can be retried offline. [Puzzles help](/help/puzzles/).
+
+## Practice a recommended game phase
+
+Choose Opening, Middlegame, or Endgames in puzzle practice. When your training dashboard recommends a phase, **Practice this phase** opens a matching puzzle at your chosen difficulty. Difficulty uses the anonymous Lichess baseline of 1500, independently of your training rating. Puzzles use the main board and its selected appearance. [Training practice](/help/training-vs-ai/#finding-areas-to-focus-on).
+
+## Replay puzzle attempts without losing progress
+
+Puzzle attempts with played moves appear under **Puzzles** in Saved Games, using the same larger playback viewer as ordinary games. Playback records are separate from the results used by Puzzle Progress and Review mistakes: deleting an attempt’s saved replay does not reset its progress count. Completed training results similarly remain in the training profile when their replay game is deleted. [Puzzles](/help/puzzles/) · [Saved Games](/help/saved-games-and-backups/).
 
 ## Explore opening choices
 
@@ -55,9 +77,19 @@ Open **Piece Mobility**, select a piece, and optionally compare a second. Click 
 
 Open **King Safety** for compact White and Black assessments with explanations of pawn shelter, nearby pawn-open files, and enemy pressure. Choose a king to highlight its shelter and attacked neighborhood on the diagram, then use the ten-row safety timeline to explore changes. Low-material endgames allow for useful king activity instead of penalizing missing shelter alone. These structural assessments complement the engine evaluation. [Using King Safety](/help/positional-insights/#king-safety).
 
-## Train against an adaptive opponent
+## Explore tactics and positional plans
 
-Create a local profile in **Training vs AI** and start at a 1320 training rating. Alternate White and Black games against Stockfish, whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, maximize the dashboard, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
+Open **Tactical Map** from the bullseye beside **2D/3D** to explore the position directly on the board. Drag or resize its floating window to arrange your workspace. Its tools work without an engine analysis run:
+
+- **Opponent threats:** inspect candidate checks, captures, and forks for the other side if the position stays unchanged. Click a row to trace the move in pink and its checking or fork attacks in gold. Candidates update with the position; resolve check before exploring a hypothetical opponent turn.
+- **What changed?:** step through a game to see opened attack lines in blue, lost defenders with gold dashed lines from their previous squares, and new attacks in red. Explanations connect each change to the affected pieces.
+- **Positional activity:** click any real piece, of either color, for a 0–100 score rated **Restricted**, **Balanced**, **Active**, or **Dominant**. Concrete reasons describe mobility, central control, pressure, support, pins, and piece-specific roles. During a live game against the AI, activity follows your selection while normal moves still work.
+- **Knight reach · two hops:** select either side's knight to preview first-hop ghosts, potential second-hop squares, capture rings, and major-piece fork opportunities. Hover a ghost to focus its branch. In review, click a ghost to lock its route; click again or use **Unlock route** to release it. Live-game clicks continue to select and move pieces.
+- **Pin-aware Destination safety:** hover a knight destination to distinguish geometric support in gray, legal recapturers in green, unavailable defenders in amber, and geometric attackers in red. Capture-specific details account for pins, king safety, captures, and newly opened lines.
+- **Attack vs Defense:** red bubbles count geometric attackers; green bubbles show **geometric defenders / legal recapturers**. The built-in legend explains `2/-` (no legal enemy capture), `2/0` (no legal recapturer), and `2/1` (one legal recapturer). Hover a piece for details against each candidate capture. Bubbles remain above board markings and arrows so their numbers stay readable.
+- **Patterns:** filter **Danger**, **Pins**, and **Forks** using the colored buttons directly above their cards. Click a card to trace its relevant squares and attack lines; click again to clear it.
+
+Geometric counts include pinned pieces; legal recapture counts check the position after each candidate capture. Ghost annotations do not affect real-piece counts. Activity ratings are positional heuristics, and hypothetical routes assume other pieces remain stationary. None of these tools proves a winning exchange: use Stockfish to check replies. The map requires no engine analysis run and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for all controls and legends.
 
 ## Take notes and annotate positions
 
@@ -79,71 +111,45 @@ Expand **Drawings** to edit a drawing’s color and squares or delete it. **Clea
 
 Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood’s PGN extensions preserve shape and arrow styles and colored ghost pieces; other chess programs may simplify styles or ignore ghosts. **Copy Annotated Board to Clipboard** captures the selected position’s drawings and any displayed Stockfish recommendation arrow in the active 2D or 3D view. Printed analysis also includes personal annotations. Plain PGN omits them.
 
-## Explore tactics and positional plans
+## Print and share a complete review
 
-Open **Tactical Map** from the bullseye beside **2D/3D** to explore the position directly on the board. Drag or resize its floating window to arrange your workspace. Its tools work without an engine analysis run:
+Use **Print analysis** beside **Expand** to open a report with player accuracy, move quality, game phases, critical-position diagrams, and engine lines. **Your notes and drawings** brings your written notes, manual annotation symbols, and board drawings into the same report. Positions with arrows, shapes, or ghost pieces receive annotated diagrams even when they are outside the engine’s critical-position list. Starting-position annotations are included too.
 
-- **Opponent threats:** inspect candidate checks, captures, and forks for the other side if the position stays unchanged. Click a row to trace the move in pink and its checking or fork attacks in gold. Candidates update with the position; resolve check before exploring a hypothetical opponent turn.
-- **What changed?:** step through a game to see opened attack lines in blue, lost defenders with gold dashed lines from their previous squares, and new attacks in red. Explanations connect each change to the affected pieces.
-- **Positional activity:** click any real piece, of either color, for a 0–100 score rated **Restricted**, **Balanced**, **Active**, or **Dominant**. Concrete reasons describe mobility, central control, pressure, support, pins, and piece-specific roles. During a live game against the AI, activity follows your selection while normal moves still work.
-- **Knight reach · two hops (2D):** select either side's knight to preview first-hop ghosts, potential second-hop squares, capture rings, and major-piece fork opportunities. Hover a ghost to focus its branch. In review, click a ghost to lock its route; click again or use **Unlock route** to release it. Live-game clicks continue to select and move pieces.
-- **Pin-aware Destination safety (2D):** hover a knight destination to distinguish geometric support in gray, legal recapturers in green, unavailable defenders in amber, and geometric attackers in red. Capture-specific details account for pins, king safety, captures, and newly opened lines.
-- **Attack vs Defense (2D):** red bubbles count geometric attackers; green bubbles show **geometric defenders / legal recapturers**. The built-in legend explains `2/-` (no legal enemy capture), `2/0` (no legal recapturer), and `2/1` (one legal recapturer). Hover a piece for details against each candidate capture. Bubbles remain above board markings and arrows so their numbers stay readable.
-- **Patterns:** filter **Danger**, **Pins**, and **Forks** using the colored buttons directly above their cards. Click a card to trace its relevant squares and attack lines; click again to clear it.
+Pause or stop full-game analysis before printing. Choose **Save as PDF** in your browser’s Print dialog to keep or share the report. [Saving and sharing analysis](/help/saving-and-sharing/).
 
-Geometric counts include pinned pieces; legal recapture counts check the position after each candidate capture. Ghost annotations do not affect real-piece counts. Activity ratings are positional heuristics, and hypothetical routes assume other pieces remain stationary. None of these tools proves a winning exchange: use Stockfish to check replies. The map requires no engine analysis run and is hidden during rated training games, active online play, best-move exercises, and prediction previews. See [Tactical Map](/help/tactical-map/) for all controls and legends.
+## Build your library
 
-## Play your way
+Saved Games keeps **My Games**, **Training**, **Puzzles**, **Observed**, and **Imported Games** together on this device, with an **All Games** view. Sort by recency or move count to find short and long games. Games with zero moves are excluded. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note. The larger viewer identifies White, Black, and the result. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, Stockfish makes the first move and the board follows your perspective. Choose **You vs Engine**, **Play Both Sides**, **Training vs AI**, or **Online** in the New Game window. Set a Stockfish target of 1320–3190 Elo directly in **You vs Engine** by enabling **Limit to Elo rating**. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among nine flat-board themes: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
+## Choose how to import your games
 
-## Type your moves
+Filter Lichess and Chess.com username imports by time control and an optional date range, and request 20, 50, 100, or 200 matching games. Newest matches come first. Dates use UTC with an inclusive end date, and either boundary can be left open. Reset restores 20 games, all time controls, and no dates. Individual Lichess game links fetch one game independently of the filters. [Import filters](/help/import-games/).
 
-Start typing during your turn and a translucent overlay shows the move. Enter plays it, Backspace edits, and Escape cancels. Type `e4`, `nc3`, captures, castling, or promotions; lowercase piece letters and coordinate notation such as `e2e4` work too. Illegal moves stay visible for correction. Keyboard entry follows normal turn and clock rules and works in local, training, and online games. [Keyboard move input and shortcuts](/help/keyboard-input/).
+Open **Game → Import…** for four tabs: **Paste a game or collection**, **Lichess**, **Chess.com**, and **Scoresheet**. The window stays the same size across tabs, with large gold-accented tabs and scrollable contents. Paste PGN or Analysis JSON, fetch online games, or enter a handwritten scoresheet. Review collections and choose which games to keep; duplicate games are skipped. Start full-game analysis when ready, or restore saved results immediately with Analysis JSON. [Import Games guide](/help/import-games/).
 
-The workspace places **Game Moves** to the left of the live board, **Real-Time Analysis** immediately to its right, and **Game Analysis** on the far right. Resize the side panels to suit your display. The White/Black balance bar follows the board height, and engine predictions use a black scrolling table with separate White and Black columns and navigation controls inside the table, matching Game Moves. Analysis controls sit to the left above the graph, with gold Expand and Print analysis buttons on the right.
+The online import panels provide clear username fields, gold **Fetch games** buttons, and status messages. Fetched games open in the Paste tab; choose **Continue** to review and import them. The Scoresheet tab provides a three-step guide and an **Enter scoresheet** button to open the entry workspace.
 
-## Focus on the board
+## Import games from Lichess
 
-Click the focus icon beside **Flip board** or press **Shift+Enter** when you are not editing text. The board expands while menus, move lists, analysis panels, floating tools, and the status bar are hidden. Player names, clocks, results, captured pieces, coordinates, and essential board controls remain visible. Focus mode works in 2D and 3D. Real-time position analysis pauses while focused; engine play, online clocks, and full-game analysis continue. Press **Escape**, **Shift+Enter**, or the focus icon to restore the workspace. [Focus mode](/help/playing-a-game/#focus-on-the-board).
+Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch up to the chosen number of matching completed games (20 by default), or paste an individual game link. No Lichess login or API token is needed. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and start Stockfish analysis from Game Analysis. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
 
-## Choose a 2D or 3D board
+## Import games from Chess.com
 
-Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and scroll-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with **2D** and **3D** tabs. It always opens on **2D**; the Marble, Wood, Glass, Art Deco, and Egyptian previews load when you select **3D**. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+Select **Chess.com** in the tabbed Import window and enter a username to fetch up to the chosen number of completed standard chess or Chess960 games (20 by default). Ironwood reads recent monthly archives sequentially, then lets you choose games to save through its existing duplicate-aware import workflow. No account connection or API token is needed. Chess.com’s cached archives may take time to include a just-finished game. The same window provides **Paste a game or collection**, **Lichess**, and **Scoresheet** tabs. [Import games from Chess.com](/help/import-from-chess-com/).
 
-## Make each theme your own
+## Import handwritten scoresheets
 
-**Hybrid Marble** adds a flat board with shaded 3D pieces viewed from above. Choose Marble, Wood, Glass, Art Deco, or Egyptian pieces in its theme settings. **Complement** selects board colors to suit the piece style; **Custom** lets you choose the light and dark squares yourself.
+Turn a handwritten game into PGN with **Game → Import… → Scoresheet → Enter scoresheet**. Type White's and Black's moves beside a photo of the sheet while a board preview and validated move list follow your entries. Zoom and drag the photo to read the handwriting. Live validation catches illegal or missing moves, accepts lowercase piece letters, and adds check and checkmate notation automatically. Correct an earlier move without losing the continuation; gold board highlights and an automatically scrolling move list help you follow the game.
 
-Choose **Smooth, Marble veins, Wood grain, Linen, Slate, Glass, or Sand** as the board texture. All textured choices add beveled edges and soft depth lighting; Glass adds reflections, while Smooth stays flat. Texture and color choices are independent of the piece style. Your hybrid preferences are saved on this device and appear in copied board images.
+Moves, game details, and the photo save locally so you can stop and return to the unfinished sheet later. Enter the players, event, date, and result, then download PGN or pass the game into Ironwood's existing import flow for review and analysis. See [Import a game from a scoresheet](/help/import-a-scoresheet/) for instructions or [the gallery](/gallery/) for a preview.
 
-Classic Staunton pairs its pieces with cream and walnut squares. Neon Geometric uses navy squares and cyan coordinates; Art Deco Faceted uses jade and teal with gold accents. The palettes follow the theme in the live board, chooser previews, and copied board images.
+## Explore different starting positions
 
-Open a theme card’s **gear** or **View → Board → Theme adjustments…** to customize it. Changes apply immediately and save separately for each theme on this device. **Reset this theme** restores only that theme’s defaults.
+Play from the standard starting position, try a random Chess960 setup, or enter a custom FEN. The position editor lets you arrange pieces and review the side to move, castling rights, and other position details before starting. For Chess960 castling, move your king onto its rook.
 
-For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
+## Bring a board from an image
 
-The 3D dialog groups size with height, then provides side colors, material finishes, shadows, overall appearance, and radial lighting. Contrasting outlines are limited to 2D. See [Board themes and appearance](/help/board-themes/) for the available controls.
-
-## Move and review in either board view
-
-Drag pieces to legal destinations in 2D or 3D, with a translucent preview following the pointer. Scroll down over the board to advance through game moves and up to go back. Select an engine prediction to navigate that line instead. Wheel navigation is disabled during active training and online play. In 3D, hold the right mouse button while scrolling to zoom; Shift while right-dragging locks rotation while adjusting tilt.
-
-Under **View → Move feedback**, choose **Capture dissolve** and **Highlight king in check**. Preferences save locally. Capture effects apply only to live captures, and capture and live-move animations respect system reduced-motion settings. Active-game actions remain beneath the board in Focus mode, including training resignation. Local two-player games can accept or decline draw offers. [Board controls](/help/board-and-view/) · [Playing a game](/help/playing-a-game/).
-
-Tactical Map shows Knight reach ghosts and attacker/defender counts on the 3D board, following its camera. Fork cards distinguish strong, checking, and capturable candidates and show immediate legal captures of the forking piece. These clues do not prove a material win. [Tactical Map](/help/tactical-map/).
-
-## Practice a recommended game phase
-
-Choose Opening, Middlegame, or Endgames in puzzle practice. When your training dashboard recommends a phase, **Practice this phase** opens a matching puzzle at your chosen difficulty. Difficulty uses the anonymous Lichess baseline of 1500, independently of your training rating. Puzzles use Merida pieces on a separate board. [Training practice](/help/training-vs-ai/#finding-areas-to-focus-on).
-
-## Personalize the app background
-
-Open **View → Background…** for a dedicated settings window. Choose **Gradient Only**, the built-in **Default** Ironwood knight artwork, or **Uploaded Image**; the selected mode is highlighted in gold. Upload PNG, JPEG, or WebP images, switch between your saved uploads, and remove images you no longer want. Upload and remove controls appear for the uploaded-image option.
-
-Adjust image opacity, background gradient strength, and the 3D backdrop independently. A translucent 3D backdrop reveals the app background while the board and real pieces remain opaque. The app background has a subtle paper texture, and the expanded analysis view uses translucent panels with a more opaque lower details area for readability.
-
-First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background opacity**. Returning users retain their saved choices. Changes apply immediately; uploaded backgrounds and preferences stay on this device. [Background settings](/help/board-and-view/#app-background).
+Upload, paste, or drop a chessboard screenshot into the position editor. Recognition runs on your device and produces an editable position. Crop closely to the board for the best results, then check the pieces, orientation, and game-state details before using it. You can correct the board manually; screenshot recognition is a starting point for review.
 
 ## Meet opponents online
 
@@ -169,44 +175,71 @@ Browse running FICS games and watch up to 10 games simultaneously. Spacious, scr
 
 The FICS console opens automatically when you connect. Separate chat tabs keep player conversations and channels alongside the server console, with unread counts and a draft for each conversation. Start a chat by player name or channel number, and use the console for server commands and replies. Chats last for the current session; FICS account and channel permissions determine where you can send messages.
 
-## Explore different starting positions
+## Choose a 2D or 3D board
 
-Play from the standard starting position, try a random Chess960 setup, or enter a custom FEN. The position editor lets you arrange pieces and review the side to move, castling rights, and other position details before starting. For Chess960 castling, move your king onto its rook.
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and right-button-plus-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with **2D** and **3D** tabs. It always opens on **2D**; the Marble, Wood, Glass, Art Deco, and Egyptian previews load when you select **3D**. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
-## Bring a board from an image
+## Put a 3D board on another monitor
 
-Upload, paste, or drop a chessboard screenshot into the position editor. Recognition runs on your device and produces an editable position. Crop closely to the board for the best results, then check the pieces, orientation, and game-state details before using it. You can correct the board manually; screenshot recognition is a starting point for review.
+Open the **3D ↗** companion window from the board toolbar to watch the current game in a separate browser window. It follows moves and game history while keeping its own theme and camera. Flip its board independently, rotate and zoom, or reset the view; move it to another monitor without giving up the main study workspace. The main window must remain open for synchronization. [Companion board controls](/help/board-and-view/).
 
+## Make each theme your own
 
-## Choose how to import your games
+**Hybrid Marble** adds a flat board with shaded 3D pieces viewed from above. Choose Marble, Wood, Glass, Art Deco, or Egyptian pieces in its theme settings. **Complement** selects board colors to suit the piece style; **Custom** lets you choose the light and dark squares yourself.
 
-Filter Lichess and Chess.com username imports by time control and an optional date range, and request 20, 50, 100, or 200 matching games. Newest matches come first. Dates use UTC with an inclusive end date, and either boundary can be left open. Reset restores 20 games, all time controls, and no dates. Individual Lichess game links fetch one game independently of the filters. [Import filters](/help/import-games/).
+Choose **Smooth, Marble veins, Wood grain, Linen, Slate, Glass, or Sand** as the board texture. All textured choices add beveled edges and soft depth lighting; Glass adds reflections, while Smooth stays flat. Texture and color choices are independent of the piece style. Your hybrid preferences are saved on this device and appear in copied board images.
 
-Open **Game → Import…** for four tabs: **Paste a game or collection**, **Lichess**, **Chess.com**, and **Scoresheet**. The window stays the same size across tabs, with large gold-accented tabs and scrollable contents. Paste PGN or Analysis JSON, fetch online games, or enter a handwritten scoresheet. Review collections and choose which games to keep; duplicate games are skipped. Start full-game analysis when ready, or restore saved results immediately with Analysis JSON. [Import Games guide](/help/import-games/).
+Classic Staunton pairs its pieces with cream and walnut squares. Neon Geometric uses navy squares and cyan coordinates; Art Deco Faceted uses jade and teal with gold accents. The palettes follow the theme in the live board, chooser previews, and copied board images.
 
-The online import panels provide clear username fields, gold **Fetch games** buttons, and status messages. Fetched games open in the Paste tab; choose **Continue** to review and import them. The Scoresheet tab provides a three-step guide and an **Enter scoresheet** button to open the entry workspace.
+Open a theme card’s **gear** or **View → Board → Theme adjustments…** to customize it. Changes apply immediately and save separately for each theme on this device. **Reset this theme** restores only that theme’s defaults.
 
-## Import games from Lichess
+For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
 
-Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch up to the chosen number of matching completed games (20 by default), or paste an individual game link. No Lichess login or API token is needed. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and start Stockfish analysis from Game Analysis. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
+The 3D dialog groups size with height, then provides side colors, material finishes, shadows, overall appearance, and radial lighting. Contrasting outlines are limited to 2D. See [Board themes and appearance](/help/board-themes/) for the available controls.
 
-## Import games from Chess.com
+## Move and review in either board view
 
-Select **Chess.com** in the tabbed Import window and enter a username to fetch up to the chosen number of completed standard chess or Chess960 games (20 by default). Ironwood reads recent monthly archives sequentially, then lets you choose games to save through its existing duplicate-aware import workflow. No account connection or API token is needed. Chess.com’s cached archives may take time to include a just-finished game. The same window provides **Paste a game or collection**, **Lichess**, and **Scoresheet** tabs. [Import games from Chess.com](/help/import-from-chess-com/).
+Drag pieces to legal destinations in 2D or 3D, with a translucent preview following the pointer. Scroll down over the board to advance through game moves and up to go back. Select an engine prediction to navigate that line instead. Wheel navigation is disabled during active training and online play. In 3D, hold the right mouse button while scrolling to zoom; Shift while right-dragging locks rotation while adjusting tilt.
 
-## Import handwritten scoresheets
+Under **View → Move feedback**, choose **Capture dissolve** and **Highlight king in check**. Preferences save locally. Capture effects apply only to live captures, and capture and live-move animations respect system reduced-motion settings. Active-game actions remain beneath the board in Focus mode, including training resignation. Local two-player games can accept or decline draw offers. [Board controls](/help/board-and-view/) · [Playing a game](/help/playing-a-game/).
 
-Turn a handwritten game into PGN with **Game → Import… → Scoresheet → Enter scoresheet**. Type White's and Black's moves beside a photo of the sheet while a board preview and validated move list follow your entries. Zoom and drag the photo to read the handwriting. Live validation catches illegal or missing moves, accepts lowercase piece letters, and adds check and checkmate notation automatically. Correct an earlier move without losing the continuation; gold board highlights and an automatically scrolling move list help you follow the game.
+Tactical Map shows Knight reach ghosts and attacker/defender counts on the 3D board, following its camera. Fork cards distinguish strong, checking, and capturable candidates and show immediate legal captures of the forking piece. These clues do not prove a material win. [Tactical Map](/help/tactical-map/).
 
-Moves, game details, and the photo save locally so you can stop and return to the unfinished sheet later. Enter the players, event, date, and result, then download PGN or pass the game into Ironwood's existing import flow for review and analysis. See [Import a game from a scoresheet](/help/import-a-scoresheet/) for instructions or [the gallery](/gallery/) for a preview.
+## Type your moves
 
-## Build your library
+Start typing during your turn and a translucent overlay shows the move. Enter plays it, Backspace edits, and Escape cancels. Type `e4`, `nc3`, captures, castling, or promotions; lowercase piece letters and coordinate notation such as `e2e4` work too. Illegal moves stay visible for correction. Keyboard entry follows normal turn and clock rules and works in local, training, and online games. [Keyboard move input and shortcuts](/help/keyboard-input/).
 
-Saved Games keeps My Games, Training games, Observed games, and Imported games together on this device, with an All Games view. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Maximize the library or click a board preview for a larger view with the full Starting note. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+The workspace places **Game Moves** to the left of the live board, **Real-Time Analysis** immediately to its right, and **Game Analysis** on the far right. Resize the side panels to suit your display. The White/Black balance bar follows the board height, and engine predictions use a black scrolling table with separate White and Black columns and navigation controls inside the table, matching Game Moves. Analysis controls sit to the left above the graph, with gold Expand and Print analysis buttons on the right.
+
+## Focus on the board
+
+Click the focus icon beside **Flip board** or press **Shift+Enter** when you are not editing text. The board expands while menus, move lists, analysis panels, floating tools, and the status bar are hidden. Player names, clocks, results, captured pieces, coordinates, and essential board controls remain visible. Focus mode works in 2D and 3D. Real-time position analysis pauses while focused; engine play, online clocks, and full-game analysis continue. Press **Escape**, **Shift+Enter**, or the focus icon to restore the workspace. [Focus mode](/help/playing-a-game/#focus-on-the-board).
+
+## Personalize the app background
+
+Open **View → Background…** for a dedicated settings window. Choose **Gradient Only**, the built-in **Default** Ironwood knight artwork, or **Uploaded Image**; the selected mode is highlighted in gold. Upload PNG, JPEG, or WebP images, switch between your saved uploads, and remove images you no longer want. Upload and remove controls appear for the uploaded-image option.
+
+Adjust image opacity, background gradient strength, and the 3D backdrop independently. A translucent 3D backdrop reveals the app background while the board and real pieces remain opaque. Paper grain and fine linen distinguish recessed study surfaces. The expanded analysis view uses grain around solid sunken detail panels, keeping text and board previews readable.
+
+First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background opacity**. Returning users retain their saved choices. Changes apply immediately; uploaded backgrounds and preferences stay on this device. [Background settings](/help/board-and-view/#app-background).
+
+## A consistent study workspace
+
+A resizable **New Game** window separates Play Mode, Engine Settings, Game Settings, Your Side, and online server choices. Compact engine controls and centered start/connect buttons leave more room for setup.
+
+Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Fine linen adds depth to the main move list, Real-Time Analysis score and prediction sections, and the Saved Games controls. Paper grain appears around training profiles, engine settings, Tactical Map, Notes, Saved Games, and larger playback. Profile graphs and expanded prediction boards have their own sunken textured surfaces. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
+
+Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. Game Analysis keeps its controls and tabs above the scrolling content.
+
+Lichess account sign-in can remain available alongside FICS without replacing the current board. Opening Explorer uses that account session; tablebases require no sign-in. One game controls the board at a time, and study tools remain unavailable during live online play and training.
 
 ## Keep control of your data
 
 Ironwood saves games, personal annotations, uploaded backgrounds, and display preferences locally. Download a versioned JSON backup, then restore it by merging with your library or replacing existing games. Storage Information shows game counts and browser usage. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
+
+## Optional usage statistics
+
+Choose whether to share visits and usage events with PostHog, and change your choice from **Analytics settings**. Session recording and automatic interaction capture are disabled; game positions, moves, notes, and player names are excluded from these usage events. Local play and analysis work with either choice. Automatic freeze reporting is not currently implemented. [Usage statistics and privacy](/help/optional-usage-statistics/).
 
 ## Device and browser compatibility
 
@@ -214,14 +247,6 @@ Phones and tablets can browse the website, but Ironwood blocks app startup, inst
 
 Ironwood is currently designed for desktop and laptop screens. Use a current browser and graphics device with WebGPU support and hardware acceleration enabled. WebGPU availability and 3D performance vary by browser, operating system, and graphics hardware. The full Stockfish 19 engine is a separate 94.5 MiB download; allow space for it if you enable offline play. We have not established a reliable minimum CPU, RAM, or GPU model, so those are not listed as requirements.
 
-## A consistent study workspace
+## Searchable help and recovery guides
 
-Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
-
-Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. Game Analysis keeps its controls and tabs above the scrolling content.
-
-Lichess account sign-in can remain available alongside FICS without replacing the current board. Opening Explorer uses that account session; tablebases require no sign-in. One game controls the board at a time, and study tools remain unavailable during live online play and training.
-
-## Find games by length and replay puzzle attempts
-
-Sort Saved Games by move count or recency, and browse puzzle move history in its own **Puzzles** category. Empty games with zero moves are excluded. Enlarged playback identifies White, Black, and the result; deleting puzzle playback does not reset puzzle progress. [Saved Games help](/help/saved-games-and-backups/).
+The [Help center](/help/) covers play, training, puzzles, online connections, imports, analysis, annotations, themes, and local storage. Search article text with multiple terms, filter by topic, and use each article’s contents links to reach a specific control. Dedicated guides cover Lichess profiles, expanded graphs, and recovery from loading problems or a frozen page.

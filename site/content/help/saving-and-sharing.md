@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-10T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Saving and sharing analysis"
 description: "Understand saved games, PGN, analysis JSON, and printable reports."
 category: "using-ironwood"
@@ -20,3 +20,7 @@ For instructions on Starting notes, move notes, and manual symbols, see [Taking 
 [Board drawings](/help/drawing-on-the-board/) also travel with annotated PGN and Analysis JSON. Saved games and Analysis JSON preserve colors, endpoints, solid/dotted squares and circles, translucent filled squares, crosses, ghost pieces, and solid/dashed/curved/L-shaped knight arrows. Annotated PGN uses arrow and square comments (`[%cal ...]` and `[%csl ...]`) plus Ironwood’s `[%iw_arrow_styles ...]` extension. Other chess programs may ignore the style extension and display solid arrows and square outlines instead. Ghost pieces and their colors use the `[%iw_ghosts ...]` extension, which other apps may ignore. Plain PGN omits personal drawings.
 
 [Tactical Map](/help/tactical-map/) findings are generated from the position rather than saved as personal annotations. Drawing undo history is temporary and is not included in exports.
+
+## Save a game opened from a player profile
+
+A Lichess profile’s **Review on Ironwood** opens the game temporarily. Choose **Game → Save current game** to add the complete game to Saved Games, even when viewing the initial position. A game with no moves is excluded. Watching it in the larger preview alone does not save or replace the current game.

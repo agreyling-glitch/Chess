@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Playing online"
 description: "Connect through FICS-Online to find an opponent, observe games, and use game controls."
 category: "using-ironwood"
@@ -14,6 +14,12 @@ FICS confirms online moves and supplies the official board and clocks. Keep your
 When an online game finishes, Ironwood keeps the moves for local review and saves the finished game on this device. An active online game is not in the Saved Games library until it ends. You can run [Stockfish analysis](/help/getting-started/) afterward.
 
 Use a unique password for a FICS account. Guest play does not require you to create one.
+
+## Console and chats in a second window
+
+Open **FICS-Online → FICS console & chats**, then click the **↗** pop-out button beside Close in the console title bar. You can move this resizable window to another monitor. It has the same console, command suggestions, player chats, channel tabs, and copy controls as the main window. Commands and messages use the main window's existing FICS connection; keep that window open and connect or sign in there. Existing drafts are copied when the pop-out opens, and subsequent drafts are independent in each view.
+
+To bring the pop-out forward, reopen the main console and click **↗** again. Closing the pop-out leaves your FICS connection running. If the browser blocks it, allow pop-ups for Ironwood.
 
 
 ## FICS account statistics

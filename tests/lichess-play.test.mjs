@@ -446,3 +446,103 @@ test('closing a loading comparison window ignores its late reply', async t => {
   assert.equal(f.client.snapshot().profileWindows.closed,undefined);
   assert.ok(!f.calls.some(call=>call.path==='/api/user/Bob/rating-history'));
 });
+
+async function performanceProfile(f, username = 'Bob', windowId = 'perf') {
+  f.replies.set(`/api/user/${username}`, () => json({id:username.toLowerCase(),username}));
+  f.replies.set(`/api/user/${username}/rating-history`, () => json([]));
+  f.replies.set(`/api/games/user/${username}`, () => new Response(''));
+  await f.client.playerProfile(false, username, windowId);
+}
+const perfStats = () => ({perf:{glicko:{rating:2000}},rank:10,percentile:99,stat:{
+  highest:{int:2200,at:'2026-10-01T00:00:00Z'},count:{all:50,win:30,loss:15,draw:5},
+  bestWins:{results:[{gameId:'best1234',opId:{name:'Carol'},opRating:2500}]},
+  worstLosses:{results:[{gameId:'loss1234',opId:{name:'Dave'},opRating:1500},{gameId:'best1234'}]}
+}});
+test('performance batch-exports notable games once without authorization and caches by time control', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  f.replies.set('/api/user/Bob/perf/blitz',()=>json(perfStats()));
+  f.replies.set('/api/user/Bob/perf/rapid',()=>json({...perfStats(),rank:20}));
+  f.replies.set('/api/games/export/_ids',options=>{
+    assert.equal(options.method,'POST');assert.equal(options.body,'best1234,loss1234');
+    assert.equal(options.headers.Accept,'application/x-ndjson');assert.ok(!('Authorization' in options.headers));
+    return new Response(['loss1234','best1234'].map(id=>JSON.stringify({id,status:'mate',pgn:'1. e4 e5 2. Nf3 *'})).join('\n'));
+  });
+  await f.client.performance('Bob','blitz','perf');
+  let entry=f.client.snapshot().profileWindows.perf.performance.blitz;
+  assert.equal(entry.loading,false);assert.equal(entry.error,'');assert.equal(entry.data.rank,10);
+  assert.equal(Object.keys(entry.games).length,2);assert.match(entry.games.best1234.pgn,/Nf3/);
+  assert.equal(f.calls.filter(c=>c.path==='/api/games/export/_ids').length,1);
+  assert.ok(!f.calls.some(c=>c.path.startsWith('/game/export/')));
+  const count=f.calls.length;await f.client.performance('Bob','blitz','perf');assert.equal(f.calls.length,count);
+  await f.client.performance('Bob','rapid','perf');
+  assert.equal(f.client.snapshot().profileWindows.perf.performance.blitz.data.rank,10);
+  assert.equal(f.client.snapshot().profileWindows.perf.performance.rapid.data.rank,20);
+  await f.client.performance('Bob','blitz','perf',true);assert.equal(f.calls.filter(c=>c.path==='/api/user/Bob/perf/blitz').length,2);
+});
+test('late performance responses cannot replace another player or reopen a closed window', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  let resolve;f.replies.set('/api/user/Bob/perf/blitz',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.performance('Bob','blitz','perf');await tick();const change=performanceProfile(f,'Carol');await tick();
+  resolve(json(perfStats()));await Promise.all([pending,change]);
+  assert.equal(f.client.snapshot().profileWindows.perf.profileUsername,'Carol');
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.performance,{});
+  assert.ok(!f.calls.some(c=>c.path==='/api/games/export/_ids'));
+  f.replies.set('/api/user/Carol/perf/blitz',()=>json(perfStats()));
+  f.replies.set('/api/games/export/_ids',()=>new Promise(r=>{resolve=r;}));
+  const closed=f.client.performance('Carol','blitz','perf');await tick();f.client.closeProfileWindow('perf');
+  resolve(new Response(JSON.stringify({id:'best1234',status:'mate',pgn:'1. e4 *'})));await closed;
+  assert.equal(f.client.snapshot().profileWindows.perf,undefined);
+});
+test('missing batch games retain statistics and successful previews; failed batches are retryable', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  f.replies.set('/api/user/Bob/perf/blitz',()=>json(perfStats()));
+  f.replies.set('/api/games/export/_ids',()=>new Response(JSON.stringify({id:'best1234',status:'mate',pgn:'1. e4 *'})));
+  await f.client.performance('Bob','blitz','perf');let entry=f.client.snapshot().profileWindows.perf.performance.blitz;
+  assert.equal(entry.data.rank,10);assert.ok(entry.games.best1234);assert.match(entry.gameErrors.loss1234,/unavailable/);
+  f.replies.set('/api/games/export/_ids',()=>{throw new TypeError('Failed to fetch');});
+  await f.client.performance('Bob','blitz','perf',true);entry=f.client.snapshot().profileWindows.perf.performance.blitz;
+  assert.equal(entry.loading,false);assert.equal(entry.data.rank,10);assert.match(entry.error,/Refresh/);
+  const count=f.calls.filter(c=>c.path==='/api/games/export/_ids').length;
+  await f.client.performance('Bob','blitz','perf');assert.equal(f.calls.filter(c=>c.path==='/api/games/export/_ids').length,count+1);
+});
+test('empty performance skips exports; rate limits and disconnects preserve session isolation', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  f.replies.set('/api/user/Bob/perf/blitz',()=>json({perf:{},stat:{bestWins:{results:[]},worstLosses:{results:[]}}}));
+  await f.client.performance('Bob','blitz','perf');assert.ok(!f.calls.some(c=>c.path==='/api/games/export/_ids'));
+  const count=f.calls.length;await f.client.performance('Bob','puzzle','perf');assert.equal(f.calls.length,count);
+  f.replies.set('/api/user/Bob/perf/rapid',()=>json(perfStats()));
+  f.replies.set('/api/games/export/_ids',()=>json({},429));await f.client.performance('Bob','rapid','perf');
+  assert.match(f.client.snapshot().profileWindows.perf.performance.rapid.error,/rate limit/);
+  assert.equal(f.client.snapshot().profileWindows.perf.performance.rapid.loading,false);
+  f.advance(60001);let resolve;f.replies.set('/api/games/export/_ids',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.performance('Bob','rapid','perf',true);await tick();f.client.disconnect();resolve(new Response(''));await pending;
+  assert.deepEqual(f.client.snapshot().profileWindows,{});
+});
+
+test('activity is lazy, sorted newest first, cached per profile window and refreshable', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  assert.ok(!f.calls.some(c=>c.path.endsWith('/activity')));
+  const days=[{interval:{start:100},puzzles:{score:{win:2,loss:1,rp:{before:1500,after:1510}}}},{interval:{start:200},games:{blitz:{win:3,loss:2,draw:1,rp:{before:2000,after:2010}}}}];
+  f.replies.set('/api/user/Bob/activity',()=>json(days));await f.client.activity('Bob','perf');
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.activity.days.map(d=>d.interval.start),[200,100]);
+  const count=f.calls.length;await f.client.activity('Bob','perf');assert.equal(f.calls.length,count);
+  await f.client.activity('Bob','perf',true);assert.equal(f.calls.length,count+1);
+  await performanceProfile(f,'Carol','other');f.replies.set('/api/user/Carol/activity',()=>json([]));await f.client.activity('Carol','other');
+  assert.equal(f.client.snapshot().profileWindows.perf.activity.days.length,2);
+  assert.deepEqual(f.client.snapshot().profileWindows.other.activity.days,[]);
+});
+test('late activity cannot cross players or sessions, and failed loads can be refreshed', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  let resolve;f.replies.set('/api/user/Bob/activity',()=>new Promise(r=>{resolve=r;}));
+  const pending=f.client.activity('Bob','perf');await tick();const change=performanceProfile(f,'Carol');
+  resolve(json([{interval:{start:1}}]));await Promise.all([pending,change]);
+  assert.equal(f.client.snapshot().profileWindows.perf.activity,null);
+  f.replies.set('/api/user/Carol/activity',()=>json({error:'Unavailable'},503));await f.client.activity('Carol','perf');
+  assert.match(f.client.snapshot().profileWindows.perf.activity.error,/Unavailable/);
+  assert.equal(f.client.snapshot().profileWindows.perf.activity.loading,false);
+  f.replies.set('/api/user/Carol/activity',()=>json([]));await f.client.activity('Carol','perf',true);
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.activity.days,[]);
+  f.replies.set('/api/user/Carol/activity',()=>new Promise(r=>{resolve=r;}));
+  const closed=f.client.activity('Carol','perf',true);await tick();f.client.disconnect();resolve(json([]));await closed;
+  assert.deepEqual(f.client.snapshot().profileWindows,{});
+});

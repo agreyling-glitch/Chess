@@ -143,8 +143,13 @@ impl ChessApp {
             .min_width(280.0).resizable(true).collapsible(false).title_bar(false)
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+                let grain=ui.painter().add(egui::Shape::Noop);
                 close = Self::notes_header(ui, &title);
                 self.notes_tabs_ui(ui);
+                let paper=Self::paper_grain_texture(ui.ctx());
+                let surface=ui.min_rect().expand(6.0);
+                ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
+                    egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
             });
         if close { open = false; }
         ctx.data_mut(|d| d.insert_temp(id, open));

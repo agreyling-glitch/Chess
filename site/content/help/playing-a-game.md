@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-13T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -32,4 +32,8 @@ Press **Shift+Enter** to toggle focus mode when you are not editing a text field
 
 ## Adjust piece appearance
 
-Open **View → Board → Theme…** to choose from eight 2D themes and five 3D themes. Click a card’s gear to select and adjust that theme, or use **View → Board → Theme adjustments…** for the current theme. Adjustments save separately for each theme on this device. See [Board themes and appearance](/help/board-themes/) for board palettes, gradients, inner shading, outlines, materials, shadows, and lighting.
+Open **View → Board → Theme…** to browse the available 2D piece sets and five 3D themes. Click a card’s gear to select and adjust that theme, or use **View → Board → Theme adjustments…** for the current theme. Adjustments save separately for each theme on this device. See [Board themes and appearance](/help/board-themes/) for board palettes, gradients, inner shading, outlines, materials, shadows, and lighting.
+
+## New Game window
+
+The resizable New Game window groups **Play Mode**, engine options, **Game Settings**, and **Your Side** into separate recessed sections. Choose Online to select a **Chess Server** and connect to FICS or Lichess, or Training vs AI to select a training profile. Resize vertically for more room; longer setup content scrolls. The start/connect button acts on the selected mode.

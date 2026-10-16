@@ -122,3 +122,13 @@ footer span { margin-right:auto; } footer a { color:var(--gold); }
 .site-badge { display:flex; justify-content:center; padding:0 24px 30px; }
 .site-badge a { display:inline-flex; }
 .site-badge img { display:block; width:200px; height:54px; }
+
+.help-quick-links{display:flex;flex-wrap:wrap;gap:12px 24px;margin:0 0 28px}
+.help-quick-links a{color:var(--gold);text-underline-offset:4px}
+.help-on-page{margin:26px 0 0;padding:18px 22px;border:1px solid #ffffff20;border-radius:6px;background:#121a18}
+.help-on-page ul{padding-left:20px;line-height:1.8}
+.help-on-page a{color:var(--gold)}
+
+.features-jump-links{display:flex;flex-wrap:wrap;gap:12px 24px;padding:22px 0;border-bottom:1px solid #ffffff20}
+.features-jump-links a{color:var(--gold);text-underline-offset:4px}
+.feature-section h2{scroll-margin-top:28px}

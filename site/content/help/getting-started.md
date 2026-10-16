@@ -4,6 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
+lastmod: 2026-10-15T00:00:00-05:00
 ---
 
 ## Open a game
@@ -29,3 +30,13 @@ Start with the [evaluation](/help/evaluation/) graph to see when either player g
 ## Explore one position
 
 Select a move to see Stockfish's suggested move and its [engine line](/help/engine-line/). Step through the line on the board. Ask what threat the suggestion addresses, which piece improves, or what the played move allowed. The engine gives a candidate continuation; it does not give a human explanation by itself.
+
+## Watch, compare, and keep games
+
+Open [Lichess player profiles](/help/lichess-player-profiles/) to compare accounts, ratings and notable games. Click a game’s mini board to watch its moves, or **Review on Ironwood** to analyze it on the full board. Choose **Game → Save current game** to keep a temporary profile review.
+
+In [Saved Games](/help/saved-games-and-backups/), browse the categories or sort by move count. Puzzle playback is separate from puzzle progress, and training profiles keep their completed results separately from the replay library. Back up local data before changing browsers or devices.
+
+## Find the right guide
+
+Use Help search for a feature, button label, or chess term. For a detailed graph walkthrough, see [Expanded game analysis graph](/help/expanded-analysis-graph/). For loading problems or an unresponsive page, see [Troubleshooting](/help/troubleshooting/).

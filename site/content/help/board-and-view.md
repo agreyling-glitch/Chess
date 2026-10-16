@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-15T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -8,6 +8,8 @@ weight: 13
 ---
 
 Use **View → Show 2D board** or **Show 3D board** to switch the board display. The position and moves stay the same. **Game → Flip board** puts the other color at the bottom without changing the position.
+
+Click **3D ↗** beside the board's **2D/3D** button to open a companion 3D window. Drag it to a second monitor while continuing to use the main board. The companion follows moves, game history, and board orientation. Use its theme dropdown to choose Marble, Wood, Glass, Art Deco, or Egyptian independently of the main board. Click **Flip board** to flip only the companion board; its orientation then stays independent of the main board while moves continue to synchronize. **Reset view** resets the camera without changing this orientation. Click **?** for camera controls. Click outside the help pop-up or press Escape to dismiss it. It is view-only, with independent rotation and zoom: right-drag to rotate, hold the right mouse button and scroll to zoom, or click **Reset view**. Click **3D ↗** again to focus the existing window. Closing it leaves your main workspace running. If your browser blocks the window, allow pop-ups for Ironwood. Keep the main window open for synchronization.
 
 On either a **2D or 3D board**, scroll the mouse wheel over the board to step through moves: **scroll down** goes forward and **scroll up** goes backward. After selecting a move in **Engine prediction**, the wheel steps through that prediction one move at a time, over either the board or the prediction table. Select a move in Game Moves to return to game navigation. On a **3D board**, hold the **right mouse button** while scrolling over the board to zoom instead. Wheel navigation is disabled during active training and online play.
 
@@ -64,3 +66,7 @@ Drag the left edge of the right panel to widen it; the panel can use roughly thr
 ## Window styling
 
 The main menu is a compact sunken strip that ends after Help. Its gold-accented buttons keep a stable size on hover. Background controls, Board Theme, and About use matching recessed sections and gold borders; Board Theme cards expose an **Adjust** button for appearance settings.
+
+## Expanded analysis windows
+
+The [expanded game graph](/help/expanded-analysis-graph/) shows a framed position preview with saved drawings and engine arrows, plus move-aligned capture icons using Merida. Its mouse wheel steps through the game. [Expanded prediction windows](/help/engine-line/) show independent snapshots of candidate lines, with framed coordinate boards that scale to available space.

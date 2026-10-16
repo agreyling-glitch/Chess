@@ -5,6 +5,15 @@
   <p class="lede">{{ .Description }}</p>
   <a class="features-cta" href="/play/">Play now <span aria-hidden="true">→</span></a>
 </section>
+<nav class="features-jump-links" aria-label="Feature groups">
+  <a href="#play-your-way">Play &amp; analyze</a>
+  <a href="#explore-lichess-player-profiles">Player profiles</a>
+  <a href="#train-against-an-adaptive-opponent">Training &amp; puzzles</a>
+  <a href="#explore-opening-choices">Study tools</a>
+  <a href="#build-your-library">Library &amp; imports</a>
+  <a href="#choose-a-2d-or-3d-board">Boards &amp; workspace</a>
+  <a href="#keep-control-of-your-data">Data &amp; privacy</a>
+</nav>
 <article class="features-content prose">
   {{ range split .Content "<h2" }}
     {{ if strings.TrimSpace . }}

@@ -39,8 +39,24 @@ function ensureWorker(){if(worker)return;worker=new Worker('/position-editor/ven
  };worker.onerror=()=>{busy=false;$('upload').disabled=false;$('status').textContent='Recognition worker failed. Manual editing remains available.';worker.terminate();worker=null;};worker.postMessage({type:'warmup'});}
 function scan(file){if(busy||!file)return;if(!file.type.startsWith('image/')){$('status').textContent='Choose an image file.';return;}ensureWorker();busy=true;$('upload').disabled=true;$('status').textContent='Reading board locally… First use downloads the recognition model and runtime.';worker.version=++scanVersion;worker.postMessage({type:'scan',file});}
 function create(){
+ // Generate the same subtle warm/light and dark grain used by the other dialogs.
+ // Keep the texture on the outer surface; the inset panels stay solid.
+ let grain='';
+ if(typeof CanvasRenderingContext2D!=='undefined'){
+  const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+  const context=canvas.getContext('2d');
+  if(context){
+   const pixels=context.createImageData(256,256);let seed=19741029;
+   for(let i=0;i<pixels.data.length;i+=4){
+    seed^=seed<<13;seed^=seed>>>17;seed^=seed<<5;const light=seed&1;
+    pixels.data[i]=light?238:0;pixels.data[i+1]=light?222:0;pixels.data[i+2]=light?194:0;pixels.data[i+3]=(seed>>>8)%18;
+   }
+   context.putImageData(pixels,0,0);grain=canvas.toDataURL();
+  }
+ }
  const css=document.createElement('link');css.rel='stylesheet';css.href='/position-editor/editor.css';document.head.append(css);
  dialog=document.createElement('dialog');dialog.id='ironwood-position-editor';dialog.innerHTML=`<header><h2>Position editor</h2><button id="pe-close" aria-label="Close position editor">×</button></header><section class="pe-body"><div class="pe-workspace"><section class="pe-panel pe-board-panel"><h3>Arrange position</h3><div class="pe-tools"><button id="pe-flip">Flip view</button><button id="pe-rotate">Rotate position</button><button id="pe-standard">Starting position</button><button id="pe-clear">Clear</button></div><div id="pe-board" aria-label="Position board"></div></section><section class="pe-panel pe-piece-panel"><h3>Piece palette</h3><div id="pe-palette" aria-label="Choose a piece"></div><p class="hint">Choose a piece, then click a square. Drag pieces to move them; right-click to erase, or drag a piece into the trash.</p></section></div><aside><section class="pe-panel"><h3>Import screenshot</h3><input id="pe-upload" type="file" accept="image/*"><p class="hint">Paste an image here or drop one into this window. Crop to the board for best results. Cburnett and Merida are the tested sets.</p><p id="pe-status" role="status">Recognition runs locally. Review the result before using it.</p></section><section class="pe-panel"><h3>Position details</h3><label>Side to move<select id="pe-turn"><option value="w">White</option><option value="b">Black</option></select></label><label>Castling rights<input id="pe-rights" placeholder="KQkq or -" aria-describedby="pe-castling-help"></label><small id="pe-castling-help">KQkq for standard chess; rook-file letters for Chess960. Use - for none.</small><label>En passant target<input id="pe-ep" placeholder="- or e3"></label><label>Halfmove clock<input id="pe-half" type="number" min="0"></label><label>Fullmove number<input id="pe-full" type="number" min="1"></label></section></aside></section><footer><section class="pe-panel pe-fen-panel"><label>FEN<textarea id="pe-fen" rows="2" spellcheck="false"></textarea></label><div class="pe-tools"><button id="pe-load">Load FEN</button><button id="pe-copy">Copy FEN</button><span id="pe-error" role="alert"></span><button id="pe-use" class="primary">Use in Ironwood</button></div></section></footer>`;
+ if(grain)dialog.style.backgroundImage=`url("${grain}")`;
  document.body.append(dialog);
  $('close').onclick=()=>dialog.close();dialog.addEventListener('close',()=>{scanVersion++;});
  for(const p of 'KQRBNPkqrbnp '){const button=document.createElement('button');button.type='button';button.title=p===' '?'Erase':(p===p.toUpperCase()?'White ':'Black ')+names[p.toLowerCase()];button.setAttribute('aria-label',button.title);if(p===' '){

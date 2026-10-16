@@ -23,8 +23,14 @@ For example, `1. e4 e5 2. Nf3` means White moves a pawn to e4, Black responds by
 
 ## Expand the prediction into boards
 
-Click the gold **Expand** button beneath the **Engine prediction** table in Real-Time Analysis. A separate window shows one mini board after each predicted move, with its move label and highlighted source and destination squares. Click a mini board to inspect that position on the main board when active play or training does not prevent navigation.
+Click the gray raised **Expand** button beneath the **Engine prediction** table in Real-Time Analysis. A separate window shows one mini board after each predicted move, with its move label and highlighted source and destination squares. Each board has a sunken frame and coordinates on all four sides, following your board orientation. Click a mini board to inspect that position on the main board when active play or training does not prevent navigation.
 
 The title includes the variation number, evaluation, first move, and search depth. Each **Expand** click captures a separate prediction: change the selected variation or analyze another position, then expand again to compare lines side by side. Existing windows keep their captured moves rather than following later engine updates.
 
 Resize a window to scale its boards and change the grid layout, or use the title's **Maximize** and **Restore** controls. Small windows keep pieces readable and scroll additional rows. Each window has a gold border and one shared sunken panel with a visible paper-grain background. Closing one leaves the others open.
+
+## Navigate the docked prediction
+
+Select a candidate in the centered variation selector above the table; it includes the evaluation, first move, and depth. Click a move or use the navigation buttons beneath the table to inspect the continuation. Scrolling over the board or prediction table steps through the selected line. Select a move in **Game Moves** to return to the played game.
+
+The plain column headings identify White and Black, with a narrow move-number column. Changing a variation updates the docked prediction, while already expanded windows keep their snapshots.
