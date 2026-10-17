@@ -1,16 +1,19 @@
 ---
 title: "Import games"
+lastmod: 2026-10-17T00:00:00-05:00
 description: "Choose an import source, review a game collection, or enter a handwritten scoresheet."
 category: "using-ironwood"
 keywords: [import, tabs, PGN, JSON, collection, Lichess, Chess.com, scoresheet]
 weight: 12
 ---
 
-Open **Game → Import…** to choose among four tabs. The window keeps the same size as you switch tabs. On narrow windows, scroll the tab row horizontally to reach every tab. Panel contents scroll vertically when needed. Close the window with **×**.
+Open **Game → Import…** to choose among four tabs. Drag the title or outer background to move the window; drag an edge or corner to resize it. The tab row wraps on narrow windows, and panel contents scroll vertically when needed. The gold-bordered window has a heavy paper-grain outer background and recessed content sections. Close it with **×** or Escape.
 
 ## Paste a game or collection
 
 Paste [PGN](/help/pgn/) for one game or a collection, or paste an Ironwood Analysis JSON export. You can also drag a `.pgn` or `.json` file onto the app. **Clear** empties the text and **Continue** opens the game or collection for review. Analysis JSON restores saved analysis immediately.
+
+Resize the window vertically for a larger paste area. The middle sunken section expands with it; Clear and Continue remain directly below on the outer background.
 
 For a collection, select games to keep and click **Import selected**. Use the player filter and **Select matching** to select matching games. Games already in your library are skipped. Find saved imports under **Game → Load saved game → Imported Games**.
 
@@ -27,6 +30,8 @@ Both panels offer **Games** (20, 50, 100, or 200), **Time control**, and optiona
 Both online sources require an internet connection. After fetching, **Paste a game or collection** opens with the game text; choose **Continue** to review and import it.
 
 ## Scoresheet
+
+For direct access, choose **Tools → Enter a scoresheet…**. This opens the same workspace as the Scoresheet tab's Enter scoresheet button.
 
 The three-step guide explains how to add a reference photo, enter and check moves, and import the finished game. Click **Enter scoresheet** to open the workspace with a board preview and live move validation. You enter moves manually; the photo is a reference. Photos and unfinished drafts stay on your device, and a photo is optional. [Scoresheet entry instructions](/help/import-a-scoresheet/).
 

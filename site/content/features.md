@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 description: "Play locally or online, analyze with Stockfish 19, compare Lichess players, practice puzzles, annotate positions, and keep your study library on your device."
 layout: "features"
 url: "/features/"
@@ -27,7 +27,7 @@ Click the gray raised **Expand** button beneath Engine prediction to see one boa
 
 ## Explore Lichess player profiles
 
-Open your account or any username from **Lichess-Online → Player profile…**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate green-bordered windows, each with independent graph filters and a sunken paper-grain chart. The raised **↗** title-bar button opens a profile in its own browser window for another monitor, sharing the main window’s Lichess connection; full-board reviews return to the main board.
+Open your account or any username from **Lichess lobby → Player profile**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate gold-bordered windows, each with independent graph filters and a sunken paper-grain chart. The raised **↗** title-bar button opens a profile in its own browser window for another monitor, sharing the main window’s Lichess connection; full-board reviews return to the main board.
 
 Click a time-control rating chip for detailed performance: peak and lowest ratings, rank and percentile, opponent averages, record, streaks, and playing time. Best wins and worst losses show up to five games each with the same enlarged playback and full-board review controls as recent games. Statistics are cached separately by player window and time control, with refresh controls for retrying loads. The Puzzles chip does not open performance details.
 
@@ -39,7 +39,7 @@ Expand **Activity** in a Lichess profile to load recent daily results, grouped b
 
 ## Train against an adaptive opponent
 
-Create a local profile in **Training vs AI** and start at a 1320 training rating. Alternate White and Black games against Stockfish, whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, maximize the dashboard, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
+Create a local profile in **Training vs AI** and start at a 1320 training rating. Alternate White and Black games against Stockfish, whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, move or resize the dashboard, or pop it out onto another monitor, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
 
 ## Practice with puzzles
 
@@ -55,7 +55,7 @@ Puzzle attempts with played moves appear under **Puzzles** in Saved Games, using
 
 ## Explore opening choices
 
-Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through Lichess-Online; no separate API token is needed. Signing out clears access and cached results.
+Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through the bottom Lichess button; no separate API token is needed. Signing out clears access and cached results.
 
 Explore common continuations in **Game Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Choose **My games** or **Player** for personal opening history, filter by player color, speed, and month range, see the player’s wins, draws, and losses at the displayed position, and import matching recent completed games for local analysis. Lichess indexes player games on demand; Ironwood shows indexing progress and lets you refresh the statistics afterward. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
 
@@ -125,7 +125,7 @@ Saved Games keeps **My Games**, **Training**, **Puzzles**, **Observed**, and **I
 
 Filter Lichess and Chess.com username imports by time control and an optional date range, and request 20, 50, 100, or 200 matching games. Newest matches come first. Dates use UTC with an inclusive end date, and either boundary can be left open. Reset restores 20 games, all time controls, and no dates. Individual Lichess game links fetch one game independently of the filters. [Import filters](/help/import-games/).
 
-Open **Game → Import…** for four tabs: **Paste a game or collection**, **Lichess**, **Chess.com**, and **Scoresheet**. The window stays the same size across tabs, with large gold-accented tabs and scrollable contents. Paste PGN or Analysis JSON, fetch online games, or enter a handwritten scoresheet. Review collections and choose which games to keep; duplicate games are skipped. Start full-game analysis when ready, or restore saved results immediately with Analysis JSON. [Import Games guide](/help/import-games/).
+Open **Game → Import…** for four tabs: **Paste a game or collection**, **Lichess**, **Chess.com**, and **Scoresheet**. Move or resize the gold-bordered window to fit your workspace; the tab row wraps on narrower windows. The paste area grows with the window, with Clear and Continue directly below it. Paste PGN or Analysis JSON, fetch online games, or enter a handwritten scoresheet. Review collections and choose which games to keep; duplicate games are skipped. Start full-game analysis when ready, or restore saved results immediately with Analysis JSON. [Import Games guide](/help/import-games/).
 
 The online import panels provide clear username fields, gold **Fetch games** buttons, and status messages. Fetched games open in the Paste tab; choose **Continue** to review and import them. The Scoresheet tab provides a three-step guide and an **Enter scoresheet** button to open the entry workspace.
 
@@ -139,7 +139,7 @@ Select **Chess.com** in the tabbed Import window and enter a username to fetch u
 
 ## Import handwritten scoresheets
 
-Turn a handwritten game into PGN with **Game → Import… → Scoresheet → Enter scoresheet**. Type White's and Black's moves beside a photo of the sheet while a board preview and validated move list follow your entries. Zoom and drag the photo to read the handwriting. Live validation catches illegal or missing moves, accepts lowercase piece letters, and adds check and checkmate notation automatically. Correct an earlier move without losing the continuation; gold board highlights and an automatically scrolling move list help you follow the game.
+Turn a handwritten game into PGN with **Tools → Enter a scoresheet…**, or **Game → Import… → Scoresheet → Enter scoresheet**. Both open the same workspace. Type White's and Black's moves beside a photo of the sheet while a board preview and validated move list follow your entries. Zoom and drag the photo to read the handwriting. Live validation catches illegal or missing moves, accepts lowercase piece letters, and adds check and checkmate notation automatically. Correct an earlier move without losing the continuation; gold board highlights and an automatically scrolling move list help you follow the game.
 
 Moves, game details, and the photo save locally so you can stop and return to the unfinished sheet later. Enter the players, event, date, and result, then download PGN or pass the game into Ironwood's existing import flow for review and analysis. See [Import a game from a scoresheet](/help/import-a-scoresheet/) for instructions or [the gallery](/gallery/) for a preview.
 
@@ -153,7 +153,7 @@ Upload, paste, or drop a chessboard screenshot into the position editor. Recogni
 
 ## Meet opponents online
 
-Play with your Lichess account on Ironwood's board. Sign in through **Lichess-Online** using Lichess authorization, then use quick-pairing tiles, create a custom rapid or classical game, challenge a friend, or resume an ongoing game. Pending moves appear immediately as translucent pieces and become solid when Lichess confirms them. Live clocks and game results follow the server.
+Play with your Lichess account on Ironwood's board. Sign in through the **Lichess lobby** using Lichess authorization, then use quick-pairing tiles, create a custom rapid or classical game, challenge a friend, or resume an ongoing game. Pending moves appear immediately as translucent pieces and become solid when Lichess confirms them. Live clocks and game results follow the server.
 
 Set up a casual game against the Lichess computer with **Standard**, **Chess960**, or **From Position** with a validated standard-chess FEN. Choose Unlimited, Real time, or Correspondence, strength 1–8, and White, Random, or Black. The setup uses large strength buttons, piece cards, and a gold start button.
 
@@ -161,23 +161,29 @@ Correspondence games stay ongoing while you return to the lobby, play another ga
 
 During active Lichess play, **Game Analysis** becomes **Game chat**. Resign, abort, draw, takeback, and claim controls are available below the board, in the lobby, and under **Game**, subject to Lichess's rules. Analysis remains available while connected to the lobby and returns when a game ends; finished games save locally. **Leave online play** keeps your authorization for reconnecting, while **Sign out** revokes it. [Playing on Lichess](/help/play-on-lichess/).
 
-After **Connected**, the Lichess status bar shows your username, total games, overall wins/draws/losses, and time-control ratings. Hover for rated-game counts, puzzle statistics, and playing time. Provisional ratings carry a question mark; unrated categories show a dash. [Lichess profile statistics](/help/play-on-lichess/#profile-statistics-in-the-status-bar).
+The bottom **Lichess** button opens the lobby directly. Connection state and your username appear separately; click your username or choose Player profile in the lobby for your record, ratings, graphs, and recent games.
 
-Connect to the Free Internet Chess Server (FICS) as a guest or sign in with an existing account. Browse available games, seek an unrated opponent with your chosen time and increment, challenge a specific player, and respond to incoming challenges. Live boards and clocks follow the server. Finished games are saved on this device for later review and analysis.
+Move or resize the Lichess lobby, or use its raised **↗** button to open it on another monitor. The pop-out shares the main window's connection and applies matchmaking and game commands there. Only the selected Quick pairing, Create a game, or Correspondence tab is gold; inactive tabs are gray. A larger account name and subtle paper-grain panels make the lobby easier to scan. Keep the main window open while using the pop-out.
 
-The FICS status bar shows your handle and Lightning, Blitz, and Standard ratings. Hover for category records, rated-game totals, rating deviation, and best ratings when available. Statistics refresh at sign-in and after a game finishes; guest accounts are labeled separately. [FICS account statistics](/help/online-play/#fics-account-statistics).
+Open the bottom **FICS** button for the **Free Internet Chess Server** window, with Console, Chat, Lobby, History, Watch, and Play tabs. Connect as a guest or use the Connection menu to create an account or sign in. Remember handle fills your saved handle after reloads; the password is not saved. Connecting preserves your local board and analysis until a game starts or you open a watched game. Live boards and clocks follow FICS; completed games save locally.
+
+The FICS status bar separates its window button, connection state, and connected handle. Hover the handle for available account records. Lobby lists available games in a color-coded table, with a player-type legend and Finger profile popups. Play groups opponent search, time controls, named-player challenges, and Accept/Decline controls. [FICS guide](/help/online-play/).
 
 ## Watch live games
 
-Browse running FICS games and watch up to 10 games simultaneously. Spacious, scrollable game lists make it easier to compare players and time controls. Follow the moves and clocks and switch between observation tabs. Once a game finishes, run full-game analysis to review its moves and key moments.
+The **Watch** tab lists public FICS games in a sunken table with players, ratings, game type, and time controls. Refresh the list, start watching, reopen a game you already watch, or Stop watching all. Watch up to 10 games and switch between observation tabs above the board. Finished games can be analyzed afterward.
+
+## Preview and review FICS history
+
+Enter any player handle in **History** to see a table of recent games, results, opponents, ratings, time controls, opening codes, and dates. **Preview** uses the moves player without changing the main board. **Review** opens the archived game on the main board at its starting position, keeping FICS connected; save it explicitly if you want it in your library. Lobby’s History button looks up its selected player. [History help](/help/online-play/#history-recent-games-previews-and-reviews).
 
 ## Keep conversations together
 
-The FICS console opens automatically when you connect. Separate chat tabs keep player conversations and channels alongside the server console, with unread counts and a draft for each conversation. Start a chat by player name or channel number, and use the console for server commands and replies. Chats last for the current session; FICS account and channel permissions determine where you can send messages.
+The FICS **Console** shows server commands and replies. **Chat** has a separate row of player and channel tabs, wrapped messages, unread counts, and independent drafts. Start a conversation or join a channel with New chat. The raised pop-out button opens the server window on another monitor, sharing the main connection. Chats last for the current session; FICS permissions determine where you can send messages.
 
 ## Choose a 2D or 3D board
 
-Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and right-button-plus-wheel zoom. Open **View → Board → Theme…** for a full-size chooser with **2D** and **3D** tabs. It always opens on **2D**; the Marble, Wood, Glass, Art Deco, and Egyptian previews load when you select **3D**. Click a card to apply it and switch board views. Each card has a gear for per-theme adjustments. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
+Switch between 2D and 3D from the **View** menu or the button beside Flip Board. The 3D board sits inside the same game workspace, with right-button drag rotation, right-button double-click to reset the view, and right-button-plus-wheel zoom. Open **View → Board → Theme…** for a movable, resizable chooser with **2D** and **3D** tabs. It always opens on **2D**; the Marble, Wood, Glass, Art Deco, and Egyptian previews load when you select **3D**. Click a card to apply it and switch board views. Each card has an Adjust button for per-theme settings. The 2D controls include gradient colors, inner shading, outlines, and shadows. The 3D controls include size, height, materials, shadows, overall appearance, and radial lighting. See [Board themes and appearance](/help/board-themes/). Wood uses Omie's CC0 chess set. Adjust its appearance with one slider for brightness, contrast, and gloss. Coordinates, move highlights, best-move arrows, and a graphical promotion chooser remain available. Beneath each player's name, piece icons show their captures and a +score shows a material advantage; these follow the selected position as you review moves. **Copy Board to Clipboard** in Game Moves captures the selected position in the active 2D or 3D view.
 
 ## Put a 3D board on another monitor
 
@@ -191,7 +197,7 @@ Choose **Smooth, Marble veins, Wood grain, Linen, Slate, Glass, or Sand** as the
 
 Classic Staunton pairs its pieces with cream and walnut squares. Neon Geometric uses navy squares and cyan coordinates; Art Deco Faceted uses jade and teal with gold accents. The palettes follow the theme in the live board, chooser previews, and copied board images.
 
-Open a theme card’s **gear** or **View → Board → Theme adjustments…** to customize it. Changes apply immediately and save separately for each theme on this device. **Reset this theme** restores only that theme’s defaults.
+Open a theme card’s **Adjust** button or **View → Board → Theme adjustments…** to customize it. Changes apply immediately and save separately for each theme on this device. **Reset this theme** restores only that theme’s defaults.
 
 For illustrated 2D pieces, choose separate White and Black colors or gradients with independent start and end colors. Select vertical, horizontal, diagonal, or center-outward gradients, or start from a preset. **Inner shading** adds rounded volume inside the artwork; smoothed contrasting outlines help the silhouettes stand out. Size and shadow strength/softness are adjustable too. Processed piece images are cached for normal redraws.
 
@@ -224,6 +230,8 @@ Adjust image opacity, background gradient strength, and the 3D backdrop independ
 First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background opacity**. Returning users retain their saved choices. Changes apply immediately; uploaded backgrounds and preferences stay on this device. [Background settings](/help/board-and-view/#app-background).
 
 ## A consistent study workspace
+
+Board Theme and Background open at normal sizes and can be moved, resized, or opened in separate browser windows with **↗**. Both have raised **×** buttons, gold 3D borders, heavy outer paper grain, and linen and subtle-grain inset sections. Theme choices and background changes in a pop-out apply to the main workspace; theme **Adjust** controls open in the main window. Import Games uses matching gold borders and textured sections. Engine Settings marks its selected context tab with a raised gold finish and dark text. Allow browser pop-ups for Ironwood and keep the main window open when using companion windows.
 
 A resizable **New Game** window separates Play Mode, Engine Settings, Game Settings, Your Side, and online server choices. Compact engine controls and centered start/connect buttons leave more room for setup.
 

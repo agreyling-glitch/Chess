@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 title: "Board themes and appearance"
 description: "Choose and customize 2D or 3D themes, with guidance on artwork downloads, Retry, and offline use."
 category: "using-ironwood"
@@ -22,6 +22,12 @@ The flat-board themes are System (Unicode), Cburnett, Merida, Royal Rascals, Und
 These palettes follow the selected theme automatically and appear in the live board, theme previews, and copied board images.
 
 The 3D themes are Marble, Wood, Glass, Art Deco, and Egyptian. Switch dimensions with the **2D / 3D** button above the board or the View menu. Right-click that button to open the theme chooser.
+
+## Arrange the theme window
+
+Board Theme opens at a normal size. Drag its title or outer background to move it, and drag an edge or corner to resize it. Preview cards rearrange to fit the available width. The window has a gold 3D border, heavy outer paper grain, linen behind the top controls, and subtle grain behind each theme preview.
+
+Click the raised **↗** button to open Board Theme in a separate browser window; **×** closes it. Theme selections there apply to the main board. **Adjust** selects the theme and opens its adjustment controls in the main Ironwood window. Reopen Board Theme in the main window and click **↗** again to focus an existing pop-out. Allow pop-ups for Ironwood if blocked, and keep the main window open while using the chooser.
 
 ## Loading artwork and offline use
 
@@ -51,7 +57,7 @@ Rotation, reset, and zoom change only your view. Normal scrolling changes the di
 
 Choose **Hybrid Marble** in the **2D** tab for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
 
-Open the Hybrid Marble card's **gear**, or **View → Board → Theme adjustments…**, to customize it:
+Open the Hybrid Marble card's **Adjust** button, or **View → Board → Theme adjustments…**, to customize it:
 
 | Setting | Choices and behavior |
 | --- | --- |
@@ -66,7 +72,7 @@ The usual flat-board size, side-color, gradient, outline, and shadow controls al
 
 ## Adjust one theme
 
-Click a theme card’s **gear** to select it and open its adjustments. You can also use **View → Board → Theme adjustments…** for the current theme. Changes appear immediately and save separately for each theme on this device. Switching themes restores that theme’s settings. **Reset this theme** restores only the selected theme’s defaults.
+Click a theme card’s **Adjust** button to select it and open its adjustments. You can also use **View → Board → Theme adjustments…** for the current theme. Changes appear immediately and save separately for each theme on this device. Switching themes restores that theme’s settings. **Reset this theme** restores only the selected theme’s defaults.
 
 ## 2D adjustments
 

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -9,11 +9,19 @@ weight: 24
 
 ## Connect and open the lobby
 
-Open **Lichess-Online → Lichess lobby and game controls…**, then choose **Sign in with Lichess**. You can also use **Game → New game → Online → Lichess**. Authorize Ironwood on Lichess, then return to Ironwood. Ironwood never asks for your Lichess password.
+Open the bottom **Lichess** button, then choose **Sign in with Lichess**. You can also use **Game → New game → Online → Lichess**. Authorize Ironwood on Lichess, then return to Ironwood. Ironwood never asks for your Lichess password.
 
 The lobby opens manually. Being connected does not make it reopen whenever you start a local game or load a saved game. Refreshing reconnects your account without automatically engaging an existing correspondence game. Open the lobby and select a game when you want to resume it.
 
-The lobby shows the Lichess account connection; the status bar follows the active online board. The account link opens Lichess in a new browser tab. Your authorization stays in this browser session and is excluded from saved games and backups.
+The lobby and bottom status bar show the Lichess account connection independently of which service owns the board. The account link opens Lichess in a new browser tab. Your authorization stays in this browser session and is excluded from saved games and backups.
+
+## Arrange or pop out the lobby
+
+Drag the lobby title or outer background to move it; drag its edges or corners to resize it. Quick-pairing tiles wrap to fit narrower windows. Your account name appears in larger bold text. The selected **Quick pairing**, **Create a game**, or **Correspondence** tab is gold, and inactive tabs are gray. Matchmaking controls sit in a sunken paper-grain section; Leave online play and Sign out sit below it on the outer background.
+
+Click the raised **↗** button beside **×** to open the lobby in a separate browser window. It shares the main Ironwood window's Lichess connection, ongoing games, and matchmaking state. Matchmaking, challenges, sign-in, sign-out, and game actions use that connection. **Player profile** and the **Resign…** confirmation open in the main window. Games continue on the main board.
+
+Keep the main window open while using the lobby pop-out. Closing the pop-out with **×** leaves the connection running; Leave online play and Sign out retain their respective effects. To focus an existing pop-out, reopen the lobby from the main window's bottom Lichess button and click **↗** again. Allow pop-ups for Ironwood if the browser blocks it.
 
 ## Quick pairing and creating a game
 
@@ -98,7 +106,7 @@ The [Lichess Board API documentation](https://lichess-org.github.io/api/#tag/Boa
 
 ## Profile statistics in the status bar
 
-After **Connected**, the bottom status bar shows your username, total games, overall wins/draws/losses, and Bullet, Blitz, Rapid, Classical, and Correspondence ratings. Hover over the summary for rated-game counts, puzzle statistics, and playing time. Ratings with `?` are provisional; `—` means no rating has been established in that category. Casual games count toward your overall record but do not establish a rated time-control rating. Statistics are fetched at sign-in or account reconnect and cleared when you disconnect.
+The bottom status bar shows the **Lichess** button, connection state, and connected username. Click Lichess to open the lobby, or click the username to open your player profile. The profile contains your game record, ratings, rating history, and detailed time-control performance. Ratings with `?` are provisional; `—` means no rating has been established in that category.
 
 ## Lichess account access alongside FICS
 
@@ -110,7 +118,7 @@ Only one game controls the board. An active FICS game cannot be replaced by a ba
 
 See the dedicated [Lichess player profiles guide](/help/lichess-player-profiles/) for browsing, comparison windows, performance statistics, following, activity, and game playback.
 
-Open **Lichess-Online → Player profile…**, or click your connected account summary. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID.
+Click the bottom **Lichess** button and choose **Player profile**, or click your connected username. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID.
 
 Choose Bullet, Blitz, Rapid, Classical, or Correspondence and a date range (**1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**). Hover the graph to inspect a date and rating. If a period has no history, try **ALL** or another time control. The graph has its own sunken paper-grain surface. Game-record counters and recent-game cards adapt to narrow windows.
 
@@ -118,7 +126,7 @@ Biography and website links open in new tabs. Clicking the FIDE rating opens the
 
 **Follow** and **Unfollow** update your Lichess following list. Expand **Following** to search followed players and open their profiles. Older sign-in sessions may need **Sign in again for follow access** before these controls work.
 
-Use **Load in new window**, or open the menu item again, to compare players in independent windows. Each green-bordered window keeps its own player, filters, size, and position.
+Use **Load in new window**, or reopen Player profile from the lobby, to compare players in independent windows. Each gold-bordered window keeps its own player, filters, size, and position.
 
 ### Detailed performance by time control
 

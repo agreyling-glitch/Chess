@@ -4,13 +4,13 @@ description: "Set up Stockfish for play, realtime analysis, and full-game analys
 category: "terms"
 keywords: [engine settings, depth, nodes, nps, threads, hash, quality, quick, standard, deep, custom, performance, verification]
 weight: 60
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 ---
 
 ## Open engine settings
 
-1. In the app's bottom status bar, click the gold-outlined engine settings button. Its label changes with the workspace: for example, **Play · Maximum strength · Skill 20**, **Analysis · MultiPV 3**, or **Engine settings**.
-2. Select **Play**, **Realtime Analysis**, or **Full game Analysis**.
+1. In the app's bottom status bar, click the gray raised **Settings** button beside the engine name and Ready/Analyzing state. You can also use **Game → Engine settings…**.
+2. Select **Play**, **Realtime Analysis**, or **Full game Analysis**. The selected tab has a raised gold finish and dark text.
 3. Adjust the settings, then click **Apply**. **Cancel** discards your changes.
 
 Engine settings are unavailable while full-game analysis is running or paused, and during a live training game. Stop full-game analysis before changing its settings.

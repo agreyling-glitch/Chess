@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-16T00:00:00-05:00
 title: "Opening Explorer"
 description: "Explore common opening moves and game results without changing your game."
 category: "using-ironwood"
@@ -11,7 +11,7 @@ weight: 20
 
 **Read about [ECO code] on ChessCodex** opens the matching opening category, such as **A04** for the Zukertort Opening. The link appears when Lichess supplies an ECO code and follows recognized openings as you explore. An ECO category may cover several variations.
 
-Opening Explorer uses your existing Ironwood Lichess sign-in session. Sign in through **Lichess-Online**; no separate API token is needed. Signing out clears access and cached results. If your session is rejected, sign out and sign in again.
+Opening Explorer uses your existing Ironwood Lichess sign-in session. Sign in through the **Lichess lobby**; no separate API token is needed. Signing out clears access and cached results. If your session is rejected, sign out and sign in again.
 
 Opening Explorer is available for local review while your account is connected. Engine assistance and exploration are unavailable while an online game is engaged; finish the game or put a correspondence game aside before reviewing another game.
 

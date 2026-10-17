@@ -206,3 +206,60 @@ test('move backfill starts when the observe prompt arrives before the board', as
   connection.onmessage({ data: '<12> rnbqkbnr pppppppp -------- -------- ----P--- -------- PPPP-PPP RNBQKBNR B 4 1 1 1 1 0 42 Alice Bob 0 300 0 39 39 280 270 1 P/e2-e4 (0:01) e4 0\n' });
   assert.deepEqual(JSON.parse(connection.sent.at(-1)), { type: 'command', value: 'moves 42' });
 });
+
+test('finger captures the requested player response across chunks and stops at the prompt', async () => {
+  let connection;
+  class FakeWebSocket {
+    static OPEN = 1;
+    constructor() { this.readyState = 1; this.sent = []; connection = this; }
+    send(value) { this.sent.push(value); }
+    close() {}
+  }
+  globalThis.window = {};
+  globalThis.location = { protocol: 'http:', host: 'localhost' };
+  globalThis.WebSocket = FakeWebSocket;
+  await import('../web/fics/bridge.js?finger-popup');
+  window.ironwoodFicsConnect();
+  connection.onmessage({data:'login: '});
+  connection.onmessage({data:'\nPress return to enter as GuestABCD\n'});
+  connection.onmessage({data:'fics% '});
+  window.ironwoodFicsSendCommand('finger GriffySr');
+  assert.equal(JSON.parse(connection.sent.at(-1)).value, 'finger GriffySr');
+  connection.onmessage({data:'Other message\nfics% Finger of GriffySr(C):\nBlitz 2010 50.0 1 2 3 6\n'});
+  connection.onmessage({data:'1: Computer profile\nfics% '});
+  connection.onmessage({data:'Unrelated message\n'});
+  const events = [];
+  for (let json; (json = window.ironwoodFicsPoll());) events.push(JSON.parse(json));
+  const result = events.filter(event => event.type === 'finger').at(-1);
+  assert.equal(result.player, 'GriffySr');
+  assert.equal(result.output, 'Finger of GriffySr(C):\nBlitz 2010 50.0 1 2 3 6\n1: Computer profile');
+  window.ironwoodFicsSendCommand('history GriffySr');
+  assert.equal(JSON.parse(connection.sent.at(-1)).value, 'history GriffySr');
+  connection.onmessage({data:'History for GriffySr:\n     Opponent Type ECO End Date\n23: + 2010 W 1800 Alice [bu 2 12] C44 Mat Fri Oct 16\nfics% '});
+  const historyEvents = [];
+  for (let json; (json = window.ironwoodFicsPoll());) historyEvents.push(JSON.parse(json));
+  const history = historyEvents.filter(event => event.type === 'player_history').at(-1);
+  assert.equal(history.player, 'GriffySr');
+  assert.ok(history.output.includes('23: + 2010 W 1800 Alice'));
+  assert.ok(!history.output.includes('Computer profile'));
+  window.ironwoodFicsSendCommand('history Nobody');
+  connection.onmessage({data:'Nobody has no history.\nfics% '});
+  const emptyEvents = [];
+  for (let json; (json = window.ironwoodFicsPoll());) emptyEvents.push(JSON.parse(json));
+  assert.ok(emptyEvents.some(event => event.type === 'player_history' && event.output === 'Nobody has no history.'));
+  window.ironwoodFicsSendCommand('smoves GriffySr 23');
+  connection.onmessage({data:'GriffySr (2010) vs. Alice (1800) --- Fri Oct 16\nUnrated Blitz match, initial time: 2 minutes, increment: 12 seconds.\nMove GriffySr Alice\n---- ---- ----\n1. e4 (0:01) e5 (0:02)\n2. Nf3 (0:01) Nc6 (0:01)\n{Game drawn by agreement} 1/2-1/2\nfics% '});
+  const archiveEvents = [];
+  for (let json; (json = window.ironwoodFicsPoll());) archiveEvents.push(JSON.parse(json));
+  const archive = archiveEvents.find(event => event.type === 'archived_game');
+  assert.ok(archive.pgn.includes('[White "GriffySr"]'));
+  assert.ok(archive.pgn.includes('[Black "Alice"]'));
+  assert.ok(archive.pgn.includes('1. e4 e5 2. Nf3 Nc6 1/2-1/2'));
+  assert.equal(archive.preview, false);
+  window.ironwoodFicsSendCommand('ironwood:preview GriffySr 23');
+  assert.equal(JSON.parse(connection.sent.at(-1)).value, 'smoves GriffySr 23');
+  connection.onmessage({data:'GriffySr (2010) vs. Alice (1800) --- Fri Oct 16\n1. d4 (0:01) d5 (0:02)\n{Game drawn by agreement} 1/2-1/2\nfics% '});
+  const previewEvents = [];
+  for (let json; (json = window.ironwoodFicsPoll());) previewEvents.push(JSON.parse(json));
+  assert.ok(previewEvents.some(event => event.type === 'archived_game' && event.preview === true));
+});

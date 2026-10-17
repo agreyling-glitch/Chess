@@ -3,6 +3,24 @@ use super::*;
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen]
 extern "C" {
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrainingCompanionMode)]
+    fn training_companion_mode() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrainingCompanionOpen)]
+    fn training_companion_open() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenTrainingCompanion)]
+    fn open_training_companion() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCloseTrainingCompanion)]
+    fn close_training_companion();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPublishTrainingLive)]
+    fn publish_training_live(live: bool);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodReadTrainingLive)]
+    fn read_training_live() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTakeTrainingChanged)]
+    fn take_training_changed() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStartTrainingInMain)]
+    fn start_training_in_main(id: &str) -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTakeTrainingStarts)]
+    fn take_training_starts() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrainingProfilesAction)]
     fn profile_action(command: &str, payload: &str) -> String;
 }
@@ -19,6 +37,50 @@ struct ProfileManager {
 }
 
 impl ChessApp {
+    pub(super) fn training_companion_ui(&mut self, ui: &mut egui::Ui) {
+        #[cfg(target_arch = "wasm32")]
+        if training_companion_mode() {
+            self.poll_training_companion(ui.ctx());
+            self.training_dialog_open = true;
+            self.training_dialog(ui.ctx());
+        }
+    }
+
+    pub(super) fn poll_training_companion(&mut self, ctx: &egui::Context) {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if take_training_changed() {
+                match Self::read_training_profiles() {
+                    Ok(profiles) => self.training_profiles = profiles,
+                    Err(error) => self.training_error = Some(error),
+                }
+            }
+            if !training_companion_mode() {
+                publish_training_live(self.training_live());
+                if let Ok(starts) = serde_json::from_str::<Vec<String>>(&take_training_starts()) {
+                    for id in starts {
+                        if self.training_live() || self.profile_management_busy() { continue; }
+                        if let Ok(mut profiles) = Self::read_training_profiles() {
+                            if !profiles.profiles.iter().any(|profile| profile.id == id) { continue; }
+                            profiles.selected_id = id;
+                            self.training_profiles = profiles;
+                            self.start_training_game();
+                        }
+                    }
+                }
+            }
+            if training_companion_mode() || training_companion_open() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = ctx;
+    }
+
+    pub(super) fn is_training_companion() -> bool {
+        #[cfg(target_arch = "wasm32")]
+        { return training_companion_mode(); }
+        #[cfg(not(target_arch = "wasm32"))]
+        false
+    }
     fn training_sunken_section<R>(
         ui: &mut egui::Ui,
         contents: impl FnOnce(&mut egui::Ui) -> R,
@@ -74,6 +136,8 @@ impl ChessApp {
             .is_some_and(|position| position.is_insufficient_material())
     }
     pub(super) fn training_live(&self) -> bool {
+        #[cfg(target_arch = "wasm32")]
+        if training_companion_mode() { return read_training_live(); }
         self.training.is_some() && self.game_result() == "*"
     }
 
@@ -282,6 +346,13 @@ impl ChessApp {
     }
 
     pub(super) fn start_training_game(&mut self) {
+        #[cfg(target_arch = "wasm32")]
+        if training_companion_mode() {
+            if let Some(profile) = self.training_profiles.selected() {
+                if !start_training_in_main(&profile.id) { self.training_error = Some("Keep the main Ironwood window open to start a training game.".into()); }
+            }
+            return;
+        }
         if self.profile_management_busy() { return; }
         self.settle_training();
         if self.training_error.is_some() {
@@ -836,22 +907,34 @@ impl ChessApp {
             return;
         }
         let mut close = false;
-        egui::Modal::new(egui::Id::new("training_profiles")).frame(Self::dialog_frame()).show(ctx, |ui| {
+        let mut detached = false;
+        let response = egui::Window::new("Training profiles").id(egui::Id::new("training_profiles"))
+            .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(true)
+            .default_pos(egui::pos2(48.0,48.0))
+            .default_size(Vec2::new(780.0, (ctx.content_rect().height()-96.0).clamp(240.0,800.0)))
+            .min_size(Vec2::new(360.0,240.0))
+            .max_width((ctx.content_rect().width()-40.0).max(280.0))
+            .max_height((ctx.content_rect().height()-40.0).max(200.0))
+            .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
+                offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160),
+            })).show(ctx, |ui| {
             let grain=ui.painter().add(egui::Shape::Noop);
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(15.0));
             ui.spacing_mut().item_spacing.y = 8.0;
-            let available_width = (ctx.content_rect().width() - 64.0).max(260.0);
-            ui.set_width(if self.training_dialog_maximized { available_width } else { available_width.min(740.0) });
-            let window_height = if self.training_dialog_maximized {
-                ctx.content_rect().height() - 40.0
-            } else {
-                (ctx.content_rect().height() * 0.85).min(ctx.content_rect().height() - 64.0)
-            }.max(200.0);
-            ui.set_min_height(window_height - 36.0);
-            close = Self::dialog_header_with_maximize(ui, "Training profiles", Some(&mut self.training_dialog_maximized));
-            let content_height = (window_height - 84.0).max(120.0);
+            ui.horizontal(|ui| {
+                ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
+                    egui::Label::new(RichText::new("Training profiles").size(21.0).strong()).selectable(false).truncate());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close Training Profiles").clicked() { close=true; }
+                    #[cfg(target_arch="wasm32")]
+                    if !training_companion_mode() && Self::glossy_board_button(ui,"↗",false,true)
+                        .on_hover_text("Move Training Profiles to a separate window").clicked() { detached=open_training_companion(); }
+                });
+            });
+            ui.add_space(10.0);
+            let content_height=(ui.available_height()-8.0).max(100.0);
             egui::ScrollArea::vertical().id_salt("training_progress")
                 .max_height(content_height).min_scrolled_height(content_height).auto_shrink([false, false])
                 .show_gold(ui, |ui| {
@@ -888,7 +971,8 @@ impl ChessApp {
                 ui.label(RichText::new("Areas to focus on").size(19.0).strong().color(Color32::from_rgb(211, 173, 98)));
                 let stats = profile.analysis_totals();
                 let analyzed_games = profile.results.iter().filter(|r| r.analysis.analyzed_moves() > 0).count();
-                if Self::training_focus_ui(ui, &stats, analyzed_games, !self.training_live() && !(self.fics_active && self.fics_playing)) { close = true; }
+                if Self::training_focus_ui(ui, &stats, analyzed_games, !Self::is_training_companion() && !self.training_live() && !(self.fics_active && self.fics_playing)) { close = true; }
+                if Self::is_training_companion() { ui.weak("Open Training Profiles in the main window to launch puzzle practice."); }
                 if stats.missed_mates + stats.allowed_mates > 0 { ui.label(format!("Tactics: {} missed mates · {} moves allowing mate. Review those positions before your next session.", stats.missed_mates, stats.allowed_mates)); }
                 let flags = profile.results.iter().filter(|r| r.timed_out).count();
                 if flags > 0 { ui.label(format!("Clock management: {flags} games lost on time.")); }
@@ -917,7 +1001,12 @@ impl ChessApp {
             ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
                 egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
         });
-        if close {
+        if let Some(window)=response {
+            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id),window.response.rect);
+        }
+        #[cfg(target_arch="wasm32")]
+        if close && training_companion_mode() { close_training_companion(); }
+        if close || detached {
             self.training_dialog_open = false;
         }
     }

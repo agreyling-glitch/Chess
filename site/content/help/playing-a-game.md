@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -21,7 +21,7 @@ During an ordinary local game (outside Training vs AI), **Game → Take back** u
 
 Active games show **Resign…** and draw controls beneath the board in both 2D and 3D. Local two-player games use **Offer draw…**, followed by the other player choosing **Accept draw** or **Decline / keep playing**. Engine opponents do not negotiate draw offers, so that button is disabled against an engine. Ordinary local games also show **Take back**; training games do not. Lichess includes draw, takeback, abort, and claim actions supported by its server; FICS includes **Offer draw**, **Accept offer**, and **Decline offer**. Finished games and replay boards hide these actions.
 
-For an online game, choose the Online option, then **Lichess** or **FICS**. See [Play on Lichess](/help/play-on-lichess/) or [Playing online with FICS](/help/online-play/). The **Lichess-Online** and **FICS-Online** menus provide each service's controls. Lichess computer setup offers Standard, Chess960, and From Position, with Unlimited, Real time, or Correspondence timing. See the Lichess help page for its FEN input and strength settings. When a game ends, you can [analyze it](/help/getting-started/).
+For an online game, choose the Online option, then **Lichess** or **FICS**. See [Play on Lichess](/help/play-on-lichess/) or [Playing online with FICS](/help/online-play/). The bottom **Lichess** and **FICS** buttons open each service's window directly. Lichess computer setup offers Standard, Chess960, and From Position, with Unlimited, Real time, or Correspondence timing. See the Lichess help page for its FEN input and strength settings. When a game ends, you can [analyze it](/help/getting-started/).
 
 
 ## Focus on the board
@@ -32,7 +32,7 @@ Press **Shift+Enter** to toggle focus mode when you are not editing a text field
 
 ## Adjust piece appearance
 
-Open **View → Board → Theme…** to browse the available 2D piece sets and five 3D themes. Click a card’s gear to select and adjust that theme, or use **View → Board → Theme adjustments…** for the current theme. Adjustments save separately for each theme on this device. See [Board themes and appearance](/help/board-themes/) for board palettes, gradients, inner shading, outlines, materials, shadows, and lighting.
+Open **View → Board → Theme…** to browse the available 2D piece sets and five 3D themes. Click a card’s **Adjust** button to select and adjust that theme, or use **View → Board → Theme adjustments…** for the current theme. Adjustments save separately for each theme on this device. See [Board themes and appearance](/help/board-themes/) for board palettes, gradients, inner shading, outlines, materials, shadows, and lighting.
 
 ## New Game window
 

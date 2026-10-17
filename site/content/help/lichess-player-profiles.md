@@ -4,14 +4,14 @@ description: "Browse any player, compare ratings, inspect performance and activi
 category: "using-ironwood"
 keywords: [lichess, profile, username, biography, ratings, FIDE, follow, following, performance, best wins, worst losses, activity, recent games]
 weight: 25
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-16T00:00:00-05:00
 ---
 
 ## Open your account or another player
 
-Choose **Lichess-Online → Player profile…**. Enter a username and choose **Load player**, or choose **My account** while signed in. The window title identifies the player's name and account ID. Public profiles can be browsed by username; account-specific actions require your Lichess sign-in.
+Click the bottom **Lichess** button, then choose **Player profile** in the lobby. Enter a username and choose **Load player**, or choose **My account** while signed in. The window title identifies the player's name and account ID. Public profiles can be browsed by username; account-specific actions require your Lichess sign-in.
 
-Use **Load in new window**, or open the menu item again, to compare players. Each green-bordered window has its own player, selected time control, date range, and position. Drag or resize it to fit your workspace.
+Use **Load in new window**, or reopen Player profile from the lobby, to compare players. Each gold-bordered window has its own player, selected time control, date range, and position. Drag or resize it to fit your workspace.
 
 ## Move a profile to a separate browser window
 

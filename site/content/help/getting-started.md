@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 ---
 
 ## Open a game
@@ -13,7 +13,7 @@ Play a game in Ironwood or open one from your saved games. You can also import a
 
 Open **Game → Import…** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
 
-For a handwritten game, choose **Game → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
+For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
 
 ## Run game analysis
 

@@ -314,7 +314,7 @@ copies of insights so changing a test chart does not change the production chart
 
 Click your account summary in the connected status bar, or **Player profile** in the signed-in Lichess lobby. Load your account or any Lichess username. The profile shows public biography, ratings, total/rated games and wins/losses/draws, daily history by time control, and the latest 12 completed games with final-position boards and links to Lichess. Graph filters offer 1M, 3M, 6M, YTD, 1Y and ALL; hover to inspect a date and rating. Narrow windows stack the biography below the graph.
 
-Profile, history and games load on demand using the existing sign-in, remain in memory for the session, and can be refreshed. Viewing another player does not change your account or board. Missing profile fields and unavailable time controls are shown explicitly; successful sections remain visible if a later request fails. No additional dependencies, artwork, or account permissions are required.
+Profile, history and games load on demand using the existing sign-in, remain in memory for the session, and can be refreshed. Viewing another player does not change your account or board. Missing profile fields and unavailable time controls are shown explicitly; successful sections remain visible if a later request fails. Public profile browsing adds no dependencies or artwork; following actions use the permissions described below.
 
 ### Saved-game move counts
 
@@ -334,4 +334,22 @@ Profile biography and website links open in new tabs. The FIDE rating opens the 
 
 ### Expanded engine prediction windows
 
-The raised gold **Expand** button beneath Engine prediction opens a snapshot with one mini board after each predicted move. Each title includes variation, evaluation, first move, and depth. Open multiple snapshots for comparison; each has its own size, position, maximize/restore state, and captured line. Boards scale to available space and scroll when needed. Clicking a board navigates the captured prediction when active play permits it. Gold borders and a shared sunken panel with stronger procedural paper grain match the bottom Full Game Analysis details panel; profile rating graphs use a subtler grain in their own sunken section.
+The gray raised **Expand** button beneath Engine prediction opens a snapshot with one mini board after each predicted move. Each title includes variation, evaluation, first move, and depth. Open multiple snapshots for comparison; each has its own size, position, maximize/restore state, and captured line. Boards scale to available space and scroll when needed. Clicking a board navigates the captured prediction when active play permits it. Gold borders and a shared sunken panel with stronger procedural paper grain match the bottom Full Game Analysis details panel; profile rating graphs use a subtler grain in their own sunken section.
+
+### Player-profile companion windows and activity
+
+Use the raised **↗** button beside Close in a player profile’s header to move it into a separate browser window. Pop-outs retain player, time-control, range, and performance selections and fill the browser area; in-app profile headers remain draggable. The main window owns the Lichess connection and publishes profile data to its same-origin companions. Profile requests are forwarded to that connection, and **Review on Ironwood** queues a review on the main board with its normal active-play guards. Keep the main window open. Blocked pop-ups leave the original profile available.
+
+Rating chips open detailed performance, including records, peaks, streaks, and up to five best wins/worst losses. Notable games use a batch export request for browser-compatible previews. Recent games can be collapsed. Activity loads on demand with daily games, puzzle results, and rating changes, cached per profile window.
+
+### Expanded game graph
+
+The expanded evaluation graph supports hover/click inspection, Previous/Next, a position slider, and wheel navigation (down advances, up goes back). Two capture-event rows use 34px Merida icons regardless of the board theme. The framed position preview has coordinates, follows orientation, and renders saved position drawings plus the main board’s applicable best-move arrows. The graph, details, notes, and preview have spaced sunken sections. Input reads occur outside egui data locks; a regression test exercises graph opening after the freeze fix.
+
+### Workspace and documentation
+
+Fine linen and procedural paper grain distinguish recessed study surfaces without adding third-party artwork. Engine predictions use plain table headings and a centered gray Expand button; snapshot boards have frames and coordinates. New Game groups setup by mode and supports vertical resizing without growing horizontally when Training vs AI is selected. Saved Games controls, Notes, Draw on board, Tactical Map, engine settings, and training profiles use the shared visual treatment.
+
+Puzzles now synchronize with the **main board**, using its appearance. Played attempts are saved in the Puzzles library category separately from device-wide progress. Save a temporary profile review explicitly before switching to a puzzle; reopen saved games from the library afterward.
+
+The Help center supports article-text search with multiple terms, topic filters, quick links, and per-article contents. Dedicated guides cover player profiles, expanded graphs, and recovery. Features includes navigation across the current workflows. Optional analytics still excludes automatic freeze reporting; discussing a watchdog did not enable one.

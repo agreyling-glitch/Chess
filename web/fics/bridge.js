@@ -15,6 +15,8 @@ let loginMode = 'guest';
 let pendingPassword = '';
 let loginError = '';
 let profileRows = [], readingProfile = false;
+let fingerRequest = null;
+let archiveRequest = null;
 const events = [];
 
 function emit(event) {
@@ -93,6 +95,40 @@ function finishMoveRequest() {
 }
 
 function handleLine(line) {
+  if (archiveRequest) {
+    const text = line.replace(/^\s*fics%\s*/i, '');
+    const header = text.match(/^\s*([A-Za-z]+)(?:\([^)]*\))*\s+\([^)]*\)\s+vs\.\s+([A-Za-z]+)(?:\([^)]*\))*\s+\(/i);
+    if (header) { archiveRequest.white = header[1]; archiveRequest.black = header[2]; }
+    if (archiveRequest.white) {
+      const moves = parseFicsMoveRow(text);
+      if (moves) archiveRequest.moves.push(...moves);
+      const result = text.match(/^\s*\{[^}]*\}\s+(1-0|0-1|1\/2-1\/2|\*)\s*$/);
+      if (result) {
+        const request = archiveRequest; archiveRequest = null;
+        const notation = request.moves.map((move, index) => `${index % 2 === 0 ? `${index / 2 + 1}. ` : ''}${move}`).join(' ');
+        emit({type:'archived_game',preview:request.preview,pgn:`[Event "FICS history game"]\n[Site "freechess.org"]\n[White "${request.white}"]\n[Black "${request.black}"]\n[Result "${result[1]}"]\n\n${notation} ${result[1]}`});
+      }
+    } else if (/no such|not.*registered|not found|no.*game|private|not available/i.test(text)) {
+      emit({type:'archive_error',message:text}); archiveRequest = null;
+    }
+  }
+  if (fingerRequest) {
+    const text = line.replace(/^\s*fics%\s*/i, '');
+    const header = text.match(fingerRequest.kind === 'player_history'
+      ? /^\s*History (?:for|of) ([A-Za-z]+)/i
+      : /^\s*(?:Statistics for|Finger of) ([A-Za-z]+)/i);
+    const requestedHeader = header && header[1].toLowerCase() === fingerRequest.target.toLowerCase();
+    if (requestedHeader) fingerRequest.reading = true;
+    if (fingerRequest.reading && (requestedHeader || !/^\s*fics%/i.test(line))) {
+      fingerRequest.lines.push(text);
+      emit({ type: fingerRequest.kind, player: fingerRequest.target, output: fingerRequest.lines.join('\n') });
+    } else if (fingerRequest.reading && /^\s*fics%/i.test(line)) {
+      fingerRequest = null;
+    } else if (/no such|not.*registered|not found|no player|no history|no games|has not played/i.test(text) && text.toLowerCase().includes(fingerRequest.target.toLowerCase())) {
+      emit({ type: fingerRequest.kind, player: fingerRequest.target, output: text });
+      fingerRequest = null;
+    }
+  }
   handleLoginPrompt(line);
   const name = line.match(/\bGuest[A-Z]{4}\b/i);
   if (name && /(?:logged|session|guest|enter)/i.test(line) && !guestName) guestName = name[0];
@@ -208,6 +244,8 @@ function connect(mode, username = '', password = '') {
   if (socket) socket.close();
   events.length = 0;
   profileRows = []; readingProfile = false;
+  fingerRequest = null;
+  archiveRequest = null;
   buffer = ''; loginSent = guestConfirmed = passwordSent = ready = false;
   currentGame = null; observedGames.clear(); moveRequests.length = 0; activeMoveRequest = null; guestName = username; loginMode = mode;
   pendingPassword = password; loginError = '';
@@ -225,7 +263,7 @@ function connect(mode, username = '', password = '') {
     buffer = parsed.rest;
     for (const line of parsed.lines) handleLine(line);
     handleLoginPrompt(buffer);
-    if (ready && /^\s*fics%\s*$/i.test(buffer)) buffer = '';
+    if (ready && /^\s*fics%\s*$/i.test(buffer)) { if (fingerRequest?.reading) fingerRequest = null; buffer = ''; }
     if (!ready && /fics%\s*$/i.test(buffer)) { finishLogin(); buffer = ''; }
   };
   connection.onerror = () => emit({ type: 'line', message: 'FICS connection failed.' });
@@ -244,6 +282,14 @@ window.ironwoodFicsDisconnect = () => { socket?.close(); socket = null; ready = 
 window.ironwoodFicsSend = command => send(command);
 window.ironwoodFicsSendCommand = command => {
   if (ready && /^[\x20-\x7e]{1,256}$/.test(command)) {
+    const preview = command.match(/^ironwood:preview ([A-Za-z]{3,17}) (\d+)$/);
+    if (preview) command = `smoves ${preview[1]} ${preview[2]}`;
+    const finger = command.match(/^(finger|history) ([A-Za-z]{3,17})$/i);
+    if (finger) {
+      archiveRequest = null;
+      fingerRequest = { target: finger[2], kind: finger[1].toLowerCase() === 'history' ? 'player_history' : 'finger', lines: [], reading: false };
+    }
+    if (/^smoves [A-Za-z]{3,17} \d+$/.test(command)) archiveRequest = {white:'',black:'',moves:[],preview:!!preview};
     const observe = command.match(/^observe\s+(.+)$/i);
     if (observe && observedGames.size >= 10 && !observedGames.has(Number(observe[1]))) {
       emit({ type: 'line', message: 'Ironwood can observe at most 10 games.' });

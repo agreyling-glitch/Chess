@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-17T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -23,17 +23,19 @@ For 3D camera controls, **right-drag** rotates and tilts the board. Add **Shift*
 
 The Compact workspace uses tabs for Game Moves and Game Analysis. **View → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
 
-Open **View → Board → Theme…** for a full-size chooser with **2D** and **3D** tabs. It always opens on **2D**; select **3D** to load and browse the 3D previews. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
+Open **View → Board → Theme…** for a movable, resizable chooser with **2D** and **3D** tabs. It always opens on **2D**; select **3D** to load and browse the 3D previews. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
 
 The first use of a 3D theme may download its artwork. You can continue using the 2D board while it loads; the selected 3D view appears automatically when ready. If the download fails, reconnect and choose **Retry** above the board. See [Loading artwork and offline use](/help/board-themes/#loading-artwork-and-offline-use) for theme downloads and cached offline use.
 
-The **3D appearance** slider and **Show radial light below board** are in **View → Board → Theme adjustments…** when a 3D board is active. Click a theme card’s gear to open its own adjustments. See [Board themes and appearance](/help/board-themes/) for gradients, shading, and per-theme settings. The same menu also controls move highlights, piece shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
+The **3D appearance** slider and **Show radial light below board** are in **View → Board → Theme adjustments…** when a 3D board is active. Click a theme card’s Adjust button to open its own adjustments. See [Board themes and appearance](/help/board-themes/) for gradients, shading, and per-theme settings. The same menu also controls move highlights, piece shadows, the board frame, square coordinates, and best-move arrows. A best-move arrow points to Stockfish's suggested move when one is available. Under **View → Move feedback**, you can control move animation and sounds.
 
 These are display preferences. They do not change the legality of a move or the engine's evaluation.
 
 ## App background
 
-Open **View → Background…** to customize the app background in a modal window. Choose one of the three buttons on its top row; the active option is highlighted in gold:
+Open **View → Background…** to customize the app background. Drag the title or outer background to move the window, and drag its edges or corners to resize it. The window has a gold 3D border, heavy outer paper grain, linen behind the image controls, and subtle grain behind Appearance. Choose one of the three image buttons; the active option is highlighted in gold:
+
+Use the raised **↗** button to open Background in a separate browser window. Image selection, uploads, removal, and appearance sliders control the main window's background. **×** or Done closes the settings window. Click **↗** again from the main window's Background settings to focus an existing pop-out. Allow pop-ups for Ironwood and keep the main window open.
 
 - **Gradient Only:** use the app gradient without an image. This is the default on first launch.
 - **Default:** use the built-in Ironwood gold wooden knight artwork without a circular emblem. It downloads when selected online and can then be reused offline while cached.

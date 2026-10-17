@@ -55,6 +55,14 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   for (const method of ['Connect', 'SignIn', 'SignOut', 'Disconnect', 'Move', 'Command'])
     lichess.action(`ironwoodLichess${method}`);
   target.ironwoodLichessPoll = () => '';
+  if (target.ironwoodLobbyCompanionMode?.()) {
+    for (const method of ['Connect', 'SignIn', 'SignOut', 'Disconnect', 'Command']) {
+      const name = `ironwoodLichess${method}`;
+      target[name] = (...args) => {
+        try { if (target.opener && !target.opener.closed) return target.opener[name](...args); } catch {}
+      };
+    }
+  }
   if (target.ironwoodProfileCompanionMode()) {
     target.ironwoodLichessCommand = raw => {
       try {
@@ -133,6 +141,16 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     };
     input.click();
   };
+  if (target.ironwoodBackgroundCompanionMode?.()) {
+    for (const name of ['ironwoodBackgroundLibrary', 'ironwoodSelectBackground', 'ironwoodRemoveBackground', 'ironwoodUploadBackground']) {
+      target[name] = (...args) => {
+        try {
+          if (target.opener && !target.opener.closed) return target.opener[name](...args);
+        } catch {}
+        return name === 'ironwoodBackgroundLibrary' ? '{"selected":"","images":[]}' : undefined;
+      };
+    }
+  }
   return {
     lichess,
     afterPaint() {
@@ -147,7 +165,95 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
 
 export function install3dCompanion(target) {
   const view = new URL(target.location.href).searchParams.get('view');
-  const companion = view === '3d-companion' || view === 'fics-companion' || view === 'profile-companion';
+  const companion = view === '3d-companion' || view === 'fics-companion' || view === 'profile-companion' || view === 'training-companion' || view === 'theme-companion' || view === 'background-companion' || view === 'lobby-companion';
+  let lobbyChild, lobbyState = '', lobbyActions = [];
+  target.ironwoodLobbyCompanionMode = () => view === 'lobby-companion';
+  target.ironwoodLobbyCompanionOpen = () => !!lobbyChild && !lobbyChild.closed;
+  target.ironwoodCloseLobbyCompanion = () => { if (view === 'lobby-companion') target.close?.(); };
+  target.ironwoodPublishLobby = value => { if (!companion) lobbyState = value; };
+  target.ironwoodReadLobby = () => {
+    try { return companion ? (target.opener && !target.opener.closed ? target.opener.ironwoodReadLobby() : '') : lobbyState; } catch { return ''; }
+  };
+  target.ironwoodQueueLobbyAction = action => {
+    if (companion || !['leave','profile','resign'].includes(action) || lobbyActions.length >= 16) return false;
+    lobbyActions.push(action); target.focus?.(); return true;
+  };
+  target.ironwoodLobbyActionInMain = action => {
+    try { return !!target.opener && !target.opener.closed && target.opener.ironwoodQueueLobbyAction(action); } catch { return false; }
+  };
+  target.ironwoodTakeLobbyActions = () => { const actions = lobbyActions; lobbyActions = []; return JSON.stringify(actions); };
+  target.ironwoodOpenLobbyCompanion = () => {
+    if (lobbyChild && !lobbyChild.closed) { lobbyChild.focus(); return true; }
+    const url = new URL(target.location.href); url.search = '?view=lobby-companion'; url.hash = '';
+    lobbyChild = target.open(url.href, '_blank', 'popup,width=900,height=900,resizable=yes,scrollbars=no');
+    if (!lobbyChild) target.alert('Allow pop-ups for Ironwood to open the Lichess lobby.');
+    return !!lobbyChild;
+  };
+  let backgroundChild, backgroundChanges = [];
+  target.ironwoodBackgroundCompanionMode = () => view === 'background-companion';
+  target.ironwoodBackgroundCompanionOpen = () => !!backgroundChild && !backgroundChild.closed;
+  target.ironwoodCloseBackgroundCompanion = () => { if (view === 'background-companion') target.close?.(); };
+  target.ironwoodQueueBackgroundChange = value => {
+    if (companion || typeof value !== 'string' || value.length > 100 || backgroundChanges.length >= 32) return false;
+    backgroundChanges.push(value); return true;
+  };
+  target.ironwoodChangeBackgroundInMain = value => {
+    try { return !!target.opener && !target.opener.closed && target.opener.ironwoodQueueBackgroundChange(value); } catch { return false; }
+  };
+  target.ironwoodTakeBackgroundChanges = () => { const changes = backgroundChanges; backgroundChanges = []; return JSON.stringify(changes); };
+  target.ironwoodOpenBackgroundCompanion = () => {
+    if (backgroundChild && !backgroundChild.closed) { backgroundChild.focus(); return true; }
+    const url = new URL(target.location.href); url.search = '?view=background-companion'; url.hash = '';
+    backgroundChild = target.open(url.href, '_blank', 'popup,width=780,height=800,resizable=yes,scrollbars=no');
+    if (!backgroundChild) target.alert('Allow pop-ups for Ironwood to open Background.');
+    return !!backgroundChild;
+  };
+  let themeChild, themeSelections = [];
+  target.ironwoodThemeCompanionMode = () => view === 'theme-companion';
+  target.ironwoodThemeCompanionOpen = () => !!themeChild && !themeChild.closed;
+  target.ironwoodCloseThemeCompanion = () => { if (view === 'theme-companion') target.close?.(); };
+  target.ironwoodQueueThemeSelection = value => {
+    if (companion || typeof value !== 'string' || value.length > 1000 || themeSelections.length >= 16) return false;
+    themeSelections.push(value);
+    try { if (JSON.parse(value)[2] === true) target.focus?.(); } catch {}
+    return true;
+  };
+  target.ironwoodSelectThemeInMain = value => {
+    try { return !!target.opener && !target.opener.closed && target.opener.ironwoodQueueThemeSelection(value); } catch { return false; }
+  };
+  target.ironwoodTakeThemeSelections = () => { const selections = themeSelections; themeSelections = []; return JSON.stringify(selections); };
+  target.ironwoodOpenThemeCompanion = () => {
+    if (themeChild && !themeChild.closed) { themeChild.focus(); return true; }
+    const url = new URL(target.location.href); url.search = '?view=theme-companion'; url.hash = '';
+    themeChild = target.open(url.href, '_blank', 'popup,width=980,height=800,resizable=yes,scrollbars=no');
+    if (!themeChild) target.alert('Allow pop-ups for Ironwood to open Board Theme.');
+    return !!themeChild;
+  };
+  let trainingChild, trainingLive = false, trainingChanged = false, trainingStarts = [];
+  target.ironwoodTrainingCompanionMode = () => view === 'training-companion';
+  target.ironwoodTrainingCompanionOpen = () => !!trainingChild && !trainingChild.closed;
+  target.ironwoodCloseTrainingCompanion = () => { if (view === 'training-companion') target.close?.(); };
+  target.ironwoodPublishTrainingLive = value => { if (!companion) trainingLive = !!value; };
+  target.ironwoodReadTrainingLive = () => {
+    try { return view === 'training-companion' ? !!target.opener?.ironwoodReadTrainingLive() : trainingLive; } catch { return true; }
+  };
+  target.addEventListener?.('storage', event => { if (event.key === 'ironwood.chess.training.v1') trainingChanged = true; });
+  target.ironwoodTakeTrainingChanged = () => { const changed = trainingChanged; trainingChanged = false; return changed; };
+  target.ironwoodQueueTrainingStart = id => {
+    if (companion || typeof id !== 'string' || id.length > 100 || trainingStarts.length >= 8) return false;
+    trainingStarts.push(id); target.focus?.(); return true;
+  };
+  target.ironwoodStartTrainingInMain = id => {
+    try { return target.opener && !target.opener.closed ? target.opener.ironwoodQueueTrainingStart(id) : false; } catch { return false; }
+  };
+  target.ironwoodTakeTrainingStarts = () => { const commands = trainingStarts; trainingStarts = []; return JSON.stringify(commands); };
+  target.ironwoodOpenTrainingCompanion = () => {
+    if (trainingChild && !trainingChild.closed) { trainingChild.focus(); return true; }
+    const url = new URL(target.location.href); url.search = '?view=training-companion'; url.hash = '';
+    trainingChild = target.open(url.href, '_blank', 'popup,width=900,height=850,resizable=yes,scrollbars=no');
+    if (!trainingChild) target.alert('Allow pop-ups for Ironwood to open Training Profiles.');
+    return !!trainingChild;
+  };
   let child, ficsChild, state = '', ficsState = '', commands = [];
   let profileState = '', profileReviews = [];
   const profiles = new Map();
@@ -233,7 +339,7 @@ export function install3dCompanion(target) {
     }
     return !!child;
   };
-  if (companion) target.document.title = view === 'profile-companion' ? 'Ironwood — Player profile' : view === 'fics-companion' ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
+  if (companion) target.document.title = view === 'lobby-companion' ? 'Ironwood — Lichess lobby' : view === 'background-companion' ? 'Ironwood — Background' : view === 'theme-companion' ? 'Ironwood — Board Theme' : view === 'training-companion' ? 'Ironwood — Training profiles' : view === 'profile-companion' ? 'Ironwood — Player profile' : view === 'fics-companion' ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
 }
 
 function installFallbacks(target) {
@@ -325,7 +431,7 @@ export async function startChessApp({
     const paintedBoard = signalsFrame ? firstFrame.then(() => afterPaint()) : initializedPaint;
     void paintedBoard.then(() => {
       if (target.ironwoodCompanionMode())
-        target.document.title = target.ironwoodProfileCompanionMode() ? 'Ironwood — Player profile' : target.ironwoodFicsCompanionMode() ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
+        target.document.title = target.ironwoodLobbyCompanionMode() ? 'Ironwood — Lichess lobby' : target.ironwoodBackgroundCompanionMode() ? 'Ironwood — Background' : target.ironwoodThemeCompanionMode() ? 'Ironwood — Board Theme' : target.ironwoodTrainingCompanionMode() ? 'Ironwood — Training profiles' : target.ironwoodProfileCompanionMode() ? 'Ironwood — Player profile' : target.ironwoodFicsCompanionMode() ? 'Ironwood — FICS console' : 'Ironwood — 3D view';
       if (local && signalsFrame) {
         target.document.body.dataset.boardReadyMs = target.performance.now().toFixed(1);
         target.document.body.dataset.boardReadyResources = recordResources();

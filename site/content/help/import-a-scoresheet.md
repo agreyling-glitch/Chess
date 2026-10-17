@@ -1,12 +1,13 @@
 ---
 title: "Import a game from a scoresheet"
+lastmod: 2026-10-17T00:00:00-05:00
 description: "Manually enter chess moves beside a scoresheet photo, with a board preview and live validation."
 category: "using-ironwood"
 keywords: [scoresheet, handwritten, manual, photo, PGN, import, validation, draft, autosave, check, resignation]
 weight: 34
 ---
 
-Open **Game → Import… → Scoresheet → Enter scoresheet**. The workspace has four panels: a board preview and validated move list at the top, with your scoresheet photo and manual entry table below. On narrow screens the panels stack, with buttons to jump between the photo and entry table.
+Open **Tools → Enter a scoresheet…**, or **Game → Import… → Scoresheet → Enter scoresheet**. Both open the same workspace, with a heavy paper-grain outer background, sunken sections, and raised controls. The title stays outside the sunken sections. The workspace has four panels: a board preview and validated move list at the top, with your scoresheet photo and manual entry table below. On narrow screens the panels stack, with buttons to jump between the photo and entry table.
 
 Choose, paste, or drop a JPG, PNG, or WebP photo. Zoom in and drag the photo to read the handwriting. Photos stay on your device. You can also enter moves without a photo.
 

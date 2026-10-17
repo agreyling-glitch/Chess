@@ -2,7 +2,7 @@
 title: "Training vs AI"
 description: "Build a training profile, play both colors, and follow your progress against Stockfish."
 category: "using-ironwood"
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-16T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
@@ -28,7 +28,7 @@ Open **Game → Training profiles…** or **Profile & progress** in Game Moves. 
 - A score rate and a broad descriptive 95% range, including its sample size. This range is not uncertainty in your Elo or proof of improvement; opponents adapt, and your own skill changes.
 - Clock losses and recent completed games.
 
-Use **Start next training game** to continue with the next color. While a training game is underway, finish it before starting the next one. The profiles window opens tall by default; use the maximize button beside Close to expand it and the same button to restore its size.
+Use **Start next training game** to continue with the next color. While a training game is underway, finish it before starting the next one. Training Profiles is movable and resizable, with a gold 3D border. Drag its header or resize its edges. The raised **↗** button opens it in a separate browser window; **×** closes it. Profile edits are shared between windows, and Start next training game in the pop-out starts play on the main board. Keep the main window open. Puzzle practice is launched from Training Profiles in the main window.
 
 ### Rename a profile
 

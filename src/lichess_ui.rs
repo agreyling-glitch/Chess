@@ -347,6 +347,10 @@ impl ChessApp {
 
     fn start_lichess(&mut self) {
         // Authentication and lobby access do not claim the board or disconnect FICS.
+        self.lichess.open = true;
+        if self.lichess.connected() {
+            return;
+        }
         #[cfg(target_arch = "wasm32")]
         lichess_connect();
     }
@@ -584,34 +588,6 @@ impl ChessApp {
         }
     }
 
-    fn lichess_menu(&mut self, ui: &mut egui::Ui) {
-        Self::set_menu_item_font(ui);
-        ui.set_min_width(280.0);
-        ui.label(
-            self.lichess.lobby["status"]
-                .as_str()
-                .unwrap_or("Sign in to play on Lichess"),
-        );
-        if ui.button("Lichess lobby and game controls…").clicked() {
-            self.lichess.open = true;
-            ui.close();
-        }
-        if ui.add_enabled(self.lichess.connected(), egui::Button::new("Player profile…"))
-            .on_disabled_hover_text("Connect your Lichess account to view player profiles.").clicked() {
-            self.open_lichess_history();
-            ui.close();
-        }
-        if !self.lichess.active && ui.button("Connect Lichess account").clicked() {
-            self.start_lichess();
-            ui.close();
-        }
-        if self.lichess.active && !self.lichess.connected() && ui.button("Reconnect").clicked() {
-            self.start_lichess();
-            ui.close();
-        }
-        Self::lichess_account_link(ui);
-    }
-
     fn lichess_game_actions(&mut self, ui: &mut egui::Ui, include_resign: bool) -> bool {
         let mut clicked = false;
         let available = self.lichess.connected() && self.fics_playing && !self.fics_game_finished;
@@ -634,7 +610,11 @@ impl ChessApp {
                 ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
             }
             if include_resign && action_button(ui, "Resign…", "resign").clicked() {
-                self.fics_resign_dialog_open = true;
+                #[cfg(target_arch="wasm32")]
+                if lobby_companion_mode() { lobby_action_in_main("resign"); }
+                else { self.fics_resign_dialog_open = true; }
+                #[cfg(not(target_arch="wasm32"))]
+                { self.fics_resign_dialog_open = true; }
                 clicked = true;
             }
             let draw_key = if self.player_side == PlayerSide::White { "bdraw" } else { "wdraw" };
@@ -717,6 +697,49 @@ impl ChessApp {
         }
     }
 
+    #[cfg(target_arch="wasm32")]
+    fn poll_lobby_companion(&mut self, ctx: &egui::Context) {
+        if let Ok(actions) = serde_json::from_str::<Vec<String>>(&take_lobby_actions()) {
+            for action in actions {
+                match action.as_str() {
+                    "leave" => { if self.lichess.active { self.stop_fics(); } },
+                    "profile" => self.open_lichess_history(),
+                    "resign" if self.lichess.active && self.fics_playing => self.fics_resign_dialog_open = true,
+                    _ => {},
+                }
+            }
+        }
+        if lobby_companion_open() {
+            publish_lobby(&serde_json::json!({
+                "lobby":self.lichess.lobby,"game":self.lichess.game,"active":self.lichess.active,
+                "playing":self.fics_playing,"finished":self.fics_game_finished,"pending":self.fics_pending_move,
+                "status":self.fics_status,"white":self.review_white_player,"black":self.review_black_player,
+                "side":if self.player_side == PlayerSide::White { "white" } else { "black" },
+            }).to_string());
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+    }
+
+    #[cfg(target_arch="wasm32")]
+    fn lichess_lobby_companion_ui(&mut self, ui: &mut egui::Ui) {
+        let state = read_lobby();
+        if let Ok(state) = serde_json::from_str::<serde_json::Value>(&state) {
+            self.lichess.lobby = state["lobby"].clone();
+            self.lichess.game = state["game"].clone();
+            self.lichess.active = state["active"].as_bool().unwrap_or(false);
+            self.fics_playing = state["playing"].as_bool().unwrap_or(false);
+            self.fics_game_finished = state["finished"].as_bool().unwrap_or(false);
+            self.fics_pending_move = state["pending"].as_bool().unwrap_or(false);
+            self.fics_status = state["status"].as_str().unwrap_or_default().to_owned();
+            self.review_white_player = state["white"].as_str().unwrap_or_default().to_owned();
+            self.review_black_player = state["black"].as_str().unwrap_or_default().to_owned();
+            self.player_side = if state["side"] == "black" { PlayerSide::Black } else { PlayerSide::White };
+            self.lichess.open = true;
+            self.lichess_ui(ui.ctx());
+        } else { ui.label("Keep the main Ironwood window open to use the Lichess lobby."); }
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+    }
+
     fn lichess_ui(&mut self, ctx: &egui::Context) {
         self.lichess_history_ui(ctx);
         if !self.lichess.open {
@@ -726,11 +749,28 @@ impl ChessApp {
         let mut close_after = false;
         let connected = self.lichess.connected();
         let width = (ctx.content_rect().width() - 64.0).clamp(280.0, if connected { 760.0 } else { 600.0 });
-        egui::Window::new("Lichess lobby").title_bar(false).collapsible(false)
-            .fixed_size(Vec2::new(width, if connected { 800.0 } else { 470.0 })).resizable(false).anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .frame(Self::dialog_frame()).show(ctx, |ui| {
+        let mut detached = false;
+        let lobby_window = egui::Window::new("Lichess lobby").title_bar(false).collapsible(false)
+            .drag_area(egui::WindowDrag::Anywhere).resizable(true)
+            .default_pos(egui::pos2(48.0,48.0))
+            .default_size(Vec2::new(width, 800.0))
+            .min_size(Vec2::new(380.0,340.0))
+            .max_width((ctx.content_rect().width()-40.0).max(280.0))
+            .max_height((ctx.content_rect().height()-40.0).max(240.0))
+            .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
+                offset: [4,6], blur: 14, spread: 2, color: Color32::from_black_alpha(160),
+            })).show(ctx, |ui| {
             let grain_background = ui.painter().add(egui::Shape::Noop);
-            if Self::dialog_header(ui, "Lichess lobby") { open = false; }
+            ui.horizontal(|ui| {
+                ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
+                    egui::Label::new(RichText::new("Lichess lobby").size(21.0).strong()).selectable(false).truncate());
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close Lichess lobby").clicked() { open=false; }
+                    #[cfg(target_arch="wasm32")]
+                    if !lobby_companion_mode() && Self::glossy_board_button(ui,"↗",false,true)
+                        .on_hover_text("Move Lichess lobby to a separate window").clicked() { detached=open_lobby_companion(); }
+                });
+            });
             ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
             ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
             let status = self.lichess.lobby["status"].as_str().unwrap_or("Sign in to play on Lichess").to_owned();
@@ -744,7 +784,7 @@ impl ChessApp {
                 let sign_in_frame = Frame::new().fill(Color32::from_rgb(13, 17, 22))
                     .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
                     .corner_radius(6.0).inner_margin(22.0).show(ui, |ui| {
-                ui.set_width((width - 44.0).max(180.0));
+                ui.set_min_width(ui.available_width());
                 ui.label(RichText::new("PLAY ONLINE").size(12.0).strong().color(gold));
                 ui.add_space(6.0);
                 ui.label(RichText::new("Your next opponent awaits.").size(28.0).strong());
@@ -766,6 +806,7 @@ impl ChessApp {
                 }
                 if ui.add_sized([ui.available_width(), 38.0], egui::Button::new(egui::WidgetText::from(RichText::new("Reconnect saved session").size(14.0)).color(Color32::from_rgb(25, 29, 35)))
                     .fill(Color32::TRANSPARENT).stroke(Stroke::new(1.0, Color32::from_rgb(80, 84, 88))).corner_radius(7.0).raised_gold()).clicked() { self.start_lichess(); }
+                Self::lichess_account_link(ui);
                 ui.add_space(6.0);
                 ui.label(RichText::new(status).size(13.0).color(muted));
                 });
@@ -780,19 +821,25 @@ impl ChessApp {
                     let green = Color32::from_rgb(136, 194, 151);
                     let (indicator, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
                     ui.painter().circle_filled(indicator.center(), 4.0, green);
-                    ui.colored_label(green, self.lichess.lobby["account"].as_str().unwrap_or("Connected"));
+                    ui.label(RichText::new(self.lichess.lobby["account"].as_str().unwrap_or("Connected"))
+                        .size(22.0).strong().color(green));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add(egui::Button::new(egui::WidgetText::from("Player profile").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() { self.open_lichess_history(); }
+                        if ui.add(egui::Button::new(egui::WidgetText::from("Player profile").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
+                            #[cfg(target_arch="wasm32")]
+                            if lobby_companion_mode() { lobby_action_in_main("profile"); }
+                            else { self.open_lichess_history(); }
+                            #[cfg(not(target_arch="wasm32"))]
+                            self.open_lichess_history();
+                        }
                         Self::lichess_account_link(ui);
                     });
                 });
                 });
                 Self::paint_sunken_border(ui, account_panel.response.rect);
                 ui.add_space(2.0);
-                egui::ScrollArea::vertical().id_salt("lichess_lobby_content").max_height(660.0).min_scrolled_height(660.0).auto_shrink([false, false]).show(ui, |ui| {
-                let lobby_frame = Frame::new().fill(Color32::from_rgb(13, 17, 22))
-                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
-                    .corner_radius(6.0).inner_margin(16.0).show(ui, |ui| {
+                let content_height = (ui.available_height()-64.0).max(100.0);
+                egui::ScrollArea::vertical().id_salt("lichess_lobby_content").max_height(content_height).min_scrolled_height(content_height).auto_shrink([false, false]).show(ui, |ui| {
+                Self::import_sunken_section(ui, true, |ui| {
 
 
                     let games = self.lichess.lobby["games"].as_array().cloned().unwrap_or_default();
@@ -832,16 +879,24 @@ impl ChessApp {
                     }
                     if !self.fics_playing {
                         let seeking = self.lichess.lobby["seeking"].as_bool().unwrap_or(false);
-                        let selected = Self::engine_settings_tabs(ui, &["Quick pairing", "Create a game", "Correspondence"], self.lichess.lobby_tab);
+                        let mut selected = self.lichess.lobby_tab;
+                        ui.horizontal_wrapped(|ui| {
+                            for (index,label) in ["Quick pairing", "Create a game", "Correspondence"].iter().enumerate() {
+                                if Self::fics_primary_tab(ui,label,self.lichess.lobby_tab == index).clicked() { selected = index; }
+                            }
+                        });
                         if selected != self.lichess.lobby_tab {
                             self.lichess.lobby_tab = selected;
                             self.lichess.correspondence = selected == 2;
                         }
                         ui.separator();
                         if self.lichess.lobby_tab == 0 {
-                            ui.horizontal_top(|ui| {
+                            ui.horizontal_wrapped(|ui| {
                                 ui.vertical(|ui| {
-                                    ui.set_width(460.0);
+                                    let grid_width = ui.available_width().min(460.0);
+                                    ui.set_width(grid_width);
+                                    let columns = if grid_width < 420.0 { 2 } else { 3 };
+                                    let button_width = (grid_width - (columns-1) as f32 * 10.0) / columns as f32;
                                     egui::Grid::new("lichess_quick_pairing").spacing(Vec2::splat(10.0)).show(ui, |ui| {
                                         for (index, (minutes, increment, speed)) in [
                                             (10, 0, "Rapid"), (10, 5, "Rapid"), (15, 10, "Rapid"),
@@ -849,7 +904,7 @@ impl ChessApp {
                                         ].into_iter().enumerate() {
                                             let label = if minutes == 0 { "Custom".to_owned() } else { format!("{minutes}+{increment}\n{speed}") };
                                             if ui.add_enabled(!seeking, egui::Button::new(egui::WidgetText::from(RichText::new(label).size(23.0).strong().color(Color32::from_rgb(25, 29, 35))).color(Color32::from_rgb(25, 29, 35)))
-                                                .min_size(Vec2::new(145.0, 100.0)).fill(Color32::from_rgb(211, 173, 98))
+                                                .min_size(Vec2::new(button_width, 100.0)).fill(Color32::from_rgb(211, 173, 98))
                                                 .corner_radius(7.0).raised_gold()).clicked() {
                                                 if minutes == 0 { self.lichess.lobby_tab = 1; }
                                                 else {
@@ -861,7 +916,7 @@ impl ChessApp {
                                                     }}));
                                                 }
                                             }
-                                            if index % 3 == 2 { ui.end_row(); }
+                                            if (index+1) % columns == 0 { ui.end_row(); }
                                         }
                                     });
                                     ui.add_space(8.0);
@@ -1001,14 +1056,15 @@ impl ChessApp {
                         if ui.link("Open game on Lichess").clicked() { ui.ctx().open_url(egui::OpenUrl::new_tab(format!("https://lichess.org/{id}"))); }
                     }
                 });
-                Self::paint_sunken_border(ui, lobby_frame.response.rect);
                 });
             }
             ui.add_space(6.0);
-            let actions_panel = Frame::new().fill(Color32::from_rgb(13,17,22)).corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
-            ui.set_min_width(ui.available_width());
             ui.horizontal(|ui| {
             if ui.add(egui::Button::new(egui::WidgetText::from("Leave online play").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
+                #[cfg(target_arch="wasm32")]
+                if lobby_companion_mode() { lobby_action_in_main("leave"); }
+                else if self.lichess.active { self.stop_fics(); }
+                #[cfg(not(target_arch="wasm32"))]
                 if self.lichess.active { self.stop_fics(); }
                 close_after = true;
             }
@@ -1019,21 +1075,44 @@ impl ChessApp {
                 }
             });
             });
-            });
-            Self::paint_sunken_border(ui, actions_panel.response.rect);
             let paper = Self::paper_grain_texture(ctx);
             let surface = ui.min_rect().expand(6.0);
             ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
                 egui::Rect::from_min_max(egui::Pos2::ZERO,
                     egui::pos2(surface.width() / 256.0, surface.height() / 256.0)), Color32::WHITE));
         });
-        self.lichess.open = open && !close_after;
+        if let Some(window) = lobby_window {
+            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id), window.response.rect);
+        }
+        self.lichess.open = open && !close_after && !detached;
+        #[cfg(target_arch="wasm32")]
+        if lobby_companion_mode() && (!open || close_after) { close_lobby_companion(); }
     }
 }
 
 #[cfg(test)]
 mod lichess_tests {
     use super::*;
+    #[test]
+    fn lichess_lobby_opens_with_or_without_an_active_game() {
+        let ctx = egui::Context::default();
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        app.lichess.lobby = serde_json::json!({"connected": true, "account": "Player"});
+        let lobby = app.lichess.lobby.clone();
+        for active in [false, true] {
+            app.lichess.active = active;
+            app.lichess.open = false;
+            app.start_lichess();
+            assert!(app.lichess.open);
+            assert_eq!(app.lichess.lobby, lobby);
+            assert_eq!(app.lichess.active, active);
+        }
+        app.lichess.lobby = serde_json::Value::Null;
+        app.lichess.open = false;
+        app.start_lichess();
+        assert!(app.lichess.open);
+    }
+
     #[test]
     fn lichess_account_connection_preserves_fics_board_and_connection() {
         let mut app = app();
@@ -1337,10 +1416,11 @@ impl ChessApp {
         let mut open = true;
         let mut detached = false;
         let title = lichess_profile_window_title(&data["playerProfile"]);
-        egui::Window::new(&title).id(egui::Id::new(("lichess_player_profile_window",window.id)))
+        let profile_window = egui::Window::new(&title).id(egui::Id::new(("lichess_player_profile_window",window.id)))
             .title_bar(false).drag_area(egui::WindowDrag::Anywhere)
-            .frame(Frame::window(&ctx.style_of(ctx.theme())).stroke(Stroke::new(2.0,Color32::from_rgb(70,255,120)))
-                .shadow(egui::epaint::Shadow{offset:[0,0],blur:10,spread:1,color:Color32::from_rgba_unmultiplied(70,255,120,65)}))
+            .frame(Frame::window(&ctx.style_of(ctx.theme())).stroke(Stroke::new(1.0,Color32::from_rgb(211,173,98)))
+                .corner_radius(12)
+                .shadow(egui::epaint::Shadow{offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160)}))
             .default_pos(egui::pos2(32.0+(window.id%8) as f32*28.0,40.0+(window.id%8) as f32*28.0))
             .default_width(1020.0).default_height(750.0)
             .min_size(Vec2::new(360.0,240.0)).resizable(true).vscroll(true)
@@ -1375,6 +1455,9 @@ impl ChessApp {
             ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
                 egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(surface.width()/256.0, surface.height()/256.0)), Color32::WHITE));
         });
+        if let Some(window) = profile_window {
+            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id), window.response.rect);
+        }
         window.detached = detached;
         window.open = open && !detached;
     }
