@@ -230,11 +230,12 @@ impl ChessApp {
             if custom {
                 ui.add_space(12.0);
                 ui.add(egui::TextEdit::singleline(&mut self.lichess.ai_fen)
-                    .desired_width(ui.available_width()).margin(Vec2::new(10.0, 10.0))
+                    .desired_width((ui.available_width() - 20.0).max(0.0)).margin(Vec2::new(10.0, 10.0))
                     .hint_text("Paste the FEN text here"));
             }
             ui.add_space(18.0);
-            let width = (ui.available_width() - 16.0) / 3.0;
+            // Match the actual row gaps and round down to avoid cumulative window growth.
+            let width = ((ui.available_width() - 2.0 * ui.spacing().item_spacing.x) / 3.0).floor();
             ui.horizontal(|ui| {
                 for (index, label) in ["Unlimited", "Real time", "Correspondence"].iter().enumerate() {
                     let selected = self.lichess.ai_time == index;
@@ -261,7 +262,7 @@ impl ChessApp {
             ui.add_space(18.0);
             ui.label(RichText::new("Strength").size(16.0).strong());
             ui.add_space(6.0);
-            let strength_width = (ui.available_width() - 7.0 * 4.0) / 8.0;
+            let strength_width = ((ui.available_width() - 7.0 * 4.0) / 8.0).floor();
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for level in 1..=8 {
@@ -2464,6 +2465,37 @@ mod player_profile_activity_tests {
         }
         for expected in ["1970-01-01","Blitz: 3 wins · 2 losses · 1 draws","Puzzles: 2 solved · 1 missed","Rating 2000 to 2010 (+10)","Rating 1500 to 1490 (-10)"] {
             assert!(seen.iter().any(|text|text==expected),"Missing {expected}: {seen:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod computer_setup_layout_tests {
+    use super::*;
+
+    #[test]
+    fn computer_setup_window_does_not_grow_between_frames() {
+        for variant in ["standard", "fromPosition"] {
+            let ctx = egui::Context::default();
+            let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+            app.lichess.ai_variant = variant.into();
+            let mut widths = Vec::new();
+            for frame in 0..24 {
+                run_test_ui(&ctx, egui::RawInput {
+                    time: Some(frame as f64 / 60.0),
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1600.0, 1200.0))),
+                    ..Default::default()
+                }, |_| {
+                    let window = egui::Window::new("Computer setup layout")
+                        .default_width(760.0).resizable(true).show(&ctx, |ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
+                            ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
+                            app.lichess_computer_setup(ui, false);
+                        }).unwrap();
+                    widths.push(window.response.rect.width());
+                });
+            }
+            assert!((widths[23] - widths[5]).abs() < 1.0, "{variant}: {widths:?}");
         }
     }
 }

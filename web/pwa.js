@@ -116,7 +116,9 @@ function createUpdateNotice() {
   notice.className = 'ironwood-update';
   notice.setAttribute('aria-labelledby', 'ironwood-update-title');
   notice.innerHTML = `
-    <h2 id="ironwood-update-title">Ironwood update available</h2>
+    <div class="ironwood-update-emblem" aria-hidden="true">↻</div>
+    <div class="ironwood-update-eyebrow">IRONWOOD CHESS</div>
+    <h2 id="ironwood-update-title">An update is ready</h2>
     <p data-update-message>A new version is ready. Your current game is saved locally.</p>
     <div class="ironwood-update-actions">
       <button type="button" data-update-later>Later</button>
@@ -124,13 +126,20 @@ function createUpdateNotice() {
     </div>`;
   const style = document.createElement('style');
   style.textContent = `
-    .ironwood-update{max-width:31rem;padding:1.4rem;border:1px solid #d3ad6266;border-radius:8px;color:#f3f0e4;background:#181c20;box-shadow:0 20px 70px #000b;font:16px/1.5 Inter,system-ui,sans-serif}
-    .ironwood-update::backdrop{background:#080a0cc0}
-    .ironwood-update h2{margin:0 0 .65rem;font:600 1.5rem/1.2 Inter,system-ui,sans-serif;letter-spacing:0;color:#f3f0e4}
-    .ironwood-update p{margin:0;color:#bdc1bc}
-    .ironwood-update-actions{display:flex;justify-content:center;gap:.7rem;margin-top:1.35rem}
-    .ironwood-update button{padding:.65rem .9rem;border:1px solid #ffffff26;border-radius:4px;color:#f3f0e4;background:#292e32;font:600 .9rem Inter,system-ui,sans-serif;cursor:pointer}
-    .ironwood-update [data-update-reload]{border-color:#d3ad62;background:#d3ad62;color:#17140e}`;
+    .ironwood-update{box-sizing:border-box;width:min(32rem,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:32px 30px 30px;border:3px solid #b99859;border-top-color:#f0d595;border-left-color:#d9ba79;border-bottom-color:#63502e;border-right-color:#80673b;border-radius:14px;color:#f3f0e4;background:radial-gradient(ellipse at 50% 0%,#303941 0%,#1b2228 55%,#141a1f 100%);box-shadow:inset 0 0 0 1px #17130d,inset 0 0 0 4px #d4ad6230,inset 0 5px 10px #ffffff0b,0 0 0 1px #0a0b0c,0 5px 0 #31291c,0 8px 0 1px #090b0d,0 28px 80px #000c;font:16px/1.5 Inter,system-ui,sans-serif;text-align:center}
+    .ironwood-update::backdrop{background:#080a0cb8;backdrop-filter:blur(3px)}
+    .ironwood-update-emblem{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 17px;border:1px solid #d8b878;border-radius:50%;background:linear-gradient(145deg,#42484a,#161c20);box-shadow:inset 0 2px 2px #ffffff25,inset 0 -3px 5px #0009,0 3px 0 #080b0e,0 0 24px #d3ad6214;color:#eed49b;font-size:36px;line-height:1}
+    .ironwood-update-eyebrow{color:#c7ab73;font-size:10px;font-weight:700;letter-spacing:.22em;margin-bottom:8px}
+    .ironwood-update h2{margin:0 0 13px;font:600 26px/1.2 Inter,system-ui,sans-serif;letter-spacing:-.025em;color:#fff6df;text-shadow:0 2px 1px #000}
+    .ironwood-update p{max-width:25rem;margin:0 auto;color:#bec6ca;font-size:15px;line-height:1.65;text-wrap:pretty}
+    .ironwood-update-actions{display:flex;justify-content:center;align-items:stretch;gap:12px;margin-top:26px;padding-top:23px;border-top:1px solid #d3ad622c;box-shadow:0 -1px 0 #0008}
+    .ironwood-update button{flex:1;min-width:0;min-height:46px;padding:11px 12px;border:1px solid #78858d;border-top-color:#a2adb3;border-bottom-color:#303a42;border-radius:7px;color:#edf0ef;background:linear-gradient(#505d66 0%,#36434d 48%,#2b3741 51%,#35424b 100%);box-shadow:inset 0 1px 0 #ffffff30,inset 0 -1px 0 #0005,0 4px 0 #11171c,0 5px 0 #6d7a8140,0 7px 10px #0006;font:600 14px/1.3 Inter,system-ui,sans-serif;cursor:pointer;text-align:center;text-shadow:0 1px 1px #0008;transition:filter .15s,transform .1s,box-shadow .1s}
+    .ironwood-update [data-update-reload]{border-color:#bc9144;border-top-color:#ffebaf;border-bottom-color:#8b6427;background:linear-gradient(#f5dfa2 0%,#dfbe72 48%,#caa052 51%,#dbb96c 100%);color:#302312;text-shadow:0 1px 0 #fff7;box-shadow:inset 0 1px 0 #fff8,inset 0 -1px 0 #8b642766,0 4px 0 #755323,0 5px 0 #17110b,0 7px 10px #0006}
+    .ironwood-update button:hover{filter:brightness(1.1)}
+    .ironwood-update button:focus-visible{outline:2px solid #fff0c7;outline-offset:5px}
+    .ironwood-update button:active{transform:translateY(3px);box-shadow:inset 0 2px 4px #0005,0 1px 0 #11171c}
+    @media(max-width:380px){.ironwood-update{padding:25px 18px}.ironwood-update-actions{gap:9px}.ironwood-update button{font-size:13px;padding:10px 7px}}
+`;
   document.head.append(style);
   document.body.append(notice);
   notice.querySelector('[data-update-later]').addEventListener('click', () => {

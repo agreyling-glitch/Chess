@@ -1680,6 +1680,7 @@ pub struct ChessApp {
     fics_console_suggestions_open: bool,
     fics_console_suggestion_index: usize,
     fics_resign_dialog_open: bool,
+    fics_lag_notice: bool,
     fics_connected: bool,
     fics_registered: bool,
     fics_profile: Option<(String, String)>,
@@ -2378,6 +2379,7 @@ impl ChessApp {
         self.fics_console_selected_text.clear();
         self.fics_console_suggestions_open = false;
         self.fics_resign_dialog_open = false;
+        self.fics_lag_notice = false;
         self.fics_connected = false;
         self.fics_registered = false;
         self.fics_profile = None;
@@ -2432,6 +2434,7 @@ impl ChessApp {
         self.fics_console_selected_text.clear();
         self.fics_console_suggestions_open = false;
         self.fics_resign_dialog_open = false;
+        self.fics_lag_notice = false;
         self.fics_connected = false;
         self.fics_registered = false;
         self.fics_profile = None;
@@ -2459,6 +2462,21 @@ impl ChessApp {
             self.local_draw_dialog_open = false;
         }
         self.fics_resign_dialog_open = false;
+        self.fics_lag_notice = false;
+    }
+
+    fn receive_fics_lag_notice(&mut self, message: &str) {
+        if !self.fics_playing || self.fics_observing || self.lichess.active { return; }
+        let Some(game) = self.fics_game_id else { return; };
+        let prefix = format!("Game {game}: ");
+        let Some(text) = message.trim().strip_prefix(&prefix) else { return; };
+        if text.starts_with("You may type adjourn to courtesyadjourn") {
+            self.fics_lag_notice = true;
+        }
+    }
+
+    fn fics_lag_action_label(&self) -> &'static str {
+        if self.fics_registered { "Adjourn game" } else { "Abort game" }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -2507,6 +2525,7 @@ impl ChessApp {
                     }
                     self.fics_status = message;
                     if !connected {
+                        self.fics_lag_notice = false;
                         self.fics_profile = None;
                         self.fics_running_games.clear();
                         self.fics_ads.clear();
@@ -2519,6 +2538,7 @@ impl ChessApp {
                     }
                 }
                 FicsEvent::Line { message } => {
+                    self.receive_fics_lag_notice(&message);
                     self.fics_chats.receive(&message, self.fics_console_open && self.fics_chats.show_chat);
                     if let Some(game) = FicsRunningGame::parse(&message) {
                         if let Some(existing) =
@@ -2576,6 +2596,7 @@ impl ChessApp {
                     self.fics_playing = false;
                     self.fics_observing = false;
                     self.fics_game_finished = true;
+                    self.fics_lag_notice = false;
                     self.fics_seeking = false;
                     self.fics_pending_move = false;
                     self.fics_status = message.clone();
@@ -2651,6 +2672,9 @@ impl ChessApp {
                         self.review_white_player = white;
                         self.review_black_player = black;
                         self.fics_observation_start_ply = None;
+                    }
+                    if is_new || !Self::same_fics_position(&self.board, &server_board) {
+                        self.fics_lag_notice = false;
                     }
                     let anchor = self.review_positions.last().copied().unwrap_or(self.board);
                     if !is_new && !Self::same_fics_position(&anchor, &server_board) {
@@ -3071,6 +3095,7 @@ impl ChessApp {
             fics_console_suggestions_open: false,
             fics_console_suggestion_index: 0,
             fics_resign_dialog_open: false,
+            fics_lag_notice: false,
             fics_connected: false,
             fics_registered: false,
             fics_profile: None,
@@ -15541,6 +15566,31 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn fics_lag_notice_is_scoped_to_active_game_and_account() {
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        app.fics_game_id = Some(18);
+        app.fics_playing = true;
+        app.receive_fics_lag_notice("Game 19: You may type adjourn to courtesyadjourn the game.");
+        assert!(!app.fics_lag_notice);
+        app.receive_fics_lag_notice("GriffyJr kibitzes: You may type adjourn to courtesyadjourn the game.");
+        assert!(!app.fics_lag_notice);
+        app.receive_fics_lag_notice("Game 18: You may type adjourn to courtesyadjourn the game.");
+        assert!(app.fics_lag_notice);
+        assert_eq!(app.fics_lag_action_label(), "Abort game");
+        app.fics_registered = true;
+        assert_eq!(app.fics_lag_action_label(), "Adjourn game");
+        app.stop_fics();
+        assert!(!app.fics_lag_notice);
+        app.receive_fics_lag_notice("Game 18: You may type adjourn to courtesyadjourn the game.");
+        assert!(!app.fics_lag_notice);
+        app.fics_game_id = Some(18);
+        app.fics_playing = true;
+        app.fics_observing = true;
+        app.receive_fics_lag_notice("Game 18: You may type adjourn to courtesyadjourn the game.");
+        assert!(!app.fics_lag_notice);
+    }
+
+    #[test]
     fn remembered_fics_handle_is_optional_and_does_not_save_password() {
         let ctx = egui::Context::default();
         let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
@@ -19992,6 +20042,33 @@ impl eframe::App for ChessApp {
                     });
                 });
         }
+        if self.fics_lag_notice && self.fics_active && !self.lichess.active
+            && self.fics_connected && self.fics_playing && !self.fics_game_finished
+            && !self.fics_observing
+        {
+            egui::Window::new("Opponent is lagging")
+                .collapsible(false).resizable(false)
+                .show(ctx, |ui| {
+                    ui.label("FICS is waiting for your opponent to reconnect. You can keep waiting.");
+                    ui.label(if self.fics_registered {
+                        "Adjourn to save the game for later."
+                    } else {
+                        "As a guest, this ends the game without saving it for later."
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button(self.fics_lag_action_label()).clicked() {
+                            #[cfg(target_arch = "wasm32")]
+                            fics_send_command("adjourn");
+                            self.fics_status = "Requested courtesy adjournment".into();
+                            self.fics_lag_notice = false;
+                        }
+                        if ui.button("Keep waiting").clicked() {
+                            self.fics_lag_notice = false;
+                        }
+                    });
+                });
+        }
+
         if self.fics_resign_dialog_open
             && ((self.fics_active && self.fics_playing)
                 || (!self.fics_active && self.game_result() == "*"))
