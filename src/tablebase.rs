@@ -7,11 +7,12 @@ use serde::Deserialize;
 #[wasm_bindgen::prelude::wasm_bindgen]
 extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTablebase)]
-    fn lookup(fen: &str, retry: bool, begin: bool) -> String;
+    fn lookup(fen: &str, retry: bool, begin: bool, local: bool) -> String;
 }
 #[derive(Clone, Default)]
 struct State {
     root: String,
+    local: bool,
     path: Vec<Board>,
     clocks: Vec<u32>,
     root_clock: Option<u32>,
@@ -259,6 +260,8 @@ struct Data {
     source: Option<String>,
     error: Option<String>,
     category: Option<String>,
+    #[serde(default, rename = "dtzRounded")]
+    dtz_rounded: bool,
     dtz: Option<i32>,
     dtm: Option<i32>,
     #[serde(default)]
@@ -355,10 +358,12 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
         .ctx()
         .data_mut(|d| d.get_temp::<State>(id()))
         .unwrap_or_default();
+    if state.local && !crate::companion::enabled() { state = State::default(); }
     state.hovered_move = None;
     if state.root != root_fen {
         state = State {
             root: root_fen.to_owned(),
+            local: state.local,
             ..Default::default()
         };
     }
@@ -371,13 +376,24 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
     );
     ui.horizontal_wrapped(|ui| {
         ui.label(RichText::new("Syzygy").size(25.0).strong());
-        ui.label(RichText::new("7-piece coverage").size(12.0).weak());
+        ui.label(RichText::new(if state.local { "Owner-installed coverage" } else { "7-piece coverage" }).size(12.0).weak());
     });
     ui.label(
         RichText::new("Perfect-play outcomes. Explore each continuation on the board.")
             .size(13.0)
             .weak(),
     );
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Source");
+        let before = state.local;
+        ui.selectable_value(&mut state.local, false, "Lichess online");
+        if crate::companion::enabled() { ui.selectable_value(&mut state.local, true, "Local Companion"); }
+        if before != state.local { state.select_node(None); state.nodes.clear(); }
+    });
+    if state.local && ui.button("Connect Companion / inspect local coverage").clicked() {
+        #[cfg(target_arch = "wasm32")]
+        let _ = lookup("", false, true, true);
+    }
     ui.add_space(3.0);
     let tree_request = sunken_section(ui, |ui| {
     ui.label(RichText::new("EXPLORATION").size(11.0).strong().color(GOLD));
@@ -436,7 +452,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
     ui.label(RichText::new(
         "Check this clock for imported setup positions; recorded moves determine the default.",
     ).size(13.0));
-    ui.label(RichText::new("Standard chess, up to seven pieces including kings, without castling rights. Lookup sends the position to Lichess; internet required, no sign-in needed.").size(13.0));
+    ui.label(RichText::new(if crate::companion::enabled() { "Standard chess, up to seven pieces including kings, without castling rights. Choose Lichess to send the position online, or Local Companion to probe your own Syzygy files. Local probing never falls back online." } else { "Standard chess, up to seven pieces including kings, without castling rights. Positions are sent to Lichess for probing." }).size(13.0));
     if ui.link("Open this position on Lichess").on_hover_text("Send the selected position’s FEN to Lichess analysis in a new tab").clicked() {
         let clock = state.clocks.last().copied().unwrap_or(*root_clock);
         let fen = position_fen(board, clock, root_fen, state.path.len());
@@ -444,7 +460,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
     }
     ui.add_space(3.0);
     refresh = ui.button("Refresh tablebase result")
-        .on_hover_text("Bypass Ironwood’s cache and request a fresh result from Lichess.")
+        .on_hover_text("Bypass Ironwood’s cache and request a fresh result from the selected source.")
         .clicked();
     });
     });
@@ -483,7 +499,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                 .fill(GOLD)
                 .corner_radius(6),
             )
-            .on_hover_text("Use Ironwood’s cached result when available; otherwise request this position from Lichess.")
+            .on_hover_text("Use Ironwood’s cached result when available; otherwise request this position from the selected source.")
             .clicked();
         let request = manual_request || tree_request || continuation_request;
         if request || refresh {
@@ -491,7 +507,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
         }
         if state.requested == fen {
             #[cfg(target_arch = "wasm32")]
-            let response = lookup(&fen, refresh, request || refresh);
+            let response = lookup(&fen, refresh, request || refresh, state.local);
             #[cfg(not(target_arch = "wasm32"))]
             let response =
                 "{\"error\":\"Tablebases are available in the browser app.\"}".to_owned();
@@ -518,7 +534,9 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                     sunken_section(ui, |ui| {
                     ui.set_width(ui.available_width());
                     ui.horizontal_wrapped(|ui| {
-                        let (label, color, help) = if data.source.as_deref() == Some("cache") {
+                        let (label, color, help) = if data.source.as_deref() == Some("companion") {
+                            ("Local Companion", GOLD, "Probed owner-supplied Syzygy files. DTZ can be rounded; it is not distance to mate. No online fallback.")
+                        } else if data.source.as_deref() == Some("cache") {
                             ("Cached result", Color32::from_rgb(151, 183, 220), "Reused from Ironwood’s in-memory cache. No new API request. Refresh requests a fresh result.")
                         } else {
                             ("Lichess API", GOLD, "Fetched directly from the Lichess API for this lookup. This indicator stays the same while viewing the result.")
@@ -530,7 +548,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                     ui.label(RichText::new(format!("{} TO MOVE", if board.side_to_move() == chess::Color::White { "WHITE" } else { "BLACK" })).size(11.0).weak());
                     ui.label(RichText::new(result).size(if result.len() > 12 { 18.0 } else { 29.0 }).strong().color(result_color(result)));
                     if let Some(dtz) = data.dtz.filter(|value| *value != 0) {
-                        ui.label(RichText::new(format!("DTZ  {} plies", dtz.abs())).size(14.0).color(GOLD))
+                        ui.label(RichText::new(format!("DTZ  {}{} plies", if data.dtz_rounded { "~ " } else { "" }, dtz.abs())).size(14.0).color(GOLD))
                             .on_hover_text("Distance to a pawn move, capture or mate; may be rounded. This is not generally distance to mate.");
                     }
                     if let Some(dtm) = data.dtm {
@@ -638,7 +656,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                                     result_color(label),
                                 );
                                 let response = response.on_hover_text(format!(
-                                    "{} · {}\nHover to show the move arrow; click to explore. Moves are ranked by Lichess.\nDTZ: distance to a pawn move, capture or mate (half-moves); may be rounded.\nDTM: distance to mate (half-moves). Distances describe the position after this move. Missing values are unavailable.",
+                                    "{} · {}\nHover to show the move arrow; click to explore. Moves are ranked by the selected source.\nDTZ: distance to a pawn move, capture or mate (half-moves); may be rounded.\nDTM: distance to mate (half-moves). Distances describe the position after this move. Missing values are unavailable.",
                                     display_san(&entry.san), label
                                 ));
                                 if response.hovered() {
@@ -657,7 +675,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
                                 }
                             }
                         });
-                    ui.label(RichText::new("Ranked by Lichess · DTZ favors progress toward a pawn move, capture or mate.").size(13.0));
+                    ui.label(RichText::new("Ranked by the selected source · DTZ favors progress toward a pawn move, capture or mate.").size(13.0));
                     });
                 }
             } else {

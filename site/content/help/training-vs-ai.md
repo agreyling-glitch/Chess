@@ -2,16 +2,16 @@
 title: "Training vs AI"
 description: "Build a training profile, play both colors, and follow your progress against Stockfish."
 category: "using-ironwood"
-lastmod: 2026-10-16T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
 
-Choose **Game → New game → Training vs AI**, enter a profile name, and select **Create profile**. Start the game to play White against Stockfish at a 1320 Elo target. Games use the standard starting position and a 10-minute clock with five seconds added after each move.
+Choose **Game → New game → Training vs AI**, enter a profile name, choose **Starting target Elo** from 1320–3190, and select **Create profile**. The default is 1320. Start the game to play White against Stockfish at your chosen target. Games use the standard starting position with unlimited thinking time for you. Stockfish gets up to one second of search time per move. Unfinished training games from earlier versions also become untimed when reopened.
 
-Each profile starts with separate White and Black ratings of 1320. After a completed game, the next game uses the other color. A color's next opponent target follows its rating. **Overall** progress is the lower of the two ratings, so advancing requires results with both colors.
+Each profile starts with separate White and Black ratings at its chosen starting target. After a completed game, the next game uses the other color. A color's next opponent target follows its rating. **Overall** progress is the lower of the two ratings, so advancing requires results with both colors.
 
-Wins count as 1, draws as 0.5, and losses as 0. The rating changes by `32 × (score − expected score)`, rounded to a whole point. Expected score uses the usual Elo formula with the opponent's recorded target. Checkmate, resignation, clock losses, and draws all count. Unfinished games do not change a rating. Reopening or analyzing a finished game does not apply its rating change again.
+Wins count as 1, draws as 0.5, and losses as 0. The rating changes by `32 × (score − expected score)`, rounded to a whole point. Expected score uses the usual Elo formula with the opponent's recorded target. Checkmate, resignation, and draws all count, as do historical clock losses from earlier versions. Unfinished games do not change a rating. Reopening or analyzing a finished game does not apply its rating change again.
 
 Stockfish's target range is 1320–3190. Your training rating can fall below 1320; the engine stays at its lowest target until you recover. These are personal **Ironwood training ratings**, not FIDE, Chess.com, or Lichess ratings. Stockfish's strength limiter is approximate, and the game's conditions affect its effective strength. [Stockfish documents its Elo target and calibration](https://official-stockfish.github.io/docs/stockfish-wiki/UCI-Protocol-and-Stockfish-Commands.html#uci_elo).
 
@@ -38,7 +38,7 @@ You can also [type your moves](/help/keyboard-input/), including lowercase piece
 
 ## Finding areas to focus on
 
-After a training game finishes, use **Game Analysis** to analyze it. The profile updates its statistics as positions are analyzed, without changing the game's rating result.
+After a training game finishes, use **Analysis** to analyze it. The profile updates its statistics as positions are analyzed, without changing the game's rating result.
 
 The dashboard counts only your moves. An analysis-coverage indicator shows how many player moves have been analyzed. Opening, middlegame, and endgame cards show average centipawn loss as bars on a shared scale, plus numerical evaluation counts, mistakes, and blunders. Lower average loss is better; 100 centipawns equals one pawn. The highlighted practice card suggests a phase to review. Expand **How these statistics are calculated** for the definitions. Mistakes and blunders follow Ironwood's existing move-quality classifications. Mate scores are excluded from the average centipawn loss and tracked separately as missed or allowed mates.
 

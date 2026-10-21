@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 title: "Board themes and appearance"
 description: "Choose and customize 2D or 3D themes, with guidance on artwork downloads, Retry, and offline use."
 category: "using-ironwood"
@@ -55,7 +55,7 @@ Rotation, reset, and zoom change only your view. Normal scrolling changes the di
 
 ## Hybrid Marble: flat board with 3D pieces
 
-Choose **Hybrid Marble** in the **2D** tab for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
+Choose **Hybrid Marble** in the **2D Pieces** tab for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
 
 Open the Hybrid Marble card's **Adjust** button, or **View → Board → Theme adjustments…**, to customize it:
 

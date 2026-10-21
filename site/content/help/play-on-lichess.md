@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -73,13 +73,13 @@ In the **Correspondence** tab, choose 1, 2, 3, 5, 7, 10, or 14 days per move, th
 
 While playing correspondence, choose **Return to lobby · keep this game ongoing** to put that game aside without resigning or signing out. You can resume another game or create a new one. Ironwood displays one online game at a time, while Lichess keeps your other games ongoing.
 
-**Game → Load saved game** also puts an active correspondence game aside and keeps your Lichess sign-in. The saved game remains on the board instead of being replaced by the correspondence game. Resume the online game manually from the lobby later. Loading a saved game during a live online game disconnects online play; it does not resign the game on Lichess, and its clock continues.
+**Game → Saved games** also puts an active correspondence game aside and keeps your Lichess sign-in. The saved game remains on the board instead of being replaced by the correspondence game. Resume the online game manually from the lobby later. Loading a saved game during a live online game disconnects online play; it does not resign the game on Lichess, and its clock continues.
 
 ## Moves, chat, and game controls
 
 Play on Ironwood's board, including promotion and castling. A move appears immediately as a translucent ghost while waiting for Lichess. It becomes solid when confirmed or disappears if rejected. This preview does not advance the official move history. Clocks and results come from Lichess. After a dropped connection, Ironwood reconnects and recovers the full move history.
 
-During an active Lichess game, the **Game Analysis** panel becomes **Game chat** beside the board. Type a message and press Enter or Send. This is the game's player chat, separate from spectator chat. After the game ends, the panel returns to full game analysis.
+During an active Lichess game, the **Analysis** tab shows **Game chat** beside the board. Type a message and press Enter or Send. This is the game's player chat, separate from spectator chat. After the game ends, the tab returns to full-game analysis.
 
 Game controls appear below the board, in the lobby, and under **Game**, beneath Resign:
 

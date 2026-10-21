@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
 const source = readFileSync(new URL('../web/app-bootstrap.js', import.meta.url), 'utf8');
-const { startChessApp, installDeferredTools, compileAppWasm, install3dCompanion } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { startChessApp, installDeferredTools, compileAppWasm, install3dCompanion } = await import(new URL('../web/app-bootstrap.js', import.meta.url));
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const deferred = () => {
   let resolve, reject;
@@ -539,4 +539,89 @@ test('Training Profiles pop-out reuses its window, shares activity, and sends st
   main.dom.window.dispatchEvent(new main.dom.window.StorageEvent('storage',{key:'ironwood.chess.training.v1'}));
   assert.equal(main.target.ironwoodTakeTrainingChanged(),true);
   assert.equal(main.target.ironwoodTakeTrainingChanged(),false);
+});
+
+test('Companion add-on is hidden by default and its persistent diagnostics switch gates deferred tools',async()=>{
+  const {installCompanionFeature,companionEnabled}=await import('../web/companion-feature.js');
+  const dom=new JSDOM('<body></body>',{url:'http://localhost/play/'}), target=dom.window;
+  const loaded=[];
+  installDeferredTools(target,async path=>{loaded.push(path);target.ironwoodRefreshCompanionEngines=()=>{};});
+  assert.equal(companionEnabled(target),false);
+  target.ironwoodRefreshCompanionEngines();target.ironwoodArchiveExplorer('fen');await flush();
+  assert.equal(target.ironwoodCompanionDiagnostics(),'{}');
+  target.ironwoodRefreshCompanionDiagnostics();target.ironwoodCheckCompanionUpdates();target.ironwoodInstallCompanionUpdate();await flush();
+  assert.deepEqual(loaded,[]);
+  target.ironwoodSetCompanionFeatureEnabled(true);
+  assert.equal(companionEnabled(target),true);
+  target.ironwoodRefreshCompanionEngines();await flush();await flush();
+  assert.deepEqual(loaded,['/companion-engines.js']);
+  let closed=0;const dialog=target.document.createElement('dialog');dialog.id='companion-archive';dialog.close=()=>{closed++;dialog.remove();};target.document.body.append(dialog);
+  target.ironwoodSetCompanionFeatureEnabled(false);
+  assert.equal(closed,1);assert.equal(companionEnabled(target),false);
+  installCompanionFeature(target);assert.equal(target.ironwoodCompanionFeatureEnabled(),false);
+  dom.window.close();
+});
+
+test('analysis catalog loads automatically after reload only when Companion is enabled', async () => {
+  const dom = new JSDOM('<body></body>', {url:'http://localhost/play/'});
+  const target = dom.window, loaded = [];
+  let reads = 0;
+  installDeferredTools(target, async path => {
+    loaded.push(path);
+    target.ironwoodCompanionEngineCatalog = () => { reads++; return '{"engines":[{"label":"Lc0"}]}'; };
+  });
+  target.ironwoodCompanionEngineCatalog();
+  await flush();
+  assert.deepEqual(loaded, []);
+  target.ironwoodSetCompanionFeatureEnabled(true);
+  assert.equal(JSON.parse(target.ironwoodCompanionEngineCatalog()).busy,true);
+  target.ironwoodCompanionEngineCatalog();
+  await flush(); await flush();
+  assert.deepEqual(loaded, ['/companion-engines.js']);
+  assert.equal(reads,1);
+  assert.equal(JSON.parse(target.ironwoodCompanionEngineCatalog()).engines[0].label,'Lc0');
+  dom.window.close();
+});
+
+test('restored engine initializes through the shared connection without loading the engine picker', async () => {
+  const {dom, target} = environment();
+  const loaded = [], messages = [];
+  installDeferredTools(target, async path => {
+    loaded.push(path);
+    return {companionEngineConfiguration(identity, overrides) {
+      assert.equal(identity, 'http://localhost:8790/lc0');
+      return {endpoint:'http://localhost:8790', credential:'shared-token', engineId:'lc0', overrides};
+    }};
+  });
+  const worker = {postMessage: message => messages.push(message)};
+  await target.ironwoodInitializeCompanionEngine(worker, {type:'init'}, 'unused');
+  assert.deepEqual(loaded, []);
+  assert.match(messages.pop().companionError, /disabled/);
+  target.ironwoodCompanionFeatureEnabled = () => true;
+  await target.ironwoodInitializeCompanionEngine(worker, {type:'init',overrides:{Backend:'cuda'}}, 'http://localhost:8790/lc0');
+  assert.deepEqual(loaded, ['/companion-connection.js']);
+  assert.equal(messages[0].companion.engineId, 'lc0');
+  assert.deepEqual(messages[0].companion.overrides, {Backend:'cuda'});
+  dom.window.close();
+});
+
+test('connection restoration errors reach the worker and disabling during load prevents connection', async () => {
+  const {dom, target} = environment();
+  const loading = deferred(), messages = [];
+  let enabled = true, resolved = 0;
+  installDeferredTools(target, () => loading.promise);
+  target.ironwoodCompanionFeatureEnabled = () => enabled;
+  const start = target.ironwoodInitializeCompanionEngine({postMessage: value => messages.push(value)}, {type:'init'}, 'saved-engine');
+  enabled = false;
+  loading.resolve({companionEngineConfiguration() { resolved++; }});
+  await start;
+  assert.equal(resolved, 0);
+  assert.match(messages.pop().companionError, /disabled/);
+  enabled = true;
+  // A missing credential is an actionable connection error, not a startup failure.
+  installDeferredTools(target, async () => ({companionEngineConfiguration() { throw new Error('Connect, then Retry connection'); }}));
+  target.ironwoodCompanionFeatureEnabled = () => true;
+  await target.ironwoodInitializeCompanionEngine({postMessage: value => messages.push(value)}, {type:'init'}, 'saved-engine');
+  assert.equal(messages.pop().companionError, 'Connect, then Retry connection');
+  dom.window.close();
 });

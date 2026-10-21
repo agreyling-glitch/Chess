@@ -1,0 +1,13 @@
+import {spawnSync} from 'node:child_process';
+import {readdirSync,readFileSync,writeFileSync,mkdirSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {resolve} from 'node:path';
+const binary=process.env.COMPANION_BINARY||resolve('target/debug/ironwood-server');
+const tests=readdirSync('tests').filter(n=>/^companion-.*\.test\.mjs$/.test(n)).map(n=>'tests/'+n).concat('scripts/tablebase.test.mjs');
+mkdirSync('tmp',{recursive:true});
+const result=spawnSync(process.execPath,['--test','--test-concurrency=1','--test-reporter=tap',...tests],{encoding:'utf8',env:{...process.env,COMPANION_BINARY:binary},timeout:120000,maxBuffer:16*1024*1024});
+writeFileSync('tmp/platform-tests.tap',(result.stdout||'')+(result.stderr||''));
+const report={format:'ironwood-platform-tests',version:1,status:result.status===0?'passed':'failed',environmentKind:process.env.COMPANION_VALIDATION_ENVIRONMENT||'development',platform:process.platform,architecture:process.arch,node:process.version,binarySha256:createHash('sha256').update(readFileSync(binary)).digest('hex'),testFiles:tests,exitCode:result.status,error:result.error?.message};
+writeFileSync('tmp/platform-report.json',JSON.stringify(report,null,2)+'\n');
+console.log(JSON.stringify(report));
+process.exitCode=result.status===0?0:1;

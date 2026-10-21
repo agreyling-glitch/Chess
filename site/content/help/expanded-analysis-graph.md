@@ -4,12 +4,12 @@ description: "Navigate the full graph, read capture markers, and inspect positio
 category: "analysis"
 keywords: [expand, graph, captures, Merida, wheel, arrows, drawings, notes, preview]
 weight: 21
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
 ## Open the full graph
 
-Run **Analyze full game** in **Game Analysis**, then choose **Expand** above its graph. The expanded view shows the game title, analyzed-position count, evaluation graph, move details, notes, and a board preview. Use the close button to return to the workspace.
+Open the **Analysis** tab and run **Analyze full game with Stockfish 19**, then choose **Expand** inside the graph’s upper-right corner. The expanded view shows the game title, analyzed-position count, evaluation graph, move details, notes, and a board preview. Use the close button to return to the workspace.
 
 This **Expand** opens the played game's evaluation graph. The separate Expand beneath **Engine prediction** opens [predicted continuations as mini boards](/help/engine-line/#expand-the-prediction-into-boards).
 

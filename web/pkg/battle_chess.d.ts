@@ -3,6 +3,8 @@
 
 export function export_saved_game(json: string, format: string): string;
 
+export function prepare_archived_pgn(pgn: string): string;
+
 export function preview_scoresheet(entries: string): string;
 
 export function start(): Promise<void>;
@@ -17,19 +19,20 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly prepare_archived_pgn: (a: number, b: number) => [number, number, number, number];
     readonly preview_scoresheet: (a: number, b: number) => [number, number, number, number];
     readonly start: () => void;
     readonly validate_scoresheet_pgn: (a: number, b: number) => [number, number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h05b652a48fee2551: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h6ff512e58f1c7ae8: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h6ff512e58f1c7ae8_11: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h6ff512e58f1c7ae8_12: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h482df55ced180833: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h482df55ced180833_7: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h6e19e6ec83319c28: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h6e19e6ec83319c28_10: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h722aff791bec404d: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h86b4fe3acd52798f: (a: number, b: number) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_12: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_13: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h0d9cf8010272419a: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba_11: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_8: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__hc86f24272c98cb0b: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __externref_table_alloc: () => number;

@@ -34,9 +34,26 @@ struct ProfileManager {
     busy: bool,
     delete_open: bool,
     delete_games: bool,
+    engine: training::TrainingEngine,
+    starting_level: u8,
+    starting_elo: i32,
 }
 
 impl ChessApp {
+    pub(super) fn companion_training_blocked(&self) -> bool {
+        self.training.as_ref().is_some_and(|s| s.engine.is_lc0()) && !crate::companion::enabled() && self.game_result() == "*"
+    }
+    pub(super) fn training_engine_config(session: &Session) -> EngineConfig {
+        let mut config = EngineConfig { limit_strength:true, elo:session.opponent_elo.max(1320) as u32,
+            threads:Self::engine_thread_count(), move_time_ms:1000, multipv:1, ..EngineConfig::default() };
+        if let training::TrainingEngine::Lc0 {identity,name,options} = &session.engine {
+            config.opponent = OpponentEngine::Companion;
+            config.companion_identity = identity.clone(); config.companion_name = name.clone();
+            config.companion_options = options.clone(); config.limit_strength = false;
+            config.search_limit = SearchLimit::Nodes; config.nodes = session.node_budget.max(1);
+        }
+        config
+    }
     pub(super) fn training_companion_ui(&mut self, ui: &mut egui::Ui) {
         #[cfg(target_arch = "wasm32")]
         if training_companion_mode() {
@@ -215,7 +232,14 @@ impl ChessApp {
         }
         let mut profiles = self.training_profiles.clone();
         let id = Self::training_id();
+        let draft = self.puzzle_context.data(|d| d.get_temp::<ProfileManager>(egui::Id::new("training_profile_manager"))).unwrap_or_default();
+        if draft.engine.is_lc0() && !crate::companion::enabled() {
+            self.training_error = Some("Enable Companion in Version diagnostics to use this training profile.".into()); return;
+        }
         profiles.profiles.push(Profile {
+            engine: draft.engine,
+            starting_level: draft.starting_level.clamp(1, training::NODE_LEVELS.len() as u8),
+            starting_elo: draft.starting_elo.clamp(training::START_RATING, training::MAX_TARGET),
             id: id.clone(),
             name,
             results: vec![],
@@ -362,20 +386,21 @@ impl ChessApp {
             return;
         };
         let session = profile.session(Self::training_id(), Self::training_now());
+        if session.engine.is_lc0() && !crate::companion::enabled() {
+            self.training_error = Some("Enable Companion in Version diagnostics to use this training profile.".into()); return;
+        }
         if self.fics_active {
             self.stop_fics();
         }
         self.new_game_training = true;
         self.compact_panel = CompactPanel::Moves;
         self.engine_enabled = true;
-        self.engine_config = EngineConfig {
-            limit_strength: true,
-            elo: session.opponent_elo as u32,
-            threads: Self::engine_thread_count(),
-            move_time_ms: 1000,
-            multipv: 1,
-            ..EngineConfig::default()
-        };
+        self.engine_config = Self::training_engine_config(&session);
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.ensure_engine_provider(self.engine_config.clone());
+            self.engine = None; self.engine_ready = false; self.engine_searching = false;
+        }
         self.realtime_analysis_due_at = None;
         let side = if session.side == TrainingSide::White {
             PlayerSide::White
@@ -384,14 +409,8 @@ impl ChessApp {
         };
         self.reset_for_side(side);
         self.review_positions = vec![self.board];
-        self.local_clock = Some(LocalClock {
-            white: 600.0,
-            black: 600.0,
-            increment: 5.0,
-            flagged_white: None,
-            updated_at: Self::animation_time(),
-        });
-        let opponent = format!("Stockfish {} Elo", session.opponent_elo);
+        self.local_clock = None;
+        let opponent = session.opponent_label();
         self.review_white_player = if side == PlayerSide::White {
             session.profile_name.clone()
         } else {
@@ -414,6 +433,13 @@ impl ChessApp {
     pub(super) fn training_setup_ui(&mut self, ui: &mut egui::Ui) {
         let manager_id = egui::Id::new("training_profile_manager");
         let mut manager = ui.ctx().data(|d| d.get_temp::<ProfileManager>(manager_id)).unwrap_or_default();
+        let companion_enabled = crate::companion::enabled();
+        if !companion_enabled {
+            manager.engine = training::TrainingEngine::Stockfish;
+        }
+        if let training::TrainingEngine::Lc0 { identity, options, .. } = &mut manager.engine {
+            if *identity == self.analysis_config.companion_identity { *options = self.analysis_config.companion_options.clone(); }
+        }
         if let Ok(status) = serde_json::from_str::<serde_json::Value>(&profile_action("poll", "")) {
             manager.busy = status["busy"].as_bool().unwrap_or(false);
             if let Some(message) = status["message"].as_str().or(status["error"].as_str()) { manager.message = message.into(); }
@@ -433,6 +459,16 @@ impl ChessApp {
             }
         }
         if manager.busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(150)); }
+        if !companion_enabled {
+            manager.selected.retain(|id| self.training_profiles.profiles.iter().any(|p| &p.id == id && !p.engine.is_lc0()));
+            if self.training_profiles.selected().is_some_and(|p| p.engine.is_lc0()) {
+                self.training_profiles.selected_id = self.training_profiles.profiles.iter().find(|p| !p.engine.is_lc0()).map(|p| p.id.clone()).unwrap_or_default();
+            }
+        }
+        if self.training_error.as_deref() == Some("Enable Companion in Version diagnostics to use this training profile.")
+            && (companion_enabled || self.training_profiles.selected().is_some_and(|p| !p.engine.is_lc0())) {
+            self.training_error = None;
+        }
         let roomy = self.training_dialog_open && !self.new_game_dialog_open;
         let gold = Color32::from_rgb(211, 173, 98);
         let muted = Color32::from_rgb(164, 171, 180);
@@ -462,21 +498,26 @@ impl ChessApp {
                         .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
                     ui.style_mut().wrap_mode=Some(egui::TextWrapMode::Truncate);
                     // Reserve checkbox, column gutters, and the radio indicator/padding.
-                    let usable = (ui.available_width() - 28.0 - 40.0 - 48.0).max(180.0);
-                    let name_width = usable * 0.43;
-                    let stat_width = usable * 0.19;
+                    let usable = (ui.available_width() - 28.0 - if companion_enabled {50.0} else {40.0} - 48.0).max(180.0);
+                    let name_width = usable * if companion_enabled {0.28} else {0.43};
+                    let engine_width = usable * 0.24;
+                    let stat_width = usable * if companion_enabled {0.16} else {0.19};
                     ui.spacing_mut().interact_size.y = 32.0;
                     egui::ScrollArea::vertical().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
-                        egui::Grid::new("training_profiles_table").striped(true).num_columns(5).min_col_width(0.0).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
-                            let mut all = !self.training_profiles.profiles.is_empty() && manager.selected.len() == self.training_profiles.profiles.len();
+                        egui::Grid::new(("training_profiles_table", companion_enabled)).striped(true).num_columns(if companion_enabled {6} else {5}).min_col_width(0.0).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
+                            let visible_count = self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_lc0()).count();
+                            let mut all = visible_count > 0 && manager.selected.len() == visible_count;
                             if ui.checkbox(&mut all, "").on_hover_text("Select all profiles").changed() {
-                                manager.selected = if all { self.training_profiles.profiles.iter().map(|p| p.id.clone()).collect() } else { Vec::new() };
+                                manager.selected = if all { self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_lc0()).map(|p| p.id.clone()).collect() } else { Vec::new() };
                             }
-                            for (label, width) in [("Profile", name_width), ("White Elo", stat_width), ("Black Elo", stat_width), ("Games", stat_width)] {
+                            Self::game_moves_glass_label(ui, Vec2::new(name_width, 30.0), "Profile", true);
+                            if companion_enabled { Self::game_moves_glass_label(ui, Vec2::new(engine_width, 30.0), "Engine", true); }
+                            for (label, width) in [("White", stat_width), ("Black", stat_width), ("Games", stat_width)] {
                                 Self::game_moves_glass_label(ui, Vec2::new(width, 30.0), label, true);
                             }
                             ui.end_row();
                             for profile in &self.training_profiles.profiles {
+                                if profile.engine.is_lc0() && !companion_enabled { continue; }
                                 let mut selected = manager.selected.contains(&profile.id);
                                 if ui.checkbox(&mut selected, "").changed() {
                                     if selected { manager.selected.push(profile.id.clone()); } else { manager.selected.retain(|id| id != &profile.id); }
@@ -484,10 +525,15 @@ impl ChessApp {
                                 let active = self.training_profiles.selected_id == profile.id;
                                 if ui.add_sized([name_width, 34.0], egui::RadioButton::new(active,
                                     RichText::new(&profile.name).strong().color(if active { gold } else { Color32::from_rgb(228, 231, 234) })))
-                                    .on_hover_text(format!("{}\nUse this profile for training and puzzle focus",profile.name)).clicked() {
+                                    .on_hover_text(format!("{} · {}\nUse this profile for training and puzzle focus",profile.name,profile.engine.label())).clicked() {
                                     self.training_profiles.selected_id = profile.id.clone();
                                 }
-                                for value in [profile.rating(TrainingSide::White).to_string(), profile.rating(TrainingSide::Black).to_string(), profile.results.len().to_string()] {
+                                if companion_enabled {
+                                    let engine = if profile.engine.is_lc0() { profile.engine.label() } else { "Stockfish 19" };
+                                    ui.add_sized([engine_width, 34.0], egui::Label::new(engine).truncate()).on_hover_text(engine);
+                                }
+                                let difficulty = |side| if profile.engine.is_lc0() { format!("Level {}",profile.rating(side)) } else { format!("{} Elo",profile.rating(side)) };
+                                for value in [difficulty(TrainingSide::White), difficulty(TrainingSide::Black), profile.results.len().to_string()] {
                                     ui.add_sized([stat_width, 34.0], egui::Label::new(RichText::new(value).size(18.0).color(Color32::from_rgb(235, 226, 205))));
                                 }
                                 ui.end_row();
@@ -560,6 +606,29 @@ impl ChessApp {
                 ui.separator();
                 ui.add_space(4.0);
                 ui.label(RichText::new("Create a new profile").strong().color(gold));
+                ui.add_enabled_ui(!manager.busy && !manager.delete_open && !self.training_live(), |ui| {
+                    if companion_enabled {
+                        egui::ComboBox::from_id_salt("training_profile_engine").selected_text(manager.engine.label()).show_ui(ui, |ui| {
+                            ui.selectable_value(&mut manager.engine, training::TrainingEngine::Stockfish, "Built-in Stockfish · target Elo");
+                            let name = self.analysis_config.companion_name.to_lowercase();
+                            if self.analysis_config.opponent == OpponentEngine::Companion && (name.contains("lc0") || name.contains("leela")) {
+                                ui.selectable_value(&mut manager.engine, training::TrainingEngine::Lc0 {
+                                    identity:self.analysis_config.companion_identity.clone(), name:self.analysis_config.companion_name.clone(), options:self.analysis_config.companion_options.clone()
+                                }, format!("{} · node-based levels",self.analysis_config.label()));
+                            }
+                        });
+                        ui.small("Select lc0 in Engine Settings to create a profile for that engine. Each profile keeps its engine options.");
+                    }
+                    if manager.engine.is_lc0() {
+                        manager.starting_level = manager.starting_level.clamp(1, training::NODE_LEVELS.len() as u8);
+                        ui.add(egui::Slider::new(&mut manager.starting_level, 1..=training::NODE_LEVELS.len() as u8).text("Starting level"));
+                        ui.small(format!("{} nodes per move · levels are not calibrated Elo",training::NODE_LEVELS[manager.starting_level as usize - 1]));
+                        ui.small("Create a new profile after replacing engine or network files so progress stays comparable.");
+                    } else {
+                        manager.starting_elo = manager.starting_elo.clamp(training::START_RATING, training::MAX_TARGET);
+                        ui.add(egui::Slider::new(&mut manager.starting_elo, training::START_RATING..=training::MAX_TARGET).text("Starting target Elo"));
+                    }
+                });
                 ui.horizontal(|ui| {
                     let width = (ui.available_width() - 140.0 - ui.spacing().item_spacing.x - 2.0).max(80.0);
                     ui.add_sized(
@@ -584,6 +653,7 @@ impl ChessApp {
                         )
                         .clicked()
                     {
+                        ui.ctx().data_mut(|d| d.insert_temp(manager_id, manager.clone()));
                         self.create_training_profile();
                     }
                 });
@@ -595,21 +665,50 @@ impl ChessApp {
                 );
             });
         if manager.delete_open {
-            egui::Modal::new(egui::Id::new("delete_training_profiles_confirmation")).show(ui.ctx(), |ui| {
-                    ui.heading("Delete training profiles?");
-                    ui.set_max_width(460.0);
-                    ui.label("Delete these profiles and their ratings and progress? This cannot be undone.");
-                    for profile in self.training_profiles.profiles.iter().filter(|p| manager.selected.contains(&p.id)) { ui.label(&profile.name); }
-                    ui.checkbox(&mut manager.delete_games, "Also delete saved game history for these profiles");
-                    ui.label(if manager.delete_games { "Linked saved games and their analysis will be removed." } else { "Linked saved games will remain in Saved Games > Training." });
-                    ui.horizontal(|ui| {
-                        if ui.button("Cancel").clicked() { manager.delete_open = false; }
-                        if ui.add_enabled(!manager.busy && !self.training_live(), egui::Button::new("Delete selected profiles")).clicked() {
+            let confirmation = egui::Modal::new(egui::Id::new("delete_training_profiles_confirmation"))
+                .frame(Self::dialog_frame().inner_margin(Margin::same(24)))
+                .show(ui.ctx(), |ui| {
+                    ui.set_width((ui.ctx().content_rect().width() - 80.0).clamp(240.0, 440.0));
+                    ui.label(RichText::new("PROFILE MANAGEMENT").size(11.0).strong().color(gold));
+                    ui.add_space(6.0);
+                    ui.label(RichText::new("Delete training profiles?").size(24.0).strong()
+                        .color(Color32::from_rgb(240, 234, 220)));
+                    ui.add_space(10.0);
+                    ui.label(RichText::new("Their ratings and progress will be permanently removed.")
+                        .size(14.0).color(muted));
+                    ui.add_space(14.0);
+                    Self::training_sunken_section(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.label(RichText::new("SELECTED PROFILES").size(11.0).strong().color(gold));
+                        egui::ScrollArea::vertical().max_height(120.0).show(ui, |ui| {
+                            for profile in self.training_profiles.profiles.iter().filter(|p| manager.selected.contains(&p.id)) {
+                                ui.label(RichText::new(&profile.name).size(15.0).strong());
+                            }
+                        });
+                    });
+                    ui.add_space(14.0);
+                    ui.checkbox(&mut manager.delete_games, RichText::new("Also delete their saved games").size(14.0));
+                    ui.label(RichText::new(if manager.delete_games { "Saved games and their analysis will also be removed." } else { "Saved games will remain in Saved Games > Training." }).size(12.0).color(muted));
+                    ui.add_space(12.0);
+                    ui.label(RichText::new("This cannot be undone.").size(13.0).strong()
+                        .color(Color32::from_rgb(235, 156, 139)));
+                    ui.add_space(20.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.add(egui::Button::new(RichText::new("Cancel").size(14.0).strong()
+                            .color(Color32::from_rgb(24, 27, 31)))
+                            .min_size(Vec2::new(140.0, 42.0)).fill(gold).corner_radius(6.0).raised_gold()).clicked() { manager.delete_open = false; }
+                        if ui.add_enabled(!manager.busy && !self.training_live(),
+                            egui::Button::new(RichText::new("Delete profiles").size(14.0)
+                                .color(Color32::from_rgb(255, 222, 215)))
+                                .min_size(Vec2::new(164.0, 42.0)).corner_radius(6.0)
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(168, 89, 76)))
+                                .fill(Color32::from_rgb(103, 48, 43))).clicked() {
                             profile_action("delete", &serde_json::json!({"ids":manager.selected,"deleteGames":manager.delete_games}).to_string());
                             manager.busy = true; manager.delete_open = false;
                         }
                     });
                 });
+            Self::paint_fics_window_border(&ui.ctx().layer_painter(confirmation.response.layer_id), confirmation.response.rect);
         }
         ui.ctx().data_mut(|d| d.insert_temp(manager_id, manager));
         if let Some(error) = &self.training_error {
@@ -650,7 +749,7 @@ impl ChessApp {
                                 .strong()
                                 .color(if label == "OVERALL" { gold } else { muted }),
                         );
-                        ui.label(RichText::new(rating.to_string()).size(30.0).strong());
+                        ui.label(RichText::new(format!("{}{}",if profile.is_some_and(|p| p.engine.is_lc0()) {"Level "} else {""},rating)).size(30.0).strong());
                         ui.label(RichText::new(caption).size(if roomy { 16.0 } else { 12.0 }).color(muted));
                     });
             }
@@ -670,10 +769,10 @@ impl ChessApp {
                     .strong()
                     .color(gold),
             );
-            ui.label(RichText::new(format!("vs Stockfish · {} Elo", target)).size(if roomy { 16.0 } else { 14.0 }));
+            ui.label(RichText::new(profile.map(|p| p.session(String::new(),String::new()).opponent_label()).unwrap_or_else(|| format!("Stockfish {target} Elo"))).size(if roomy { 16.0 } else { 14.0 }));
         });
         ui.label(
-            RichText::new("Standard chess  ·  10 minutes + 5 seconds per move")
+            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Standard chess · Unlimited time for you · lc0 uses the level's node budget" } else { "Standard chess  ·  Unlimited time for you  ·  Stockfish thinks up to 1 second per move" })
                 .size(if roomy { 16.0 } else { 13.0 })
                 .color(muted),
         );
@@ -683,12 +782,12 @@ impl ChessApp {
                 .size(16.0)
                 .strong(),
         );
-        ui.label(RichText::new("Finish a game to update that color’s rating. Your next game switches sides, and Stockfish adjusts to your rating.").size(if roomy { 16.0 } else { 13.0 }).color(muted));
+        ui.label(RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Each color has its own level: a win raises it by one, a loss lowers it by one, and a draw keeps it unchanged. Your next game switches sides." } else { "Finish a game to update that color’s rating. Your next game switches sides, and Stockfish adjusts to your rating." }).size(if roomy { 16.0 } else { 13.0 }).color(muted));
         ui.add_space(if roomy { 10.0 } else { 5.0 });
         ui.label(RichText::new("Review your game and spot patterns afterward. Hints and takebacks are paused during training.").size(if roomy { 16.0 } else { 13.0 }).color(muted));
         ui.add_space(if roomy { 12.0 } else { 6.0 });
         ui.label(
-            RichText::new("Ironwood training Elo · starts at 1320 · not an official rating")
+            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Node-based difficulty levels · not Elo · even low levels can be strong with a powerful network" } else { "Ironwood training Elo · not an official rating" })
                 .size(if roomy { 16.0 } else { 11.0 })
                 .color(muted),
         );
@@ -711,7 +810,7 @@ impl ChessApp {
         ui.spacing_mut().item_spacing.y = 8.0;
         ui.label(RichText::new(if finished { "TRAINING RESULT" } else { "TRAINING GAME" }).size(10.0).strong().color(gold));
         ui.label(RichText::new(&session.profile_name).size(16.0).strong().color(Color32::from_rgb(238, 232, 219)));
-        ui.label(RichText::new(format!("{} · Stockfish {} Elo", session.side.label(), session.opponent_elo)).size(12.0).color(muted));
+        ui.label(RichText::new(format!("{} · {}", session.side.label(), session.opponent_label())).size(12.0).color(muted));
         if let Some(after) = session.rating_after {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(format!("{} to {}", session.rating_before, after)).size(20.0).strong().color(gold));
@@ -721,13 +820,21 @@ impl ChessApp {
                     else if change < 0 { Color32::from_rgb(240, 150, 130) } else { muted }));
             });
         } else {
-            ui.label(RichText::new(format!("{} Elo", session.rating_before)).size(20.0).strong().color(gold));
+            ui.label(RichText::new(format!("{} {}", session.rating_before, if session.engine.is_lc0() { "level" } else { "Elo" })).size(20.0).strong().color(gold));
         }
         if let Some(error) = &self.training_error {
             ui.colored_label(Color32::from_rgb(240, 150, 130), error);
         }
         ui.add_space(2.0);
-            if finished && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
+        #[cfg(target_arch = "wasm32")]
+        if !finished && session.engine.is_lc0() && crate::companion::enabled() && self.engine_start_failed {
+            ui.label("Check Game → Companion connection… before retrying.");
+            if ui.button("Retry engine connection").clicked() {
+                self.engine = None; self.engine_ready = false; self.engine_start_failed = false;
+                self.queue_live_engine_resume();
+            }
+        }
+            if finished && (!session.engine.is_lc0() || crate::companion::enabled()) && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
                 RichText::new("Next training game").size(13.0).strong().color(Color32::from_rgb(24, 27, 31)))
                 .fill(gold).corner_radius(6.0).raised_gold()).clicked() {
                 self.training_profiles.selected_id = session.profile_id.clone();
@@ -771,7 +878,7 @@ impl ChessApp {
             }
         }
         painter.add(egui::Shape::mesh(grain));
-        let mut white = training::START_RATING;
+        let mut white = profile.initial_rating();
         let mut black = white;
         let mut points = vec![(white, black, white)];
         for entry in &profile.results {
@@ -786,18 +893,18 @@ impl ChessApp {
             .flat_map(|p| [p.0, p.1, p.2])
             .min()
             .unwrap_or(1320)
-            - 20;
+            - if profile.engine.is_lc0() { 1 } else { 20 };
         let max = points
             .iter()
             .flat_map(|p| [p.0, p.1, p.2])
             .max()
             .unwrap_or(1320)
-            + 20;
+            + if profile.engine.is_lc0() { 1 } else { 20 };
         let plot = rect.shrink2(Vec2::new(50.0, 16.0));
         let y = |rating: i32| {
             plot.bottom() - (rating - min) as f32 / (max - min) as f32 * plot.height()
         };
-        for rating in [min, training::START_RATING, max] {
+        for rating in [min, profile.initial_rating(), max] {
             painter.line_segment(
                 [
                     egui::pos2(plot.left(), y(rating)),
@@ -842,7 +949,7 @@ impl ChessApp {
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(Color32::LIGHT_GRAY, "White");
             ui.colored_label(Color32::from_rgb(102, 162, 226), "Black");
-            ui.colored_label(Color32::from_rgb(211, 173, 98), "Overall (lower rating)");
+            ui.colored_label(Color32::from_rgb(211, 173, 98), if profile.engine.is_lc0() { "Overall (lower level)" } else { "Overall (lower rating)" });
             ui.label("Completed games");
         });
     }
@@ -950,15 +1057,15 @@ impl ChessApp {
                 ui.label(RichText::new("PROGRESS").strong().color(Color32::from_rgb(211, 173, 98)));
                 ui.label(RichText::new(format!("{} completed · {} wins · {} draws · {} losses", profile.results.len(), wins, draws, losses)).strong());
                 egui::Grid::new("training_color_stats").striped(true).spacing(Vec2::new(24.0, 12.0)).show(ui, |ui| {
-                    for label in ["Color", "Rating", "W / D / L", "Last 10 games"] { ui.strong(label); } ui.end_row();
+                    for label in ["Color", if profile.engine.is_lc0() { "Level" } else { "Rating" }, "W / D / L", "Last 10 games"] { ui.strong(label); } ui.end_row();
                     for side in [TrainingSide::White, TrainingSide::Black] {
                         let c = profile.counts(Some(side));
                         ui.label(side.label()); ui.label(profile.rating(side).to_string());
-                        ui.label(format!("{} / {} / {}", c[0], c[1], c[2])); ui.label(format!("{:+} Elo", profile.recent_change(side))); ui.end_row();
+                        ui.label(format!("{} / {} / {}", c[0], c[1], c[2])); ui.label(format!("{:+} {}", profile.recent_change(side),if profile.engine.is_lc0() { "levels" } else { "Elo" })); ui.end_row();
                     }
                 });
                 ui.add_space(24.0);
-                ui.label(RichText::new("Rating progress").size(19.0).strong());
+                ui.label(RichText::new(if profile.engine.is_lc0() { "Level progress" } else { "Rating progress" }).size(19.0).strong());
                 Self::training_rating_graph(ui, &profile);
                 ui.add_space(12.0);
                 if let Some((score, lower, upper)) = profile.score_interval() {
@@ -978,7 +1085,7 @@ impl ChessApp {
                 if flags > 0 { ui.label(format!("Clock management: {flags} games lost on time.")); }
                 let white_n: usize = profile.counts(Some(TrainingSide::White)).iter().sum();
                 let black_n: usize = profile.counts(Some(TrainingSide::Black)).iter().sum();
-                if white_n >= 5 && black_n >= 5 && (profile.rating(TrainingSide::White)-profile.rating(TrainingSide::Black)).abs() >= 50 {
+                if white_n >= 5 && black_n >= 5 && (profile.rating(TrainingSide::White)-profile.rating(TrainingSide::Black)).abs() >= if profile.engine.is_lc0() {2} else {50} {
                     ui.label(format!("Color balance: review your {} games; that rating trails by {} points.", if profile.rating(TrainingSide::White) < profile.rating(TrainingSide::Black) { "White" } else { "Black" }, (profile.rating(TrainingSide::White)-profile.rating(TrainingSide::Black)).abs()));
                 }
                 ui.add_space(12.0);
@@ -990,7 +1097,7 @@ impl ChessApp {
                 Self::training_sunken_section(ui, |ui| {
                 ui.label(RichText::new("Recent games").size(19.0).strong().color(Color32::from_rgb(211, 173, 98)));
                 for r in profile.results.iter().rev().take(20) {
-                    ui.label(format!("{} · {} · {} vs {} · {} to {} ({:+})", r.session.completed_at.as_deref().unwrap_or("").get(..10).unwrap_or(""), r.session.side.label(), r.result, r.session.opponent_elo, r.session.rating_before, r.session.rating_after.unwrap_or(r.session.rating_before), r.session.rating_after.unwrap_or(r.session.rating_before)-r.session.rating_before));
+                    ui.label(format!("{} · {} · {} vs {} · {} to {} ({:+})", r.session.completed_at.as_deref().unwrap_or("").get(..10).unwrap_or(""), r.session.side.label(), r.result, r.session.opponent_label(), r.session.rating_before, r.session.rating_after.unwrap_or(r.session.rating_before), r.session.rating_after.unwrap_or(r.session.rating_before)-r.session.rating_before));
                 }
                 ui.add_space(16.0);
                 ui.label("Open Saved Games > Training to replay games, add notes, and analyze mistakes. Profiles and progress are included in Storage > Backup all data.");
@@ -1015,6 +1122,25 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn lc0_session_uses_its_profile_options_and_cannot_start_with_preview_disabled() {
+        let mut app = app();
+        app.training = None;
+        let mut profile=app.training_profiles.selected().unwrap().clone();
+        profile.engine=training::TrainingEngine::Lc0 {identity:"http://localhost:8790/lc0".into(),name:"Lc0".into(),options:std::collections::BTreeMap::from([("Backend".into(),"cuda".into())])};
+        profile.starting_level=4;
+        let session=profile.session("lc0".into(),"now".into());
+        let config=ChessApp::training_engine_config(&session);
+        assert_eq!(config.opponent,OpponentEngine::Companion);
+        assert!(!config.limit_strength);
+        assert_eq!(config.nodes,64);
+        assert_eq!(config.companion_options.get("Backend").map(String::as_str),Some("cuda"));
+        assert_eq!(session.search_command(),"go nodes 64");
+        app.training_profiles.profiles=vec![profile];
+        app.start_training_game();
+        assert!(app.training.is_none());
+        assert!(app.training_error.as_ref().unwrap().contains("Enable Companion"));
+    }
     fn app() -> ChessApp {
         let cc = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&cc);
@@ -1068,7 +1194,8 @@ mod tests {
         assert_eq!(app.training.as_ref().unwrap().side, TrainingSide::Black);
         assert!(app.player_side == PlayerSide::Black);
         assert_eq!(app.engine_config.elo, 1320);
-        assert_eq!(app.local_clock.as_ref().unwrap().white, 600.0);
+        assert!(app.local_clock.is_none());
+        assert_eq!(app.engine_config.move_time_ms, 1000);
     }
     #[test]
     fn unfinished_game_stays_unrated_and_resignation_and_timeout_settle() {
@@ -1084,7 +1211,11 @@ mod tests {
         app.settle_training();
         assert_eq!(app.training_profiles.selected().unwrap().results.len(), 1);
         app.start_training_game();
-        app.local_clock.as_mut().unwrap().flagged_white = Some(false);
+        // Historical timed training results remain supported.
+        app.local_clock = Some(LocalClock {
+            white: 600.0, black: 0.0, increment: 5.0,
+            flagged_white: Some(false), updated_at: ChessApp::animation_time(),
+        });
         app.settle_training();
         assert_eq!(app.training_profiles.selected().unwrap().results.len(), 2);
         assert!(app.training_profiles.selected().unwrap().results[1].timed_out);

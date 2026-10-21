@@ -4,7 +4,7 @@ description: "Filter completed Chess.com games by date and time control, fetch u
 category: "using-ironwood"
 keywords: [Chess.com, chesscom, import, username, PGN, archives, recent games, duplicates]
 weight: 19
-lastmod: 2026-10-05T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
 Open **Game → Import…** and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
@@ -17,7 +17,7 @@ If no games match, widen the date range or choose another time control. Invalid 
 
 When fetching finishes, **Paste a game or collection** opens with the PGNs. Click **Continue**, choose the games you want to keep, and use the existing import flow to save them. Duplicate games already in your library are skipped.
 
-Open an imported game and choose **Game Analysis** to analyze it. Import does not automatically start engine analysis.
+Open an imported game and choose **Analysis** to analyze it. Import does not automatically start engine analysis.
 
 The Import window also has **Lichess** and **Scoresheet** tabs. Use the first tab to paste PGN or Analysis JSON from any source. Chess.com import accepts usernames; for a single game, download its PGN and paste it in the first tab. See [Import games](/help/import-games/) for the four-tab workflow.
 

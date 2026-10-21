@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 title: "Saving and sharing analysis"
 description: "Understand saved games, PGN, analysis JSON, and printable reports."
 category: "using-ironwood"
@@ -11,7 +11,7 @@ Ironwood keeps saved games in your browser's local storage. A **PGN** file is a 
 
 An **Ironwood analysis JSON** file stores Ironwood's richer analysis data so you can restore results without rerunning Stockfish. JSON is a structured text file for software; you do not need to edit it by hand. If you share it, remember that game details and any notes in it may go with the file.
 
-Choose **Print analysis** at the right of Game Analysis to open a **printable analysis report** with scores, move quality, phases, and critical positions. Its **Your notes and drawings** section includes written notes, manual symbols, and diagrams for positions with personal drawings or ghost pieces. Drawing-only positions are included even if they are not critical moves. Pause or stop analysis before printing. Use your browser's Print dialog to save the report as a PDF if you want a document to keep or share.
+Open the **Analysis** tab and choose **Print analysis** beside the **Saved Analysis** heading to open a **printable analysis report** with scores, move quality, phases, and critical positions. Its **Your notes and drawings** section includes written notes, manual symbols, and diagrams for positions with personal drawings or ghost pieces. Drawing-only positions are included even if they are not critical moves. Pause or stop analysis before printing. Use your browser's Print dialog to save the report as a PDF if you want a document to keep or share.
 
 Analysis runs on your device. Online games and public help pages need an internet connection; saved games and already cached game resources may be available offline.
 

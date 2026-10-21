@@ -1,3 +1,5 @@
+import { companionConnection, requireCompanionConnection, manageCompanionConnection } from './companion-connection.js';
+import { CompanionArchiveClient } from "./companion-archive-client.js";
 // Original API client; no Lichess server code or tablebase files are bundled.
 export function tablebaseUrl(fen) {
   const fields = fen.trim().split(/\s+/);
@@ -46,4 +48,48 @@ export function createTablebaseClient(fetcher = fetch, now = Date.now) {
     return '';
   };
 }
-if (typeof window !== 'undefined') window.ironwoodTablebase = createTablebaseClient();
+export function createLocalTablebaseClient(configuration, fetcher = fetch) {
+  let pending = '', result = '', serial = 0;
+  return (fen, retry = false, begin = false) => {
+    const config = configuration();
+    if (!config) { serial++; pending = ''; result = ''; return JSON.stringify({error: 'Connect Companion using Manage connection, then look up this position again.'}); }
+    const key = JSON.stringify([config.endpoint, config.credential, fen]);
+    if (begin || retry || pending !== key) {
+      pending = key; result = ''; const request = ++serial;
+      void new CompanionArchiveClient(config.endpoint, config.credential, fetcher)
+        .request(`tablebases/probe?fen=${encodeURIComponent(fen)}`)
+        .then(value => { if (request === serial) result = JSON.stringify({...value, source: 'companion'}); })
+        .catch(error => { if (request === serial) result = JSON.stringify({error: error.message}); });
+    }
+    return result;
+  };
+}
+if (typeof window !== 'undefined') {
+  const configuration = companionConnection;
+  const local = createLocalTablebaseClient(configuration);
+  const online = createTablebaseClient();
+  async function connect() {
+  if (window.ironwoodCompanionFeatureEnabled?.() === false) return;
+    if (!await requireCompanionConnection()) return;
+    if (document.getElementById('tablebase-connection')) return;
+    if (!document.getElementById('companion-archive-style')) { const style = document.createElement('link'); style.id = 'companion-archive-style'; style.rel = 'stylesheet'; style.href = '/companion-archive.css'; document.head.append(style); }
+    const dialog = document.createElement('dialog'); dialog.id = 'tablebase-connection';
+    dialog.innerHTML = `<p class="eyebrow">IRONWOOD COMPANION</p><h2>Local endgame tablebases</h2><p data-connection></p><p role="status"></p><button type="button" data-manage>Manage connection</button> <button type="button" data-close>Close</button>`;
+    dialog.querySelector('[data-connection]').textContent = `Connected to ${configuration().endpoint}`;
+    dialog.querySelector('[data-close]').onclick = () => dialog.close();
+    dialog.querySelector('[data-manage]').onclick = async () => { dialog.close(); await manageCompanionConnection(); };
+    dialog.onclose = () => dialog.remove();
+    const shared = configuration();
+    void new CompanionArchiveClient(shared.endpoint, shared.credential).request('tablebases').then(coverage => {
+      if (!dialog.isConnected || configuration()?.credential !== shared.credential || configuration()?.endpoint !== shared.endpoint) return;
+      const materials = Object.entries(coverage.materials).map(([m, files]) => `${m}: ${files.join(', ')}`).join('; ');
+      dialog.querySelector('[role=status]').textContent = `${materials || 'No table files registered.'} Rejected files: ${coverage.rejectedFiles}; unavailable directories: ${coverage.unavailableDirectories}. ${coverage.validation} Close this window and look up the position again.`;
+    }).catch(error => { if (dialog.isConnected) dialog.querySelector('[role=status]').textContent = error.message; });
+    document.body.append(dialog); dialog.showModal();
+  }
+  window.ironwoodTablebase = (fen, retry, begin, useLocal = false) => {
+    if (useLocal && fen === '') { connect(); return ''; }
+    if (useLocal && !configuration() && begin) connect();
+    return useLocal ? local(fen, retry, begin) : online(fen, retry, begin);
+  };
+}

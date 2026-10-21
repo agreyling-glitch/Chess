@@ -233,15 +233,31 @@ impl ChessApp {
         let mut launched = false;
         let state_id = egui::Id::new("puzzles_state");
         let mut state = ui.ctx().data(|d| d.get_temp::<State>(state_id)).unwrap_or_default();
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Puzzle difficulty");
+        ui.add_space(14.0);
+        let controls = egui::Frame::new().fill(Color32::from_rgb(13, 17, 22))
+            .corner_radius(6.0).inner_margin(16.0).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 10.0;
+            ui.label(RichText::new("CHOOSE YOUR PUZZLE DIFFICULTY").size(12.0).strong()
+                .color(Color32::from_rgb(211, 173, 98)));
+            ui.scope(|ui| {
+            ui.spacing_mut().interact_size.y = 38.0;
+            ui.visuals_mut().widgets.inactive.bg_fill = Color32::from_rgb(42, 49, 57);
+            ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::from_rgb(42, 49, 57);
             egui::ComboBox::from_id_salt("phase_puzzle_difficulty")
-                .selected_text(DIFFICULTIES[state.difficulty].0).show_ui(ui, |ui| {
+                .width(ui.available_width())
+                .selected_text(RichText::new(DIFFICULTIES[state.difficulty].0).size(17.0).strong()
+                    .color(Color32::from_rgb(240, 234, 220))).show_ui(ui, |ui| {
                     for (i, (name, _)) in DIFFICULTIES.iter().enumerate() {
                         ui.selectable_value(&mut state.difficulty, i, *name);
                     }
                 });
-            if ui.add_enabled(enabled && !state.loading, egui::Button::new("Practice this phase"))
+            });
+            let button_width = ui.available_width();
+            if ui.add_enabled(enabled && !state.loading, egui::Button::new(
+                RichText::new("Practice this phase").size(17.0).strong().color(Color32::from_rgb(24, 27, 31)))
+                .min_size(Vec2::new(button_width, 46.0))
+                .fill(Color32::from_rgb(211, 173, 98)).corner_radius(6.0).raised_gold())
                 .on_disabled_hover_text("Finish active training or online play, and wait for any puzzle request to complete.").clicked() {
                 let theme = ["opening", "middlegame", "endgame"][phase];
                 state.theme = THEMES.iter().position(|(_, key)| *key == theme).unwrap();
@@ -253,8 +269,10 @@ impl ChessApp {
                 launched = true;
                 ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("puzzles_open"), true));
             }
+            ui.label(RichText::new("Difficulty uses Lichess's anonymous baseline of 1500, rather than your Ironwood rating.")
+                .size(12.0).color(Color32::from_rgb(160, 169, 180)));
         });
-        ui.small("Difficulty is relative to Lichess's anonymous baseline of 1500, not your Ironwood rating.");
+        Self::paint_sunken_border(ui, controls.response.rect);
         ui.ctx().data_mut(|d| d.insert_temp(state_id, state));
         launched
     }

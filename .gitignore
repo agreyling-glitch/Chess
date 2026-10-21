@@ -13,8 +13,12 @@ site/.hugo_build.lock
 .wrangler/
 output/
 tmp/
+companion-data/
 
 # Local secrets and environment overrides
+release-key.dpapi.json
+*.pfx
+*.p12
 .env
 .env.*
 !.env.example
@@ -50,3 +54,7 @@ Thumbs.db
 web/position-editor/vendor/
 3D_chess_sets_pack_1_lowpoly.zip
 scripts/__pycache__/
+
+# Owner tablebase files and downloaded validation fixtures are never source assets.
+*.rtbw
+*.rtbz

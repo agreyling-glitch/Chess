@@ -1,0 +1,24 @@
+{
+  "format": "ironwood-platform-tests",
+  "version": 1,
+  "status": "passed",
+  "environmentKind": "development",
+  "platform": "win32",
+  "architecture": "x64",
+  "node": "v24.14.0",
+  "binarySha256": "fa4659edd113362ea3f11a59a9a4d54790810273da62363bd588a796695ca8d5",
+  "testFiles": [
+    "tests/companion-archive-client.test.mjs",
+    "tests/companion-archive.test.mjs",
+    "tests/companion-container-driver.test.mjs",
+    "tests/companion-engine-adapter.test.mjs",
+    "tests/companion-explorer-client.test.mjs",
+    "tests/companion-explorer.test.mjs",
+    "tests/companion-lifecycle.test.mjs",
+    "tests/companion-server.test.mjs",
+    "tests/companion-tablebases.test.mjs",
+    "tests/companion-uci.test.mjs",
+    "scripts/tablebase.test.mjs"
+  ],
+  "exitCode": 0
+}

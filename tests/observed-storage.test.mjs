@@ -33,11 +33,38 @@ globalThis.indexedDB = { open() {
   return request;
 } };
 const local = new Map([['ironwood.chess.active-game-id.v1', 'personal-game'], ['ironwood.chess.active-game-category.v1', 'mine']]);
-globalThis.localStorage = { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value) };
+globalThis.localStorage = { getItem: key => local.get(key), setItem: (key, value) => local.set(key, value), removeItem: key => local.delete(key) };
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
 const { gameDetails, sortSavedGames } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const makeGame = analysis => JSON.stringify({ review_pgn: '[White "Ada"]\n[Black "Ben"]\n[Site "freechess.org"]\n\n1.e4 e5 1-0', game_analysis: analysis, game_analysis_paused: true });
+
+test('batch archive imports bypass browser storage, account for duplicates and stop safely when the flag is disabled', async () => {
+  const beforeWrites=writes, beforeRecords=records.size;
+  let enabled=true, duplicate=false;
+  const originalFlag=window.ironwoodCompanionFeatureEnabled, originalLibrary=window.ironwoodCompanionLibrary;
+  const storage={
+    check(){if(!enabled)throw Error('Disabled');},
+    async request(path){assert.equal(path,'capabilities');return {services:{archive:true}};},
+    async importBatchRecords(batch,progress){for(const record of batch){assert.equal(record.category,'imported');assert.match(record.json,/Ada/);}progress({imported:duplicate?0:batch.length,duplicates:duplicate?batch.length:0},batch.length);},
+    credential:'must-not-appear-in-status',
+  };
+  window.ironwoodCompanionFeatureEnabled=()=>enabled;
+  window.ironwoodCompanionLibrary=async options=>{assert.equal(options.interactive,false);return storage;};
+  try {
+    assert.equal(ironwoodArchiveImportAvailable(),false); await flush();
+    assert.equal(ironwoodArchiveImportAvailable(),true);
+    ironwoodBeginBatchImport(true); ironwoodStoreImportedGame(makeGame([])); await new Promise(resolve=>setTimeout(resolve,550));
+    let status=JSON.parse(ironwoodBatchImportStatus());assert.equal(status.saved,1);assert.equal(status.pending,0);
+    duplicate=true;ironwoodStoreImportedGame(makeGame([]));await new Promise(resolve=>setTimeout(resolve,550));
+    status=JSON.parse(ironwoodBatchImportStatus());assert.equal(status.duplicates,1);assert.equal(status.saved,1);
+    assert.doesNotMatch(ironwoodBatchImportStatus(),/credential|must-not/);
+    enabled=false;assert.equal(ironwoodArchiveImportAvailable(),false);
+    ironwoodStoreImportedGame(makeGame([]));await new Promise(resolve=>setTimeout(resolve,550));status=JSON.parse(ironwoodBatchImportStatus());
+    assert.equal(status.failed,1);assert.equal(status.pending,0);assert.match(status.firstError,/unavailable/);
+    assert.equal(writes,beforeWrites);assert.equal(records.size,beforeRecords);
+  } finally {ironwoodEndBatchImport();window.ironwoodCompanionFeatureEnabled=originalFlag;window.ironwoodCompanionLibrary=originalLibrary;}
+});
 
 test('personal game names use the saved opponent on either side, with legacy Stockfish fallback', () => {
   for (const player_side of ['White', 'Black']) {

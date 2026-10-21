@@ -1,0 +1,29 @@
+# Explicit source allowlist keeps local credentials, archives, toolchains and
+# downloaded datasets out of both production and validation build contexts.
+**
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!LICENSE
+!src/
+!src/**
+!crates/
+!crates/**
+!server/
+!server/**
+!tests/
+!tests/**
+!scripts/
+!scripts/tablebase.test.mjs
+!scripts/run-companion-platform-checks.mjs
+!scripts/validate-companion-container-api.mjs
+!web/
+!web/*.js
+!deploy/
+!deploy/ironwood-server/
+!deploy/ironwood-server/**
+**/*.rtbw
+**/*.rtbz
+**/owner-token
+**/config.json
+**/*.sqlite3*

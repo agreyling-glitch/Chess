@@ -22,6 +22,18 @@ extern "C" {
     fn refresh();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodExplorerSignedIn)]
     fn signed_in() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorer)]
+    fn archive_lookup(fen: &str) -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenCompanionArchive)]
+    fn archive_connect();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenArchiveExplorerFilters)]
+    fn archive_filters();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerRefresh)]
+    fn archive_refresh();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerPage)]
+    fn archive_page(next: bool);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerCopyGame)]
+    fn archive_copy_game(id: &str);
 }
 #[derive(Clone, Default)]
 struct State {
@@ -57,7 +69,19 @@ struct Data {
     draws: u64,
     #[serde(default)]
     black: u64,
+    #[serde(default)]
+    unknown: u64,
+    #[serde(default)]
+    partial: bool,
+    generation: Option<u64>,
+    index: Option<ArchiveIndex>,
+    #[serde(default)]
+    missing_metadata: std::collections::BTreeMap<String,u64>,
+    next: Option<String>,
+    notice: Option<String>,
 }
+#[derive(Deserialize)]
+struct ArchiveIndex { total:u64, indexed:u64, pending:u64, unsupported_variants:u64, failed:u64 }
 #[derive(Deserialize)]
 struct Opening {
     name: String,
@@ -71,6 +95,8 @@ struct Entry {
     white: u64,
     draws: u64,
     black: u64,
+    #[serde(default)]
+    unknown: u64,
 }
 #[derive(Deserialize)]
 struct Game {
@@ -80,6 +106,7 @@ struct Game {
     winner: Option<String>,
     #[serde(default)]
     month: String,
+    result: Option<String>,
 }
 #[derive(Deserialize)]
 struct Player {
@@ -131,6 +158,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
         .ctx()
         .data_mut(|d| d.get_temp::<State>(id()))
         .unwrap_or_default();
+    if state.source == 4 && !crate::companion::enabled() { state = State::default(); }
     if state.root != root.to_string() {
         state.root = root.to_string();
         state.path.clear();
@@ -146,7 +174,9 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
     );
     ui.add_space(4.0);
     #[cfg(target_arch = "wasm32")]
-    if signed_in() {
+    if state.source == 4 {
+        ui.label("Using your Companion archive · no Lichess sign-in needed");
+    } else if signed_in() {
         ui.label(
             RichText::new("Using your Lichess sign-in session")
                 .size(14.0)
@@ -159,10 +189,11 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
     sunken_section(ui, |ui| {
     ui.label(RichText::new("DATABASE & FILTERS").size(11.0).strong().color(gold));
     ui.horizontal_wrapped(|ui| {
-        for (index, label) in ["Masters", "Lichess games", "My games", "Player"]
+        for (index, label) in ["Masters", "Lichess games", "My games", "Player", "Archive"]
             .iter()
             .enumerate()
         {
+            if index == 4 && !crate::companion::enabled() { continue; }
             let selected = state.source == index;
             if ui
                 .add(
@@ -198,7 +229,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
             }
         }
     });
-    if state.source >= 1 {
+    if (1..=3).contains(&state.source) {
         ui.horizontal_wrapped(|ui| {
             egui::ComboBox::from_id_salt("explorer_speed")
                 .selected_text(if state.speed.is_empty() {
@@ -238,7 +269,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
             }
         });
     }
-    if state.source >= 2 {
+    if (2..=3).contains(&state.source) {
         if state.source == 2 {
             ui.label(format!(
                 "Player: {}",
@@ -294,6 +325,14 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                 .weak(),
         );
     }
+    #[cfg(target_arch = "wasm32")]
+    if state.source == 4 {
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("Connect archive…").clicked() { archive_connect(); }
+            if ui.button("Archive filters…").clicked() { archive_filters(); }
+            if ui.button("Refresh archive").clicked() { archive_refresh(); }
+        });
+    }
     });
     ui.add_space(10.0);
     sunken_section(ui, |ui| {
@@ -309,7 +348,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
         ui.label("Opening Explorer currently supports standard chess positions.");
     } else {
         #[cfg(target_arch = "wasm32")]
-        let response = lookup(
+        let response = if state.source == 4 { archive_lookup(&board.to_string()) } else { lookup(
             &board.to_string(),
             if state.source == 0 {
                 "masters"
@@ -328,7 +367,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
             if state.color == 0 { "white" } else { "black" },
             &state.selected_since,
             &state.selected_until,
-        );
+        ) };
         #[cfg(not(target_arch = "wasm32"))]
         let response =
             "{\"error\":\"Opening Explorer is available in the browser app.\"}".to_string();
@@ -339,10 +378,22 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                 ui.colored_label(Color32::LIGHT_RED, error);
                 #[cfg(target_arch = "wasm32")]
                 if ui.button("Retry").clicked() {
-                    retry();
+                    if state.source == 4 { archive_refresh(); } else { retry(); }
                 }
             } else {
-                if state.source >= 2 && !(data.indexing && data.white == 0 && data.draws == 0 && data.black == 0) {
+                if state.source == 4 {
+                    if let Some(index) = &data.index {
+                        ui.label(format!("Archive generation {} · {}/{} games indexed", data.generation.unwrap_or(0), index.indexed, index.total));
+                        if data.partial { ui.colored_label(gold, format!("Partial index · {} pending · {} failed",index.pending,index.failed)); }
+                        if index.unsupported_variants > 0 { ui.label(format!("{} games of other variants excluded",index.unsupported_variants)); }
+                    }
+                    ui.label(format!("{} White wins · {} draws · {} Black wins · {} unfinished/unknown",data.white,data.draws,data.black,data.unknown));
+                    ui.label(RichText::new("Percentages use completed results only.").size(12.0).weak());
+                    let missing = data.missing_metadata.iter().filter(|(_,count)|**count>0).map(|(name,count)|format!("{}: {count}",name.replace('_'," "))).collect::<Vec<_>>();
+                    if !missing.is_empty() { ui.label(RichText::new(format!("Missing metadata · {}",missing.join(" · "))).size(12.0).weak()); }
+                    if let Some(notice) = &data.notice { if !notice.is_empty() { ui.label(notice); } }
+                }
+                if (2..=3).contains(&state.source) && !(data.indexing && data.white == 0 && data.draws == 0 && data.black == 0) {
                     let (wins, losses) = if state.color == 0 {
                         (data.white, data.black)
                     } else {
@@ -353,7 +404,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                         data.draws
                     ));
                 }
-                if data.indexing {
+                if data.indexing && state.source != 4 {
                     if let Some(position) = data.queue_position {
                         ui.label(format!("Waiting for Lichess indexing · queue position {position}"));
                     } else {
@@ -385,8 +436,14 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                     }
                 }
                 ui.add_space(4.0);
-                if data.moves.is_empty() && !data.indexing {
-                    ui.label("No games found for this position and these filters.");
+                if data.moves.is_empty() {
+                    if state.source == 4 && data.partial {
+                        ui.label("No indexed continuations yet; the index is incomplete.");
+                    } else if state.source == 4 && data.white.saturating_add(data.draws).saturating_add(data.black).saturating_add(data.unknown) > 0 {
+                        ui.label("Matching games have no recorded continuation.");
+                    } else if !data.indexing {
+                        ui.label("No games found for this position and these filters.");
+                    }
                 }
                 let width = ui.available_width();
                 let move_width = 56.0;
@@ -410,10 +467,11 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                 });
                 ui.spacing_mut().item_spacing.y = 3.0;
                 for (row, entry) in data.moves.into_iter().enumerate() {
-                    let total = entry
+                    let completed = entry
                         .white
                         .saturating_add(entry.draws)
                         .saturating_add(entry.black);
+                    let total = completed.saturating_add(entry.unknown);
                     let legal = MoveGen::new_legal(&board).find(|mv| mv.to_string() == entry.uci);
                     ui.horizontal(|ui| {
                         let row_rect =
@@ -453,7 +511,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                             (entry.draws, Color32::from_gray(120)),
                             (entry.black, Color32::from_gray(40)),
                         ] {
-                            let w = rect.width() * count as f32 / total.max(1) as f32;
+                            let w = rect.width() * count as f32 / completed.max(1) as f32;
                             ui.painter().rect_filled(
                                 egui::Rect::from_min_size(
                                     egui::pos2(x, rect.top()),
@@ -464,33 +522,37 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                             );
                             x += w;
                         }
-                        response.on_hover_text(format!(
-                            "White: {:.1}% ({}) · Draw: {:.1}% ({}) · Black: {:.1}% ({})",
-                            entry.white as f64 * 100.0 / total.max(1) as f64,
+                        let tooltip = if completed == 0 { format!("No completed results · Unfinished/unknown: {}", entry.unknown) } else { format!(
+                            "White: {:.1}% ({}) · Draw: {:.1}% ({}) · Black: {:.1}% ({}) · Unfinished/unknown: {}",
+                            entry.white as f64 * 100.0 / completed.max(1) as f64,
                             entry.white,
-                            entry.draws as f64 * 100.0 / total.max(1) as f64,
+                            entry.draws as f64 * 100.0 / completed.max(1) as f64,
                             entry.draws,
-                            entry.black as f64 * 100.0 / total.max(1) as f64,
-                            entry.black
-                        ));
+                            entry.black as f64 * 100.0 / completed.max(1) as f64,
+                            entry.black, entry.unknown
+                        ) };
+                        response.on_hover_text(tooltip);
                     });
                 }
                 if state.source >= 2 && !data.recent_games.is_empty() {
                     ui.add_space(8.0);
-                    ui.label(RichText::new("Matching recent games").strong());
+                    ui.label(RichText::new(if state.source==4 {"Matching archived games"}else{"Matching recent games"}).strong());
                     for game in data.recent_games {
                         let valid_id = game.id.len() == 8
                             && game.id.bytes().all(|b| b.is_ascii_alphanumeric());
-                        let result = match game.winner.as_deref() {
+                        let result = if state.source==4 {match game.result.as_deref(){Some("1-0")=>"1–0",Some("0-1")=>"0–1",Some("1/2-1/2")=>"½–½",_=>"Unfinished / unknown"}}else{match game.winner.as_deref() {
                             Some("white") => "1–0",
                             Some("black") => "0–1",
                             _ => "½–½",
-                        };
+                        }};
                         ui.label(format!(
                             "{} vs {} · {} · {}",
                             game.white.name, game.black.name, result, game.month
                         ));
-                        if ui
+                        if state.source==4 {
+                            #[cfg(target_arch = "wasm32")]
+                            if ui.button("Copy to saved games").clicked() { archive_copy_game(&game.id); }
+                        } else if ui
                             .add_enabled(valid_id, egui::Button::new("Import for analysis…"))
                             .clicked()
                         {
@@ -498,13 +560,20 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                         }
                     }
                 }
+                #[cfg(target_arch = "wasm32")]
+                if state.source==4 {
+                    ui.horizontal_wrapped(|ui| {
+                        if ui.button("First matching games").clicked(){archive_page(false);}
+                        if ui.add_enabled(data.next.is_some(),egui::Button::new("Next matching games")).clicked(){archive_page(true);}
+                    });
+                }
             }
         }
         ui.ctx()
             .request_repaint_after(std::time::Duration::from_millis(250));
     }
     #[cfg(target_arch = "wasm32")]
-    if state.source >= 2 && ui.button("Refresh player statistics").clicked() { refresh(); }
+    if (2..=3).contains(&state.source) && ui.button("Refresh player statistics").clicked() { refresh(); }
     ui.add_space(6.0);
     ui.horizontal_wrapped(|ui| {
         for (label, color) in [
@@ -527,7 +596,8 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
             .size(12.0)
             .weak(),
     );
-    if ui
+    if state.source==4 { ui.label(RichText::new("Source: your Companion archive · Standard chess mainlines").size(12.0).weak()); }
+    else if ui
         .link(RichText::new("Opening data from Lichess").size(12.0))
         .clicked()
     {

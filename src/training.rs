@@ -3,6 +3,21 @@ use serde::{Deserialize, Serialize};
 pub const START_RATING: i32 = 1320;
 pub const MAX_TARGET: i32 = 3190;
 pub const K_FACTOR: f64 = 32.0;
+pub const NODE_LEVELS: [u64; 10] = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144];
+fn default_level() -> u8 { 1 }
+fn default_elo() -> i32 { START_RATING }
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TrainingEngine {
+    #[default]
+    Stockfish,
+    Lc0 { identity: String, name: String, #[serde(default)] options: std::collections::BTreeMap<String, String> },
+}
+impl TrainingEngine {
+    pub fn is_lc0(&self) -> bool { matches!(self, Self::Lc0 { .. }) }
+    pub fn label(&self) -> &str { match self { Self::Stockfish => "Stockfish", Self::Lc0 { name, .. } => name } }
+}
 #[cfg(target_arch = "wasm32")]
 pub const STORAGE_KEY: &str = "ironwood.chess.training.v1";
 
@@ -29,6 +44,12 @@ impl Side {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Session {
+    #[serde(default)]
+    pub engine: TrainingEngine,
+    #[serde(default)]
+    pub node_budget: u64,
+    #[serde(default)]
+    pub difficulty_level: u8,
     pub id: String,
     pub profile_id: String,
     pub profile_name: String,
@@ -41,6 +62,16 @@ pub struct Session {
     pub rating_after: Option<i32>,
     #[serde(default)]
     pub completed_at: Option<String>,
+}
+impl Session {
+    pub fn opponent_label(&self) -> String {
+        if self.engine.is_lc0() { format!("{} · Level {} · {} nodes", self.engine.label(), self.difficulty_level, self.node_budget) }
+        else { format!("Stockfish {} Elo", self.opponent_elo) }
+    }
+    pub fn search_command(&self) -> String {
+        if self.engine.is_lc0() { format!("go nodes {}", self.node_budget.max(1)) }
+        else { "go movetime 1000".into() }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -115,6 +146,12 @@ pub struct ResultEntry {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Profile {
+    #[serde(default)]
+    pub engine: TrainingEngine,
+    #[serde(default = "default_level")]
+    pub starting_level: u8,
+    #[serde(default = "default_elo")]
+    pub starting_elo: i32,
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -122,13 +159,17 @@ pub struct Profile {
 }
 
 impl Profile {
+    pub fn initial_rating(&self) -> i32 {
+        if self.engine.is_lc0() { self.starting_level.clamp(1, NODE_LEVELS.len() as u8) as i32 }
+        else { self.starting_elo.clamp(START_RATING, MAX_TARGET) }
+    }
     pub fn rating(&self, side: Side) -> i32 {
         self.results
             .iter()
             .rev()
             .find(|r| r.session.side == side)
             .and_then(|r| r.session.rating_after)
-            .unwrap_or(START_RATING)
+            .unwrap_or_else(|| self.initial_rating())
     }
     pub fn overall(&self) -> i32 {
         self.rating(Side::White).min(self.rating(Side::Black))
@@ -145,11 +186,14 @@ impl Profile {
     pub fn session(&self, id: String, started_at: String) -> Session {
         let side = self.next_side();
         Session {
+            engine: self.engine.clone(),
+            node_budget: if self.engine.is_lc0() { NODE_LEVELS[(self.rating(side).clamp(1, NODE_LEVELS.len() as i32) - 1) as usize] } else { 0 },
+            difficulty_level: if self.engine.is_lc0() { self.rating(side).clamp(1, NODE_LEVELS.len() as i32) as u8 } else { 0 },
             id,
             profile_id: self.id.clone(),
             profile_name: self.name.clone(),
             side,
-            opponent_elo: self.target(side),
+            opponent_elo: if self.engine.is_lc0() { 0 } else { self.target(side) },
             rating_before: self.rating(side),
             started_at,
             rating_after: None,
@@ -164,7 +208,7 @@ impl Profile {
         completed_at: String,
         timed_out: bool,
     ) -> bool {
-        if session.profile_id != self.id || self.results.iter().any(|r| r.session.id == session.id)
+        if session.profile_id != self.id || session.engine != self.engine || self.results.iter().any(|r| r.session.id == session.id)
         {
             return false;
         }
@@ -179,8 +223,9 @@ impl Profile {
         settled.rating_before = self.rating(session.side);
         let expected = 1.0
             / (1.0 + 10.0_f64.powf((session.opponent_elo - settled.rating_before) as f64 / 400.0));
-        settled.rating_after =
-            Some(settled.rating_before + (K_FACTOR * (score - expected)).round() as i32);
+        settled.rating_after = Some(if self.engine.is_lc0() {
+            (settled.rating_before + if score == 1.0 { 1 } else if score == 0.0 { -1 } else { 0 }).clamp(1, NODE_LEVELS.len() as i32)
+        } else { settled.rating_before + (K_FACTOR * (score - expected)).round() as i32 });
         settled.completed_at = Some(completed_at);
         self.results.push(ResultEntry {
             session: settled,
@@ -263,8 +308,48 @@ impl Profiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn lc0_profile() -> Profile {
+        Profile {engine:TrainingEngine::Lc0 {identity:"http://localhost:8790/lc0".into(),name:"Lc0".into(),options:Default::default()},starting_level:3,..profile()}
+    }
+    #[test]
+    fn legacy_profiles_stay_stockfish_and_target_elo_is_preserved() {
+        let mut old: Profile = serde_json::from_str(r#"{"id":"old","name":"Player","results":[]}"#).unwrap();
+        assert_eq!(old.engine, TrainingEngine::Stockfish);
+        assert_eq!(old.session("old-game".into(),"now".into()).search_command(),"go movetime 1000");
+        old.starting_elo = 2000;
+        let session = old.session("elo".into(),"now".into());
+        assert_eq!(session.opponent_elo,2000);
+        assert!(old.settle(&session,"1-0","later".into(),false));
+        assert_eq!(old.rating(Side::White),2016);
+    }
+    #[test]
+    fn lc0_levels_are_color_specific_bounded_and_settled_once() {
+        let mut p = lc0_profile();
+        let white = p.session("w".into(),"now".into());
+        assert_eq!(white.search_command(),"go nodes 16");
+        assert_eq!(white.opponent_elo,0);
+        assert!(p.settle(&white,"1-0","later".into(),false));
+        assert!(!p.settle(&white,"1-0","later".into(),false));
+        assert_eq!(p.rating(Side::White),4); assert_eq!(p.rating(Side::Black),3);
+        let black = p.session("b".into(),"now".into());
+        assert!(p.settle(&black,"1-0","later".into(),false));
+        assert_eq!(p.rating(Side::Black),2);
+        let draw = p.session("draw".into(),"now".into());
+        assert!(p.settle(&draw,"1/2-1/2","later".into(),false));
+        assert_eq!(p.rating(Side::White),4);
+        let restored: Profile = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(restored.engine,p.engine); assert_eq!(restored.rating(Side::Black),2);
+        for (initial,result,expected) in [(1,"0-1",1),(10,"1-0",10)] {
+            let mut edge = lc0_profile(); edge.starting_level=initial;
+            let game=edge.session("edge".into(),"now".into()); edge.settle(&game,result,"later".into(),false);
+            assert_eq!(edge.rating(Side::White),expected);
+        }
+        let foreign=profile().session("foreign".into(),"now".into());
+        assert!(!p.settle(&foreign,"1-0","later".into(),false));
+    }
     fn profile() -> Profile {
         Profile {
+            engine: TrainingEngine::default(), starting_level: 1, starting_elo: START_RATING,
             id: "p".into(),
             name: "Player".into(),
             results: vec![],

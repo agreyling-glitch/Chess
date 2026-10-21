@@ -12,6 +12,28 @@ const session = (id, side = 'White') => ({ id, profile_id:'p', profile_name:'Pla
 const result = (id, side = 'White') => ({ session:session(id,side), result:side === 'White' ? '1-0':'0-1', score:1, timed_out:false });
 const profiles = results => ({ selected_id:'p', profiles:[{ id:'p', name:'Player <One>', results }] });
 
+test('lc0 profiles preserve node difficulty, merge levels once, and export separately from Elo', () => {
+  const engine={kind:'lc0',identity:'http://localhost:8790/lc0',name:'Lc0',options:{Backend:'cuda'}};
+  const lc0 = id => {
+    const entry=result(id);
+    Object.assign(entry.session,{engine,node_budget:16,difficulty_level:3,opponent_elo:0,rating_before:3,rating_after:4});
+    return {selected_id:'p',profiles:[{id:'p',name:'Lc0 practice',engine,starting_level:3,starting_elo:1320,results:[entry]}]};
+  };
+  const first=lc0('one'), second=lc0('two');
+  const merged=mergeTrainingProfiles(first,second);
+  assert.deepEqual(merged.profiles[0].results.map(r=>r.session.rating_after),[4,5]);
+  assert.equal(merged.profiles[0].results[1].session.node_budget,16,'played difficulty remains frozen when the ledger is replayed');
+  assert.equal(mergeTrainingProfiles(merged,second).profiles[0].results.length,2);
+  const bundle=buildTrainingProfileExport(first,[],['p']);
+  assert.deepEqual(validateTrainingProfileImport(bundle).trainingProfiles,first);
+  const details=gameDetails(JSON.stringify({player_side:'White',training:first.profiles[0].results[0].session}));
+  assert.match(details.black,/Lc0 · Level 3 · 16 nodes/);
+  assert.equal(details.trainingEngineKind,'lc0');
+  const wrong=lc0('wrong');wrong.profiles[0].results[0].session.node_budget=999;
+  assert.throws(()=>validateTrainingProfiles(wrong),/Invalid training result/);
+  assert.throws(()=>mergeTrainingProfiles(profiles([]),first),/engine or starting difficulty differs/);
+});
+
 test('training games use profile names, color ratings, and a separate category', () => {
   const json = JSON.stringify({ board:'start', player_side:'White', training:session('g'), live_moves:['e4'], result:'1-0' });
   const details = gameDetails(json);

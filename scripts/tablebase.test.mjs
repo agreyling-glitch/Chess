@@ -62,3 +62,31 @@ test('offline, missing tables and malformed responses are retryable', async () =
     assert.equal(client(fen, true), ''); await tick();
   }
 });
+import {createLocalTablebaseClient} from '../web/tablebase.js';
+
+test('local tablebases authenticate only to Companion and refresh without an online fallback', async () => {
+  let calls = 0;
+  const local = createLocalTablebaseClient(() => ({endpoint:'http://127.0.0.1:8790',credential:'owner'}), async (url, options) => {
+    calls++;
+    assert.equal(new URL(url).origin, 'http://127.0.0.1:8790');
+    assert.equal(new URL(url).searchParams.get('fen'), fen);
+    assert.equal(options.headers.Authorization, 'Bearer owner');
+    return {ok:true,json:async()=>({category:'draw', moves:[], source:'companion'})};
+  });
+  assert.equal(local(fen, false, true), ''); await tick();
+  assert.equal(JSON.parse(local(fen)).source, 'companion');
+  local(fen, true, true); await tick(); assert.equal(calls, 2);
+  const offline = createLocalTablebaseClient(() => ({endpoint:'http://127.0.0.1:8790',credential:'owner'}), async () => { throw new Error('missing local tables'); });
+  offline(fen); await tick(); assert.match(JSON.parse(offline(fen)).error, /missing local tables/);
+  assert.match(JSON.parse(createLocalTablebaseClient(() => null)(fen)).error, /Connect Companion/);
+});
+
+test('local source ignores stale responses after switching position or credentials', async () => {
+  const finish = [];
+  let config = {endpoint:'http://127.0.0.1:8790',credential:'first'};
+  const local = createLocalTablebaseClient(() => config, () => new Promise(resolve => finish.push(resolve)));
+  local(fen); config = {...config, credential:'second'}; local(fen);
+  finish[1]({ok:true,json:async()=>({category:'draw',moves:[]})}); await tick();
+  finish[0]({ok:true,json:async()=>({category:'win',moves:[]})}); await tick();
+  assert.equal(JSON.parse(local(fen)).category,'draw');
+});

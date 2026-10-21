@@ -1,0 +1,1582 @@
+{
+  "format": "ironwood-tablebase-validation",
+  "version": 1,
+  "timestamp": "2026-10-17T20:47:06.150832+00:00",
+  "status": "passed",
+  "reference": {
+    "implementation": "python-chess",
+    "version": "1.11.2",
+    "license": "GPL-3.0-or-later",
+    "offline": true,
+    "sourceSha256": "e10e74b0b8174e85428945a975dfc2d67f521c6c5d941e998bdfca26f9ebf754"
+  },
+  "validatorSha256": "cba6f93289c6df3563acb9627b41428b242c7f69b81eedac721247bc39d67832",
+  "platform": {
+    "system": "Windows",
+    "machine": "AMD64"
+  },
+  "binarySha256": "fa4659edd113362ea3f11a59a9a4d54790810273da62363bd588a796695ca8d5",
+  "fixtureManifestSha256": "ebe01d50c669c40df13b48661ca5d2b8e3843ca7436379e3d564fe0da9439463",
+  "corpusSha256": "62d562bd5d662c074a2845eeff7e6ba43cfeefaca43f91c597e408d1f16f0742",
+  "fixtureFiles": 44,
+  "fixtureBytes": 15614720,
+  "cases": [
+    {
+      "id": "queen-win",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 0 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "win"
+      ]
+    },
+    {
+      "id": "queen-win-mirrored",
+      "fen": "kq6/8/2K5/8/8/8/8/8 b - - 0 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "win",
+        "mirror"
+      ]
+    },
+    {
+      "id": "queen-loss",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 0 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "loss"
+      ]
+    },
+    {
+      "id": "queen-loss-mirrored",
+      "fen": "kq6/8/2K5/8/8/8/8/8 w - - 0 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "loss",
+        "mirror"
+      ]
+    },
+    {
+      "id": "queen-cursed-clock",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 99 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "cursed-win",
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-cursed-clock-mirrored",
+      "fen": "kq6/8/2K5/8/8/8/8/8 b - - 99 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "cursed-win",
+        "halfmove",
+        "mirror"
+      ]
+    },
+    {
+      "id": "queen-blessed-clock",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 99 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "blessed-loss",
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-blessed-clock-mirrored",
+      "fen": "kq6/8/2K5/8/8/8/8/8 w - - 99 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "blessed-loss",
+        "halfmove",
+        "mirror"
+      ]
+    },
+    {
+      "id": "mate",
+      "fen": "7k/6Q1/5K2/8/8/8/8/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "mate"
+      ]
+    },
+    {
+      "id": "mate-mirrored",
+      "fen": "8/8/8/8/8/5k2/6q1/7K w - - 0 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "mate",
+        "mirror"
+      ]
+    },
+    {
+      "id": "mate-after-100-plies",
+      "fen": "7k/6Q1/5K2/8/8/8/8/8 b - - 100 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "mate",
+        "halfmove"
+      ]
+    },
+    {
+      "id": "mate-after-100-plies-mirrored",
+      "fen": "8/8/8/8/8/5k2/6q1/7K w - - 100 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "mate",
+        "halfmove",
+        "mirror"
+      ]
+    },
+    {
+      "id": "mate-in-one-at-99",
+      "fen": "7k/8/5KQ1/8/8/8/8/8 w - - 99 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 23,
+      "tags": [
+        "mate",
+        "halfmove"
+      ]
+    },
+    {
+      "id": "mate-in-one-at-99-mirrored",
+      "fen": "8/8/8/8/8/5kq1/8/7K b - - 99 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 23,
+      "tags": [
+        "mate",
+        "halfmove",
+        "mirror"
+      ]
+    },
+    {
+      "id": "stalemate",
+      "fen": "7k/5K2/6Q1/8/8/8/8/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "stalemate",
+        "draw"
+      ]
+    },
+    {
+      "id": "stalemate-mirrored",
+      "fen": "8/8/8/8/8/6q1/5k2/7K w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 0,
+      "tags": [
+        "stalemate",
+        "draw",
+        "mirror"
+      ]
+    },
+    {
+      "id": "promotion-all-four",
+      "fen": "8/P6k/8/8/8/8/8/K7 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "promotion"
+      ]
+    },
+    {
+      "id": "promotion-all-four-mirrored",
+      "fen": "k7/8/8/8/8/8/p6K/8 b - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "promotion",
+        "mirror"
+      ]
+    },
+    {
+      "id": "en-passant",
+      "fen": "7k/8/8/3pP3/8/8/8/K7 w - d6 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "en-passant"
+      ]
+    },
+    {
+      "id": "en-passant-mirrored",
+      "fen": "k7/8/8/8/3Pp3/8/8/7K b - d3 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "en-passant",
+        "mirror"
+      ]
+    },
+    {
+      "id": "without-en-passant",
+      "fen": "7k/8/8/3pP3/8/8/8/K7 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "en-passant"
+      ]
+    },
+    {
+      "id": "without-en-passant-mirrored",
+      "fen": "k7/8/8/8/3Pp3/8/8/7K b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "en-passant",
+        "mirror"
+      ]
+    },
+    {
+      "id": "pawn-draw",
+      "fen": "k7/P7/8/8/8/8/8/7K w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 3,
+      "tags": [
+        "draw"
+      ]
+    },
+    {
+      "id": "pawn-draw-mirrored",
+      "fen": "7k/8/8/8/8/8/p7/K7 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 3,
+      "tags": [
+        "draw",
+        "mirror"
+      ]
+    },
+    {
+      "id": "natural-blessed",
+      "fen": "7K/4k3/8/n7/8/8/B7/6B1 b - - 0 1",
+      "category": "blessed-loss",
+      "dtz": -116,
+      "dtzRounded": true,
+      "legalMoves": 10,
+      "tags": [
+        "blessed-loss",
+        "natural"
+      ]
+    },
+    {
+      "id": "natural-blessed-mirrored",
+      "fen": "6b1/b7/8/8/N7/8/4K3/7k w - - 0 1",
+      "category": "blessed-loss",
+      "dtz": -116,
+      "dtzRounded": true,
+      "legalMoves": 10,
+      "tags": [
+        "blessed-loss",
+        "natural",
+        "mirror"
+      ]
+    },
+    {
+      "id": "natural-cursed",
+      "fen": "6BB/8/1K6/8/8/5k2/7n/8 w - - 0 1",
+      "category": "cursed-win",
+      "dtz": 103,
+      "dtzRounded": true,
+      "legalMoves": 22,
+      "tags": [
+        "cursed-win",
+        "natural"
+      ]
+    },
+    {
+      "id": "natural-cursed-mirrored",
+      "fen": "8/7N/5K2/8/8/1k6/8/6bb b - - 0 1",
+      "category": "cursed-win",
+      "dtz": 103,
+      "dtzRounded": true,
+      "legalMoves": 22,
+      "tags": [
+        "cursed-win",
+        "natural",
+        "mirror"
+      ]
+    },
+    {
+      "id": "bare-kings",
+      "fen": "8/8/8/8/8/2k5/8/K7 w - - 99 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 2,
+      "tags": [
+        "draw"
+      ]
+    },
+    {
+      "id": "bare-kings-mirrored",
+      "fen": "k7/8/2K5/8/8/8/8/8 b - - 99 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 2,
+      "tags": [
+        "draw",
+        "mirror"
+      ]
+    },
+    {
+      "id": "queen-clock-True-1",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 1 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-85",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 85 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-86",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 86 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-87",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 87 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-88",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 88 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-89",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 89 1",
+      "category": "maybe-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-90",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 90 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-97",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 97 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-98",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 98 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-99",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 99 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-True-100",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 w - - 100 1",
+      "category": "cursed-win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 21,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-1",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 1 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-85",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 85 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-86",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 86 1",
+      "category": "maybe-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-87",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 87 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-88",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 88 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-89",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 89 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-90",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 90 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-97",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 97 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-98",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 98 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-99",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 99 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "queen-clock-False-100",
+      "fen": "8/8/8/8/8/2k5/8/KQ6 b - - 100 1",
+      "category": "blessed-loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "halfmove"
+      ]
+    },
+    {
+      "id": "sample-KQvK-0",
+      "fen": "7K/8/8/8/8/8/Q7/6k1 w - - 0 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 24,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-1",
+      "fen": "8/8/8/K7/8/3k4/8/4Q3 w - - 0 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 25,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-2",
+      "fen": "8/k7/8/8/8/2Q5/7K/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-3",
+      "fen": "8/6k1/8/8/8/2Q3K1/8/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -12,
+      "dtzRounded": true,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-4",
+      "fen": "8/4K3/8/8/7k/8/7Q/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -12,
+      "dtzRounded": true,
+      "legalMoves": 2,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-5",
+      "fen": "1K6/8/3k4/8/8/8/8/2Q5 w - - 0 1",
+      "category": "win",
+      "dtz": 11,
+      "dtzRounded": true,
+      "legalMoves": 25,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-6",
+      "fen": "8/8/3k4/6Q1/8/8/4K3/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-7",
+      "fen": "8/8/8/8/8/1k2K3/8/3Q4 b - - 0 1",
+      "category": "loss",
+      "dtz": -12,
+      "dtzRounded": true,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-8",
+      "fen": "8/3Q4/8/8/7k/8/8/K7 b - - 0 1",
+      "category": "loss",
+      "dtz": -16,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-9",
+      "fen": "8/8/8/8/8/1k6/8/4K1Q1 b - - 0 1",
+      "category": "loss",
+      "dtz": -14,
+      "dtzRounded": true,
+      "legalMoves": 8,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-10",
+      "fen": "4K3/8/8/8/6Q1/8/8/5k2 b - - 0 1",
+      "category": "loss",
+      "dtz": -16,
+      "dtzRounded": true,
+      "legalMoves": 2,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KQvK-11",
+      "fen": "6k1/8/6K1/8/8/3Q4/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 28,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-0",
+      "fen": "7k/8/8/4R3/8/K7/8/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -24,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-1",
+      "fen": "8/8/8/4RK2/8/8/8/k7 b - - 0 1",
+      "category": "loss",
+      "dtz": -20,
+      "dtzRounded": true,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-2",
+      "fen": "8/2R5/2k5/8/8/8/8/1K6 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-3",
+      "fen": "8/k7/1R6/8/5K2/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 17,
+      "dtzRounded": true,
+      "legalMoves": 22,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-4",
+      "fen": "1R6/8/8/k7/8/8/8/3K4 w - - 0 1",
+      "category": "win",
+      "dtz": 15,
+      "dtzRounded": true,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-5",
+      "fen": "8/8/8/4R3/8/4K3/8/6k1 b - - 0 1",
+      "category": "loss",
+      "dtz": -10,
+      "dtzRounded": true,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-6",
+      "fen": "8/8/8/1k6/6R1/8/8/K7 w - - 0 1",
+      "category": "win",
+      "dtz": 25,
+      "dtzRounded": true,
+      "legalMoves": 17,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-7",
+      "fen": "1R6/8/4k3/8/8/8/7K/8 w - - 0 1",
+      "category": "win",
+      "dtz": 27,
+      "dtzRounded": true,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-8",
+      "fen": "1k6/8/6R1/6K1/8/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 13,
+      "dtzRounded": true,
+      "legalMoves": 16,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-9",
+      "fen": "6k1/8/R7/8/8/8/8/K7 w - - 0 1",
+      "category": "win",
+      "dtz": 21,
+      "dtzRounded": true,
+      "legalMoves": 16,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-10",
+      "fen": "4R3/4K3/8/3k4/8/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 27,
+      "dtzRounded": true,
+      "legalMoves": 12,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KRvK-11",
+      "fen": "8/8/1k6/4R3/4K3/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 17,
+      "dtzRounded": true,
+      "legalMoves": 17,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-0",
+      "fen": "K7/8/8/1P6/7k/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-1",
+      "fen": "8/8/8/8/5k1K/8/6P1/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -2,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-2",
+      "fen": "8/2P5/8/8/8/2K5/8/4k3 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-3",
+      "fen": "2k5/8/8/5P2/6K1/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 8,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-4",
+      "fen": "8/8/1K6/8/P7/7k/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 9,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-5",
+      "fen": "1K6/8/8/1P6/8/7k/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-6",
+      "fen": "8/4k2K/8/8/8/4P3/8/8 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-7",
+      "fen": "7k/8/8/8/8/7P/3K4/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-8",
+      "fen": "8/8/8/4P3/8/1K6/7k/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -2,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-9",
+      "fen": "8/8/3k4/5K2/8/5P2/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-10",
+      "fen": "8/8/4K3/8/8/1k6/4P3/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 10,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvK-11",
+      "fen": "8/8/4P3/4K3/8/5k2/8/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -2,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-0",
+      "fen": "8/8/1k6/8/8/3Pp3/2K5/8 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-1",
+      "fen": "1k5K/8/8/8/8/8/p5P1/8 w - - 0 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": true,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-2",
+      "fen": "8/8/8/8/1k5K/Pp6/8/8 b - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-3",
+      "fen": "8/8/k2p4/2P5/8/1K6/8/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-4",
+      "fen": "8/7k/8/8/8/5K2/2p4P/8 b - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 9,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-5",
+      "fen": "1K6/7P/1k6/8/8/8/5p2/8 b - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 9,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-6",
+      "fen": "8/8/k7/7P/8/8/K5p1/8 w - - 0 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": true,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-7",
+      "fen": "8/7k/8/6P1/6K1/8/p7/8 w - - 0 1",
+      "category": "loss",
+      "dtz": -1,
+      "dtzRounded": true,
+      "legalMoves": 8,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-8",
+      "fen": "8/5p2/6P1/8/2k5/5K2/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 10,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-9",
+      "fen": "8/5p2/5K2/2k3P1/8/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-10",
+      "fen": "8/8/6p1/2KP4/8/8/8/1k6 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 8,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KPvKP-11",
+      "fen": "8/3P4/8/8/8/7p/5k2/3K4 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-0",
+      "fen": "8/8/5B2/2B4K/8/8/6k1/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 6,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-1",
+      "fen": "8/8/8/8/8/3B2B1/8/1K4k1 w - - 0 1",
+      "category": "win",
+      "dtz": 22,
+      "dtzRounded": true,
+      "legalMoves": 24,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-2",
+      "fen": "k7/8/8/8/8/K7/4B3/2B5 w - - 0 1",
+      "category": "win",
+      "dtz": 20,
+      "dtzRounded": true,
+      "legalMoves": 20,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-3",
+      "fen": "4k3/7B/8/8/8/8/B7/6K1 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-4",
+      "fen": "8/8/8/8/3K4/8/1B6/3kB3 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-5",
+      "fen": "8/2B4k/5K2/8/8/8/8/B7 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-6",
+      "fen": "8/8/1k6/B7/4K3/8/6B1/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-7",
+      "fen": "8/6K1/3BB3/1k6/8/8/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 20,
+      "dtzRounded": true,
+      "legalMoves": 30,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-8",
+      "fen": "8/8/k7/8/B7/7K/8/7B b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-9",
+      "fen": "8/8/6B1/3K4/8/B7/k7/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 3,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-10",
+      "fen": "3K4/2B5/8/8/2k5/7B/8/8 w - - 0 1",
+      "category": "win",
+      "dtz": 30,
+      "dtzRounded": true,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvK-11",
+      "fen": "7B/7k/5K2/8/8/8/8/2B5 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 2,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-0",
+      "fen": "8/8/4n3/8/2K1B3/8/8/2k5 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-1",
+      "fen": "8/B7/K7/8/4k3/8/8/5n2 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 10,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-2",
+      "fen": "5k2/8/1K6/8/8/5B1n/8/8 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-3",
+      "fen": "8/8/8/8/8/K2n4/7B/2k5 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-4",
+      "fen": "8/8/8/8/2k5/n7/7B/3K4 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-5",
+      "fen": "1n6/4B2K/8/8/8/8/8/6k1 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 14,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-6",
+      "fen": "1k6/5n2/8/8/8/3B4/8/1K6 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 15,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-7",
+      "fen": "1B6/8/8/6K1/8/2k5/7n/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-8",
+      "fen": "8/8/8/8/k4n2/6K1/1B6/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 12,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-9",
+      "fen": "8/8/8/8/6B1/4n2K/8/1k6 w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-10",
+      "fen": "8/8/8/8/3k4/1B2n3/5K2/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 13,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBvKN-11",
+      "fen": "3B4/8/8/8/k7/8/K7/7n w - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 10,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-0",
+      "fen": "8/4K3/7B/8/8/3B4/n7/4k3 b - - 0 1",
+      "category": "loss",
+      "dtz": -70,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-1",
+      "fen": "8/8/2k5/8/n7/4B3/2K3B1/8 b - - 0 1",
+      "category": "loss",
+      "dtz": -98,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-2",
+      "fen": "7k/K4B2/8/6B1/8/3n4/8/8 b - - 0 1",
+      "category": "blessed-loss",
+      "dtz": -106,
+      "dtzRounded": true,
+      "legalMoves": 10,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-3",
+      "fen": "6n1/8/2BB4/4K3/8/8/8/7k b - - 0 1",
+      "category": "loss",
+      "dtz": -6,
+      "dtzRounded": false,
+      "legalMoves": 2,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-4",
+      "fen": "2B1B3/K7/8/k7/8/8/7n/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 4,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-5",
+      "fen": "8/n7/3KB3/8/4k3/2B5/8/8 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 7,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-6",
+      "fen": "8/4B3/6k1/8/7K/8/3n4/1B6 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 5,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-7",
+      "fen": "k7/8/5B1K/8/B7/8/8/3n4 w - - 0 1",
+      "category": "win",
+      "dtz": 1,
+      "dtzRounded": false,
+      "legalMoves": 23,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-8",
+      "fen": "8/8/2K5/8/3B4/5n2/8/1k2B3 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-9",
+      "fen": "4K2n/8/8/8/B7/6B1/8/k7 w - - 0 1",
+      "category": "win",
+      "dtz": 3,
+      "dtzRounded": false,
+      "legalMoves": 19,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-10",
+      "fen": "3k4/8/8/8/1n6/8/1K6/B3B3 b - - 0 1",
+      "category": "draw",
+      "dtz": 0,
+      "dtzRounded": false,
+      "legalMoves": 11,
+      "tags": [
+        "sample"
+      ]
+    },
+    {
+      "id": "sample-KBBvKN-11",
+      "fen": "8/8/8/4B3/8/8/2k3K1/6nB b - - 0 1",
+      "category": "blessed-loss",
+      "dtz": -106,
+      "dtzRounded": true,
+      "legalMoves": 9,
+      "tags": [
+        "sample"
+      ]
+    }
+  ],
+  "failures": [],
+  "assertions": {
+    "continuations": 1384,
+    "win": 45,
+    "roots": 136,
+    "loss": 28,
+    "cursed-win": 9,
+    "blessed-loss": 14,
+    "draw": 38,
+    "maybe-win": 1,
+    "maybe-loss": 1
+  },
+  "failureChecks": [
+    "wdl-only-install",
+    "corrupt-wdl-and-dtz-restored",
+    "removed-and-reinstalled-dtz",
+    "invalid-castling-and-over-seven-pieces",
+    "missing-capture-successor"
+  ],
+  "featureCoverage": {
+    "mirroredRoots": 15,
+    "mateAtClock100": 2,
+    "allFourPromotions": 6,
+    "legalEnPassant": 2,
+    "natural-blessed-loss": 4,
+    "natural-cursed-win": 2
+  },
+  "latencyMs": {
+    "min": 3.466,
+    "median": 29.75,
+    "max": 220.685
+  }
+}

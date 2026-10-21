@@ -1,7 +1,9 @@
+import { installCompanionFeature } from './companion-feature.js';
 // Keep optional tools off the board's startup path. wasm-bindgen calls these
 // window functions synchronously, including polls before a tool has loaded.
 export function installDeferredTools(target, loadModule, asset = path => path) {
   install3dCompanion(target);
+  installCompanionFeature(target);
   const document = target.document;
   const notice = (message, role) => {
     const status = document.createElement('div');
@@ -30,6 +32,7 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     });
     const action = method => {
       const deferred = (...args) => {
+        if (path.startsWith('/companion-') && !target.ironwoodCompanionFeatureEnabled()) return;
         const status = notice(`Loading ${name}…`, 'status');
         void load().then(() => {
           if (target[method] === deferred) throw new Error(`Missing ${method}`);
@@ -41,6 +44,58 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     return { load, action };
   };
   const fics = tool('/fics/bridge.js', 'FICS');
+  const companionEngines = tool('/companion-engines.js', 'Companion engines');
+  for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine']) companionEngines.action(method);
+  let catalogRequested = false;
+  target.ironwoodCompanionEngineCatalog = () => {
+    if (!target.ironwoodCompanionFeatureEnabled()) return '{"engines":[],"busy":false,"status":""}';
+    if (!catalogRequested) {
+      catalogRequested = true;
+      void companionEngines.load().then(() => target.ironwoodCompanionEngineCatalog()).catch(error => {
+        catalogRequested = false;
+        report('Companion engines', error);
+      });
+    }
+    return '{"engines":[],"busy":true,"status":"Loading engines…"}';
+  };
+  tool('/companion-archive.js', 'Companion archive').action('ironwoodOpenCompanionArchive');
+  target.ironwoodCompanionArchiveConfiguration = () => null;
+  const archiveLibrary = tool('/companion-library.js', 'Archive storage');
+  const deferredLibrary = async options => {
+    if (!target.ironwoodCompanionFeatureEnabled()) throw new Error('Companion testing is disabled.');
+    await archiveLibrary.load();
+    if (target.ironwoodCompanionLibrary === deferredLibrary) throw new Error('Archive storage is unavailable.');
+    return target.ironwoodCompanionLibrary(options);
+  };
+  target.ironwoodCompanionLibrary = deferredLibrary;
+  const archiveExplorer = tool('/companion-explorer.js', 'Archive explorer');
+  target.ironwoodArchiveExplorer = () => { if (!target.ironwoodCompanionFeatureEnabled()) return ''; void archiveExplorer.load().catch(error => report('Archive explorer', error)); return ''; };
+  archiveExplorer.action('ironwoodOpenArchiveExplorerFilters');
+  target.ironwoodArchiveExplorerRefresh = () => {};
+  target.ironwoodArchiveExplorerPage = () => {};
+  target.ironwoodArchiveExplorerCopyGame = () => {};
+  const companionConnection = tool('/companion-connection.js', 'Companion connection');
+  companionConnection.action('ironwoodManageCompanionConnection');
+  const companionDiagnostics = tool('/companion-diagnostics.js', 'Companion diagnostics');
+  target.ironwoodCompanionDiagnostics = () => {
+    if (!target.ironwoodCompanionFeatureEnabled()) return '{}';
+    void companionDiagnostics.load().catch(error => report('Companion diagnostics', error));
+    return '{"connection_status":"Checking…","busy":true}';
+  };
+  for (const method of ['ironwoodDownloadCompanion', 'ironwoodRefreshCompanionDiagnostics', 'ironwoodCheckCompanionUpdates', 'ironwoodInstallCompanionUpdate']) companionDiagnostics.action(method);
+  target.ironwoodInitializeCompanionEngine = async (worker, init, identity) => {
+    try {
+      if (!target.ironwoodCompanionFeatureEnabled()) throw new Error('Companion testing is disabled.');
+      const connection = await companionConnection.load();
+      if (!target.ironwoodCompanionFeatureEnabled()) throw new Error('Companion testing is disabled.');
+      init.companion = connection.companionEngineConfiguration(identity, init.overrides);
+    } catch (error) {
+      init.companionError = error.message;
+    }
+    worker.postMessage(init);
+  };
+  target.ironwoodCompanionPollChange = () => '';
+  target.ironwoodCompanionSetAllowed = allowed => { target.ironwoodCompanionAllowed = allowed; };
   for (const method of ['Connect', 'ConnectRegistered', 'Disconnect', 'Send', 'SendCommand'])
     fics.action(`ironwoodFics${method}`);
   target.ironwoodFicsPoll = () => '';
@@ -347,9 +402,16 @@ function installFallbacks(target) {
     'EnsureImportedIndex', 'RefreshStorageStatus', 'BeginBatchImport', 'EndBatchImport',
     'RefreshVersionDiagnostics', 'UpdateAndReload', 'TrackUsage', 'ExplorerRetry', 'ExplorerRefresh'])
     target[`ironwood${name}`] ??= () => {};
-  for (const name of ['IsImportedDuplicate', 'ImportedIndexReady', 'HasDeferredUpdate', 'ExplorerSignedIn'])
+  for (const name of ['IsImportedDuplicate', 'ImportedIndexReady', 'ArchiveImportAvailable', 'HasDeferredUpdate', 'ExplorerSignedIn'])
     target[`ironwood${name}`] ??= () => false;
   target.ironwoodStorageStatus ??= () => 'Browser storage estimate unavailable';
+  target.ironwoodArchiveAnalysisRuns ??= () => '{"available":false}';
+  target.ironwoodBeginArchiveAnalysisRun ??= raw => JSON.stringify({...JSON.parse(raw),id:crypto.randomUUID(),created_at:Date.now()});
+  target.ironwoodTakeArchiveAnalysisRun ??= () => '';
+  target.ironwoodSelectArchiveAnalysisRun ??= () => {};
+  target.ironwoodRefreshArchiveAnalysisRuns ??= () => {};
+  target.ironwoodManageArchiveAnalyses ??= () => {};
+
   target.ironwoodTrainingProfilesAction ??= () => JSON.stringify({error:'Training profile storage is unavailable. Reload and try again.'});
   target.ironwoodBatchImportStatus ??= () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
   target.ironwoodVersionDiagnostics ??= () => '{"status":"Version diagnostics are loading"}';
@@ -412,6 +474,7 @@ export async function startChessApp({
     ]);
     await app.default({ module_or_path: wasm });
     target.ironwoodExportSavedGame = app.export_saved_game;
+    target.ironwoodPrepareArchivedPgn = app.prepare_archived_pgn;
     target.ironwoodValidateScoresheet = app.validate_scoresheet_pgn;
     target.ironwoodPreviewScoresheet = app.preview_scoresheet;
     loading?.remove();

@@ -1,0 +1,165 @@
+use super::*;
+
+impl ChessApp {
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn analysis_engine_selector(&mut self, ui: &mut egui::Ui) {
+        if !crate::companion::enabled() { return; }
+        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let busy = catalog["busy"] == true;
+        let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
+        let mut identity = if self.analysis_config.opponent == OpponentEngine::Companion {
+            self.analysis_config.companion_identity.clone()
+        } else { String::new() };
+        let previous = identity.clone();
+        ui.add_enabled_ui(allowed, |ui| {
+            let menu_style=ui.style().as_ref().clone();
+            let background=ui.painter().add(egui::Shape::Noop);
+            let mut visuals=ui.visuals().widgets.inactive;
+            visuals.weak_bg_fill=Color32::TRANSPARENT;visuals.bg_stroke=Stroke::NONE;visuals.expansion=0.0;
+            ui.visuals_mut().widgets.inactive=visuals;ui.visuals_mut().widgets.hovered=visuals;
+            ui.visuals_mut().widgets.active=visuals;ui.visuals_mut().widgets.open=visuals;
+            let selector=egui::ComboBox::from_id_salt("analysis_engine_provider")
+                .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.analysis_config.label())).width(260.0).truncate()
+                .show_ui(ui, |ui| {
+                    *ui.style_mut()=menu_style;
+                    ui.set_min_width(320.0_f32.min(ui.ctx().content_rect().width()-24.0));
+                    ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
+                    if let Some(engines) = catalog["engines"].as_array() {
+                        for engine in engines {
+                            if let (Some(id), Some(label)) = (engine["identity"].as_str(), engine["label"].as_str()) {
+                                ui.selectable_value(&mut identity, id.to_owned(), label);
+                            }
+                        }
+                    }
+                });
+            ui.painter().set(background,Self::glass_surface(selector.response.rect));
+            selector.response.on_hover_text("Engine for the next full-game analysis");
+        });
+        if identity != previous {
+            self.save_game();
+            select_companion_engine(&identity);
+            self.poll_companion_provider();
+        }
+        if Self::analysis_refresh_button(ui,!busy,"Refresh installed engines").on_disabled_hover_text("Checking engines…").clicked() { refresh_companion_engines(); }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn companion_engine_selector(&mut self, ui: &mut egui::Ui) {
+        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let busy = catalog["busy"].as_bool().unwrap_or(false);
+        let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
+        let mut identity = if self.analysis_config.opponent == OpponentEngine::Companion {
+            self.analysis_config.companion_identity.clone()
+        } else { String::new() };
+        let previous = identity.clone();
+        ui.scope(|ui| {
+            ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
+            ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
+            ui.spacing_mut().interact_size.y = 36.0;
+            ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
+            ui.spacing_mut().item_spacing = Vec2::new(10.0, 8.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Engine").size(18.0).strong().color(Color32::from_rgb(211, 173, 98)));
+            ui.add_enabled_ui(allowed, |ui| {
+                egui::ComboBox::from_id_salt("settings_engine_provider")
+                    .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.analysis_config.label())).width(240.0)
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
+                        if let Some(engines) = catalog["engines"].as_array() {
+                            for engine in engines {
+                                if let (Some(id), Some(label)) = (engine["identity"].as_str(), engine["label"].as_str()) {
+                                    ui.selectable_value(&mut identity, id.to_owned(), label);
+                                }
+                            }
+                        }
+                    });
+            });
+            if ui.add_enabled(allowed, egui::Button::new("Add engine").raised_gray()).clicked() { add_companion_engine(); }
+            if ui.add_enabled(!busy, egui::Button::new("Refresh").raised_gray()).clicked() { refresh_companion_engines(); }
+        });
+        });
+        if identity != previous { select_companion_engine(&identity); }
+        if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) { ui.label(status); }
+        ui.add_space(8.0);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn ensure_engine_provider(&mut self, config: EngineConfig) {
+        if self.engine.as_ref().is_some_and(|e| e.identity != Self::verification_engine_key(&config)
+            || (e.remote && e.overrides != config.companion_options)) {
+            self.engine = None;
+            self.engine_ready = false;
+            self.engine_searching = false;
+            self.engine_start_failed = false;
+            self.ignore_next_bestmove = false;
+            self.pending_analysis_search = None;
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn poll_companion_provider(&mut self) {
+        let allowed = !self.training_live() && !(self.fics_active && !self.fics_game_finished)
+            && !self.game_analysis_running;
+        let enabled = crate::companion::enabled();
+        if self.companion_training_blocked() && self.training_live() {
+            self.engine = None; self.engine_ready = false; self.engine_searching = false;
+            self.resume_engine_after_ready = false;
+            self.engine_status = "Companion training paused · enable Companion in Version diagnostics to resume".into();
+            return;
+        }
+        if enabled && self.training_live() && self.training.as_ref().is_some_and(|s| s.engine.is_lc0())
+            && self.engine_status.starts_with("Companion training paused") {
+            self.engine_status = "Companion training resumed".into();
+            self.queue_live_engine_resume();
+        }
+        let disabling = !enabled && (self.analysis_config.opponent == OpponentEngine::Companion || self.engine_config.opponent == OpponentEngine::Companion || self.new_game_opponent == OpponentEngine::Companion || self.strength_draft.opponent == OpponentEngine::Companion || self.analysis_draft.opponent == OpponentEngine::Companion);
+        companion_engine_allowed(allowed && enabled);
+        if !enabled && !disabling { let _ = companion_engine_change(); return; }
+        let raw = if disabling { r#"{"provider":"builtin"}"#.to_owned() } else { companion_engine_change() };
+        if raw.is_empty() { return; }
+        if !allowed && !disabling { self.engine_status = "Finish active training, online play, or game analysis before changing providers".into(); return; }
+        let Ok(change) = serde_json::from_str::<serde_json::Value>(&raw) else { return; };
+        let opponent = if change["provider"] == "companion" { OpponentEngine::Companion } else { OpponentEngine::Stockfish };
+        let name = change["name"].as_str().unwrap_or("").to_owned();
+        let identity = change["identity"].as_str().unwrap_or("").to_owned();
+        let key = if opponent == OpponentEngine::Stockfish { "builtin:stockfish".into() } else {format!("companion:{identity}")};
+        if let Ok(catalog) = serde_json::from_value::<Vec<engine_uci_settings::UciOption>>(change["uci_options"].clone()) {
+            self.engine_uci_catalog.insert(key.clone(), catalog);
+        }
+        let options: std::collections::BTreeMap<String,String> = self.engine_uci_preferences.get(&key).cloned().unwrap_or_else(||serde_json::from_value(change["options"].clone()).unwrap_or_default());
+        let changed = self.analysis_config.opponent != opponent || self.analysis_config.companion_identity != identity
+            || self.analysis_config.companion_name != name || self.analysis_config.companion_options != options;
+        self.engine = None; self.engine_ready = false; self.engine_start_failed = false;
+        self.engine_searching = false; self.analysis_running = false;
+        self.pending_analysis_search = None; self.ignore_next_bestmove = false;
+        self.realtime_analysis_due_at = None; self.resume_engine_after_ready = false;
+        self.game_analysis_paused = !changed && self.game_analysis_paused;
+        self.resume_game_analysis_after_ready = false;
+        for config in [&mut self.engine_config, &mut self.analysis_config, &mut self.strength_draft, &mut self.analysis_draft] {
+            config.opponent = opponent; config.companion_name = name.clone();
+            config.companion_identity = identity.clone(); config.companion_options = options.clone();
+            if opponent == OpponentEngine::Stockfish { config.uci_options = options.clone(); }
+        }
+        self.new_game_opponent = opponent;
+        self.verification_draft = self.verify_after_analysis();
+        if changed {
+            self.full_game_analysis_config = self.engine_full_game_preferences.get(&Self::verification_engine_key(&self.analysis_config)).cloned().unwrap_or_else(|| FullGameAnalysisConfig::for_engine(opponent));
+            self.full_game_analysis_draft = self.full_game_analysis_config.clone();
+            self.clear_analysis_result();
+            // Reviewing a saved run is independent from choosing the engine for
+            // the next run. Retain that snapshot until analysis is started.
+            if self.analysis_run.is_none() && !self.archive_analysis_active() {
+            self.game_analysis = vec![None; self.review_positions.len()];
+            self.verification_targets.clear(); self.verification_results.clear();
+            self.verification_nodes = 0; self.verification_time_ms = 0;
+            }
+        }
+        if self.review_index.is_none() && self.engine_enabled {
+            if self.player_side == PlayerSide::White { self.review_black_player = self.engine_config.label().into(); }
+            else { self.review_white_player = self.engine_config.label().into(); }
+        }
+        if self.strength_dialog_open { self.prepare_uci_settings(); }
+        self.engine_status = format!("{} selected · start analysis or continue play", self.engine_config.label());
+        self.save_game(); self.queue_live_engine_resume();
+    }
+}

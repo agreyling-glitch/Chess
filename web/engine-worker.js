@@ -4,6 +4,8 @@ let engine;
 let ready = false;
 const pending = [];
 const resourceOptions = new Map();
+const advertisedExtras = new Set();
+const managedOptions = new Set(['Threads','Hash','MultiPV','Ponder','Skill Level','UCI_LimitStrength','UCI_Elo','UCI_Chess960']);
 
 function emit(line) { postMessage({ type: 'uci', line }); }
 function dispatch(command) {
@@ -23,6 +25,7 @@ onmessage = ({ data }) => {
   if (data?.type === 'init') {
     ready = false;
     resourceOptions.clear();
+    advertisedExtras.clear();
     if (!crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
       postMessage({ type: 'error', message: 'Cross-origin isolation is required for multi-thread Stockfish.' });
       return;
@@ -44,6 +47,8 @@ onmessage = ({ data }) => {
     engine.postMessage({ progressPort: progressChannel.port2 }, [progressChannel.port2]);
     engine.onmessage = event => {
       const line = typeof event === 'string' ? event : event.data;
+      const advertised = /^option name (.+?) type (spin|check|combo)\b/.exec(line);
+      if (advertised && !managedOptions.has(advertised[1])) advertisedExtras.add(advertised[1]);
       if (line === 'uciok') {
         // Do not publish readiness or apply synchronous thread settings until
         // every supported pthread has loaded its WASM module.
@@ -58,6 +63,9 @@ onmessage = ({ data }) => {
         send(`setoption name UCI_LimitStrength value ${data.limitStrength ? 'true' : 'false'}`);
         send(`setoption name UCI_Elo value ${Math.max(1320, Math.min(data.elo || 1800, 3190))}`);
         send('setoption name Ponder value false');
+        for (const [name, value] of Object.entries(data.uciOptions || {})) {
+          if (advertisedExtras.has(name) && !/[\r\n\0]/.test(name + value)) send(`setoption name ${name} value ${value}`);
+        }
         while (pending.length) send(pending.shift());
         emit('uciok');
         return;

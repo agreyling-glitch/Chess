@@ -11,9 +11,9 @@ test('deleting the active game restores the saved-games view after reset', async
   const games = [{ id:'test-game' }, { id:'keep' }];
   let reloaded = 0;
   const context = vm.createContext({
-    deleting:false, games, selectedIds:new Set(['test-game']), importedFingerprints:new Set(),
+    deleting:false, operationBusy:false, provider:null, getArchiveActive:()=>null, busy:()=>{}, games, selectedIds:new Set(['test-game']), importedFingerprints:new Set(),
     category:'training', profileFilter:'profile', playerFilter:'*', searchQuery:'test', analysisFilter:'complete', sortOrder:'moves-asc', page:2,
-    ACTIVE_ID_KEY:'active', CURRENT_GAME_KEY:'current', ACTIVE_CATEGORY_KEY:'category', LIBRARY_RETURN_KEY:'return',
+    ACTIVE_ID_KEY:'active', ACTIVE_ARCHIVE_KEY:'archive', CURRENT_GAME_KEY:'current', ACTIVE_CATEGORY_KEY:'category', LIBRARY_RETURN_KEY:'return',
     localStorage:{getItem:key=>local.get(key),removeItem:key=>local.delete(key)},
     sessionStorage:{setItem:(key,value)=>session.set(key,value)},
     confirmDeleteGames:async()=>true, deleteGames:async ids=>assert.deepEqual([...ids],['test-game']),

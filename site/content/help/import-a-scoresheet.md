@@ -1,6 +1,6 @@
 ---
 title: "Import a game from a scoresheet"
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 description: "Manually enter chess moves beside a scoresheet photo, with a board preview and live validation."
 category: "using-ironwood"
 keywords: [scoresheet, handwritten, manual, photo, PGN, import, validation, draft, autosave, check, resignation]
@@ -21,7 +21,7 @@ The board starts in the standard starting position and follows valid entries. Cl
 
 Gold highlights show the starting and ending squares of the displayed move. The move list scrolls to the latest validated move as you type, and follows the position selected by an entry cell.
 
-Enter the players, event, date, and result above the panels. Once all entered moves are legal, **Download PGN** saves a file. **Import game** opens **Paste a game or collection** with the PGN; choose **Continue** to finish importing. Start full-game analysis afterward from **Game Analysis**. Importing does not automatically start analysis.
+Enter the players, event, date, and result above the panels. Once all entered moves are legal, **Download PGN** saves a file. **Import game** opens **Paste a game or collection** with the PGN; choose **Continue** to finish importing. Start full-game analysis afterward from **Analysis**. Importing does not automatically start analysis.
 
 Do not enter resignation or a result in a move cell. If Black resigns, leave the next Black cell empty and select **White won** in the **Result** dropdown; the PGN ends with `1-0`. If White resigns, select **Black won** (`0-1`). Select **Draw** for `1/2-1/2`, or **Unknown / unfinished** for `*`.
 

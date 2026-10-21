@@ -11,7 +11,7 @@ test('preview navigation and 500ms autoplay stop at end and on close', async () 
   window.HTMLDialogElement.prototype.close = function() { this.open = false; this.dispatchEvent(new window.Event('close')); };
   let tick; let interval; let cleared = 0;
   window.ironwoodExportSavedGame = () => JSON.stringify({positions:['start','e4','e5'], moves:['e4','e5']});
-  const context = vm.createContext({window, document:window.document, readGame:async()=>({json:'{}'}),
+  const context = vm.createContext({window, document:window.document, savedGameSource:async()=>null, readGame:async()=>({json:'{}'}),
     finalBoard:fen=>{const el=window.document.createElement('div');el.textContent=fen;return el;},
     startingNoteElement:()=>null, setInterval:(fn,ms)=>{tick=fn;interval=ms;return 1;},clearInterval:()=>cleared++});
   vm.runInContext(preview,context);

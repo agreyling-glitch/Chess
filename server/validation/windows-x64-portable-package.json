@@ -1,0 +1,20 @@
+{
+    "format":  "ironwood-windows-platform-validation",
+    "version":  1,
+    "status":  "passed",
+    "environmentKind":  "development",
+    "environmentEvidence":  "",
+    "osVersion":  "Microsoft Windows NT 10.0.26300.0",
+    "architecture":  "AMD64",
+    "timestamp":  "2026-10-17T20:51:53.1649071Z",
+    "packageSha256":  "4a0590a6c094fb14891dd5562feb268879526ac80ad800f3c69d4d6cf74a958b",
+    "checks":  [
+                   "zip-checksum-static-crt-metadata-no-datasets",
+                   "private-provisioning",
+                   "restricted-path-health-auth-origin-capabilities",
+                   "archive-explorer-local-probe",
+                   "uci-handshake-search-close-inbox-powershell-fixture",
+                   "restart-persistence-rotation-graceful-shutdown"
+               ],
+    "binarySha256":  "fa4659edd113362ea3f11a59a9a4d54790810273da62363bd588a796695ca8d5"
+}

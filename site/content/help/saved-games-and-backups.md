@@ -4,10 +4,10 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
-Use **Game → Save current game** to keep the current game, and **Game → Load saved game** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
+Use **Game → Save current game** to keep the current game, and **Game → Saved games** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
 
 While signed in to Lichess, loading a saved game does not open the lobby. If you are playing correspondence, Ironwood puts that online game aside and keeps your connection; resume it from **Your ongoing games** later. During a live online game, loading a saved game disconnects online play without resigning on Lichess. Its clock continues. See [Play on Lichess](/help/play-on-lichess/).
 
@@ -20,6 +20,12 @@ For a copy you control, use **Storage → Backup all data** and keep the downloa
 To share one game with chess software, export or copy its [PGN](/help/pgn/). To preserve Ironwood's richer analysis of one game, use [analysis JSON](/help/saving-and-sharing/).
 
 Games with a Starting note show a short preview in the library. Click that note to open the starting position, or enlarge the board preview to read the full note beneath the final board. See [Taking notes and adding annotations](/help/taking-notes/) for more.
+
+## Find and select games
+
+Use the category buttons, search field, **Player** filter and **Analysis** filter to narrow the library. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. Export or delete the selected games using the controls above the list. Deletion asks for confirmation.
+
+Drag the Saved games title to move the window, drag an edge or corner to resize it, or use the title-bar maximize/restore button. The game list scrolls within the window.
 
 ## Larger board preview
 
@@ -49,4 +55,4 @@ The **Puzzles** category stores puzzle move history separately from ordinary gam
 
 ## Storage information
 
-Open **Storage → Storage information** for local record counts and the browser’s reported storage estimate. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.
+Open **Storage → Storage information** for local record counts and the browser’s reported storage estimate. Drag the title to move the window and its edges or corners to resize it. The record sections scroll inside the gold-bordered window. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.

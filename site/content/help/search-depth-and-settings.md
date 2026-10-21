@@ -4,12 +4,12 @@ description: "Set up Stockfish for play, realtime analysis, and full-game analys
 category: "terms"
 keywords: [engine settings, depth, nodes, nps, threads, hash, quality, quick, standard, deep, custom, performance, verification]
 weight: 60
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
 ## Open engine settings
 
-1. In the app's bottom status bar, click the gray raised **Settings** button beside the engine name and Ready/Analyzing state. You can also use **Game → Engine settings…**.
+1. In the app's bottom status bar, click the gray raised **Engine** button beside the engine name and Ready/Analyzing state. You can also use **Game → Engine settings…**.
 2. Select **Play**, **Realtime Analysis**, or **Full game Analysis**. The selected tab has a raised gold finish and dark text.
 3. Adjust the settings, then click **Apply**. **Cancel** discards your changes.
 
@@ -23,6 +23,8 @@ These are the defaults for a fresh setup. Your saved preferences or an imported 
 
 | Setting | Default |
 | --- | --- |
+| Budget | Nodes |
+| Verify critical moves after analysis | On |
 | Analysis quality | Standard |
 | Nodes per position, first pass | 1,000,000 |
 | Search threads | Detected from your device, capped at 8 |
@@ -31,7 +33,9 @@ These are the defaults for a fresh setup. Your saved preferences or an imported 
 | Strength | Maximum: Skill 20, Elo limiting off |
 | Network | Stockfish 19, Full NNUE, fixed |
 
-Choose **Analysis quality** on the **Full game Analysis** tab:
+On **Full game Analysis**, choose **Budget → Nodes** for a node budget or **Budget → Seconds** for **1–60 seconds per position**. Seconds mode replaces the quality/node controls with **Seconds per position**. It sets an engine search-time target for each first-pass position; startup, processing and a second pass add to the total game-analysis time.
+
+In Nodes mode, choose **Analysis quality**:
 
 | Quality | First-pass nodes per position | Use |
 | --- | --- | --- |
@@ -46,7 +50,9 @@ More nodes mean more work and usually more time. They can improve difficult eval
 
 **Pass 1** examines the game's positions in sequence. Progress counts positions, including the starting position, rather than complete moves.
 
-Ironwood may then run **Pass 2**, a deeper verification of selected critical positions. Its budget is five times the first-pass budget, with a minimum of 1,000,000 and a maximum of 50,000,000 nodes per selected position. Standard therefore uses **5,000,000 nodes** for each selected position in this pass.
+**Verify critical moves after analysis** controls whether **Pass 2** starts automatically. This deeper check examines selected critical positions. In Nodes mode its budget is five times the first-pass budget, with a minimum of 1,000,000 and a maximum of 50,000,000 nodes per selected position. Standard therefore uses **5,000,000 nodes** for each selected position in this pass. In Seconds mode the deeper check uses five times the first-pass time target for each selected position.
+
+Leave the automatic check off for a first-pass review, then use **Verify critical moves** in **Analysis** when you want the deeper check. **Resume verification** continues an interrupted verification pass without discarding the first-pass results.
 
 A display such as **Pass 2 · 14/18** means 14 of 18 selected verification positions have completed. It does not mean the whole game is being analyzed again. The second pass can take noticeably longer per position. Summaries remain **Provisional** until verification finishes; evaluations and move labels may change.
 
@@ -103,4 +109,4 @@ Select a settings tab, click **Reset this context**, then **Apply**.
 
 ## Full-game progress
 
-**Analyze full game** uses a raised gold button and a beveled progress bar. The balance bar holds its displayed value while full-game analysis runs and resumes realtime updates afterward. This reduces animation work; it does not change the engine’s analysis budget or establish a measured speed increase.
+**Analyze full game with Stockfish 19** uses a raised gold button and a beveled progress bar. The balance bar holds its displayed value while full-game analysis runs and resumes realtime updates afterward. This reduces animation work; it does not change the engine’s analysis budget or establish a measured speed increase.

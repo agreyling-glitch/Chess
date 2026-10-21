@@ -1,0 +1,116 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {connectCompanion, disconnectCompanion, manageCompanionConnection} from '../web/companion-connection.js';
+test('engine and tablebase dialogs reuse the connection without rendering token fields', async () => {
+  const {JSDOM} = await import('jsdom');
+  const dom = new JSDOM('<body></body>', {url:'http://localhost:8788'});
+  const previousFetch = globalThis.fetch, previousWindow = globalThis.window, previousDocument = globalThis.document;
+  globalThis.window = dom.window; globalThis.document = dom.window.document;
+  dom.window.HTMLDialogElement.prototype.showModal = function(){this.open=true;};
+  dom.window.HTMLDialogElement.prototype.close = function(){this.open=false;this.dispatchEvent(new dom.window.Event('close'));};
+  globalThis.fetch = async address => { const url = String(address); return ({ok:true,json:async()=>url.endsWith('capabilities') ? {product:'Ironwood Companion',protocol_version:'1',services:{}} : url.endsWith('engines') ? [] : {materials:{},rejectedFiles:0,unavailableDirectories:0,validation:'Not configured.'}}); };
+  try {
+    await connectCompanion('http://localhost:8790','ui-token');
+    const managed = manageCompanionConnection();
+    assert.equal(managed,manageCompanionConnection());
+    assert.equal(document.querySelectorAll('#companion-connection').length,1);
+    document.querySelector('#companion-connection [data-close]').click();
+    assert.equal((await managed).credential,'ui-token');
+    assert.equal(document.querySelectorAll('input[type=password]').length,0);
+    const remembered = manageCompanionConnection();
+    const rememberForm = document.querySelector('#companion-connection form');
+    assert.equal(rememberForm.elements.remember.checked,false);
+    rememberForm.elements.remember.checked = true;
+    await rememberForm.onsubmit({preventDefault(){}});
+    assert.match(rememberForm.querySelector('[role=status]').textContent,/saved and checked/);
+    rememberForm.querySelector('[data-close]').click();
+    await remembered;
+    assert.equal(window.localStorage.length,1);
+    const forgetting = manageCompanionConnection();
+    const forgetForm = document.querySelector('#companion-connection form');
+    assert.equal(forgetForm.elements.remember.checked,true);
+    forgetForm.querySelector('[data-forget]').click();
+    assert.equal(window.localStorage.length,0);
+    assert.equal(forgetForm.elements.endpoint.value,'http://127.0.0.1:8790');
+    assert.equal(forgetForm.elements.credential.value,'');
+    forgetForm.querySelector('[data-close]').click();
+    assert.equal(await forgetting,null);
+    await connectCompanion('http://localhost:8790','ui-token');
+    await import('../web/companion-engines.js');
+    await import('../web/companion-archive.js');
+    await import('../web/tablebase.js?shared-ui');
+    disconnectCompanion();
+    await window.ironwoodRefreshCompanionEngines();
+    assert.match(JSON.parse(window.ironwoodCompanionEngineCatalog()).status,/Game → Companion connection/);
+    assert.equal(document.querySelector('dialog'),null);
+    await connectCompanion('http://localhost:8790','ui-token');
+
+    await window.ironwoodRefreshCompanionEngines();
+    assert.equal(document.querySelectorAll('input[type=password]').length,0);
+    assert.deepEqual(JSON.parse(window.ironwoodCompanionEngineCatalog()).engines,[]);
+    assert.equal(window.ironwoodCompanionArchiveConfiguration().credential,'ui-token');
+    const archiveHost=document.createElement('div');document.body.append(archiveHost);
+    let returned=false;
+    dom.window.HTMLDialogElement.prototype.show=function(){this.open=true;};
+    await window.ironwoodOpenCompanionArchive({host:archiveHost,onClose:()=>{returned=true;},isActive:()=>true});
+    const embedded=archiveHost.querySelector('#companion-archive');
+    assert.ok(embedded?.open);assert.equal(embedded.querySelector('h2'),null);
+    embedded.close();assert.equal(returned,true);assert.equal(archiveHost.children.length,0);archiveHost.remove();
+
+    window.ironwoodTablebase('',false,false,true);
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.ok(document.querySelector('#tablebase-connection'));
+    assert.equal(document.querySelectorAll('input').length,0);
+    document.querySelector('#tablebase-connection').close();
+    const calls=[];
+    globalThis.fetch=async(address,init)=>{
+      const url=String(address);calls.push({address:url,init});
+      const value=url.includes('path=') ? {path:'/data/engines/lc0',folder:'engines/lc0',parent:'/data/engines',root:'/data/engines',entries:[{name:'fixture',path:'/data/engines/lc0/fixture',directory:false}]} : url.includes('/engine-files') ? {path:'/data/engines',folder:'engines',parent:null,root:'/data/engines',entries:[{name:'lc0',path:'/data/engines/lc0',directory:true}]} :
+        url.endsWith('/engine-registrations') ? {request:'a'.repeat(32),status:'validating'} :
+        url.endsWith('/save') ? {status:'ready'} : {status:'validated',name:'Original UI fixture'};
+      return {ok:true,json:async()=>value};
+    };
+    const {addCompanionEngine}=await import('../web/companion-add-engine.js');
+    window.ironwoodCompanionFeatureEnabled=()=>false;
+    const before=calls.length;assert.equal(await addCompanionEngine(),false);assert.equal(calls.length,before);
+    window.ironwoodCompanionFeatureEnabled=()=>true;
+    const adding=addCompanionEngine();await new Promise(resolve=>setImmediate(resolve));
+    const addForm=document.querySelector('#companion-add-engine form');
+    assert.equal(addForm.querySelector('[type=submit]').disabled,true);
+    assert.equal(addForm.elements.executable.readOnly,true);
+    assert.equal(addForm.querySelector('[data-picker]').hidden,false);
+    assert.equal(addForm.elements.folder,undefined);
+    assert.equal(addForm.querySelector('[data-location]').textContent,'engines');
+    addForm.querySelector('.engine-folder-tree [data-branches] summary').click();await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(addForm.querySelector('[data-location]').textContent,'engines/lc0');
+    addForm.querySelector('.engine-file-list button').click();
+    await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(addForm.elements.executable.value,'/data/engines/lc0/fixture');
+    assert.equal(addForm.elements.label.value,'Original UI fixture');
+    assert.match(document.querySelector('#companion-add-engine [role=status]').textContent,/UCI validation passed/);
+    assert.equal(addForm.querySelector('[type=submit]').disabled,false);
+    assert.equal(document.querySelector('[data-command]'),null);
+    assert.ok(!calls.some(call=>call.address.endsWith('/save')),'validation does not save');
+    const proposal=calls.find(call=>call.address.endsWith('/engine-registrations'));
+    assert.deepEqual(JSON.parse(proposal.init.body),{executable:'/data/engines/lc0/fixture',args:[]});
+    assert.equal(proposal.init.headers.Authorization,'Bearer ui-token');
+    addForm.elements.args.value='["--uci"]';addForm.elements.args.dispatchEvent(new window.Event('input'));
+    assert.equal(addForm.querySelector('[type=submit]').disabled,true);
+    await new Promise(resolve=>setImmediate(resolve));
+    addForm.querySelector('[data-revalidate]').click();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+    addForm.elements.label.value='My engine';
+    await addForm.onsubmit({preventDefault(){}});
+    assert.equal(await adding,true);assert.equal(document.querySelector('#companion-add-engine'),null);
+    assert.deepEqual(JSON.parse(calls.find(call=>call.address.endsWith('/save')).init.body),{label:'My engine'});
+
+    const cancelled=addCompanionEngine();await new Promise(resolve=>setImmediate(resolve));
+    const cancelledForm=document.querySelector('#companion-add-engine form');
+    cancelledForm.querySelector('.engine-folder-tree [data-branches] summary').click();await new Promise(resolve=>setImmediate(resolve));
+    cancelledForm.querySelector('.engine-file-list button').click();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
+    cancelledForm.querySelector('[data-close]').click();assert.equal(await cancelled,false);
+    assert.ok(calls.some(call=>call.address.endsWith('/cancel')));
+
+  } finally {
+    disconnectCompanion(); globalThis.fetch=previousFetch;globalThis.window=previousWindow;globalThis.document=previousDocument;dom.window.close();
+  }
+});

@@ -1,0 +1,21 @@
+services:
+  companion:
+    build:
+      context: ../..
+      dockerfile: deploy/ironwood-server/Dockerfile
+    ports:
+      - "127.0.0.1:8790:8790"
+    volumes:
+      - companion-data:/data
+      # Put owner-installed Linux UCI engines here; Companion bundles none.
+      - ./engines:/data/engines:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+volumes:
+  companion-data:

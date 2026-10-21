@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod companion;
 mod board3d;
 mod fics_chat;
 mod rules;
@@ -50,6 +51,12 @@ pub fn export_saved_game(json: &str, format: &str) -> Result<String, JsValue> {
     app::ChessApp::export_saved_game(json, format).map_err(|error| JsValue::from_str(&error))
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn prepare_archived_pgn(pgn: &str) -> Result<String, JsValue> {
+    app::ChessApp::prepare_archived_pgn(pgn).map_err(|error| JsValue::from_str(&error))
+}
+
 /// Checks scoresheet moves without changing the current game or saving anything.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -72,6 +79,18 @@ mod scoresheet_tests {
     use super::app::ChessApp;
     fn replay(values: &[&str]) -> serde_json::Value {
         ChessApp::scoresheet_preview(&values.iter().map(|value| value.to_string()).collect::<Vec<_>>())
+    }
+    #[test]
+    fn archived_pgn_becomes_a_saved_record_without_losing_annotations_or_start_counters() {
+        let pgn = "[White \"Ada\"]\n[Black \"Grace\"]\n[SetUp \"1\"]\n[FEN \"8/8/8/8/8/8/4K3/7k w - - 47 63\"]\n[Result \"*\"]\n\n63. Kf3 {Ordinary comment [%note \"My note\"] [%cal Ge2f3]} *";
+        let saved = ChessApp::prepare_archived_pgn(pgn).unwrap();
+        let record: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        assert_eq!(record["review_pgn"], pgn);
+        assert_eq!(record["engine_enabled"], false);
+        assert!(record["move_notes"].to_string().contains("My note"));
+        assert!(record["board_marks"].as_array().unwrap().iter().any(|v| !v.as_array().unwrap().is_empty()));
+        assert!(ChessApp::export_saved_game(&saved, "json").is_ok());
+        assert!(ChessApp::prepare_archived_pgn("1. e5 *").is_err());
     }
     #[test]
     fn scoresheet_distinguishes_partial_illegal_and_missing_moves() {

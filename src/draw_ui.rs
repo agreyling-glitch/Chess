@@ -320,9 +320,7 @@ impl ChessApp {
                 let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
                 let mut shape_style = Self::drawing_shape_style(ctx);
                 let control_size = Vec2::new((ui.available_width() - 24.0 - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
-                let tools = Frame::new().fill(Color32::from_rgb(13,17,22))
-                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
-                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                Self::drawing_sunken_section(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(RichText::new("COLORS & SHAPES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.horizontal(|ui| {
@@ -360,10 +358,7 @@ impl ChessApp {
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("drawing_arrow_style"), style));
                 ctx.data_mut(|d| d.insert_temp(tool_id, arrow));
                 });
-                Self::paint_sunken_border(ui, tools.response.rect);
-                let ghosts = Frame::new().fill(Color32::from_rgb(13,17,22))
-                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
-                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                Self::drawing_sunken_section(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 ui.label(RichText::new("GHOST PIECES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.label(RichText::new("Choose a piece, then click a square. Click again to remove.").small().weak());
@@ -380,14 +375,10 @@ impl ChessApp {
                 }
                 ctx.data_mut(|d| d.insert_temp(ghost_id, ghost));
                 });
-                Self::paint_sunken_border(ui, ghosts.response.rect);
-                let drawings = Frame::new().fill(Color32::from_rgb(13,17,22))
-                    .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
-                    .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                Self::drawing_sunken_section(ui, |ui| {
                     ui.set_min_width(ui.available_width());
                     self.drawn_shapes_list(ui);
                 });
-                Self::paint_sunken_border(ui, drawings.response.rect);
                 let paper = Self::paper_grain_texture(ctx);
                 let surface = ui.min_rect().expand(6.0);
                 ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
@@ -398,6 +389,27 @@ impl ChessApp {
         if close { open = false; }
         if !open { self.board_mark_mode = false; self.board_mark_drag = None; }
         ctx.data_mut(|d| d.insert_temp(id, open));
+    }
+}
+
+impl ChessApp {
+    fn drawing_sunken_section(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)) {
+        let mut background = None;
+        let section = Frame::new().fill(Color32::from_rgb(13,17,22))
+            .stroke(Stroke::new(1.0, Color32::from_white_alpha(25)))
+            .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                background = Some(ui.painter().add(egui::Shape::Noop));
+                contents(ui);
+            });
+        if let Some(background) = background {
+            let surface = section.response.rect.shrink(4.0);
+            let paper = Self::paper_grain_texture(ui.ctx());
+            ui.painter().set(background, egui::Shape::image(paper.id(), surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO,
+                    egui::pos2(surface.width() / 256.0, surface.height() / 256.0)),
+                Color32::from_white_alpha(85)));
+        }
+        Self::paint_sunken_border(ui, section.response.rect);
     }
 }
 

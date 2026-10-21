@@ -1,0 +1,14 @@
+{
+  "imports": [
+    "api-ms-win-core-synch-l1-2-0.dll",
+    "bcryptprimitives.dll",
+    "kernel32.dll",
+    "ntdll.dll",
+    "ws2_32.dll"
+  ],
+  "binarySha256": "fa4659edd113362ea3f11a59a9a4d54790810273da62363bd588a796695ca8d5",
+  "status": "passed",
+  "format": "ironwood-windows-import-validation",
+  "version": 1,
+  "scope": "normal PE imports reported by MSVC dumpbin; development machine"
+}

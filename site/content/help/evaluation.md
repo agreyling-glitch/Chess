@@ -4,7 +4,7 @@ description: "What a positive or negative score means, and how to read a swing i
 category: "analysis"
 keywords: [eval, score, graph, centipawn, white, black, mate]
 weight: 20
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
 ## The score is from White's point of view
@@ -27,7 +27,7 @@ The graph can move when the engine searches deeper. A flat graph also does not m
 
 ## Analysis controls and positional tabs
 
-Use **Expand** above the graph to open the full-screen evaluation view. **Print analysis**, the gold button beside it, opens the printable report prompt when engine results are available and analysis is paused or stopped.
+Open the **Analysis** tab. Use **Expand** inside the graph’s upper-right corner to open the full-screen evaluation view. **Print analysis**, beside the **Saved Analysis** heading, opens the printable report prompt when engine results are available and analysis is paused or stopped.
 
 Below the graph, **Summary** contains the game-review details. **Pawn Structure**, **Piece Mobility**, and **King Safety** explore the position and how its patterns change through the game. They work without a completed engine analysis; see [Positional insights](/help/positional-insights/) for controls and how to read each view.
 
@@ -35,6 +35,6 @@ Below the graph, **Summary** contains the game-review details. **Pawn Structure*
 
 The expanded view includes move navigation, per-position details and notes, capture markers, and a framed board preview. Scroll down to advance a move or up to go back. The preview shows saved drawings and best-move arrows using the main board’s rules. Captured-piece markers always use Merida. See [Expanded game analysis graph](/help/expanded-analysis-graph/) for the full guide.
 
-## Real-Time Analysis versus Game Analysis
+## Prediction versus Analysis
 
-**Analyze position** searches the displayed position and fills **Engine prediction** with candidate continuations. **Analyze full game** examines the played game and builds its evaluation graph and summary. The live score is labeled **White perspective** regardless of which side is at the bottom. Full-game analysis temporarily holds live position analysis so they do not compete. Search limits are configured in [Engine settings](/help/search-depth-and-settings/).
+In **Prediction**, **Analyze position** searches the displayed position and fills **Engine prediction** with candidate continuations. In **Analysis**, **Analyze full game with Stockfish 19** examines the played game and builds its evaluation graph and summary. The live score is labeled **White perspective** regardless of which side is at the bottom. Full-game analysis temporarily holds live position analysis so they do not compete. Search limits are configured in [Engine settings](/help/search-depth-and-settings/).

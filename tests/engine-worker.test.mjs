@@ -19,8 +19,8 @@ function engineWorkerHarness() {
   });
   vm.runInContext(readFileSync(new URL('../web/engine-worker.js', import.meta.url), 'utf8'), context);
   return {
-    init() {
-      context.onmessage({ data: { type: 'init', threads: 8, hash: 64 } });
+    init(options={}) {
+      context.onmessage({ data: { type: 'init', threads: 8, hash: 64, ...options } });
       return workers.at(-1);
     },
     command(command) { context.onmessage({ data: { type: 'command', command } }); },
@@ -54,6 +54,16 @@ test('engine readiness waits for the asynchronous pthread pool', () => {
   assert.ok(commands.includes('setoption name Threads value 8'));
   assert.equal(commands.at(-1), 'isready');
   assert.equal(output.at(-1).line, 'uciok');
+});
+
+test('saved UCI extras apply only to advertised non-managed browser options',()=>{
+  const harness=engineWorkerHarness();
+  const worker=harness.init({uciOptions:{'Move Overhead':'80',Threads:'999',EvalFile:'outside.nnue',Missing:'value','nodestime':'10\nquit'}});
+  for(const line of ['option name Move Overhead type spin default 10 min 0 max 5000','option name Threads type spin default 1 min 1 max 1024','option name EvalFile type string default bundled.nnue','option name nodestime type spin default 0 min 0 max 10000'])worker.onmessage({data:line});
+  harness.ready(worker);
+  assert.ok(worker.commands.includes('setoption name Move Overhead value 80'));
+  assert.ok(!worker.commands.includes('setoption name Threads value 999'));
+  assert.ok(!worker.commands.some(command=>typeof command==='string'&&(command.includes('outside.nnue')||command.includes('Missing')||command.includes('\nquit'))));
 });
 
 test('queued searches reuse initial resource settings after pool preparation', () => {

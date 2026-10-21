@@ -1,0 +1,12 @@
+:root { color-scheme:dark; font:16px/1.5 system-ui,sans-serif; background:#111418; color:#eee9dd; }
+body { margin:0; padding:32px 20px; }
+main { max-width:620px; margin:auto; padding:28px; border:1px solid #d3ad62; border-radius:12px; background:#171a1e; }
+h1 { margin:8px 0 16px; font-size:28px; }
+p { color:#b2b8c1; }
+.eyebrow,a { color:#d3ad62; }
+.eyebrow { font-size:12px; letter-spacing:.1em; }
+label { display:block; margin:16px 0; }
+input { display:block; box-sizing:border-box; width:100%; padding:12px; margin-top:6px; border:1px solid #586068; border-radius:5px; background:#0d1116; color:#eee9dd; font:inherit; }
+button { padding:12px 18px; font:inherit; font-weight:650; color:#181b1f; background:#d3ad62; border:1px solid #f0d9a8; border-radius:6px; cursor:pointer; }
+button:disabled { opacity:.6; cursor:wait; }
+pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; background:#0d1116; border-radius:6px; font-size:13px; }

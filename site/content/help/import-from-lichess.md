@@ -4,7 +4,7 @@ description: "Filter completed Lichess games by date and time control, fetch up 
 category: "using-ironwood"
 keywords: [Lichess, import, username, profile, game URL, PGN, recent games, completed games, duplicates, analyze]
 weight: 13
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 ---
 
 Bring completed Lichess games into Ironwood without downloading a PGN file first. You do not need to sign in to Lichess or provide an API token. Fetching games requires an internet connection.
@@ -16,7 +16,7 @@ Bring completed Lichess games into Ironwood without downloading a PGN file first
 3. Click the gold **Fetch games** button. Follow the status below the input while Ironwood retrieves up to the chosen number of matching completed games (20 by default).
 4. **Paste a game or collection** opens with the game text. Click **Continue** to open the game-selection window.
 5. Select the games you want, or use **Select matching** to select all games matching the current player filter. Click **Import selected**.
-6. Open **Game → Load saved game** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
+6. Open **Game → Saved games** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
 
 Ironwood skips games that are already in Saved Games. Importing a collection saves the selected games; analyze them individually after opening them.
 
@@ -34,7 +34,7 @@ Filters apply to usernames. When you paste a game link, the filter controls are 
 
 Paste the game's link, such as `https://lichess.org/abcdefgh`, on the **Lichess** tab and click **Fetch games**. Replace the example with a real completed-game link. Click **Continue** to open the game for review.
 
-After fetching, the **Paste a game or collection** tab opens with the PGN. Click **Continue** to review and import it. Start analysis afterward from **Game Analysis**, using the same controls as any imported game.
+After fetching, the **Paste a game or collection** tab opens with the PGN. Click **Continue** to review and import it. Start analysis afterward from **Analysis**, using the same controls as any imported game.
 
 ## Paste PGN or restore analysis JSON
 

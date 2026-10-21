@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-21T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -11,7 +11,7 @@ Use **View → Show 2D board** or **Show 3D board** to switch the board display.
 
 Click **3D ↗** beside the board's **2D/3D** button to open a companion 3D window. Drag it to a second monitor while continuing to use the main board. The companion follows moves, game history, and board orientation. Use its theme dropdown to choose Marble, Wood, Glass, Art Deco, or Egyptian independently of the main board. Click **Flip board** to flip only the companion board; its orientation then stays independent of the main board while moves continue to synchronize. **Reset view** resets the camera without changing this orientation. Click **?** for camera controls. Click outside the help pop-up or press Escape to dismiss it. It is view-only, with independent rotation and zoom: right-drag to rotate, hold the right mouse button and scroll to zoom, or click **Reset view**. Click **3D ↗** again to focus the existing window. Closing it leaves your main workspace running. If your browser blocks the window, allow pop-ups for Ironwood. Keep the main window open for synchronization.
 
-On either a **2D or 3D board**, scroll the mouse wheel over the board to step through moves: **scroll down** goes forward and **scroll up** goes backward. After selecting a move in **Engine prediction**, the wheel steps through that prediction one move at a time, over either the board or the prediction table. Select a move in Game Moves to return to game navigation. On a **3D board**, hold the **right mouse button** while scrolling over the board to zoom instead. Wheel navigation is disabled during active training and online play.
+On either a **2D or 3D board**, scroll the mouse wheel over the board to step through moves: **scroll down** goes forward and **scroll up** goes backward. After selecting a move in **Engine prediction**, the wheel steps through that prediction one move at a time, over either the board or the prediction table. Open **Moves** and select a move in Game Moves to return to game navigation. On a **3D board**, hold the **right mouse button** while scrolling over the board to zoom instead. Wheel navigation is disabled during active training and online play.
 
 **View → Move feedback → Capture dissolve** turns the capture effect on or off. Captured pieces briefly shrink and fade with a soft gold pulse; on 3D boards the matching model also sinks slightly. This preference is saved on your device. Capture effects and live-move animations are suppressed when your system requests reduced motion.
 
@@ -21,9 +21,9 @@ Capture dissolve is used for live captures only. Stepping through or replaying a
 
 For 3D camera controls, **right-drag** rotates and tilts the board. Add **Shift** to lock rotation and change only the viewing height/tilt; **Shift + right mouse button + wheel** still zooms. See [Rotate, zoom, and reset the 3D board](/help/board-themes/#rotate-zoom-and-reset-the-3d-board).
 
-The Compact workspace uses tabs for Game Moves and Game Analysis. **View → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
+The workspace has the live board on the left and **Moves**, **Prediction**, and **Analysis** tabs on the right. **Moves** contains Game Moves; **Prediction** contains Engine Prediction; **Analysis** contains the full-game graph and review tools. **View → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
 
-Open **View → Board → Theme…** for a movable, resizable chooser with **2D** and **3D** tabs. It always opens on **2D**; select **3D** to load and browse the 3D previews. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
+Open **View → Board → Theme…** for a movable, resizable chooser with **2D Pieces** and **3D Boards** tabs. It always opens on **2D Pieces**; select **3D Boards** to load and browse the 3D previews. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
 
 The first use of a 3D theme may download its artwork. You can continue using the 2D board while it loads; the selected 3D view appears automatically when ready. If the download fails, reconnect and choose **Retry** above the board. See [Loading artwork and offline use](/help/board-themes/#loading-artwork-and-offline-use) for theme downloads and cached offline use.
 
@@ -63,7 +63,7 @@ Start typing during your turn to open the translucent move-entry overlay. Enter 
 
 ## Resize the analysis panel
 
-Drag the left edge of the right panel to widen it; the panel can use roughly three quarters of the window width on a large screen. Scroll down to inspect lower content. Under **Game Analysis**, use **Summary**, **Pawn Structure**, **Piece Mobility**, and **King Safety** to switch between review and positional insights. See [Positional insights](/help/positional-insights/) for details.
+Drag the left edge of the right panel to widen it; the panel can use up to roughly two thirds of the window width on a large screen. Scroll down to inspect lower content. Under **Analysis**, use **Summary**, **Pawn Structure**, **Piece Mobility**, and **King Safety** to switch between review and positional insights. See [Positional insights](/help/positional-insights/) for details.
 
 ## Window styling
 

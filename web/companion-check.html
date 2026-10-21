@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Ironwood Companion connection check</title>
+  <link rel="stylesheet" href="/companion-check.css">
+</head>
+<body>
+<main>
+  <p class="eyebrow">IRONWOOD COMPANION · PHASE 0</p>
+  <h1>Check your connection</h1>
+  <p>This development probe tests the connection only. It does not change games or engine settings.</p>
+  <form id="connection">
+    <button id="check">Run connection checks</button>
+  </form>
+  <button id="manage" type="button">Manage connection</button>
+  <p>The shared connection stays in memory unless you choose Remember this connection on this device. Allow a local-network permission prompt only for your own Companion server.</p>
+  <pre id="results" role="status" aria-live="polite">Ready.</pre>
+  <p><a href="/play/">Back to Ironwood</a></p>
+</main>
+<script type="module" src="/companion-check.js"></script>
+</body>
+</html>
