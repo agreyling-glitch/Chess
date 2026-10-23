@@ -12,13 +12,13 @@ test('deleting the active game restores the saved-games view after reset', async
   let reloaded = 0;
   const context = vm.createContext({
     deleting:false, operationBusy:false, provider:null, getArchiveActive:()=>null, busy:()=>{}, games, selectedIds:new Set(['test-game']), importedFingerprints:new Set(),
-    category:'training', profileFilter:'profile', playerFilter:'*', searchQuery:'test', analysisFilter:'complete', sortOrder:'moves-asc', page:2,
+    category:'training', profileFilter:'profile', playerFilter:'*', sourceFilter:'Lichess',dateFilter:'2026-10-20', ecoFilter:'B20', openingFilter:'Sicilian', analysisFilter:'complete', sortOrder:'moves-asc', page:2,
     ACTIVE_ID_KEY:'active', ACTIVE_ARCHIVE_KEY:'archive', CURRENT_GAME_KEY:'current', ACTIVE_CATEGORY_KEY:'category', LIBRARY_RETURN_KEY:'return',
     localStorage:{getItem:key=>local.get(key),removeItem:key=>local.delete(key)},
     sessionStorage:{setItem:(key,value)=>session.set(key,value)},
     confirmDeleteGames:async()=>true, deleteGames:async ids=>assert.deepEqual([...ids],['test-game']),
     storedFingerprint:()=>null, dialog:{classList:{contains:()=>true}},
-    location:{reload:()=>reloaded++}, render:()=>assert.fail('active game must reset first'),
+    window:{}, location:{reload:()=>reloaded++}, render:()=>assert.fail('active game must reset first'),
     selection:{append:()=>assert.fail('unexpected deletion error')}, document:{createElement:()=>assert.fail('unexpected error')},
   });
   await vm.runInContext(`(async targets => {${body.replace(/};\s*$/, '')}})([games[0]])`,context);
@@ -28,6 +28,7 @@ test('deleting the active game restores the saved-games view after reset', async
   const restored = JSON.parse(session.get('return'));
   assert.equal(restored.category,'training');
   assert.equal(restored.page,2);
+  assert.equal(restored.ecoFilter,'B20');assert.equal(restored.openingFilter,'Sicilian');
   assert.equal(restored.sortOrder,'moves-asc');
   assert.equal(restored.maximized,true);
   let opened;

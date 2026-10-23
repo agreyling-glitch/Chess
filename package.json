@@ -17,7 +17,9 @@
     "dev:wrangler": "npm run build:3d && npm run build:site && npm run prepare:wrangler && node scripts/wrangler-dev.mjs",
     "build:editor": "node scripts/build-position-editor.mjs",
     "build:3d": "node scripts/build-3d.mjs",
-    "dev:3d": "npm run build:3d && npm run build:site && node scripts/dev-server.mjs"
+    "dev:3d": "npm run build:3d && npm run build:site && node scripts/dev-server.mjs",
+    "openings:update": "node scripts/update-openings.mjs",
+    "release:prepare": "npm run openings:update && npm run build"
   },
   "dependencies": {
     "@scoriiu/fenshot": "^0.1.4",

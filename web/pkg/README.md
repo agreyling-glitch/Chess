@@ -134,6 +134,20 @@ static assets larger than 25 MiB. `web/_headers` applies the isolation headers
 needed by Stockfish pthreads. The localhost engine stream runs at full speed and
 uses normal browser caching, matching the production delivery behavior.
 
+For a release, run `npm run release:prepare` before the release checks and commit
+its updated data and build artifacts. This downloads the latest Lichess opening
+snapshot, verifies its CC0 licence and dataset declaration, checks all five TSV
+files and every opening's legal moves, then runs the full browser build. The
+upstream commit, per-file row counts and SHA-256 hashes are recorded in
+`assets/openings/SOURCE.json`; the app continues to classify openings offline.
+A failed refresh stops preparation and preserves the existing snapshot. A loss
+of more than 20% of a volume's rows also stops preparation for review.
+
+`npm run openings:update` refreshes only the data. To reproduce a prior snapshot,
+use `npm run openings:update -- --revision <full-upstream-commit>`, then rebuild.
+Repeating an unchanged update does not rewrite its provenance timestamp. Routine
+WASM-only development remains offline with `npm run build:wasm`.
+
 For Cloudflare Workers Builds, use `npm run build:cloudflare` as the build
 command and `npx wrangler deploy` as the deploy command. The compiled application
 WASM in `web/pkg` is a committed deployment artifact, so HTML, CSS, Worker, and

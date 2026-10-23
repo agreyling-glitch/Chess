@@ -6,6 +6,7 @@ use std::{collections::BTreeMap, ops::ControlFlow};
 
 pub struct Parsed {
     pub moves: usize,
+    pub sans: Vec<String>,
     pub final_fen: String,
     pub tags: BTreeMap<String, String>,
     pub pgn: String,
@@ -20,6 +21,7 @@ pub struct Text {
     ended: bool,
     plies: usize,
     mainline_plies: usize,
+    sans: Vec<String>,
 }
 impl Visitor for Parser {
     type Tags = BTreeMap<String, String>;
@@ -80,6 +82,7 @@ impl Visitor for Parser {
             ended: false,
             plies: 0,
             mainline_plies: 0,
+            sans: Vec::new(),
         })
     }
     fn san(&mut self, text: &mut Text, san: SanPlus) -> ControlFlow<Self::Output> {
@@ -102,7 +105,7 @@ impl Visitor for Parser {
         text.tokens.push(san.to_string());
         text.position.play_unchecked(m);
         text.plies += 1;
-        if text.stack.is_empty() { text.mainline_plies += 1; }
+        if text.stack.is_empty() { text.mainline_plies += 1; text.sans.push(san.to_string()); }
         ControlFlow::Continue(())
     }
     fn nag(&mut self, text: &mut Text, nag: Nag) -> ControlFlow<Self::Output> {
@@ -167,13 +170,18 @@ impl Visitor for Parser {
             .join("\n");
         Ok(Parsed {
             moves: text.mainline_plies,
+            sans: text.sans,
             final_fen: Fen::from_position(&text.position, shakmaty::EnPassantMode::Legal).to_string(),
             tags,
             pgn: format!("{headers}\n\n{}\n", text.tokens.join(" ")),
         })
     }
 }
+#[cfg(test)]
+thread_local! { pub(crate) static PARSE_COUNT:std::cell::Cell<usize>=const {std::cell::Cell::new(0)}; }
 pub fn parse(input: &str) -> Result<Vec<Parsed>> {
+    #[cfg(test)]
+    PARSE_COUNT.with(|count|count.set(count.get()+1));
     if input.len() > crate::archive::MAX_BODY {
         return Err(invalid("PGN exceeds import limit"));
     }

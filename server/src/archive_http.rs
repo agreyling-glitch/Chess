@@ -121,21 +121,16 @@ struct Import {
     collection: Option<String>,
 }
 async fn import(State(shared): State<Shared>, Json(request): Json<Import>) -> Response {
-    response(
-        async {
-            store(&shared)?
-                .run(move |db| {
-                    let documents = match (request.documents, request.pgn) {
-                        (Some(d), None) => d,
-                        (None, Some(p)) => crate::archive_pgn::documents(&p)?,
-                        _ => return Err(archive::invalid("Provide documents or PGN, exclusively")),
-                    };
-                    archive::import(db, documents, request.collection)
-                })
-                .await
-        }
-        .await,
-    )
+    response(async {
+        let storage=store(&shared)?;
+        let collection=request.collection;
+        let prepared=storage.prepare(move || match(request.documents,request.pgn){
+            (Some(documents),None)=>archive::prepare_import(documents),
+            (None,Some(pgn))=>archive::prepare_pgn_import(&pgn),
+            _=>Err(archive::invalid("Provide documents or PGN, exclusively")),
+        }).await?;
+        storage.run(move |db|archive::commit_import(db,prepared,collection)).await
+    }.await)
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]

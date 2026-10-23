@@ -80,6 +80,9 @@ try {
     foreach ($entry in @("Cargo.lock", "LICENSE", "crates", "server", "deploy")) {
         Copy-Item -LiteralPath $entry -Destination $source -Recurse
     }
+    New-Item -ItemType Directory -Path (Join-Path $source "src"), (Join-Path $source "assets") | Out-Null
+    Copy-Item -LiteralPath "src/opening_classification.rs" -Destination (Join-Path $source "src")
+    Copy-Item -LiteralPath "assets/openings" -Destination (Join-Path $source "assets") -Recurse
     # A standalone workspace keeps the browser's unrelated dependencies out of
     # the server source bundle. Preserve the release profile used for this build.
     @'

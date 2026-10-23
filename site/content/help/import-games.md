@@ -1,6 +1,6 @@
 ---
 title: "Import games"
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-23T00:00:00-05:00
 description: "Choose an import source, review a game collection, or enter a handwritten scoresheet."
 category: "using-ironwood"
 keywords: [import, tabs, PGN, JSON, collection, Lichess, Chess.com, scoresheet]
@@ -11,7 +11,7 @@ Open **Game → Import…** to choose among four tabs. Drag the title or outer b
 
 ## Paste a game or collection
 
-Paste [PGN](/help/pgn/) for one game or a collection, or paste an Ironwood Analysis JSON export. You can also drag a `.pgn` or `.json` file onto the app. **Clear** empties the text and **Continue** opens the game or collection for review. Analysis JSON restores saved analysis immediately.
+Paste [PGN](/help/pgn/) for one game or a collection, or paste an Ironwood Analysis JSON export. Use the gray **Browse…** button to choose a `.pgn` or `.json` file, or drag a file onto the app. Browse fills the paste area; **Continue** remains the next step. Files selected with Browse can be up to 64 MiB. **Clear** empties the text and **Continue** opens the game or collection for review. Analysis JSON restores saved analysis immediately.
 
 Resize the window vertically for a larger paste area. The middle sunken section expands with it; Clear and Continue remain directly below on the outer background.
 

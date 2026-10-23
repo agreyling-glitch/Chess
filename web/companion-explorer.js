@@ -1,6 +1,6 @@
 import { companionConnection, manageCompanionConnection } from './companion-connection.js';
 import { CompanionArchiveClient } from './companion-archive-client.js';
-import { receiveCompanionDocuments } from './game-storage.js';
+import { previewCompanionDocument } from './game-storage.js';
 
 // One current query, polled for generation changes. Old connection/filter/position
 // responses cannot publish into a newer view; credentials never enter cache keys.
@@ -46,19 +46,19 @@ export function installArchiveExplorer(target) {
   target.ironwoodArchiveExplorer = fen => explorer.poll(fen);
   target.ironwoodArchiveExplorerRefresh = () => explorer.invalidate();
   target.ironwoodArchiveExplorerPage = next => explorer.page(next);
-  let copying = false;
-  target.ironwoodArchiveExplorerCopyGame = async id => {
-    if(copying || !/^[a-f0-9]{32}$/.test(id))return;
-    copying = true;
+  let previewing = false;
+  target.ironwoodArchiveExplorerPreviewGame = async id => {
+    if(target.ironwoodCompanionFeatureEnabled?.() !== true || previewing || !/^[a-f0-9]{32}$/.test(id))return;
+    previewing = true;
     try {
       const client = explorer.configure(), epoch = explorer.epoch;
       if(!client)throw new Error('Reconnect to Companion first.');
       const transfer = await client.request('archive/export',{ids:[id],format:'json'});
-      if(epoch!==explorer.epoch)return;
-      const result = await receiveCompanionDocuments(transfer.documents);
-      explorer.notice = result.received ? 'Copied to Saved games. Your current board is unchanged.' : 'Already present in Saved games. Your current board is unchanged.';
+      if(epoch!==explorer.epoch || target.ironwoodCompanionFeatureEnabled?.() !== true)return;
+      await previewCompanionDocument(transfer.documents?.[0], target.document?.getElementById('chess_canvas'));
+      explorer.notice = '';
     } catch(error) { explorer.notice = error.message; }
-    finally { copying = false; }
+    finally { previewing = false; }
   };
   target.ironwoodOpenArchiveExplorerFilters = async () => {
   if (window.ironwoodCompanionFeatureEnabled?.() === false) return;

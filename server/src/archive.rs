@@ -110,7 +110,8 @@ pub struct Filter {
 }
 
 impl Document {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self) -> Result<()> { self.validated().map(|_| ()) }
+    fn validate_fields(&self) -> Result<()> {
         if self.format != "ironwood-companion-game" || self.version != 1 {
             return Err(Error(
                 "unsupported_version",
@@ -151,11 +152,13 @@ impl Document {
                 ));
             }
         }
-        // Parsing also validates legal moves and FEN. Preserve the original PGN/JSON.
-        if super::archive_pgn::parse(&self.pgn)?.len() != 1 {
-            return Err(invalid("A document must contain exactly one PGN game"));
-        }
         Ok(())
+    }
+    fn validated(&self) -> Result<crate::archive_pgn::Parsed> {
+        self.validate_fields()?;
+        let mut games=crate::archive_pgn::parse(&self.pgn)?;
+        if games.len()!=1 {return Err(invalid("A document must contain exactly one PGN game"));}
+        Ok(games.remove(0))
     }
     pub(crate) fn fingerprint(&self) -> Result<String> {
         let mut value = serde_json::to_value(self)?;
@@ -217,6 +220,12 @@ impl Archive {
             connection: Arc::new(Mutex::new(connection)),
             slots: Arc::new(tokio::sync::Semaphore::new(4)),
         })
+    }
+    /// CPU validation shares admission control, but never acquires the database mutex.
+    pub async fn prepare<T: Send + 'static>(&self, operation: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+        let permit=self.slots.clone().try_acquire_owned().map_err(|_|Error("busy","Archive is busy; retry shortly"))?;
+        tokio::task::spawn_blocking(move || {let _permit=permit;operation()}).await
+            .map_err(|_|Error("archive_failed","Archive preparation failed"))?
     }
     pub async fn run<T: Send + 'static>(
         &self,
@@ -345,17 +354,37 @@ pub fn list(db: &Connection, filter: Filter) -> Result<Value> {
     let summaries:Vec<_>=games.into_iter().map(|g|json!({"id":g.id,"revision":g.revision,"created_at":g.created_at,"updated_at":g.updated_at,"metadata":g.document.metadata,"has_record":g.document.record.is_some()})).collect();
     Ok(json!({"games":summaries,"next":next}))
 }
-pub fn import(
-    db: &mut Connection,
-    documents: Vec<Document>,
-    collection: Option<String>,
-) -> Result<Value> {
-    if documents.is_empty() || documents.len() > MAX_BATCH {
-        return Err(invalid("Import requires 1 to 1000 games"));
+pub struct PreparedImport { games: Vec<PreparedGame> }
+struct PreparedGame { id:String,stamp:i64,document:String,fingerprint:String,runs:Vec<crate::analysis_runs::PreparedRun>,card:Value }
+fn prepare_parsed(games:Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<PreparedImport> {
+    let mut prepared=Vec::with_capacity(games.len());
+    for (mut doc,parsed) in games {
+        doc.validate_fields()?;
+        let runs=crate::analysis_runs::prepare_merge(&std::mem::take(&mut doc.analysis_runs))?;
+        let fingerprint=doc.fingerprint()?;
+        let id=random_id()?;let stamp=now();
+        let card=crate::archive_library::summary_parsed(&id,1,stamp,&doc,&parsed)?;
+        prepared.push(PreparedGame{id,stamp,card,runs,fingerprint,document:serde_json::to_string(&doc)?});
     }
-    for doc in &documents {
-        doc.validate()?;
-    }
+    Ok(PreparedImport{games:prepared})
+}
+pub fn prepare_import(documents:Vec<Document>) -> Result<PreparedImport> {
+    if documents.is_empty()||documents.len()>MAX_BATCH{return Err(invalid("Import requires 1 to 1000 games"));}
+    let mut parsed=Vec::with_capacity(documents.len());
+    for document in documents {let game=document.validated()?;parsed.push((document,game));}
+    prepare_parsed(parsed)
+}
+pub fn prepare_pgn_import(pgn:&str) -> Result<PreparedImport> {
+    let games=crate::archive_pgn::parse(pgn)?.into_iter().map(|game|{
+        let document=Document{format:"ironwood-companion-game".into(),version:1,record:None,analysis_runs:Vec::new(),metadata:game.tags.clone(),pgn:game.pgn.clone()};
+        (document,game)
+    }).collect();
+    prepare_parsed(games)
+}
+pub fn import(db:&mut Connection,documents:Vec<Document>,collection:Option<String>) -> Result<Value> {
+    commit_import(db,prepare_import(documents)?,collection)
+}
+pub fn commit_import(db:&mut Connection,prepared:PreparedImport,collection:Option<String>) -> Result<Value> {
     let tx = db.transaction()?;
     if let Some(c) = &collection
         && !tx.query_row(
@@ -369,9 +398,8 @@ pub fn import(
     let mut imported = 0;
     let mut duplicates = 0;
     let mut ids = Vec::new();
-    for mut doc in documents {
-        let runs=std::mem::take(&mut doc.analysis_runs);
-        let fingerprint = doc.fingerprint()?;
+    for game in prepared.games {
+        let fingerprint=&game.fingerprint;
         let existing: Option<String> = tx
             .query_row(
                 "SELECT id FROM games WHERE fingerprint=?1",
@@ -383,16 +411,12 @@ pub fn import(
             duplicates += 1;
             id
         } else {
-            let id = random_id()?;
-            let stamp = now();
-            tx.execute(
-                "INSERT INTO games VALUES(?1,1,?2,?2,?3,?4)",
-                params![id, stamp, serde_json::to_string(&doc)?, fingerprint],
-            )?;
+            tx.execute("INSERT INTO games VALUES(?1,1,?2,?2,?3,?4)",params![game.id,game.stamp,game.document,fingerprint])?;
+            crate::archive_library::store_card(&tx,&game.id,1,game.stamp,&game.card)?;
             imported += 1;
-            id
+            game.id
         };
-        crate::analysis_runs::merge(&tx,&game_id,&runs)?;
+        crate::analysis_runs::merge_prepared(&tx,&game_id,&game.runs)?;
         if let Some(c) = &collection {
             let changed = tx.execute(
                 "INSERT OR IGNORE INTO memberships VALUES(?1,?2)",
@@ -671,7 +695,34 @@ mod tests {
         let db = Connection::open_in_memory().unwrap();
         db.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE games(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,document TEXT NOT NULL,fingerprint TEXT UNIQUE);CREATE TABLE collections(id TEXT PRIMARY KEY,name TEXT NOT NULL,revision INTEGER NOT NULL);CREATE TABLE memberships(collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,game_id TEXT REFERENCES games(id) ON DELETE CASCADE,PRIMARY KEY(collection_id,game_id));").unwrap();
         crate::analysis_runs::initialize(&db).unwrap();
+        crate::archive_library::initialize(&db).unwrap();
         db
+    }
+    #[test]
+    fn prepared_pgn_import_reuses_validation_for_library_cards() {
+        let mut db=memory();
+        crate::archive_pgn::PARSE_COUNT.with(|count|count.set(0));
+        let prepared=prepare_pgn_import("[White \"Cached\"]\n\n1. e4 {keep note} c5 *").unwrap();
+        assert_eq!(crate::archive_pgn::PARSE_COUNT.with(|count|count.get()),1);
+        let imported=commit_import(&mut db,prepared,None).unwrap();
+        crate::archive_library::synchronize(&mut db).unwrap();
+        assert_eq!(crate::archive_pgn::PARSE_COUNT.with(|count|count.get()),1);
+        assert_eq!(db.query_row("SELECT count(*) FROM library_dirty",[],|row|row.get::<_,usize>(0)).unwrap(),0);
+        let game=get(&db,imported["ids"][0].as_str().unwrap()).unwrap();assert!(game.document.pgn.contains("keep note"));
+        assert_eq!(crate::archive_library::query(&mut db,Default::default()).unwrap()["games"][0]["eco"],"B20");
+    }
+    #[tokio::test]
+    async fn preparation_does_not_hold_database_lock() {
+        let archive=Archive{connection:Arc::new(Mutex::new(memory())),slots:Arc::new(tokio::sync::Semaphore::new(4))};
+        let worker=archive.clone();
+        let (started,wait_started)=tokio::sync::oneshot::channel();
+        let (release,wait_release)=std::sync::mpsc::channel();
+        let validation=tokio::spawn(async move{worker.prepare(move||{started.send(()).unwrap();wait_release.recv().unwrap();prepare_pgn_import("1. e4 e5 *")}).await});
+        wait_started.await.unwrap();
+        let read=tokio::time::timeout(std::time::Duration::from_secs(1),archive.run(|db|Ok(db.query_row("SELECT count(*) FROM games",[],|row|row.get::<_,usize>(0))?))).await;
+        release.send(()).unwrap();
+        assert_eq!(read.unwrap().unwrap(),0);
+        let prepared=validation.await.unwrap().unwrap();archive.run(move|db|commit_import(db,prepared,None)).await.unwrap();
     }
     fn doc() -> Document {
         let mut d = crate::archive_pgn::documents(

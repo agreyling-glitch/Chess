@@ -32,8 +32,8 @@ extern "C" {
     fn archive_refresh();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerPage)]
     fn archive_page(next: bool);
-    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerCopyGame)]
-    fn archive_copy_game(id: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorerPreviewGame)]
+    fn archive_preview_game(id: &str);
 }
 #[derive(Clone, Default)]
 struct State {
@@ -545,18 +545,22 @@ pub fn panel(ui: &mut egui::Ui, root: Board, account: &str) -> Option<String> {
                             Some("black") => "0–1",
                             _ => "½–½",
                         }};
-                        ui.label(format!(
-                            "{} vs {} · {} · {}",
-                            game.white.name, game.black.name, result, game.month
-                        ));
                         if state.source==4 {
-                            #[cfg(target_arch = "wasm32")]
-                            if ui.button("Copy to saved games").clicked() { archive_copy_game(&game.id); }
-                        } else if ui
+                            ui.horizontal(|ui| {
+                                #[cfg(target_arch = "wasm32")]
+                                if ui.button("Preview").clicked() { archive_preview_game(&game.id); }
+                                ui.add(egui::Label::new(format!("{} vs {} · {} · {}",
+                                    game.white.name, game.black.name, result, game.month)).truncate());
+                            });
+                        } else {
+                            ui.label(format!("{} vs {} · {} · {}",
+                                game.white.name, game.black.name, result, game.month));
+                            if ui
                             .add_enabled(valid_id, egui::Button::new("Import for analysis…"))
                             .clicked()
-                        {
-                            open_game = Some(game.id);
+                            {
+                                open_game = Some(game.id);
+                            }
                         }
                     }
                 }

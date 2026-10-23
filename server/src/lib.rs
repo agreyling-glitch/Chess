@@ -351,10 +351,25 @@ async fn guard(
         "access-control-allow-headers",
         HeaderValue::from_static("Authorization, Content-Type, X-Ironwood-Protocol"),
     );
-    headers.insert("access-control-expose-headers", HeaderValue::from_static("Retry-After"));
+    headers.insert("access-control-expose-headers", HeaderValue::from_static("Retry-After, X-Ironwood-Operations-Limit, X-Ironwood-Operations-Remaining, X-Ironwood-Operations-Reset-Ms, X-Ironwood-Engine-Busy"));
     if let Err(seconds) = rate_allowed {
         headers.insert("retry-after", HeaderValue::from_str(&seconds.to_string()).unwrap());
     }
+    let limit = shared.config.limits.requests_per_minute;
+    let (remaining, reset) = {
+        let entries = shared.rate.lock().unwrap();
+        entries.get(&(peer, RequestBudget::Operations)).map(|(start,count)| {
+            let elapsed = start.elapsed().as_millis() as u64;
+            if elapsed >= 60000 { (limit, 0) }
+            else { (limit.saturating_sub(*count), 60000-elapsed) }
+        }).unwrap_or((limit,0))
+    };
+    for (name,value) in [
+        ("x-ironwood-operations-limit",u64::from(limit)),
+        ("x-ironwood-operations-remaining",u64::from(remaining)),
+        ("x-ironwood-operations-reset-ms",reset),
+        ("x-ironwood-engine-busy",u64::from(shared.control.active_engines()>0)),
+    ] { headers.insert(name,HeaderValue::from_str(&value.to_string()).unwrap()); }
     headers.insert("cache-control", HeaderValue::from_static("no-store"));
     headers.insert(
         "x-content-type-options",
@@ -1181,7 +1196,12 @@ mod tests {
             let response = router.clone().oneshot(request.body(if method == Method::POST { Body::from(r#"{"ids":["test"],"format":"json"}"#) } else { Body::empty() }).unwrap()).await.unwrap();
             assert_eq!(response.status().as_u16(), expected, "{path}");
             if expected == 429 {
-                assert_eq!(response.headers()["access-control-expose-headers"], "Retry-After");
+                assert!(response.headers()["access-control-expose-headers"].to_str().unwrap().contains("X-Ironwood-Operations-Remaining"));
+                assert_eq!(response.headers()["x-ironwood-operations-limit"], "1");
+                assert_eq!(response.headers()["x-ironwood-operations-remaining"], "0");
+                let reset: u64 = response.headers()["x-ironwood-operations-reset-ms"].to_str().unwrap().parse().unwrap();
+                assert!((1..=60000).contains(&reset));
+                assert_eq!(response.headers()["x-ironwood-engine-busy"], "0");
                 let retry: u64 = response.headers()["retry-after"].to_str().unwrap().parse().unwrap();
                 assert!((1..=60).contains(&retry));
             }
@@ -1228,3 +1248,6 @@ mod tests {
         );
     }
 }
+
+#[path = "../../src/opening_classification.rs"]
+mod opening_classification;

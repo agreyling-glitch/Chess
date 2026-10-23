@@ -1,0 +1,30 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {JSDOM} from 'jsdom';
+
+test('Browser opening filters combine, infer missing tags, preserve explicit tags and leave records intact',async()=>{
+ const dom=new JSDOM('<body></body>',{url:'https://test.local'}),{window}=dom;
+ Object.assign(globalThis,{window,document:window.document,localStorage:window.localStorage});
+ window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
+ window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new window.Event('close'));};
+ const fen='8/8/8/8/8/8/8/K6k w - - 0 1';
+ const records=[['Tagged','[ECO "A99"]\n[Opening "Custom Opening"]'],['Inferred',''],['French','[ECO "C00"]\n[Opening "French Defense"]'],['Variant','[ECO "A99"]\n[Opening "Custom Opening: Variation"]']].map(([name,tags],index)=>({id:String(index),category:'imported',updatedAt:index,json:JSON.stringify({board:fen,live_moves:['e4','c5'],live_positions:[fen],review_pgn:`[White "${name}"]\n[Black "Bob"]\n${tags}\n\n1. e4 c5 *`})}));
+ const before=JSON.stringify(records);
+ let classifications=0;
+ window.ironwoodExportSavedGame=(_json,format)=>{assert.equal(format,'opening');classifications++;return JSON.stringify({eco:'B20',opening:'Sicilian Defense'});};
+ window.ironwoodCompanionFeatureEnabled=()=>false;
+ globalThis.indexedDB=window.indexedDB={open(){const req={};queueMicrotask(()=>{req.result={transaction(){return {objectStore(){return {openCursor(){const cursor={};let index=0;const advance=()=>queueMicrotask(()=>{cursor.result=index<records.length?{value:records[index++],continue:advance}:null;cursor.onsuccess();});advance();return cursor;}};}};}};req.onsuccess();});return req;}};
+ await import('../web/game-storage.js?opening-filter-test');
+ await window.ironwoodOpenGameLibrary();
+ const filter=(query,text)=>{document.querySelector('[aria-label="Opening"]').click();const input=document.querySelector('[aria-label="Find an opening"]');input.value=query;input.dispatchEvent(new window.Event('input'));const option=[...document.querySelectorAll('.library-player-option')].find(option=>option.textContent===text);assert.ok(option,text);option.click();};
+ const names=()=>[...document.querySelectorAll('.game-library-main strong')].map(node=>node.textContent).join(' ');
+ assert.equal(document.querySelector('[aria-label="ECO code"]'),null);assert.equal(document.querySelector('[aria-label="Opening name"]'),null);
+ assert.match(names(),/Tagged/);assert.equal(classifications,1);
+ filter('b2','B20 — Sicilian Defense');assert.match(names(),/Inferred/);assert.doesNotMatch(names(),/Tagged|French/);
+ filter('FRENCH','C00 — French Defense');assert.match(names(),/French/);assert.doesNotMatch(names(),/Inferred|Tagged/);
+ filter('custom','A99 — Custom Opening');assert.match(names(),/Tagged/);assert.doesNotMatch(names(),/Inferred|French|Variant/);
+ document.querySelector('#game-library-dialog').close();await window.ironwoodOpenGameLibrary();assert.equal(document.querySelector('[aria-label="Opening"]').textContent,'A99 — Custom Opening');
+ filter('All openings','All openings');assert.equal(document.querySelectorAll('.game-library-entry').length,4);
+ assert.equal(JSON.stringify(records),before);assert.equal(classifications,1);
+ document.querySelector('#game-library-dialog').close();
+});

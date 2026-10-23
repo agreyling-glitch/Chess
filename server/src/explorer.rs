@@ -494,6 +494,7 @@ mod tests {
         db.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE games(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,document TEXT NOT NULL,fingerprint TEXT UNIQUE);CREATE TABLE collections(id TEXT PRIMARY KEY,name TEXT NOT NULL,revision INTEGER NOT NULL);CREATE TABLE memberships(collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,game_id TEXT REFERENCES games(id) ON DELETE CASCADE,PRIMARY KEY(collection_id,game_id));").unwrap();
         initialize(&db).unwrap();
         crate::analysis_runs::initialize(&db).unwrap();
+        crate::archive_library::initialize(&db).unwrap();
         db
     }
     fn add(db: &mut Connection, pgn: &str) -> String {

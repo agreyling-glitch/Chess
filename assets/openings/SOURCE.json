@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "repository": "https://github.com/lichess-org/chess-openings",
+  "revision": "a6189a30dc273ccb21fc2536a9a2fefd5592a67a",
+  "license": "CC0-1.0",
+  "files": {
+    "a.tsv": {
+      "rows": 823,
+      "sha256": "3282e4c9155289a29224f9a85fba0decb46efa35c2fa5e39662d2ac48fb0f793"
+    },
+    "b.tsv": {
+      "rows": 781,
+      "sha256": "1d5ed134ebbd87915ead5683416e37583bb3e5ae3582b4d8cb5cb4aa7ef4f623"
+    },
+    "c.tsv": {
+      "rows": 1250,
+      "sha256": "45e843c7b7e79a0d04d5bda879c9bd23f5a10974488bd8615e4f4c5d0749986f"
+    },
+    "d.tsv": {
+      "rows": 644,
+      "sha256": "1cf4057a8aece94f27bb3f278ad410ee2844831a642364eeceaafa091dbcceda"
+    },
+    "e.tsv": {
+      "rows": 367,
+      "sha256": "48c6f6645b031a5937c8386839debab0e2e48837251687ba1afb6369677f8546"
+    }
+  },
+  "downloaded_at": "2026-10-23T14:40:45.625Z"
+}

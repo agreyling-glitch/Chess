@@ -1,3 +1,97 @@
+function readWindowState(target,kind){try{return JSON.parse(target.localStorage.getItem('ironwood.saved-games.'+kind))||{};}catch{return {};}}
+function writeWindowState(target,kind,value){try{target.localStorage.setItem('ironwood.saved-games.'+kind,JSON.stringify(value));}catch{}}
+export function createGameActionMenu(actions,title){
+  const trigger=document.createElement('button');trigger.type='button';trigger.className='game-library-menu-button';trigger.textContent='☰';trigger.title='Game actions';trigger.setAttribute('aria-label',`Game actions: ${title}`);trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','false');
+  actions.classList.add('game-library-action-menu');actions.setAttribute('role','menu');actions.setAttribute('aria-label',`Actions for ${title}`);actions.setAttribute('popover','auto');actions.hidden=true;
+  const items=()=>[...actions.querySelectorAll('button')].filter(item=>!item.hidden&&!item.disabled);
+  for(const item of actions.querySelectorAll('button'))item.setAttribute('role','menuitem');
+  const close=(focus=false)=>{try{actions.hidePopover?.();}catch{}actions.hidden=true;trigger.setAttribute('aria-expanded','false');document.removeEventListener('pointerdown',outside);trigger.closest('dialog')?.removeEventListener('close',dismiss);if(focus)trigger.focus();};
+  const dismiss=()=>close();
+  const outside=event=>{if(!actions.contains(event.target)&&!trigger.contains(event.target))close();};
+  const show=(last=false)=>{
+    document.querySelectorAll('.game-library-menu-button[aria-expanded="true"]').forEach(other=>{if(other!==trigger)other.click();});
+    actions.hidden=false;trigger.setAttribute('aria-expanded','true');
+    if(actions.showPopover)actions.showPopover();
+    const rect=trigger.getBoundingClientRect(),box=actions.getBoundingClientRect();
+    actions.style.left=`${Math.max(8,Math.min(rect.right-box.width,window.innerWidth-box.width-8))}px`;
+    actions.style.top=`${Math.max(8,Math.min(rect.bottom+5,window.innerHeight-box.height-8))}px`;
+    document.addEventListener('pointerdown',outside);trigger.closest('dialog')?.addEventListener('close',dismiss,{once:true});const buttons=items();(last?buttons.at(-1):buttons[0])?.focus();
+  };
+  trigger.addEventListener('click',()=>actions.hidden?show():close());
+  trigger.addEventListener('keydown',event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();show(event.key==='ArrowUp');}});
+  actions.addEventListener('keydown',event=>{
+    const buttons=items(),index=buttons.indexOf(document.activeElement);
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);}
+    else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowUp'?-1:1)+buttons.length)%buttons.length]?.focus();}
+    else if(event.key==='Tab')close(true);
+  });
+  actions.addEventListener('click',event=>{if(event.target.closest('button'))close();});
+  actions.addEventListener('toggle',event=>{if(event.newState==='closed')close();});
+  return trigger;
+}
+// Keep large player lists cheap to open and scroll: only visible rows enter the DOM.
+let pickerId=0;
+export function createPlayerPicker(names,value,onChange,{kind='Player',plural='players',all='All players',unknown='Unknown players',selectedLabel}={}) {
+  const doc=document,id=`library-player-${++pickerId}`,height=32,visible=8,overscan=3;
+  const choices=[{value:'*',text:all},...names.map(name=>typeof name==='string'?{value:name,text:name}:name),{value:'?',text:unknown}];
+  const keys=choices.map(choice=>choice.text.toLocaleLowerCase());
+  const root=doc.createElement('span');root.className='library-player-picker';root.dataset.filter=kind.toLowerCase();
+  const button=doc.createElement('button');button.type='button';button.className='library-player-trigger';
+  button.textContent=choices.find(choice=>choice.value===value)?.text||(value==='*'?all:value==='?'?unknown:selectedLabel||value);
+  button.setAttribute('aria-label',kind);button.setAttribute('aria-haspopup','listbox');button.setAttribute('aria-expanded','false');
+  const popup=doc.createElement('span');popup.className='library-player-popup';popup.hidden=true;
+  const search=doc.createElement('input');search.type='search';const searchLabel=kind==='Player'?'Find a player':kind==='Opening'?'Find an opening':`Find a ${kind.toLowerCase()}`;search.placeholder=searchLabel;search.setAttribute('aria-label',searchLabel);
+  search.setAttribute('role','combobox');search.setAttribute('aria-autocomplete','list');search.setAttribute('aria-controls',id);search.setAttribute('aria-expanded','true');
+  const list=doc.createElement('span');list.className='library-player-options';list.id=id;list.setAttribute('role','listbox');list.setAttribute('aria-label',plural);
+  const spacer=doc.createElement('span');spacer.className='library-player-spacer';list.append(spacer);
+  const empty=doc.createElement('span');empty.className='library-player-empty';empty.textContent=`No matching ${plural}`;empty.hidden=true;
+  popup.append(search,list,empty);root.append(button,popup);
+  let filtered=choices.map((_,index)=>index),active=-1,first=-1,last=-1;
+  const close=(focus=false)=>{popup.hidden=true;button.setAttribute('aria-expanded','false');doc.removeEventListener('pointerdown',outside);if(focus)button.focus();};
+  const outside=event=>{if(!root.contains(event.target))close();};
+  function draw(force=false) {
+    const start=Math.max(0,Math.floor(list.scrollTop/height)-overscan),end=Math.min(filtered.length,start+visible+2*overscan);
+    if(!force&&start===first&&end===last)return;
+    first=start;last=end;spacer.style.height=`${filtered.length*height}px`;spacer.replaceChildren();
+    for(let index=start;index<end;index++){
+      const choice=choices[filtered[index]],row=doc.createElement('span');row.className='library-player-option';row.id=`${id}-${index}`;
+      row.dataset.index=String(index);row.textContent=choice.text;row.title=choice.text;row.style.top=`${index*height}px`;
+      row.setAttribute('role','option');row.setAttribute('aria-selected',String(choice.value===value));row.setAttribute('aria-posinset',String(index+1));row.setAttribute('aria-setsize',String(filtered.length));
+      row.classList.toggle('active',index===active);spacer.append(row);
+    }
+    if(active>=start&&active<end)search.setAttribute('aria-activedescendant',`${id}-${active}`);else search.removeAttribute('aria-activedescendant');
+  }
+  function reveal(){if(active*height<list.scrollTop)list.scrollTop=active*height;else if((active+1)*height>list.scrollTop+visible*height)list.scrollTop=(active+1-visible)*height;draw(true);}
+  function open(){
+    if(!popup.hidden)return;popup.hidden=false;popup.style.left='0px';
+    const boundary=root.closest('dialog')?.getBoundingClientRect();
+    if(boundary){const anchor=root.getBoundingClientRect(),width=popup.getBoundingClientRect().width;popup.style.left=`${Math.max(boundary.left+18-anchor.left,Math.min(0,boundary.right-18-anchor.left-width))}px`;}
+    button.setAttribute('aria-expanded','true');search.value='';empty.hidden=true;filtered=choices.map((_,index)=>index);active=choices.findIndex(choice=>choice.value===value);list.scrollTop=0;reveal();search.focus({preventScroll:true});doc.addEventListener('pointerdown',outside);
+  }
+  function choose(index){if(index<0||index>=filtered.length)return;const choice=choices[filtered[index]];value=choice.value;button.textContent=choice.text;close(true);onChange(value);}
+  button.addEventListener('click',()=>popup.hidden?open():close());
+  button.addEventListener('keydown',event=>{if(['ArrowDown','ArrowUp'].includes(event.key)){event.preventDefault();open();}});
+  search.addEventListener('input',()=>{const query=(kind==='Date'?search.value.replaceAll('.','-'):search.value).trim().toLocaleLowerCase();filtered=[];for(let i=0;i<keys.length;i++)if(keys[i].includes(query))filtered.push(i);active=filtered.length?0:-1;list.scrollTop=0;empty.hidden=filtered.length!==0;draw(true);});
+  search.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);}
+    else if(event.key==='Enter'){event.preventDefault();choose(active);}
+    else if(['ArrowDown','ArrowUp','PageDown','PageUp'].includes(event.key)){event.preventDefault();const delta={ArrowDown:1,ArrowUp:-1,PageDown:visible,PageUp:-visible}[event.key];active=Math.max(0,Math.min(filtered.length-1,active+delta));reveal();}
+  });
+  list.addEventListener('scroll',()=>draw());
+  list.addEventListener('pointerdown',event=>event.preventDefault());
+  list.addEventListener('click',event=>{const row=event.target.closest('[data-index]');if(row&&list.contains(row))choose(Number(row.dataset.index));});
+  root.addEventListener('focusout',event=>{if(!root.contains(event.relatedTarget))close();});
+  return root;
+}
+
+export function savedGameFilterValue(value,date=false) {
+  const text=typeof value==='string'?value.trim():'';
+  if(!text||['?','-','????.??.??','????-??-??'].includes(text))return '';
+  return date?text.replaceAll('.','-'):text;
+}
+
+export function savedGameSourceLabel(game) {return savedGameFilterValue(game.source)||savedGameFilterValue(game.venue);}
+
 const DB_NAME = 'ironwood-chess';
 // Session-only summaries and view state; no disk persistence or extra credentials.
 const savedLibraryViews = {browser:null, archive:null};
@@ -27,6 +121,18 @@ if(typeof window!=='undefined') {
   const forgetArchive=()=>{archiveConnectionVersion++;invalidateLibraryCache('archive');savedLibraryViews.archive=null;};
   window.addEventListener?.('ironwood-companion-connection-changed',forgetArchive);
   window.addEventListener?.('ironwood-companion-feature-changed',()=>{if(window.ironwoodCompanionFeatureEnabled?.()!==true)forgetArchive();});
+}
+
+// Only library invalidations cross windows; credentials and game documents never do.
+if(typeof window!=='undefined'&&typeof window.addEventListener==='function'&&window.document&&window.BroadcastChannel){
+  const channel=new window.BroadcastChannel('ironwood-game-library-v1');channel.unref?.();
+  window.addEventListener('ironwood-game-library-changed',event=>{
+    if(event.detail?.remote||!['browser','archive'].includes(event.detail?.source))return;
+    const {source,endpoint,deletedIds}=event.detail;
+    channel.postMessage({source,endpoint,deletedIds});
+  });
+  channel.onmessage=({data})=>{if(['browser','archive'].includes(data?.source))window.dispatchEvent(new window.CustomEvent('ironwood-game-library-changed',{detail:{...data,remote:true}}));};
+  window.addEventListener('pagehide',()=>channel.close(),{once:true});
 }
 
 // Public Lichess API access; no Lichess code or artwork is bundled.
@@ -710,14 +816,43 @@ export function buildGameExport(records, format, exporter) {
   if (!records.length) throw new Error('Select at least one game');
   if (typeof exporter !== 'function') throw new Error('The game is still loading. Try again shortly');
   const contents = records.map(record => exporter(record.json, format));
-  const base = records.length === 1 ? 'ironwood-game' : 'ironwood-games';
-  if (format === 'json' && records.length > 1) {
+  return assembleGameExport(contents,format);
+}
+function assembleGameExport(contents,format) {
+  const base = contents.length === 1 ? 'ironwood-game' : 'ironwood-games';
+  if (format === 'json' && contents.length > 1) {
     return { filename: `${base}-analysis.zip`, type: 'application/zip',
       content: storedZip(contents.map((content, i) => ({ name: `game-${i + 1}.json`, content }))) };
   }
   return { filename: `${base}${format === 'annotated' ? '-annotated' : ''}.${format === 'json' ? 'json' : 'pgn'}`,
     type: format === 'json' ? 'application/json;charset=utf-8' : 'application/x-chess-pgn;charset=utf-8',
     content: contents.map(value => value.trim()).join('\n\n') + '\n' };
+}
+
+const yieldExport=()=>new Promise(resolve=>setTimeout(resolve,0));
+export async function buildGameExportWithProgress(records,format,exporter,onProgress=()=>{},yieldTask=yieldExport) {
+  if(!records.length)throw Error('Select at least one game');
+  if(typeof exporter!=='function')throw Error('The game is still loading. Try again shortly');
+  const contents=[];let lastYield=performance.now();
+  for(let index=0;index<records.length;index++){
+    contents.push(exporter(records[index].json,format));
+    if((index+1)%128===0||performance.now()-lastYield>=8||index===records.length-1){onProgress(index+1,records.length);await yieldTask();lastYield=performance.now();}
+  }
+  return assembleGameExport(contents,format);
+}
+export function createGameExportProgress() {
+  const panel=document.createElement('div');panel.className='game-export-progress';panel.hidden=true;
+  const label=document.createElement('p');label.setAttribute('role','status');label.setAttribute('aria-live','polite');
+  const track=document.createElement('div');track.className='game-export-progress-track';track.setAttribute('role','progressbar');track.setAttribute('aria-label','Game export');track.setAttribute('aria-valuemin','0');track.setAttribute('aria-valuemax','100');
+  const fill=document.createElement('span');track.append(fill);panel.append(label,track);
+  let dismissTimer;
+  const hide=()=>{clearTimeout(dismissTimer);dismissTimer=undefined;panel.hidden=true;};
+  return {panel,hide,update(percent,text){
+    clearTimeout(dismissTimer);dismissTimer=undefined;
+    panel.hidden=false;const value=Math.max(0,Math.min(100,Math.round(percent)));
+    fill.style.width=`${value}%`;track.setAttribute('aria-valuenow',String(value));track.setAttribute('aria-valuetext',text);label.textContent=text;
+    if(value===100)dismissTimer=setTimeout(hide,1500);
+  }};
 }
 
 let storageGrainUrl;
@@ -1276,7 +1411,7 @@ function loadFingerprintIndex() {
   return fingerprintIndexPromise;
 }
 
-function putGame(record) {
+function putGame(record, update) {
   pendingWrite = pendingWrite.catch(() => {}).then(async () => {
     const db = await openDatabase();
     await new Promise((resolve, reject) => {
@@ -1285,15 +1420,28 @@ function putGame(record) {
       const request = store.get(record.id);
       request.onsuccess = () => {
         const existing = request.result;
-        store.put({ ...existing, ...record, favorite: record.favorite ?? existing?.favorite ?? false });
+        try {
+          const next = update ? update(existing) : { ...existing, ...record, favorite: record.favorite ?? existing?.favorite ?? false };
+          if (!update && record.json) {
+            const runs=browserAnalysisRuns(existing,next);
+            if(runs.length||existing?.archiveAnalysisRuns||record.archiveAnalysisRuns)next.archiveAnalysisRuns=runs;
+          }
+          store.put(next);
+        } catch (error) { reject(error); transaction.abort(); }
       };
       request.onerror = () => transaction.abort();
-      transaction.oncomplete = () => { notifyLibraryChanged('browser'); resolve(); };
+      transaction.oncomplete = () => {
+        notifyLibraryChanged('browser'); resolve();
+        if(archiveRuns.key===`browser/${record.id}`){archiveRuns.save_error='';void refreshArchiveRuns();}
+      };
       transaction.onerror = () => reject(transaction.error || new Error('Could not save game'));
       transaction.onabort = () => reject(transaction.error || new Error('Game save was interrupted'));
     });
   });
-  pendingWrite.catch(error => console.warn('Ironwood game library save failed:', error));
+  pendingWrite.catch(error => {
+    if(archiveRuns.key===`browser/${record.id}`)archiveRuns.save_error=`Could not save analysis locally: ${error.message}`;
+    console.warn('Ironwood game library save failed:', error);
+  });
   return pendingWrite;
 }
 
@@ -1355,6 +1503,23 @@ function pgnMoveCount(pgn) {
     .filter(token => token && token !== '...' && !token.startsWith('$') && !['*', '1-0', '0-1', '1/2-1/2'].includes(token)).length;
 }
 
+const openingCache=new Map();
+function gameOpening(game) {
+  let eco=(pgnTag(game.review_pgn,'ECO')||'').trim(), opening=(pgnTag(game.review_pgn,'Opening')||'').trim();
+  if(eco==='?')eco='';if(opening==='?')opening='';
+  if((!eco||!opening)&&window.ironwoodExportSavedGame) {
+    const key=game.review_pgn||JSON.stringify([game.live_moves,game.live_positions?.[0],game.board]);
+    let classified=openingCache.get(key);
+    if(!classified) {
+      try {classified=JSON.parse(window.ironwoodExportSavedGame(JSON.stringify(game),'opening'));}catch {classified={};}
+      if(openingCache.size>=20000)openingCache.delete(openingCache.keys().next().value);
+      openingCache.set(key,classified);
+    }
+    eco=eco||classified.eco||'';opening=opening||classified.opening||'';
+  }
+  return {eco,opening};
+}
+
 export function gameDetails(json) {
   const game = JSON.parse(json);
   const imported = Boolean(game.review_pgn);
@@ -1386,7 +1551,7 @@ export function gameDetails(json) {
   const whiteFideId = pgnTag(game.review_pgn, 'WhiteFideId') || null;
   const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
   const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
-  return { startingNote, analysisStatus, puzzleId, title: puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
+  return { ...gameOpening(game), startingNote, analysisStatus, puzzleId, title: puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, result, moves, analyzed,
     trainingProfileId: training?.profile_id || null, trainingProfileName: profileName, trainingSide: training?.side || null,
     trainingOpponentElo: training?.opponent_elo, trainingEngineKind:training?.engine?.kind || 'stockfish', ratingBefore: training?.rating_before, ratingAfter: training?.rating_after,
     finalFen: game.final_board || game.board, category: puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
@@ -1427,7 +1592,7 @@ export function gameMatchesCategory(game, category) {
 async function flushArchiveImport(batch) {
   if(batch.flushing||!batch.queue.length)return;
   clearTimeout(batch.timer);batch.timer=null;batch.flushing=true;
-  const records=batch.queue.splice(0,32);let accounted=0;
+  const records=batch.queue.splice(0,128);let accounted=0;
   try {
     if(!batch.storage||window.ironwoodCompanionFeatureEnabled?.()!==true)throw Error('Companion archive is unavailable. Reconnect before importing.');
     await batch.storage.importBatchRecords(records,(result,count)=>{
@@ -1452,8 +1617,8 @@ function queueGameRecord(json, id, category, trackBatch = false, source) {
     if (batch?.archive) {
       batch.pending++;
       batch.queue.push({id,...details,category,updatedAt:Date.now(),json});
-      if(batch.queue.length>=32)void flushArchiveImport(batch);
-      else if(!batch.timer)batch.timer=setTimeout(()=>{batch.timer=null;void flushArchiveImport(batch);},500);
+      if(batch.queue.length>=128)void flushArchiveImport(batch);
+      else {clearTimeout(batch.timer);batch.timer=setTimeout(()=>{batch.timer=null;void flushArchiveImport(batch);},500);}
       return;
     }
     if (fingerprint) importedFingerprints.add(fingerprint);
@@ -1496,7 +1661,27 @@ const runLabel=run=>{const date=new Date(run.created_at);return `${run.metadata.
 function localRun(saved){
   const context=saved.analysis_run;if(!context)return null;
   const {id,position_fens,created_at,...details}=context,payload=archiveAnalysisSnapshot(saved),completed=(saved.game_analysis||[]).filter(Boolean).length;
-  return {id,created_at:created_at||Date.now(),metadata:{...details,completed_positions:completed,total_positions:position_fens?.length||saved.game_analysis.length,status:completed>0&&completed===(position_fens?.length||saved.game_analysis.length)?'Complete':'Partial'},payload};
+  const total=position_fens?.length||saved.game_analysis?.length||0;
+  return {id,created_at:created_at||Date.now(),metadata:{...details,completed_positions:completed,total_positions:total,status:completed>0&&completed===total?'Complete':'Partial'},payload};
+}
+// Keep browser runs in the same atomic record as the game, including backups
+// and Browser -> Archive transfers. No Companion access is needed here.
+function browserAnalysisRuns(previous, record) {
+  const key=`browser/${record.id}`,runs=new Map((record.archiveAnalysisRuns||previous?.archiveAnalysisRuns||[]).map(run=>[run.id,run]));
+  for(const json of [previous?.json,record.json]) {
+    if(!json)continue;const saved=JSON.parse(json);let run=localRun(saved);
+    if(!run&&saved.game_analysis?.some(Boolean)) {
+      const id=`legacy-browser-${record.id}`;
+      if(runs.has(id))continue;
+      const context={id,engine_name:'Previous analysis (engine unverified)',settings_label:'Original saved results',created_at:previous?.updatedAt||record.updatedAt||Date.now(),position_fens:saved.live_positions||[]};
+      run=localRun({...saved,analysis_run:context});
+    }
+    if(!run||!run.payload.game_analysis?.some(Boolean)||deletedAnalysisRuns.has(`${key}/${run.id}`))continue;
+    const old=runs.get(run.id);
+    const unchanged=old&&analysisSignature({metadata:old.metadata,payload:old.payload})===analysisSignature({metadata:run.metadata,payload:run.payload});
+    runs.set(run.id,unchanged?old:{...run,created_at:old?.created_at||run.created_at,revision:(old?.revision||0)+1});
+  }
+  return [...runs.values()].filter(run=>!deletedAnalysisRuns.has(`${key}/${run.id}`));
 }
 let localAnalysisWrites=Promise.resolve(),analysisSyncPromise=null,analysisSyncTimer=null,analysisSyncStarted=false;
 async function cacheOpenedRun(key,run){
@@ -1568,8 +1753,12 @@ const resetArchiveRuns=()=>{archiveRuns={key:'',runs:[],busy:false,error:'',save
 window.addEventListener?.('ironwood-companion-connection-changed',resetArchiveRuns);
 window.addEventListener?.('ironwood-companion-feature-changed',()=>{if(window.ironwoodCompanionFeatureEnabled?.()!==true)resetArchiveRuns();});
 
-function activeRunGame(){const game=getArchiveActive();return game&&window.ironwoodCompanionFeatureEnabled?.()===true?game:null;}
-function runGameKey(game){return game?`${game.endpoint}/${game.id}`:'';}
+function activeRunGame(){
+  const archive=getArchiveActive();
+  if(archive)return window.ironwoodCompanionFeatureEnabled?.()===true?archive:null;
+  const id=localStorage.getItem(ACTIVE_ID_KEY);return id?{id,browser:true}:null;
+}
+function runGameKey(game){return game?game.browser?`browser/${game.id}`:`${game.endpoint}/${game.id}`:'';}
 function runState(){
   const game=activeRunGame(),key=runGameKey(game);
   if(key!==archiveRuns.key){archiveRuns={key,runs:[],busy:false,error:'',save_error:'',generation:archiveRuns.generation+1};pendingRun=null;runWrites.clear();if(key)void refreshArchiveRuns();}
@@ -1605,6 +1794,16 @@ async function refreshArchiveRuns(){
   const game=activeRunGame();if(!game)return;
   const key=runGameKey(game),generation=archiveRuns.generation;
   if(archiveRuns.refreshing)return;archiveRuns.refreshing=true;
+  if(game.browser){
+    try{
+      await pendingWrite;const record=await readGame(game.id);
+      if(archiveRuns.key!==key||generation!==archiveRuns.generation||runGameKey(activeRunGame())!==key)return;
+      archiveRuns.runs=(record?.archiveAnalysisRuns||[]).slice().sort((a,b)=>b.created_at-a.created_at).map(({payload,...run})=>({...run,label:runLabel(run)}));
+      archiveRuns.error='';archiveRuns.cache_error='';archiveRuns.offline=false;archiveRuns.pending=false;
+    }catch(error){if(archiveRuns.key===key)archiveRuns.error=`Could not read saved analyses: ${error.message}`;}
+    finally{if(archiveRuns.key===key&&generation===archiveRuns.generation)archiveRuns.refreshing=false;}
+    return;
+  }
   try{const runs=await cachedRunList(key,archiveRuns.offline),pending=Boolean(await analysisLocalCache.get(`${key}/pending`));if(archiveRuns.key!==key||generation!==archiveRuns.generation)return;archiveRuns.runs=runs;archiveRuns.pending=pending;}catch(error){if(archiveRuns.key===key&&generation===archiveRuns.generation)archiveRuns.cache_error=error.message;}
   try {await flushAnalysisQueue();const storage=await archiveLibrary(false);storage.check();if(storage.endpoint!==game.endpoint)throw Error('Reconnect to this game’s archive.');
     const result=await storage.request(`archive/games/${game.id}/analysis-runs`);
@@ -1620,7 +1819,7 @@ async function refreshArchiveRuns(){
   }catch(error){if(archiveRuns.key===key){archiveRuns.offline=!error.status;archiveRuns.error=error.status===404?'Update Companion to save multiple analysis runs.':error.status?error.message:'';try{archiveRuns.runs=await cachedRunList(key,true);}catch{};}}
   finally{if(archiveRuns.key===key&&generation===archiveRuns.generation)archiveRuns.refreshing=false;}
 }
-window.ironwoodArchiveAnalysisRuns=()=>{const game=runState();const message=archiveRuns.offline?`Companion offline — showing analyses saved on this device.${archiveRuns.pending?' New results are saved locally and will sync when Companion returns.':''}`:archiveRuns.pending?'Analysis saved locally — waiting to sync with Companion.':archiveRuns.caching?`Caching analyses for offline use… ${archiveRuns.cache_done} of ${archiveRuns.cache_total}`:'';return JSON.stringify({available:Boolean(game),...archiveRuns,message,error:archiveRuns.cache_error||archiveRuns.save_error||archiveRuns.error,runs:archiveRuns.runs});};
+window.ironwoodArchiveAnalysisRuns=()=>{const game=runState();const message=archiveRuns.offline?`Companion offline — showing analyses saved on this device.${archiveRuns.pending?' New results are saved locally and will sync when Companion returns.':''}`:archiveRuns.pending?'Analysis saved locally — waiting to sync with Companion.':archiveRuns.caching?`Caching analyses for offline use… ${archiveRuns.cache_done} of ${archiveRuns.cache_total}`:'';return JSON.stringify({available:Boolean(game),browser:Boolean(game?.browser),...archiveRuns,message,error:archiveRuns.cache_error||archiveRuns.save_error||archiveRuns.error,runs:archiveRuns.runs});};
 window.ironwoodBeginArchiveAnalysisRun=raw=>{
   // Local provenance is independent of Companion availability. Creating this
   // context performs no archive reads, connections or credential access.
@@ -1630,13 +1829,34 @@ window.ironwoodRefreshArchiveAnalysisRuns=()=>{runState();void refreshArchiveRun
 window.ironwoodSelectArchiveAnalysisRun=id=>{
   const game=runState();if(!game||archiveRuns.busy)return;
   const key=archiveRuns.key,generation=archiveRuns.generation;archiveRuns.busy=true;archiveRuns.error='';
-  void (async()=>{try{await localAnalysisWrites;const cached=await analysisLocalCache.get(runCacheId(key,id)).catch(()=>null);
-    let run=cached?.run;if(!run){const storage=await archiveLibrary(false);if(storage.endpoint!==game.endpoint)throw Error('Reconnect to this game’s archive.');run=await storage.request(`archive/games/${game.id}/analysis-runs/${encodeURIComponent(id)}`);await cacheOpenedRun(key,run).catch(error=>{archiveRuns.cache_error=error.message;});}
+  void (async()=>{try{await localAnalysisWrites;await pendingWrite;
+    const cached=game.browser?null:await analysisLocalCache.get(runCacheId(key,id)).catch(()=>null);
+    let run=game.browser?(await readGame(game.id))?.archiveAnalysisRuns?.find(run=>run.id===id):cached?.run;
+    if(!run){if(game.browser)throw Error('Saved analysis was not found in Browser storage.');const storage=await archiveLibrary(false);if(storage.endpoint!==game.endpoint)throw Error('Reconnect to this game’s archive.');run=await storage.request(`archive/games/${game.id}/analysis-runs/${encodeURIComponent(id)}`);await cacheOpenedRun(key,run).catch(error=>{archiveRuns.cache_error=error.message;});}
     if(generation!==archiveRuns.generation||runGameKey(activeRunGame())!==key)return;
     pendingRun=JSON.stringify(run.payload);runWrites.set(`${key}/${id}`,{revision:run.revision,signature:analysisSignature({metadata:run.metadata,payload:run.payload})});
-  }catch(error){if(archiveRuns.key===key){archiveRuns.offline=!error.status;archiveRuns.error=error.status?error.message:'This analysis is not cached on this device. Start Companion to open it.';}}finally{if(archiveRuns.key===key)archiveRuns.busy=false;}})();
+  }catch(error){if(archiveRuns.key===key){archiveRuns.offline=!game.browser&&!error.status;archiveRuns.error=game.browser||error.status?error.message:'This analysis is not cached on this device. Start Companion to open it.';}}finally{if(archiveRuns.key===key)archiveRuns.busy=false;}})();
 };
 window.ironwoodTakeArchiveAnalysisRun=()=>{if(!runState())return '';const result=pendingRun||'';pendingRun=null;return result;};
+export async function deleteBrowserAnalysisRuns(game,runs){
+  const key=runGameKey(game),ids=new Set(runs.map(run=>run.id));let cleared=null;
+  await putGame({id:game.id},record=>{
+    if(!record)throw Error('Saved game was not found.');
+    for(const run of runs){const latest=record.archiveAnalysisRuns?.find(item=>item.id===run.id);if(!latest||latest.revision!==run.revision)throw Error('An analysis changed. Refresh and try again.');}
+    const saved=JSON.parse(record.json),selected=saved.analysis_run?.id||`legacy-browser-${game.id}`;
+    const json=ids.has(selected)?JSON.stringify({...saved,...clearedAnalysis(saved),game_analysis_running:false,game_analysis_paused:false}):record.json;
+    if(json!==record.json)cleared=json;
+    return {...record,...gameDetails(json),category:record.category,json,updatedAt:Date.now(),archiveAnalysisRuns:(record.archiveAnalysisRuns||[]).filter(run=>!ids.has(run.id))};
+  });
+  for(const id of ids)deletedAnalysisRuns.add(`${key}/${id}`);
+  if(runGameKey(activeRunGame())===key){
+    const current=JSON.parse(localStorage.getItem(CURRENT_GAME_KEY)||'null');
+    if(current&&ids.has(current.analysis_run?.id||`legacy-browser-${game.id}`)){
+      const snapshot=clearedAnalysis(current);pendingRun=JSON.stringify(snapshot);
+      localStorage.setItem(CURRENT_GAME_KEY,JSON.stringify({...current,...snapshot,game_analysis_running:false,game_analysis_paused:false}));
+    }else if(cleared)pendingRun=JSON.stringify(clearedAnalysis(JSON.parse(cleared)));
+  }
+}
 export async function deleteArchiveAnalysisRuns(storage,game,runs){
   await localAnalysisWrites;await flushAnalysisQueue();storage.check();
   const result=await storage.request(`archive/games/${game.id}/analysis-runs/delete`,{runs:runs.map(run=>[run.id,run.revision])});
@@ -1688,8 +1908,10 @@ window.ironwoodManageArchiveAnalyses=()=>{void (async()=>{
   dialog.querySelector('[data-cancel-delete]').onclick=()=>{confirmation.hidden=true;remove.focus();};
   dialog.querySelector('[data-confirm-delete]').onclick=async()=>{
     if(busy||!valid())return;busy=true;dialog.querySelectorAll('button,input').forEach(control=>control.disabled=true);status.textContent='Deleting selected analyses…';
-    try{const storage=await archiveLibrary(false);if(!valid()||storage.endpoint!==game.endpoint)throw Error('Game or Companion connection changed. Close this window and try again.');
-      const chosen=runs.filter(run=>selected.has(run.id));await deleteArchiveAnalysisRuns(storage,game,chosen);await refreshArchiveRuns();
+    try{const chosen=runs.filter(run=>selected.has(run.id));
+      if(game.browser)await deleteBrowserAnalysisRuns(game,chosen);
+      else{const storage=await archiveLibrary(false);if(!valid()||storage.endpoint!==game.endpoint)throw Error('Game or Companion connection changed. Close this window and try again.');await deleteArchiveAnalysisRuns(storage,game,chosen);}
+      await refreshArchiveRuns();
       if(!valid()){dialog.close();return;}runs=archiveRuns.runs.slice();selected.clear();confirmation.hidden=true;status.textContent=`Deleted ${chosen.length} analysis run${chosen.length===1?'':'s'}.`;render();
     }catch(error){status.textContent=`Could not delete analyses: ${error.message}`;}
     finally{busy=false;dialog.querySelectorAll('button,input').forEach(control=>control.disabled=false);update();}
@@ -1762,6 +1984,11 @@ window.ironwoodStoreCurrentGame = json => {
     return;
   }
   try {
+    const candidate=JSON.parse(json),key=`browser/${activeId()}`;
+    if(candidate.analysis_run&&deletedAnalysisRuns.has(`${key}/${candidate.analysis_run.id}`)){
+      json=JSON.stringify({...candidate,...clearedAnalysis(candidate),game_analysis_running:false,game_analysis_paused:false});
+      localStorage.setItem(CURRENT_GAME_KEY,json);
+    }
     const details = gameDetails(json);
     queueGameRecord(json, activeId(), details.trainingProfileId ? 'training' : localStorage.getItem(ACTIVE_CATEGORY_KEY) || details.category);
   } catch (error) {
@@ -1868,7 +2095,7 @@ async function openSavedGame(game, startingPosition = false) {
   localStorage.setItem(ACTIVE_ID_KEY, game.id);
   localStorage.setItem(ACTIVE_CATEGORY_KEY, game.category);
   localStorage.setItem(CURRENT_GAME_KEY, JSON.stringify(saved));
-  location.reload();
+  if(window.ironwoodLibraryWindowNavigate)window.ironwoodLibraryWindowNavigate();else location.reload();
 }
 
 function startingNoteElement(game, compact = false) {
@@ -1894,21 +2121,30 @@ function startingNoteElement(game, compact = false) {
   return section;
 }
 
+// Build a temporary preview only: never import, save, or load the live board.
+export async function previewCompanionDocument(document, trigger) {
+  if (document?.format !== 'ironwood-companion-game' || document.version !== 1) throw new Error('Unsupported Companion game version.');
+  const json = document.record?.json ?? window.ironwoodPrepareArchivedPgn(document.pgn);
+  const details = gameDetails(json);
+  const preview = JSON.parse(window.ironwoodExportSavedGame(json, 'preview'));
+  if (!Array.isArray(preview.positions) || !preview.positions.length) throw new Error('Move preview is unavailable.');
+  await showGamePreview({...details, preview}, trigger);
+}
+
+const PREVIEW_AUTOPLAY_SPEED_KEY='ironwood.chess.preview-autoplay-delay.v1';
+let previewAutoplayDelay=2000;
 async function showGamePreview(game, trigger) {
   document.getElementById('game-preview-dialog')?.close();
   const dialog = document.createElement('dialog');
   dialog.id = 'game-preview-dialog';
-  dialog.setAttribute('aria-labelledby', 'game-preview-title');
+  dialog.setAttribute('aria-label',game.title||'Game preview');
   const heading = document.createElement('div');
   heading.className = 'game-preview-heading';
-  const title = document.createElement('h2');
-  title.id = 'game-preview-title';
-  title.textContent = game.title;
   const close = document.createElement('button');
   close.type = 'button'; close.textContent = '×';
   close.setAttribute('aria-label', 'Close board preview');
   close.addEventListener('click', () => dialog.close());
-  heading.append(title, close);
+  heading.append(close);
   const players = document.createElement('div');
   players.className = 'game-preview-players';
   for (const [color, label] of [['white', 'White'], ['black', 'Black']]) {
@@ -1927,36 +2163,76 @@ async function showGamePreview(game, trigger) {
   boardHost.className = 'game-preview-board-tray';
   const controls = document.createElement('div');
   controls.className = 'game-preview-controls';
+  const body=document.createElement('div');body.className='game-preview-body';
+  const movePanel=document.createElement('section');movePanel.className='game-preview-moves';movePanel.setAttribute('aria-label','Game moves');
+  const moveTitle=document.createElement('h3');moveTitle.textContent='Game Moves';
+  const moveList=document.createElement('div');moveList.className='game-preview-move-list';moveList.setAttribute('tabindex','0');
+  const moveHeading=document.createElement('div');moveHeading.className='game-preview-move-row game-preview-move-heading';
+  for(const title of ['#','White','Black']){const label=document.createElement('span');label.textContent=title;moveHeading.append(label);}
+  movePanel.append(moveTitle,moveHeading,moveList);body.append(boardHost,movePanel);
+  let listedMoves=null,moveButtons=[];
   let positions = game.preview?.positions || [game.finalFen];
   let moves = game.preview?.moves || [];
   let index = 0;
   let timer = null;
+  try {
+    const stored=Number(localStorage.getItem(PREVIEW_AUTOPLAY_SPEED_KEY));
+    if([500,1000,2000,3000,5000].includes(stored))previewAutoplayDelay=stored;
+  } catch { /* Keep the session preference if storage is unavailable. */ }
+  let autoplayDelay=previewAutoplayDelay;
+  const startTimer=()=>{
+    if(timer!==null)clearInterval(timer);
+    timer=setInterval(()=>{index=Math.min(index+1,positions.length-1);if(index===positions.length-1)stop();render();},autoplayDelay);
+  };
   const stop = () => {
     if (timer !== null) clearInterval(timer);
     timer = null;
-    autoplay.textContent = 'Auto play';
+    autoplay.textContent = 'Play';autoplay.setAttribute('aria-label','Play');
     autoplay.setAttribute('aria-pressed', 'false');
   };
   const button = (label, action) => {
     const element = document.createElement('button');
-    element.type = 'button'; element.textContent = label;
+    element.type = 'button'; element.textContent = ({First:'|◀',Previous:'◀',Play:'Play',Next:'▶',Last:'▶|'})[label]||label;element.setAttribute('aria-label',label);element.title=({First:'First position (Home)',Previous:'Previous move (Left arrow)',Next:'Next move (Right arrow)',Last:'Last position (End)'})[label]||label;
     element.addEventListener('click', action); controls.append(element);
     return element;
   };
   const first = button('First', () => { stop(); index = 0; render(); });
   const previous = button('Previous', () => { stop(); index = Math.max(0, index - 1); render(); });
-  const autoplay = button('Auto play', () => {
+  const autoplay = button('Play', () => {
     if (timer !== null) { stop(); return; }
     if (index === positions.length - 1) index = 0;
-    autoplay.textContent = 'Pause'; autoplay.setAttribute('aria-pressed', 'true');
+    autoplay.textContent = 'Pause';autoplay.setAttribute('aria-label','Pause'); autoplay.setAttribute('aria-pressed', 'true');
     render();
-    timer = setInterval(() => {
-      index = Math.min(index + 1, positions.length - 1);
-      if (index === positions.length - 1) stop();
-      render();
-    }, 500);
+    startTimer();
   });
   autoplay.setAttribute('aria-pressed', 'false');
+  autoplay.title='Autoplay · right-click to choose speed';
+  autoplay.setAttribute('aria-haspopup','menu');
+  autoplay.setAttribute('aria-expanded','false');
+  const speedMenu=document.createElement('div');speedMenu.className='game-preview-speed-menu';speedMenu.hidden=true;
+  speedMenu.setAttribute('role','menu');speedMenu.setAttribute('aria-label','Autoplay speed');
+  const hideSpeeds=()=>{speedMenu.hidden=true;autoplay.setAttribute('aria-expanded','false');};
+  for(const [label,delay] of [['Very Fast · 0.5 sec',500],['Fast · 1 sec',1000],['Normal · 2 sec',2000],['Slow · 3 sec',3000],['Analysis · 5 sec',5000]]) {
+    const choice=document.createElement('button');choice.type='button';choice.textContent=label;choice.dataset.delay=String(delay);choice.setAttribute('role','menuitemradio');choice.setAttribute('aria-checked',String(delay===autoplayDelay));
+    choice.addEventListener('click',()=>{autoplayDelay=previewAutoplayDelay=delay;try{localStorage.setItem(PREVIEW_AUTOPLAY_SPEED_KEY,String(delay));}catch{/* Session preference still applies. */}for(const item of speedMenu.children)item.setAttribute('aria-checked',String(Number(item.dataset.delay)===delay));if(timer!==null)startTimer();hideSpeeds();autoplay.focus();});
+    speedMenu.append(choice);
+  }
+  dialog.append(speedMenu);
+  autoplay.addEventListener('contextmenu',event=>{
+    event.preventDefault();event.stopPropagation();speedMenu.hidden=false;autoplay.setAttribute('aria-expanded','true');
+    const rect=autoplay.getBoundingClientRect();
+    speedMenu.style.left=`${Math.max(8,Math.min(event.clientX||rect.left,window.innerWidth-speedMenu.offsetWidth-8))}px`;
+    speedMenu.style.top=`${Math.max(8,Math.min(event.clientY||rect.top,window.innerHeight-speedMenu.offsetHeight-8))}px`;
+    speedMenu.querySelector('[aria-checked="true"]').focus();
+  });
+  speedMenu.addEventListener('keydown',event=>{
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();hideSpeeds();autoplay.focus();}
+    if(['ArrowUp','ArrowDown','Home','End'].includes(event.key)){
+      event.preventDefault();event.stopPropagation();const items=[...speedMenu.children],at=items.indexOf(document.activeElement);
+      items[event.key==='Home'?0:event.key==='End'?items.length-1:(at+(event.key==='ArrowDown'?1:-1)+items.length)%items.length].focus();
+    }
+  });
+  dialog.addEventListener('pointerdown',event=>{if(!speedMenu.contains(event.target))hideSpeeds();});
   const next = button('Next', () => { stop(); index = Math.min(positions.length - 1, index + 1); render(); });
   const last = button('Last', () => { stop(); index = positions.length - 1; render(); });
   dialog.addEventListener('keydown', event => {
@@ -1967,10 +2243,38 @@ async function showGamePreview(game, trigger) {
     index = Math.max(0, Math.min(positions.length - 1, index + (event.key === 'ArrowLeft' ? -1 : 1)));
     render();
   });
+  const centerCurrentMove=()=>{
+    if(index===0){moveList.scrollTop=0;return;}
+    const row=moveButtons[index-1]?.parentElement;
+    if(row&&moveList.clientHeight)moveList.scrollTop=Math.max(0,row.offsetTop-(moveList.clientHeight-row.offsetHeight)/2);
+  };
   const render = () => {
     const board = finalBoard(positions[index]);
     board.setAttribute('aria-label', `Position ${index} of ${positions.length - 1}: ${game.title}`);
     boardHost.replaceChildren(board);
+    if(listedMoves!==moves) {
+      listedMoves=moves;moveButtons=[];moveList.replaceChildren();
+      const fields=(positions[0]||'').split(' '),blackFirst=fields[1]==='b',startNumber=Number(fields[5])||1;
+      let row;
+      moves.forEach((san,ply)=>{
+        const slot=ply+Number(blackFirst);
+        if(slot%2===0||ply===0) {
+          row=document.createElement('div');row.className='game-preview-move-row';
+          const number=document.createElement('span');number.className='game-preview-move-number';number.textContent=`${startNumber+Math.floor(slot/2)}.`;row.append(number);moveList.append(row);
+          if(ply===0&&blackFirst){const blank=document.createElement('span');blank.textContent='…';row.append(blank);}
+        }
+        const move=document.createElement('button');move.type='button';move.className='game-preview-move';move.textContent=san;
+        move.setAttribute('aria-label',`${startNumber+Math.floor(slot/2)}${slot%2?'...':'.'} ${san}`);
+        move.addEventListener('click',()=>{stop();index=ply+1;render();});row.append(move);moveButtons.push(move);
+      });
+      if(!moves.length)moveList.textContent='No moves available.';
+    }
+    moveButtons.forEach((move,ply)=>{
+      const active=ply+1===index;move.classList.toggle('current',active);
+      if(active)move.setAttribute('aria-current','step');else move.removeAttribute('aria-current');
+    });
+    centerCurrentMove();
+
     caption.textContent = `${positions.length > 1 ? index === 0 ? 'Starting position' : `Move ${index} of ${positions.length - 1} · ${moves[index - 1] || ''}` : 'Final position'} · ${game.result || '*'}${game.playedAt ? ` · ${game.playedAt}` : ''}`;
     first.disabled = previous.disabled = index === 0;
     next.disabled = last.disabled = index === positions.length - 1;
@@ -1980,7 +2284,7 @@ async function showGamePreview(game, trigger) {
   const info = document.createElement('section');
   info.className = 'game-preview-info';
   info.append(heading, players, outcome, caption);
-  dialog.append(info, boardHost, controls);
+  dialog.append(info, body, controls);
   const note = startingNoteElement(game);
   if (note) dialog.append(note);
   dialog.addEventListener('close', () => {
@@ -1991,6 +2295,7 @@ async function showGamePreview(game, trigger) {
   document.body.append(dialog);
   dialog.showModal();
   close.focus();
+  centerCurrentMove();
   if (game.preview) return;
   try {
     const storage = await savedGameSource(game);
@@ -2063,7 +2368,16 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     dialog.id = 'game-library-dialog';
     document.body.append(dialog);
   }
-  if (restore) dialog.classList.toggle('maximized', Boolean(restore.maximized));
+  const remembered=readWindowState(window,'dialog');
+  if(!window.ironwoodLibraryWindowMode&&remembered.width){
+    const width=Math.min(remembered.width,window.innerWidth),height=Math.min(remembered.height,window.innerHeight);
+    Object.assign(dialog.style,{position:'fixed',margin:'0',inset:'auto',width:`${width}px`,height:`${height}px`,left:`${Math.max(0,Math.min(remembered.left,window.innerWidth-width))}px`,top:`${Math.max(0,Math.min(remembered.top,window.innerHeight-height))}px`});
+  }
+  dialog.classList.toggle('maximized',Boolean(restore?.maximized??remembered.maximized));
+  let normalBounds=remembered;
+  const saveBounds=()=>{if(window.ironwoodLibraryWindowMode)return;if(!dialog.classList.contains('maximized')){const rect=dialog.getBoundingClientRect();if(rect.width&&rect.height)normalBounds={width:rect.width,height:rect.height,left:rect.left,top:rect.top};}writeWindowState(window,'dialog',{...normalBounds,maximized:dialog.classList.contains('maximized')});};
+  const boundsObserver=window.ResizeObserver?new window.ResizeObserver(()=>{if(dialog.open)saveBounds();}):null;
+  boundsObserver?.observe(dialog);dialog.addEventListener('close',()=>{saveBounds();boundsObserver?.disconnect();},{once:true});
   dialog.querySelector('#companion-archive')?.close();
   dialog.replaceChildren();
   const heading = document.createElement('div');
@@ -2087,11 +2401,24 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     maximize.setAttribute('aria-pressed', String(maximized));
   };
   maximize.addEventListener('click', () => {
+    saveBounds();
     dialog.classList.toggle('maximized');
+    saveBounds();
     updateMaximize();
   });
   updateMaximize();
-  windowControls.append(maximize, close);
+  const popout=document.createElement('button');popout.type='button';popout.textContent='↗';popout.title='Open saved games in a new window';popout.setAttribute('aria-label',popout.title);
+  popout.addEventListener('click',()=>{
+    const geometry=readWindowState(window,'popup'),screen=window.screen;
+    const width=Math.max(400,Math.min(Number(geometry.width)||1100,screen?.availWidth||1920)),height=Math.max(350,Math.min(Number(geometry.height)||850,screen?.availHeight||1080));
+    const left=Math.max(screen?.availLeft||0,Math.min(Number(geometry.left)||0,(screen?.availLeft||0)+(screen?.availWidth||1920)-width)),top=Math.max(screen?.availTop||0,Math.min(Number(geometry.top)||0,(screen?.availTop||0)+(screen?.availHeight||1080)-height));
+    const opened=window.open('/saved-games/','ironwood-saved-games',`popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    if(opened){opened.focus();dialog.close();}else{notice.hidden=false;notice.textContent='Allow pop-ups for Ironwood to open Saved Games in a new window.';}
+  });
+  const detached=Boolean(window.ironwoodLibraryWindowMode);
+  popout.hidden=maximize.hidden=detached;
+  if(detached){dialog.classList.add('detached');dialog.addEventListener('close',()=>window.close(),{once:true});}
+  windowControls.append(popout,maximize, close);
   const titleGroup = document.createElement('div'); titleGroup.className = 'game-library-title-group';
   const sources = document.createElement('div'); sources.className = 'game-library-sources'; sources.setAttribute('role','group'); sources.setAttribute('aria-label','Game storage source');
   const browserSource = document.createElement('button'), archiveSource = document.createElement('button');
@@ -2099,9 +2426,9 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   sources.append(browserSource,archiveSource); titleGroup.append(title,sources); heading.append(titleGroup, windowControls);
   heading.title = 'Drag to move';
   let drag = null;
-  const stopDragging = () => { drag = null; heading.classList.remove('dragging'); };
+  const stopDragging = () => { if(drag)saveBounds();drag = null; heading.classList.remove('dragging'); };
   heading.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || dialog.classList.contains('maximized') || event.target.closest('button,input,select,a')) return;
+    if (event.button !== 0 || (dialog.classList.contains('maximized')||dialog.classList.contains('detached')) || event.target.closest('button,input,select,a')) return;
     const rect = dialog.getBoundingClientRect();
     drag = {pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top,width:rect.width,height:rect.height};
     Object.assign(dialog.style,{position:'fixed',margin:'0',inset:'auto',left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`});
@@ -2125,19 +2452,22 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   const pager = document.createElement('div');
   pager.className = 'game-library-pager';
   const selection = document.createElement('div');
-  selection.className = 'game-library-selection';
+  selection.className = 'game-library-selection';selection.setAttribute('role','group');selection.setAttribute('aria-label','Game selection');
   const controls = document.createElement('section');
   controls.className = 'game-library-controls';
   controls.setAttribute('aria-label', 'Find and manage saved games');
-  controls.append(tabs, filters, selection);
-  const browserContent = document.createElement('div'); browserContent.className = 'game-library-browser'; browserContent.append(controls,list,pager);
+  const filterSection=document.createElement('details');filterSection.className='game-library-filter-section';filterSection.open=readWindowState(window,'filters').open===true;
+  const filterSummary=document.createElement('summary');filterSummary.textContent='Filters';filterSection.append(filterSummary,filters);
+  filterSection.addEventListener('toggle',()=>writeWindowState(window,'filters',{open:filterSection.open}));
+  controls.append(tabs, filterSection);
+  const browserContent = document.createElement('div'); browserContent.className = 'game-library-browser'; browserContent.append(controls,selection,list,pager);
   const notice=document.createElement('p');notice.className='game-library-notice';notice.setAttribute('role','status');notice.hidden=true;
-  let source='browser', sourceEpoch=0, ready=false, operationBusy=false, loadSource=async()=>{}, renderCurrent=()=>{}, saveCurrentView=()=>{};
+  let source='browser', sourceEpoch=0, selectAllEpoch=0, ready=false, operationBusy=false, loadSource=async()=>{}, renderCurrent=()=>{}, saveCurrentView=()=>{};
   const companionVisible = () => window.ironwoodCompanionFeatureEnabled?.() === true;
   function updateSourceButtons() {
     sources.hidden=!companionVisible();
     browserSource.setAttribute('aria-pressed',String(source==='browser'));archiveSource.setAttribute('aria-pressed',String(source==='archive'));
-    browserSource.disabled=archiveSource.disabled=!ready||operationBusy;
+    browserSource.disabled=archiveSource.disabled=popout.disabled=!ready||operationBusy;
   }
   async function chooseSource(value) {
     if(!ready||operationBusy||value===source||value==='archive'&&!companionVisible())return;
@@ -2148,21 +2478,23 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   updateSourceButtons();
   window.addEventListener('ironwood-companion-feature-changed',updateSources);
   dialog.addEventListener('close',()=>{saveCurrentView();sourceEpoch++;window.removeEventListener('ironwood-companion-feature-changed',updateSources);},{once:true});
-  dialog.append(heading,notice,browserContent);
+  const exportProgress=createGameExportProgress();
+  dialog.addEventListener('close',exportProgress.hide,{once:true});
+  dialog.append(heading,notice,exportProgress.panel,browserContent);
   dialog.showModal();
   try {
     let games = [], provider=null;
     let archivePage=null, loadedQuery='', requestedQuery='', queryEpoch=0, queryTimer=null;
     const selectedRecords=new Map();
     const remote=()=>Boolean(provider?.page);
-    const query=()=>({category,player:playerFilter,profile:profileFilter,search:searchQuery,analysis:analysisFilter,sort:sortOrder,page});
+    const query=()=>({category,player:playerFilter,profile:profileFilter,source:sourceFilter,date:dateFilter,opening_choice:ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'',analysis:analysisFilter,sort:sortOrder,page});
     const selectedGames=()=>remote()?[...selectedIds].map(id=>selectedRecords.get(id)).filter(Boolean):games.filter(game=>selectedIds.has(game.id));
     let browserLoadedVersion=-1, refreshTimer=null, sourceLoading=true, prefetchTimer=null;
     const cacheKey=key=>`${archiveConnectionVersion}:${provider?.endpoint}:${key}`;
     const rememberPage=(key,result,prefetched=false)=>{
       const id=cacheKey(key),facetId=cacheKey(JSON.stringify({category:JSON.parse(key).category||'all'}));
-      const {counts,players,profiles,...summary}=result;
-      archiveFacetCache.delete(facetId);archiveFacetCache.set(facetId,{revision:result.revision,counts,players,profiles});
+      const {counts,players,profiles,sources,dates,openings,...summary}=result;
+      archiveFacetCache.delete(facetId);archiveFacetCache.set(facetId,{revision:result.revision,counts,players,profiles,sources,dates,openings});
       while(archiveFacetCache.size>8)archiveFacetCache.delete(archiveFacetCache.keys().next().value);
       archivePageCache.delete(id);
       archivePageCache.set(id,{version:libraryVersions.archive,result:structuredClone(summary),facetId,prefetched,at:Date.now()});
@@ -2211,17 +2543,18 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     let category = restore?.category || 'all';
     let profileFilter = restore?.profileFilter || '*';
     let playerFilter = restore?.playerFilter || '*';
-    let searchQuery = restore?.searchQuery || '';
+    let sourceFilter=restore?.sourceFilter||'*',dateFilter=restore?.dateFilter||'*';
+    let ecoFilter=restore?.ecoFilter||'',openingFilter=restore?.openingFilter||'';
     let analysisFilter = restore?.analysisFilter || '*';
     let sortOrder = restore?.sortOrder || localStorage.getItem('ironwood.chess.library-sort.v1') || 'recent';
     if (!['recent', 'moves-asc', 'moves-desc'].includes(sortOrder)) sortOrder = 'recent';
     let page = Number.isSafeInteger(restore?.page) ? Math.max(0, restore.page) : 0;
     const pageSize = 10;
     const selectedIds = new Set();
-    const initialView=()=>({category:'all',profile:'*',player:'*',search:'',analysis:'*',sort:'recent',page:0});
+    const initialView=()=>({category:'all',profile:'*',player:'*',source:'*',date:'*',analysis:'*',sort:'recent',page:0});
     const restoreView=view=>{
       const settings=view?.settings||initialView();
-      category=settings.category;profileFilter=settings.profile;playerFilter=settings.player;searchQuery=settings.search;
+      category=settings.category;profileFilter=settings.profile;playerFilter=settings.player;sourceFilter=settings.source||'*';dateFilter=settings.date||'*';[ecoFilter,openingFilter]=settings.opening_choice==='?'?['?','']:settings.opening_choice?JSON.parse(settings.opening_choice):[settings.eco||'',settings.opening||''];
       analysisFilter=settings.analysis;sortOrder=settings.sort;page=settings.page;
       selectedIds.clear();selectedRecords.clear();
       for(const id of view?.selected||[])selectedIds.add(id);
@@ -2233,7 +2566,11 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         games:source==='browser'?games:undefined,provider:source==='archive'?provider:null,
         valid:source==='browser'?browserLoadedVersion===libraryVersions.browser:true,version:libraryVersions[source]};
     };
-    if(!restore&&savedLibraryViews.browser)restoreView(savedLibraryViews.browser);
+    if(restore?.windowState){
+      source=restore.windowState.storageSource==='archive'&&companionVisible()?'archive':'browser';
+      savedLibraryViews[source]={...restore.windowState,valid:false};restoreView(savedLibraryViews[source]);
+    } else if(!restore&&savedLibraryViews.browser)restoreView(savedLibraryViews.browser);
+    window.ironwoodLibraryPopupState=async()=>{await pendingWrite;saveCurrentView();const view=savedLibraryViews[source];return {storageSource:source,settings:view.settings,selected:view.selected,records:view.records};};
     const changes=event=>{
       if(!['browser','archive'].includes(event.detail?.source))return;
       if(event.detail.source===source){
@@ -2301,11 +2638,11 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           localStorage.removeItem(ACTIVE_ARCHIVE_KEY);
           localStorage.removeItem(ACTIVE_ID_KEY);
           localStorage.removeItem(ACTIVE_CATEGORY_KEY);
-          sessionStorage.setItem(LIBRARY_RETURN_KEY, JSON.stringify({
-            category, profileFilter, playerFilter, searchQuery, analysisFilter, sortOrder, page,
+          if(!window.ironwoodLibraryWindowNavigate)sessionStorage.setItem(LIBRARY_RETURN_KEY, JSON.stringify({
+            category, profileFilter, playerFilter, sourceFilter, dateFilter, ecoFilter, openingFilter, analysisFilter, sortOrder, page,
             maximized: dialog.classList.contains('maximized'),
           }));
-          location.reload();
+          if(window.ironwoodLibraryWindowNavigate){await refreshGames();window.ironwoodLibraryWindowNavigate(false);}else location.reload();
         } else if(remote())await refreshGames();else render();
       } catch (error) {
         if(provider)try{await refreshGames();}catch{}
@@ -2316,7 +2653,10 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       } finally { deleting = false; busy(false); }
     };
     const render = () => {
+      list.querySelectorAll('.game-library-menu-button[aria-expanded="true"]').forEach(trigger=>trigger.click());
       tabs.replaceChildren();
+      const categoryLabel=document.createElement('label');categoryLabel.textContent='Category ';
+      const categorySelect=document.createElement('select');categorySelect.setAttribute('aria-label','Category');
       for (const [value, label] of [
         ['all', 'All Games'],
         ['mine', 'My Games'],
@@ -2326,31 +2666,14 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         ['imported', 'Imported Games'],
         ['favorites', 'Favorites'],
       ]) {
-        const tab = document.createElement('button');
-        tab.type = 'button';
+        const tab = document.createElement('option');tab.value=value;
         tab.textContent = `${label} (${remote()?archivePage?.counts?.[value]||0:games.filter(game => gameMatchesCategory(game, value)).length})`;
-        tab.className = category === value ? 'selected' : '';
-        tab.addEventListener('click', () => { category = value; playerFilter = '*'; profileFilter = '*'; selectedIds.clear(); page = 0; render(); });
-        tabs.append(tab);
+        categorySelect.append(tab);
       }
+      categorySelect.value=category;categorySelect.addEventListener('change',()=>{category=categorySelect.value;playerFilter='*';profileFilter='*';selectedIds.clear();page=0;render();});
+      categoryLabel.append(categorySelect);tabs.append(categoryLabel);
       filters.replaceChildren();
-      const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh';refresh.onclick=()=>{if(!operationBusy)void loadSource({force:true});};filters.append(refresh);
-      const search = document.createElement('input');
-      search.type = 'search';
-      search.placeholder = 'Search players, source, or date';
-      search.setAttribute('aria-label', 'Search saved games');
-      search.value = searchQuery;
-      search.addEventListener('input', () => {
-        const cursor = search.selectionStart;
-        searchQuery = search.value;
-        selectedIds.clear();
-        page = 0;
-        render();
-        const replacement = filters.querySelector('input[type=search]');
-        replacement.focus();
-        replacement.setSelectionRange(cursor, cursor);
-      });
-      filters.append(search);
+      const refresh=document.createElement('button');refresh.type='button';refresh.textContent='↻';refresh.className='game-library-refresh';refresh.title='Refresh saved games';refresh.setAttribute('aria-label','Refresh saved games');refresh.onclick=()=>{if(!operationBusy)void loadSource({force:true});};
       if (category === 'training') {
         const label = document.createElement('label'); label.textContent = 'Profile ';
         const select = document.createElement('select'); select.setAttribute('aria-label', 'Training profile');
@@ -2364,18 +2687,26 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       {
         const label = document.createElement('label');
         label.textContent = 'Player ';
-        const select = document.createElement('select');
-        const categoryGames = games.filter(game => gameMatchesCategory(game, category));
+        const categoryGames = remote()?[]:games.filter(game => gameMatchesCategory(game, category));
         const names = remote()?(archivePage?.players||[]).filter(name=>name!=='Unknown'):[...new Set(categoryGames.flatMap(game => [game.white, game.black]).filter(name => name && name !== 'Unknown'))].sort();
-        for (const [value, text] of [['*', 'All players'], ...names.map(name => [name, name]), ['?', 'Unknown players']]) {
-          const option = document.createElement('option');
-          option.value = value;
-          option.textContent = text;
-          select.append(option);
-        }
-        select.value = playerFilter;
-        select.addEventListener('change', () => { playerFilter = select.value; selectedIds.clear(); page = 0; render(); });
-        label.append(select);
+        label.append(createPlayerPicker(names,playerFilter,value=>{playerFilter=value;selectedIds.clear();page=0;render();}));
+        filters.append(label);
+      }
+
+      for(const kind of ['Source','Date']) {
+        const date=kind==='Date',label=document.createElement('label');label.append(`${kind} `);
+        const names=remote()?(date?archivePage?.dates:archivePage?.sources)||[]:[...new Set(games.filter(game=>gameMatchesCategory(game,category)).map(game=>(date?savedGameFilterValue(game.playedAt,true):savedGameSourceLabel(game))).filter(Boolean))];
+        const sorted=[...names].sort((a,b)=>a.localeCompare(b));if(date)sorted.reverse();
+        label.append(createPlayerPicker(sorted,date?dateFilter:sourceFilter,value=>{if(date)dateFilter=value;else sourceFilter=value;selectedIds.clear();page=0;render();},{kind,plural:date?'dates':'sources',all:date?'All dates':'All sources',unknown:date?'Unknown dates':'Unknown sources'}));
+        filters.append(label);
+      }
+
+      {
+        const label=document.createElement('label');label.append('Opening ');
+        const choices=remote()?archivePage?.openings||[]:[...new Map(games.filter(game=>gameMatchesCategory(game,category)).map(game=>{const choice={eco:savedGameFilterValue(game.eco).toUpperCase(),opening:savedGameFilterValue(game.opening)};return [JSON.stringify(choice),choice];})).values()];
+        const options=choices.filter(choice=>choice.eco||choice.opening).map(choice=>({value:JSON.stringify([choice.eco,choice.opening]),text:[choice.eco,choice.opening].filter(Boolean).join(' — ')})).sort((a,b)=>a.text.localeCompare(b.text));
+        const value=ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'*';
+        label.append(createPlayerPicker(options,value,choice=>{[ecoFilter,openingFilter]=choice==='*'?['','']:choice==='?'?['?','']:JSON.parse(choice);selectedIds.clear();page=0;render();},{kind:'Opening',plural:'openings',all:'All openings',unknown:'Unknown openings',selectedLabel:[ecoFilter,openingFilter].filter(Boolean).join(' — ')}));
         filters.append(label);
       }
       const analysisLabel = document.createElement('label');
@@ -2401,7 +2732,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         sortOrder = sortSelect.value; localStorage.setItem('ironwood.chess.library-sort.v1', sortOrder);
         page = 0; render(); list.scrollTop = 0;
       });
-      sortLabel.append(sortSelect); filters.append(sortLabel);
+      sortLabel.append(sortSelect); filters.append(sortLabel,refresh);
       list.replaceChildren();
       pager.replaceChildren();
       if(sourceLoading){selection.replaceChildren();list.textContent='Loading games…';list.inert=selection.inert=pager.inert=true;return;}
@@ -2421,7 +2752,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         if(requestedQuery!==key){requestedQuery=key;clearTimeout(queryTimer);queryTimer=setTimeout(()=>void loadArchivePage(key),150);}
         return;
       }
-      const visible = remote()?games:sortSavedGames(games.filter(game => [game.title, game.white, game.black, game.source, game.venue, game.playedAt].join(' ').toLowerCase().includes(searchQuery.trim().toLowerCase()) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
+      const visible = remote()?games:sortSavedGames(games.filter(game => ((!ecoFilter&&!openingFilter)|| (ecoFilter==='?'?!savedGameFilterValue(game.eco)&&!savedGameFilterValue(game.opening):savedGameFilterValue(game.eco).toUpperCase()===ecoFilter&&savedGameFilterValue(game.opening)===openingFilter)) && (sourceFilter==='*'||(sourceFilter==='?'?!savedGameSourceLabel(game):savedGameSourceLabel(game)===sourceFilter)) && (dateFilter==='*'||(dateFilter==='?'?!savedGameFilterValue(game.playedAt,true):savedGameFilterValue(game.playedAt,true)===dateFilter)) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
@@ -2455,12 +2786,15 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       selectAll.disabled = !matchingCount || selectedIds.size === matchingCount;
       selectAll.addEventListener('click', async () => {
         if(!remote()){visible.forEach(game=>selectedIds.add(game.id));render();return;}
-        const storage=provider,key=JSON.stringify(query()),sourceVersion=sourceEpoch;
-        const active=()=>dialog.open&&provider===storage&&sourceEpoch===sourceVersion&&JSON.stringify(query())===key&&companionVisible();
+        const storage=provider,key=JSON.stringify(query()),sourceVersion=sourceEpoch,selectionVersion=++selectAllEpoch;
+        const active=()=>dialog.open&&provider===storage&&sourceEpoch===sourceVersion&&selectAllEpoch===selectionVersion&&JSON.stringify(query())===key&&companionVisible();
         selectAll.disabled=true;
-        try {const rows=await storage.selection(query(),active);if(!active())return;for(const game of rows){selectedIds.add(game.id);selectedRecords.set(game.id,game);}render();}
+        try {const rows=await storage.selection(query(),active,(done,total)=>{if(active())selectAll.textContent=`Selecting ${done.toLocaleString()} of ${total.toLocaleString()}…`;});if(!active())return;for(const game of rows){selectedIds.add(game.id);selectedRecords.set(game.id,game);}render();}
         catch(error){if(active()){message(`Could not select games: ${error.message}`);render();}}
       });
+      const clearSelection=document.createElement('button');
+      clearSelection.type='button';clearSelection.textContent='Clear selection';clearSelection.disabled=!selectedIds.size;
+      clearSelection.addEventListener('click',()=>{selectAllEpoch++;selectedIds.clear();selectedRecords.clear();render();});
       const exportMenu = document.createElement('div');
       exportMenu.className = 'game-library-export';
       const exportButton = document.createElement('button');
@@ -2494,17 +2828,32 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           const ids = [...selectedIds];
           exportChoices.hidden = true; exportButton.setAttribute('aria-expanded', 'false');
           exportButton.disabled = true;
+          busy(true);
+          exportProgress.update(0,`Preparing export — ${ids.length.toLocaleString()} games…`);
+          let percent=0;
+          const reportRead=(done,total)=>{percent=total?60*done/total:0;exportProgress.update(percent,`Reading games — ${done.toLocaleString()} of ${total.toLocaleString()}`);};
           try {
+            await yieldExport();
             await pendingWrite;
-            const records = provider?.readMany ? await provider.readMany(ids) : await Promise.all(ids.map(readSource));
+            let records;
+            if(provider?.readMany)records=await provider.readMany(ids,reportRead);
+            else {
+              records=[];
+              for(let offset=0;offset<ids.length;offset+=100){records.push(...await Promise.all(ids.slice(offset,offset+100).map(readSource)));reportRead(records.length,ids.length);await yieldExport();}
+            }
             if (records.some(record => !record?.json)) throw new Error('A selected game is no longer available');
-            const payload = buildGameExport(records, format, window.ironwoodExportSavedGame);
+            const payload = await buildGameExportWithProgress(records, format, window.ironwoodExportSavedGame,(done,total)=>{
+              percent=60+35*done/total;
+              exportProgress.update(percent,done===total?`Packaging export — ${total.toLocaleString()} games…`:`Preparing games — ${done.toLocaleString()} of ${total.toLocaleString()}`);
+            });
             downloadBlob(payload.filename, new Blob([payload.content], { type: payload.type }));
+            exportProgress.update(100,`Export ready — ${records.length.toLocaleString()} games. Download started.`);
           } catch (error) {
             const message = document.createElement('p');
+            exportProgress.update(percent,'Export failed. Your games have not been changed.');
             message.setAttribute('role', 'alert'); message.textContent = `Could not export games: ${error.message}`;
             selection.append(message);
-          } finally { exportButton.disabled = !selectedIds.size; }
+          } finally { busy(false);exportButton.disabled = !selectedIds.size; }
         });
         exportChoices.append(choice);
       }
@@ -2515,7 +2864,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       removeSelected.textContent = `Delete selected (${selectedIds.size})`;
       removeSelected.disabled = !selectedIds.size;
       removeSelected.addEventListener('click', () => removeGames(selectedGames()));
-      selection.append(selectPageLabel, selectAll, exportMenu, removeSelected);
+      selection.append(selectPageLabel, selectAll, clearSelection, exportMenu, removeSelected);
       if(companionVisible()) {
         const transfer=document.createElement('button');transfer.type='button';transfer.textContent=source==='archive'?'Move to Browser':'Move to Archive';transfer.disabled=!selectedIds.size||operationBusy;
         transfer.onclick=()=>void moveGames(selectedGames());selection.append(transfer);
@@ -2577,8 +2926,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         // listGames reads these from the original PGN, including older saved records.
         const fide = game;
         if (game.category === 'puzzles') name.append(game.favorite ? '★ ' : '', game.title);
-        else name.append(game.favorite ? '★ ' : '', playerNameElement(game.white, fide.whiteFideId),
-          ' vs ', playerNameElement(game.black, fide.blackFideId));
+        else name.append(game.favorite ? '★ ' : '', game.white,' vs ',game.black);
         const players = document.createElement('div');
         players.className = 'game-library-players';
         for (const [side, player, fideId] of [['White', game.white, fide.whiteFideId], ['Black', game.black, fide.blackFideId]]) {
@@ -2593,22 +2941,21 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           game.result === '1/2-1/2' ? 'Draw' : 'Result unknown / unfinished';
         const details = document.createElement('span');
         details.textContent = `${game.playedAt ? `Played ${game.playedAt}` : 'Date played unknown'} · ${game.venue ? `Venue: ${game.venue}` : 'Venue unknown'} · Saved ${new Date(game.updatedAt).toLocaleString()} · ${game.moves} moves · ${game.analysisStatus} · ${game.analyzed} positions analyzed${game.source ? ` · ${game.source}` : ''}`;
+        if(game.eco||game.opening)details.textContent+=` · ${[game.eco,game.opening].filter(Boolean).join(' · ')}`;
         if (game.trainingProfileId) {
           details.textContent += ` · Training: ${game.trainingProfileName} · ${game.trainingSide} · ${game.trainingEngineKind==='lc0'?'Level':'Elo'} ${game.ratingBefore}`;
           if (Number.isFinite(game.ratingAfter)) details.textContent += ` → ${game.ratingAfter} (${game.ratingAfter-game.ratingBefore >= 0 ? '+' : ''}${game.ratingAfter-game.ratingBefore})`;
         }
         const actions = document.createElement('div');
         actions.className = 'game-library-actions';
-        const open = document.createElement('button');
-        open.type = 'button';
-        open.textContent = 'Open game';
-        open.addEventListener('click', async () => {
+        const openGame=async () => {
           try {
             await openSavedGame(game);
           } catch (error) {
             list.textContent = `Could not open game: ${error.message}`;
           }
-        });
+        };
+        const titleButton=document.createElement('button');titleButton.type='button';titleButton.className='game-library-title';titleButton.title='Open game';titleButton.setAttribute('aria-label',`Open game: ${game.title}`);titleButton.append(name);titleButton.addEventListener('click',openGame);
         const move = document.createElement('button');
         move.type = 'button';
         move.hidden = ['observed', 'training', 'puzzles'].includes(game.category);
@@ -2652,15 +2999,16 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         remove.className = 'danger';
         remove.textContent = 'Delete';
         remove.addEventListener('click', () => removeGames([game]));
-        actions.append(open, favorite, move, remove);
+        actions.append(favorite, move, remove);
         if(companionVisible()) {
           const transfer=document.createElement('button');transfer.type='button';transfer.textContent=source==='archive'?'Move to Browser':'Move to Archive';
           transfer.onclick=()=>void moveGames([game]);actions.append(transfer);
         }
-        main.append(name, players, result, details);
+        main.append(titleButton, players, result, details);
         const note = startingNoteElement(game, true);
         if (note) main.append(note);
-        main.append(actions);
+        const actionTrigger=createGameActionMenu(actions,game.title);
+        main.append(actionTrigger,actions);
         entry.append(main);
         list.append(entry);
       }

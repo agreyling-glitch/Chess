@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-23T00:00:00-05:00
 description: "Play locally or online, analyze with Stockfish 19, compare Lichess players, practice puzzles, annotate positions, and keep your study library on your device."
 layout: "features"
 url: "/features/"
@@ -18,6 +18,8 @@ The live board stays on the left, with **Moves**, **Prediction**, and **Analysis
 ## Analyze without limits
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
+
+Saved analyses remain separate runs, so you can compare results without replacing earlier work. Replay the engine continuation directly in Move Analysis with a mini player and a rounded outline around the current move. **Try the best move** appears when the engine recommends a different move.
 
 For full-game analysis, choose a **node budget** or **1–60 seconds per position**. Node mode keeps Quick, Standard, Deep and Custom quality choices. Turn **Verify critical moves after analysis** on or off; after the first pass, **Verify critical moves** lets you request the deeper check manually. The analysis button names Stockfish, and the bottom-bar **Engine** button opens its settings. [Analysis budgets and settings](/help/search-depth-and-settings/).
 
@@ -125,7 +127,11 @@ Pause or stop full-game analysis before printing. Choose **Save as PDF** in your
 
 ## Build your library
 
-Saved Games keeps **My Games**, **Training**, **Puzzles**, **Observed**, and **Imported Games** together on this device, with an **All Games** view. Sort by recency or move count to find short and long games. Games with zero moves are excluded. Finished watched games save automatically with their source and analysis progress, so you can reopen them and resume partial analysis. Import a single PGN or choose games from a multi-game PGN collection; search by player, select the games you want, and skip duplicates. Search by player, source, or played date, filter by Not analyzed, Partial, or Complete analysis, mark favorites, and reopen a game with its saved analysis. Games with a Starting note show a two-line preview; click the note to open the initial position. Move or resize the library, maximize it, or click a board preview for a larger view with the full Starting note. The larger viewer identifies White, Black, and the result. Browse with First, Previous, Next, and Last controls or the Left and Right arrow keys. Auto play advances every 0.5 seconds and pauses when you navigate manually. After deleting a game, return to the library with the current filters and window state preserved. Select individual games, a page, or all matching games for deletion or export. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+Saved Games keeps **My Games**, **Training**, **Puzzles**, **Observed**, and **Imported Games** together on this device. Choose a **Category**, expand **Filters**, and search dedicated Player, Source, Date and Opening dropdowns. Opening entries combine ECO codes and opening names; games without opening tags are classified from their moves using the bundled opening dataset. Filter by analysis status, sort by recency or move count, and mark favorites. Click a game title to reopen it, or use its hamburger menu for other actions.
+
+Move, resize or maximize Saved Games, or open it in a separate window. Its size, position and expanded Filters state are remembered, and game cards reflow with the available space. Board Theme and Training Profiles pop-outs also adapt to their window size. Select individual games, a page, or all matching games; **Clear selection** clears every page. A progress bar tracks large exports and disappears when preparation completes. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+
+Click a small board for a larger player with a move table beside it. The current move has a rounded outline, and the list scrolls to keep it visible. Browse with the navigation controls or arrow keys, or use **Play** for automatic playback. Right-click Play to choose **Very Fast (0.5 s)**, **Fast (1 s)**, **Normal (2 s)**, **Slow (3 s)** or **Analysis (5 s)**. The preview remembers your speed. Games with a Starting note show a short preview and retain the full note in the larger player. Deleting a game returns to the library with the current filters and window state preserved.
 
 ## Choose how to import your games
 

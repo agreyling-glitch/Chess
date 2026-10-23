@@ -1,0 +1,4 @@
+Lichess chess-openings (CC0-1.0)
+https://github.com/lichess-org/chess-openings
+Commit: a6189a30dc273ccb21fc2536a9a2fefd5592a67a
+Downloaded: 2026-10-23

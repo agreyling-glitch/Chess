@@ -9,6 +9,7 @@ mod pawn_structure;
 mod mobility;
 mod king_safety;
 mod opening_explorer;
+mod opening_classification;
 mod tablebase;
 mod training;
 mod tactical;
@@ -19,6 +20,10 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub async fn start() -> Result<(), JsValue> {
+    // The library window needs pure PGN/export helpers, without a board or engine.
+    if web_sys::window().is_some_and(|window| window.location().pathname().ok().as_deref()==Some("/saved-games/")) {
+        return Ok(());
+    }
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
     let options = eframe::WebOptions::default();
     let canvas = web_sys::window()

@@ -3,6 +3,7 @@ import { installCompanionFeature } from './companion-feature.js';
 // window functions synchronously, including polls before a tool has loaded.
 export function installDeferredTools(target, loadModule, asset = path => path) {
   install3dCompanion(target);
+  installImportFilePicker(target);
   installCompanionFeature(target);
   const document = target.document;
   const notice = (message, role) => {
@@ -73,7 +74,7 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   archiveExplorer.action('ironwoodOpenArchiveExplorerFilters');
   target.ironwoodArchiveExplorerRefresh = () => {};
   target.ironwoodArchiveExplorerPage = () => {};
-  target.ironwoodArchiveExplorerCopyGame = () => {};
+  target.ironwoodArchiveExplorerPreviewGame = () => {};
   const companionConnection = tool('/companion-connection.js', 'Companion connection');
   companionConnection.action('ironwoodManageCompanionConnection');
   const companionDiagnostics = tool('/companion-diagnostics.js', 'Companion diagnostics');
@@ -509,4 +510,24 @@ export async function startChessApp({
     if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
     return false;
   }
+}
+
+// A file selection only fills the paste field; Continue remains an explicit step.
+export function installImportFilePicker(target) {
+  let result='',selection=0;
+  target.ironwoodPollImportFile=()=>{const value=result;result='';return value;};
+  target.ironwoodBrowseImportFile=()=>{
+    const generation=++selection,input=target.document.createElement('input');
+    input.type='file';input.accept='.pgn,.json,application/x-chess-pgn,application/json';input.hidden=true;
+    input.addEventListener('cancel',()=>input.remove(),{once:true});
+    input.addEventListener('change',async()=>{
+      try {
+        const file=input.files?.[0];if(!file)return;
+        if(file.size>64*1024*1024)throw Error('Choose a PGN or JSON file smaller than 64 MiB.');
+        const text=await file.text();if(generation===selection)result=JSON.stringify({text});
+      }catch(error){if(generation===selection)result=JSON.stringify({error:`Could not read import file: ${error.message}`});}
+      finally{input.remove();}
+    },{once:true});
+    target.document.body.append(input);input.click();
+  };
 }

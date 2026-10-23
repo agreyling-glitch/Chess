@@ -31,6 +31,8 @@ Open the **Analysis** tab. Use **Expand** inside the graph’s upper-right corne
 
 Below the graph, **Summary** contains the game-review details. **Pawn Structure**, **Piece Mobility**, and **King Safety** explore the position and how its patterns change through the game. They work without a completed engine analysis; see [Positional insights](/help/positional-insights/) for controls and how to read each view.
 
+In **Move Analysis**, the mini player below **Engine continuation** steps through the saved best line on the live board. Use First, Previous, Play/Pause, Next and Last without leaving Analysis. Playback defaults to 2 seconds per move and stops at the end. Right-click Play/Pause to choose Very Fast (0.5 seconds), Fast (1 second), Normal (2 seconds), Slow (3 seconds), or Analysis (5 seconds). The speed is shared with the Moves, Prediction and expanded graph players. Leaving the preview restores the played-game position; the game and saved analysis stay unchanged.
+
 ## Expanded graph and position preview
 
 The expanded view includes move navigation, per-position details and notes, capture markers, and a framed board preview. Scroll down to advance a move or up to go back. The preview shows saved drawings and best-move arrows using the main board’s rules. Captured-piece markers always use Merida. See [Expanded game analysis graph](/help/expanded-analysis-graph/) for the full guide.

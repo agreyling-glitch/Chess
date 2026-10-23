@@ -177,21 +177,23 @@ canvas { display:block; }
   box-sizing:border-box; padding:14px; border:1px solid #ffffff19; border-radius:6px;
   background:#0d1116; box-shadow:var(--preview-inset);
 }
-#game-preview-dialog .game-preview-info { margin-bottom:14px; }
+#game-preview-dialog .game-preview-info { position:relative; padding:12px; margin-bottom:14px; }
 #game-preview-dialog .game-preview-info h2 { color:#f1ce83; }
-#game-preview-dialog .game-preview-info p { margin:8px 0 0; }
+#game-preview-dialog .game-preview-info p { margin:6px 0 0; }
 #game-preview-dialog .game-preview-board-tray { width:fit-content; margin:0 auto; }
 #game-preview-dialog .game-library-board { width:min(640px,calc(100vw - 104px),calc(100dvh - 330px)); border-color:#ffffff28; }
-#game-preview-dialog .game-preview-controls { margin:14px 0 0; gap:10px; }
-#game-preview-dialog .game-preview-controls button {
-  min-width:76px; color:#f1ce83; border-color:#816b42; font-weight:600;
-  background:linear-gradient(#414950,#252c33 50%,#222930 51%,#292f35);
-  box-shadow:0 2px 4px #d3ad6230,inset 0 1px #ffffff30;
+/* Match the main Game Moves navigation: five equal 30px gray controls. */
+#game-preview-dialog .game-preview-controls { display:grid; grid-template-columns:repeat(5,minmax(32px,1fr)); margin:14px 0 0; gap:8px; padding:8px; }
+#game-preview-dialog .game-preview-controls button,
+#game-preview-dialog .game-preview-controls button[aria-pressed] {
+  box-sizing:border-box; width:100%; height:30px; min-width:0; padding:2px 0;
+  border:1px solid transparent; border-radius:2px; background:#3c3c3c;
+  color:#b4b4b4; font:400 14px/1 Arial,sans-serif; box-shadow:none;
 }
-#game-preview-dialog .game-preview-controls button[aria-pressed] { min-width:104px; }
-#game-preview-dialog .game-preview-controls button:hover:not(:disabled) { border-color:#e4bd75; box-shadow:0 2px 6px #d3ad6250,inset 0 1px #ffffff40; }
-#game-preview-dialog .game-preview-controls button[aria-pressed="true"] { background:linear-gradient(#f1ce83,#b99652); color:#181b1f; }
-#game-preview-dialog .game-preview-controls button:disabled { box-shadow:none; }
+#game-preview-dialog .game-preview-controls button:hover:not(:disabled) { background:#464646; color:#f0f0f0; border-color:#969696; border-radius:3px; box-shadow:none; }
+#game-preview-dialog .game-preview-controls button:active:not(:disabled) { background:#373737; color:#fff; border-color:#fff; border-radius:2px; }
+#game-preview-dialog .game-preview-controls button:focus-visible { border-color:#fff; outline:none; }
+#game-preview-dialog .game-preview-controls button:disabled { opacity:.5; cursor:default; box-shadow:none; }
 
 /* Shared saved-game and player-profile move viewer metadata. */
 .game-preview-players { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
@@ -236,7 +238,8 @@ canvas { display:block; }
 #analysis-runs-dialog dd {margin:0;overflow-wrap:anywhere;white-space:normal;}
 
 /* Original procedural linen, matching the finer About technology panel weave. */
-#game-library-dialog .game-library-controls {
+#game-library-dialog .game-library-controls,
+#game-preview-dialog .game-preview-controls {
   background-color:#0d1116;
   background-image:url("./linen-texture.png");
   background-repeat:repeat;
@@ -278,7 +281,127 @@ canvas { display:block; }
 }
 #game-library-dialog .game-library-heading { cursor:grab; touch-action:none; user-select:none; }
 #game-library-dialog .game-library-heading.dragging { cursor:grabbing; }
+#game-library-dialog:is(dialog) .game-library-heading .game-library-window-controls button {
+  width:32px; height:32px; padding:0; border:1px solid; border-color:#7a858e #242d34 #171e24 #65717b;
+  border-radius:5px; background:linear-gradient(#48545f,#303b45 48%,#26323c 52%,#303c47); color:#e1e5e8;
+  box-shadow:inset 0 1px 1px #ffffff35,inset 0 -1px 1px #0009,0 2px 2px #0009; font-size:18px;
+}
+#game-library-dialog:is(dialog) .game-library-heading .game-library-window-controls button:hover { filter:brightness(1.18); }
+#game-library-dialog:is(dialog) .game-library-heading .game-library-window-controls button:focus-visible { outline:2px solid #a8b5c0; outline-offset:2px; }
 #game-library-dialog.maximized { left:0!important; top:0!important; right:0!important; bottom:0!important; border-radius:0; }
 #game-library-dialog.maximized .game-library-heading { cursor:default; }
 #game-library-dialog .game-library-notice { flex:none; margin:0 0 10px; color:#e4c98f; font-size:13px; }
 #game-library-dialog .game-library-filters button { padding:6px 9px; border:1px solid #59636c; border-radius:4px; background:linear-gradient(#3c454e,#252e35); color:#eee9dd; cursor:pointer; }
+
+/* Large saved-game preview: board and independent move timeline. */
+#game-preview-dialog .game-preview-body { display:flex; align-items:stretch; gap:14px; }
+#game-preview-dialog .game-preview-body .game-library-board { width:min(640px,calc(100vw - 390px),calc(100dvh - 330px)); }
+#game-preview-dialog .game-preview-moves { box-sizing:border-box; width:240px; flex:none; min-height:0; padding:12px; border:1px solid #0a0d10; border-radius:6px; background:#10151b; box-shadow:var(--preview-inset); display:flex; flex-direction:column; }
+#game-preview-dialog .game-preview-moves h3 { margin:0 0 10px; color:#f1ce83; font-size:16px; }
+#game-preview-dialog .game-preview-move-list { position:relative; flex:1; height:0; min-height:120px; overflow:auto; scrollbar-color:#a88a51 #10151b; }
+#game-preview-dialog .game-preview-move-row { display:grid; grid-template-columns:30px minmax(0,1fr) minmax(0,1fr); align-items:center; gap:6px; margin-bottom:6px; }
+#game-preview-dialog .game-preview-move-number { color:#929a9f; font-size:13px; }
+#game-preview-dialog .game-preview-move { min-width:0; padding:6px 4px; border:1px solid #3b444c; border-radius:6px; background:transparent; color:#ecebe4; font:15px system-ui,sans-serif; cursor:pointer; }
+#game-preview-dialog .game-preview-move.current { border-color:#e5bb6b; color:#f1ce83; box-shadow:0 0 0 1px #e5bb6b; }
+#game-preview-dialog .game-preview-move:hover { border-color:#ad915b; }
+#game-preview-dialog .game-preview-move:focus-visible { outline:2px solid #f1ce83; outline-offset:2px; }
+@media(max-width:700px) {
+  #game-preview-dialog .game-preview-body { flex-direction:column; }
+  #game-preview-dialog .game-preview-body .game-library-board { width:min(640px,calc(100vw - 104px),calc(100dvh - 330px)); }
+  #game-preview-dialog .game-preview-moves { width:100%; height:200px; }
+}
+
+#game-preview-dialog .game-preview-move-heading { color:#b9c0c5; font-size:13px; text-align:center; padding-bottom:6px; border-bottom:1px solid #35404a; }
+
+/* Constrain both preview columns to the board height; long scores scroll inside. */
+#game-preview-dialog .game-preview-body { --preview-board-size:min(640px,calc(100vw - 390px),calc(100dvh - 330px)); height:calc(var(--preview-board-size) + 32px); }
+#game-preview-dialog .game-preview-body .game-library-board { width:var(--preview-board-size); }
+#game-preview-dialog .game-preview-moves { height:100%; overflow:hidden; }
+#game-preview-dialog .game-preview-move-list { min-height:0; }
+@media(max-width:700px) {
+  #game-preview-dialog .game-preview-body { --preview-board-size:min(640px,calc(100vw - 104px),calc(100dvh - 330px)); height:auto; }
+  #game-preview-dialog .game-preview-moves { height:200px; }
+}
+
+#game-preview-dialog .game-preview-speed-menu { position:fixed; z-index:5; min-width:190px; padding:6px; border:1px solid #8d7548; border-radius:6px; background:#1b2229; box-shadow:0 6px 24px #000b; }
+#game-preview-dialog .game-preview-speed-menu[hidden] { display:none; }
+#game-preview-dialog .game-preview-speed-menu button { display:block; width:100%; padding:8px 10px; border:1px solid transparent; border-radius:4px; background:transparent; color:#ecebe4; text-align:left; font:14px system-ui,sans-serif; cursor:pointer; }
+#game-preview-dialog .game-preview-speed-menu button[aria-checked="true"] { background:#075c78; color:white; }
+#game-preview-dialog .game-preview-speed-menu button:is(:hover,:focus-visible) { border-color:#d3ad62; outline:none; background:#34434d; }
+
+/* Bounded player list: large archives never create thousands of option nodes. */
+.library-player-picker { display:inline-block; position:relative; margin-left:6px; vertical-align:middle; }
+#game-library-dialog .game-library-filters .library-player-trigger { min-width:140px; max-width:240px; padding-right:25px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; position:relative; }
+.library-player-trigger::after { content:'▾'; position:absolute; right:8px; }
+.library-player-popup { position:absolute; z-index:20; top:calc(100% + 4px); left:0; width:min(320px,calc(100vw - 80px)); padding:8px; border:1px solid #59636c; border-radius:5px; background:#171e24; box-shadow:0 5px 16px #000b,inset 0 1px #ffffff20; }
+.library-player-popup[hidden],.library-player-empty[hidden] { display:none; }
+#game-library-dialog .game-library-filters .library-player-popup input { box-sizing:border-box; width:100%; margin:0 0 6px; }
+.library-player-options { display:block; height:256px; overflow-y:auto; overscroll-behavior:contain; position:relative; }
+.library-player-spacer { display:block; position:relative; }
+.library-player-option { display:block; position:absolute; left:0; right:0; height:32px; box-sizing:border-box; padding:7px 8px; line-height:18px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; border-radius:3px; }
+.library-player-option:hover,.library-player-option.active { background:#37424b; color:#f1ce83; }
+.library-player-option[aria-selected="true"] { box-shadow:inset 0 0 0 1px #b99b5b; }
+.library-player-empty { display:block; padding:8px; }
+
+.game-export-progress { flex:none; margin:4px 0 12px; padding:12px 14px; border:1px solid #62635c; border-radius:6px; background:linear-gradient(#252d33,#141b20); box-shadow:inset 0 1px #ffffff20,0 2px 4px #0008; }
+.game-export-progress[hidden] { display:none; }
+.game-export-progress p { margin:0 0 9px; color:#efdbaf; font-size:13px; font-variant-numeric:tabular-nums; }
+.game-export-progress-track { height:20px; padding:3px; box-sizing:border-box; border:1px solid #090c0f; border-radius:5px; background:linear-gradient(#080b0e,#20292f); box-shadow:inset 1px 2px 4px #000b,0 1px #ffffff25; overflow:hidden; }
+.game-export-progress-track > span { display:block; height:100%; width:0; box-sizing:border-box; border:1px solid #ddbb70; border-radius:3px; background:linear-gradient(#fff0b8 0%,#dcb963 45%,#b88a35 52%,#e1bb62 100%); box-shadow:inset 0 1px #fff8,0 1px 3px #0009; }
+
+/* Fine grain in the larger player metadata tray. */
+#game-preview-dialog .game-preview-info {
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.12%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat:repeat; background-size:256px 256px;
+}
+#game-preview-dialog .game-preview-info .game-preview-heading { position:absolute; top:12px; right:12px; justify-content:flex-end; }
+#game-preview-dialog .game-preview-info .game-preview-players { margin-top:0; margin-right:46px; }
+
+/* Selection actions sit directly between the two recessed library sections. */
+#game-library-dialog .game-library-selection {
+  box-sizing:border-box; flex:none; padding:2px 0; margin:0 0 12px; gap:8px;
+  border:0; border-radius:0; background:transparent; box-shadow:none;
+}
+#game-library-dialog .game-library-controls { margin-bottom:10px; }
+#game-library-dialog .game-library-controls { display:block; }
+#game-library-dialog .game-library-tabs { display:inline-flex; vertical-align:middle; margin:0 18px 0 0; }
+#game-library-dialog .game-library-tabs label { display:flex; align-items:center; gap:8px; }
+#game-library-dialog .game-library-tabs select { min-width:190px; padding:7px 30px 7px 10px; border:1px solid; border-color:#78838b #20272c #151b20 #606c75; border-radius:4px; color:#eee9dd; background:linear-gradient(#4c5760,#28323a 55%,#202a31); box-shadow:inset 0 1px 1px #ffffff35,0 2px 2px #000b; font:inherit; }
+#game-library-dialog .game-library-tabs option { background:#28323a; color:#eee9dd; }
+#game-library-dialog .game-library-filter-section { display:inline; }
+#game-library-dialog .game-library-filter-section summary { display:inline-block; vertical-align:middle; width:max-content; padding:7px 10px; cursor:pointer; color:#eee9dd; border:1px solid #59636c; border-radius:4px; background:linear-gradient(#3c454e,#252e35); box-shadow:inset 0 1px 1px #ffffff25,0 2px 2px #0009; }
+#game-library-dialog .game-library-filter-section summary::before { content:'▸ '; }
+#game-library-dialog .game-library-filter-section[open] summary::before { content:'▾ '; }
+#game-library-dialog .game-library-filter-section[open] .game-library-filters { display:flex; flex-wrap:wrap; gap:10px 14px; padding-top:12px; }
+#game-library-dialog .game-library-filters .game-library-refresh { width:32px; height:32px; padding:0; font-size:24px; line-height:1; box-shadow:inset 0 1px 1px #ffffff35,0 2px 2px #000b; }
+#game-library-dialog .game-library-filters { margin-bottom:0; }
+#game-library-dialog .game-library-browser { container-type:inline-size; }
+#game-library-dialog .game-library-list { grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr)); }
+#game-library-dialog .game-library-entry { min-width:0; }
+#game-library-dialog .game-library-main { flex:1; }
+#game-library-dialog .game-library-actions { flex-wrap:wrap; }
+#game-library-dialog .game-library-main { position:relative; padding-right:36px; }
+#game-library-dialog .game-library-title { display:block; padding:0; margin:0; border:0; background:none; box-shadow:none; color:inherit; font:inherit; text-align:left; cursor:pointer; }
+#game-library-dialog .game-library-title:hover strong { color:#f1ce83; text-decoration:underline; }
+#game-library-dialog .game-library-title:focus-visible { outline:1px solid #d3ad62; outline-offset:3px; border-radius:2px; }
+#game-library-dialog .game-library-menu-button { position:absolute; top:0; right:0; width:30px; height:30px; padding:0; border:1px solid #59636c; border-radius:4px; background:linear-gradient(#48535c,#252e35); box-shadow:inset 0 1px 1px #ffffff35,0 2px 2px #000a; color:#eee9dd; font-size:20px; cursor:pointer; }
+#game-library-dialog .game-library-action-menu { position:fixed; inset:auto; margin:0; padding:5px; min-width:175px; max-width:calc(100vw - 16px); max-height:calc(100dvh - 16px); overflow:auto; display:flex; flex-direction:column; align-items:stretch; gap:3px; border:1px solid #73808a; border-radius:5px; background:linear-gradient(#303a43,#192129); box-shadow:0 5px 15px #000b,inset 0 1px 0 #ffffff25; z-index:10; }
+#game-library-dialog .game-library-action-menu[hidden] { display:none!important; }
+#game-library-dialog .game-library-action-menu button { width:100%; text-align:left; }
+.saved-games-window #library-loading { padding:24px; color:#e4c98f; }
+.saved-games-window #game-library-dialog.detached[open] {
+  position:fixed; inset:0; margin:0; width:100vw!important; height:100dvh!important; max-width:none; max-height:none;
+  min-width:0; min-height:0; border-radius:0; resize:none; padding:14px;
+}
+.saved-games-window #game-library-dialog .game-library-heading { cursor:default; }
+@container(max-width:520px) {
+  #game-library-dialog .game-library-entry { gap:8px; padding:10px; }
+  #game-library-dialog .game-library-board { width:88px; height:88px; }
+  #game-library-dialog .game-library-filters { gap:8px; }
+  #game-library-dialog .library-player-trigger { max-width:190px; }
+}
+@media(max-width:520px) {
+  #game-library-dialog .game-library-heading { flex-wrap:wrap; }
+  #game-library-dialog .game-library-title-group { flex-wrap:wrap; }
+  .saved-games-window #game-library-dialog.detached[open] { padding:10px; }
+}

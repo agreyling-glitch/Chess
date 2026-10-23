@@ -32,12 +32,12 @@ test('bulk PGN archive imports use bounded paced batches and retain acknowledged
    assert.equal(path,'archive/import');requests.push(body.documents.length);
    if(requests.length===2)throw Error('Archive disconnected');
    assert.equal(body.documents[0].record.custom.keep,'original');
-   return {imported:30,duplicates:2};
+   return {imported:126,duplicates:2};
  });
- const records=Array.from({length:40},(_,i)=>document(i).record);
+ const records=Array.from({length:140},(_,i)=>document(i).record);
  await assert.rejects(store.importBatchRecords(records,(result,count)=>progress.push({result,count})),/disconnected/);
- assert.deepEqual(requests,[32,8]);
- assert.deepEqual(progress,[{result:{imported:30,duplicates:2},count:32}]);
+ assert.deepEqual(requests,[128,12]);
+ assert.deepEqual(progress,[{result:{imported:126,duplicates:2},count:128}]);
 });
 
 test('archive import retries preflight/network failures, respects rate-limit delays and preserves exact documents',async()=>{
@@ -97,7 +97,7 @@ test('archive pages and matching selection fetch summaries only, with filters en
 
 test('bulk export loads only requested full records and splits large responses',async()=>{
  const calls=[];const store=library(async(path,body)=>{calls.push(body.ids);assert.equal(path,'archive/export');if(body.ids.length>2)throw Object.assign(Error('too large'),{status:413});return {documents:body.ids.map(document)};});
- const result=await store.readMany(['a','b','c']);assert.deepEqual(result.map(record=>record.id),['a','b','c']);assert.ok(result.every(record=>record.json));assert.deepEqual(calls,[['a','b','c'],['a','b'],['c']]);
+ const progress=[];const result=await store.readMany(['a','b','c'],(done,total)=>progress.push([done,total]));assert.deepEqual(progress,[[2,3],[3,3]]);assert.deepEqual(result.map(record=>record.id),['a','b','c']);assert.ok(result.every(record=>record.json));assert.deepEqual(calls,[['a','b','c'],['a','b'],['c']]);
 });
 
 
@@ -117,4 +117,27 @@ test('speculative page requests make one attempt and never start rate-limit retr
  let requests=0;
  const store=library(async()=>{requests++;throw Object.assign(Error('busy'),{status:429,retryAfterMs:60000});});
  await assert.rejects(store.page({category:'all',page:1},()=>true,{prefetch:true}),/busy/);assert.equal(requests,1);
+});
+
+test('conversion is incremental and later records are not converted before acknowledgement',async()=>{
+ const records=Array.from({length:260},(_,i)=>document(i).record),original=structuredClone(records);
+ let converted=0,requests=0,yielded=false;
+ setTimeout(()=>{yielded=true;},0);
+ const store=library(async(_path,body)=>{requests++;assert.ok(yielded);assert.equal(converted,Math.min(requests*128,260));return {imported:body.documents.length,duplicates:0};});
+ store.exporter=()=>{converted++;return '1. e4 *';};
+ await store.importBatchRecords(records,()=>{});
+ assert.equal(requests,3);assert.deepEqual(records,original);
+});
+
+test('large selection uses 1000 lightweight rows, reports progress and rejects revision drift',async()=>{
+ const calls=[],progress=[];let drift=false;
+ const store=library(async path=>{const query=new URL(path,'http://local').searchParams;calls.push(query);const page=Number(query.get('page'));return {total:1001,revision:drift&&page?2:1,games:Array.from({length:page?1:1000},(_,i)=>({id:String(page*1000+i),revision:1,title:'Game'}))};});
+ const rows=await store.selection({player:'A'},()=>true,(done,total)=>progress.push([done,total]));
+ assert.equal(calls.length,2);assert.ok(calls.every(q=>q.get('limit')==='1000'&&q.get('player')==='A'));assert.equal(rows.length,1001);assert.deepEqual(progress,[[1000,1001],[1001,1001]]);assert.equal(rows[1000]._archive.id,'1000');
+ drift=true;await assert.rejects(store.selection({}),/changed during selection/);
+});
+test('selection falls back once for older servers and ignores cancelled replies',async()=>{
+ const limits=[];const store=library(async path=>{const query=new URL(path,'http://local').searchParams;limits.push(query.get('limit'));if(query.get('limit')==='1000')throw Object.assign(Error('Invalid filter'),{status:400});return {total:1,games:[{id:'a',revision:1}]};});
+ assert.equal((await store.selection({})).length,1);await store.selection({});assert.deepEqual(limits,['1000','100','100']);
+ let active=true;const cancelled=library(async()=>{active=false;return {total:1,games:[{id:'a',revision:1}]};});await assert.rejects(cancelled.selection({},()=>active),/cancelled/);
 });

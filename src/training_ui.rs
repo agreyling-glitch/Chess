@@ -1015,7 +1015,7 @@ impl ChessApp {
         }
         let mut close = false;
         let mut detached = false;
-        let response = egui::Window::new("Training profiles").id(egui::Id::new("training_profiles"))
+        let mut window = egui::Window::new("Training profiles").id(egui::Id::new("training_profiles"))
             .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(true)
             .default_pos(egui::pos2(48.0,48.0))
             .default_size(Vec2::new(780.0, (ctx.content_rect().height()-96.0).clamp(240.0,800.0)))
@@ -1024,7 +1024,9 @@ impl ChessApp {
             .max_height((ctx.content_rect().height()-40.0).max(200.0))
             .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
                 offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160),
-            })).show(ctx, |ui| {
+            }));
+        if Self::is_training_companion() { window=window.fixed_rect(ctx.content_rect().shrink(8.0)).resizable(false).movable(false); }
+        let response=window.show(ctx, |ui| {
             let grain=ui.painter().add(egui::Shape::Noop);
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));

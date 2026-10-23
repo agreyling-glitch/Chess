@@ -4,7 +4,7 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-23T00:00:00-05:00
 ---
 
 Use **Game → Save current game** to keep the current game, and **Game → Saved games** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
@@ -12,6 +12,8 @@ Use **Game → Save current game** to keep the current game, and **Game → Save
 While signed in to Lichess, loading a saved game does not open the lobby. If you are playing correspondence, Ironwood puts that online game aside and keeps your connection; resume it from **Your ongoing games** later. During a live online game, loading a saved game disconnects online play without resigning on Lichess. Its clock continues. See [Play on Lichess](/help/play-on-lichess/).
 
 Saved games live in this browser's storage on this device. A different browser, private window, or device will not automatically share that library. Clearing browser site data can remove it.
+
+Full-game analyses are saved as separate runs. Use the dropdown beside **Saved Analysis** to switch between engines or settings without replacing previous results. **Manage analyses** lists each run's engine, settings, status and date; deleting selected runs asks for confirmation and keeps the game, notes and other runs. Runs are stored with the Browser game and included in **Backup all data**.
 
 Use [Import Games](/help/import-games/) to paste PGN or Analysis JSON, fetch completed games from Lichess or Chess.com, or enter a scoresheet. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
 
@@ -23,15 +25,15 @@ Games with a Starting note show a short preview in the library. Click that note 
 
 ## Find and select games
 
-Use the category buttons, search field, **Player** filter and **Analysis** filter to narrow the library. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. Export or delete the selected games using the controls above the list. Deletion asks for confirmation.
+Use the **Category** dropdown and expand **Filters** to access the **Player**, **Source**, **Date**, **Opening** and **Analysis** filters to narrow the library. Player, Source, Date and Opening each have a searchable dropdown; type inside it, then select an entry. Opening entries show the ECO code and opening name together, and you can search using either. Dates appear newest first. Source uses the saved import source, or the PGN Site value when no source was saved. Choose **All** to clear a filter or **Unknown** for missing information. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. **Clear selection** unselects games across all pages. Export or delete the selected games using the controls above the list. Click a game title to open it directly; its hamburger menu contains Favorite, Move and Delete actions. Deletion asks for confirmation.
 
-Drag the Saved games title to move the window, drag an edge or corner to resize it, or use the title-bar maximize/restore button. The game list scrolls within the window.
+Drag the Saved games title to move the window, drag an edge or corner to resize it, or use the title-bar maximize/restore button. Choose **Open saved games in a new window** (↗) to browse in a separate window. Your filters and selection carry over, and the game cards adjust to the available width. Saved Games remembers its size and position, as well as whether Filters is expanded. The game list scrolls within the window.
 
 ## Larger board preview
 
 Click a game's small board to open the larger preview. Use **First**, **Previous**, **Next**, and **Last** beneath the board to browse its positions. **Left Arrow** and **Right Arrow** also move backward and forward.
 
-Select **Auto play** to advance one move every **0.5 seconds**. If the preview is already at the final position, autoplay starts from the beginning. **Pause**, a navigation button, or an arrow key stops autoplay. It also stops at the last move and when you close the preview. Previewing does not change the current game.
+Select **Play** to advance one move every **2 seconds** by default. Right-click **Play** to choose a speed; the preview remembers your choice. If the preview is already at the final position, autoplay starts from the beginning. **Pause**, a navigation button, or an arrow key stops autoplay. It also stops at the last move and when you close the preview. Previewing does not change the current game.
 
 After confirming a deletion, you return to Saved Games. Deleting the currently loaded game resets the board and reopens the library with your filters, page, and maximized state preserved.
 
@@ -56,3 +58,5 @@ The **Puzzles** category stores puzzle move history separately from ordinary gam
 ## Storage information
 
 Open **Storage → Storage information** for local record counts and the browser’s reported storage estimate. Drag the title to move the window and its edges or corners to resize it. The record sections scroll inside the gold-bordered window. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.
+
+Use **ECO code** to filter an exact code (for example, `B90`) or a prefix (`B`), and **Opening name** to search part of a name (for example, `Sicilian`). The filters work together with player, category and analysis filters. Games without opening tags are classified from their moves using the deepest recognized opening position, including transpositions. Existing opening tags are preserved; custom starting positions and unrecognized lines can remain unclassified.

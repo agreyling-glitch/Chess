@@ -1,5 +1,7 @@
 # Ironwood release checks
 
+For releases, run `npm run release:prepare` before release checks and committing build artifacts. It refreshes and validates the CC0 opening dataset at one upstream commit, then rebuilds the application. If the refresh fails, resolve it before releasing; do not silently fall back to old data. Routine offline development can still use `npm run build:wasm`.
+
 Always rebuild the browser WASM bundle after application changes with `npm run build:wasm`; a compile check alone is not sufficient.
 
 The production PWA update flow was checked for a previous release. Do not require a recurring PWA test reminder or confirmation before GitHub pushes. Choose validation appropriate to the changes being released.

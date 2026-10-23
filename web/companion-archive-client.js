@@ -17,12 +17,16 @@ export class CompanionArchiveClient {
       headers: { Authorization: `Bearer ${this.credential}`, 'X-Ironwood-Protocol': '1', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       body: body === undefined ? undefined : JSON.stringify(body), credentials: 'omit', cache: 'no-store', redirect: 'error', signal: AbortSignal.timeout(30000),
     });
+    const number=name=>{const raw=response.headers?.get(name);return raw!==null&&raw!==undefined&&/^\d+$/.test(raw)?Number(raw):NaN;};
+    const limit=number('x-ironwood-operations-limit'),remaining=number('x-ironwood-operations-remaining'),reset=number('x-ironwood-operations-reset-ms');
+    this.importBudget=Number.isSafeInteger(limit)&&limit>0&&limit<=1000000&&remaining>=0&&remaining<=limit&&reset>=0&&reset<=60000
+      ? {limit,remaining,resetAt:Date.now()+reset,busy:response.headers?.get('x-ironwood-engine-busy')==='1'} : undefined;
     let value;
     try { value = await response.json(); }
     catch { if (response.ok) throw new Error('Companion returned an invalid response.'); value = {}; }
     if (!response.ok) {
       const error = new Error(value.code === 'conflict' ? `${value.message}. Your changes were not saved.` : value.message || `Companion returned ${response.status}`);
-      error.status = response.status;
+      error.status = response.status; error.code=value.code;
       const retry = response.headers?.get('retry-after');
       if (retry) {
         const milliseconds = /^\d+$/.test(retry) ? Number(retry) * 1000 : Date.parse(retry) - Date.now();

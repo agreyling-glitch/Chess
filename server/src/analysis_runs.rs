@@ -139,9 +139,13 @@ pub fn save(db: &mut Connection, game: &str, id: &str, request: Save) -> Result<
     tx.commit()?;
     Ok(result)
 }
-pub fn merge(db: &Connection, game: &str, runs: &[Run]) -> Result<()> {
+pub struct PreparedRun { id:String,revision:u64,created_at:i64,metadata:String,payload:String }
+pub fn prepare_merge(runs:&[Run]) -> Result<Vec<PreparedRun>> {
+    runs.iter().map(|run|{validate(&run.id,&run.metadata,&run.payload)?;Ok(PreparedRun{id:run.id.clone(),revision:run.revision,created_at:run.created_at,metadata:serde_json::to_string(&run.metadata)?,payload:serde_json::to_string(&run.payload)?})}).collect()
+}
+pub fn merge(db:&Connection,game:&str,runs:&[Run]) -> Result<()> {merge_prepared(db,game,&prepare_merge(runs)?)}
+pub fn merge_prepared(db: &Connection, game: &str, runs: &[PreparedRun]) -> Result<()> {
     for run in runs {
-        validate(&run.id, &run.metadata, &run.payload)?;
         let existing = db
             .query_row(
                 "SELECT metadata,payload FROM analysis_runs WHERE game_id=?1 AND id=?2",
@@ -149,10 +153,10 @@ pub fn merge(db: &Connection, game: &str, runs: &[Run]) -> Result<()> {
                 |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
             )
             .optional()?;
-        let metadata = serde_json::to_string(&run.metadata)?;
-        let payload = serde_json::to_string(&run.payload)?;
+        let metadata = &run.metadata;
+        let payload = &run.payload;
         if let Some((a, b)) = existing {
-            if a != metadata || b != payload {
+            if a != *metadata || b != *payload {
                 return Err(archive::Error(
                     "conflict",
                     "An analysis run ID already has different results",
@@ -184,6 +188,7 @@ mod tests {
         let db = Connection::open_in_memory().unwrap();
         db.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE games(id TEXT PRIMARY KEY,revision INTEGER,created_at INTEGER,updated_at INTEGER,document TEXT,fingerprint TEXT UNIQUE);CREATE TABLE collections(id TEXT PRIMARY KEY,name TEXT,revision INTEGER);CREATE TABLE memberships(collection_id TEXT,game_id TEXT);").unwrap();
         initialize(&db).unwrap();
+        crate::archive_library::initialize(&db).unwrap();
         db
     }
     fn request(engine: &str, score: i32) -> Save {

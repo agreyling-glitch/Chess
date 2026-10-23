@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const preview = source.slice(source.indexOf('async function showGamePreview'), source.indexOf('function confirmDeleteGames'));
-test('preview navigation and 500ms autoplay stop at end and on close', async () => {
+const preview = source.slice(source.indexOf('const PREVIEW_AUTOPLAY_SPEED_KEY'), source.indexOf('function confirmDeleteGames'));
+test('preview navigation and 2-second autoplay stop at end and on close', async () => {
   const { window } = new JSDOM('<button id="trigger">Preview</button>');
   window.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
   window.HTMLDialogElement.prototype.close = function() { this.open = false; this.dispatchEvent(new window.Event('close')); };
@@ -21,9 +21,11 @@ test('preview navigation and 500ms autoplay stop at end and on close', async () 
   assert.equal(dialog.querySelector('.game-preview-player.black').textContent,'BlackBen');
   assert.match(dialog.querySelector('.game-preview-outcome').textContent,/Ben won as Black/);
   const buttons = [...dialog.querySelectorAll('.game-preview-controls button')];
-  buttons[2].click(); assert.equal(interval,500); assert.match(dialog.textContent,/Starting position/);
+  assert.deepEqual(buttons.map(button=>button.textContent),['|◀','◀','Play','▶','▶|']);
+  assert.deepEqual(buttons.map(button=>button.getAttribute('aria-label')),['First','Previous','Play','Next','Last']);
+  buttons[2].click(); assert.equal(interval,2000); assert.match(dialog.textContent,/Starting position/);
   tick(); assert.match(dialog.textContent,/Move 1 of 2/);
-  tick(); assert.match(dialog.textContent,/Move 2 of 2/); assert.equal(buttons[2].textContent,'Auto play');
+  tick(); assert.match(dialog.textContent,/Move 2 of 2/); assert.equal(buttons[2].textContent,'Play');
   assert.equal(cleared,1);
   dialog.dispatchEvent(new window.KeyboardEvent('keydown', {key:'ArrowLeft',bubbles:true,cancelable:true}));
   assert.match(dialog.textContent,/Move 1 of 2/);

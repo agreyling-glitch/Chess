@@ -625,3 +625,16 @@ test('connection restoration errors reach the worker and disabling during load p
   assert.equal(messages.pop().companionError, 'Connect, then Retry connection');
   dom.window.close();
 });
+
+test('Browse fills import text without importing and handles cancel, size and read failures',async()=>{
+ const {installImportFilePicker}=await import('../web/app-bootstrap.js');
+ const {dom,target}=environment();installImportFilePicker(target);
+ dom.window.HTMLInputElement.prototype.click=function(){};
+ target.ironwoodBrowseImportFile();let input=target.document.querySelector('input[type=file]');assert.match(input.accept,/pgn/);
+ Object.defineProperty(input,'files',{value:[{size:25,text:async()=> '1. e4 e5 *'}]});input.dispatchEvent(new dom.window.Event('change'));await flush();
+ assert.deepEqual(JSON.parse(target.ironwoodPollImportFile()),{text:'1. e4 e5 *'});assert.equal(target.ironwoodPollImportFile(),'');assert.equal(input.isConnected,false);
+ target.ironwoodBrowseImportFile();input=target.document.querySelector('input');input.dispatchEvent(new dom.window.Event('cancel'));assert.equal(target.ironwoodPollImportFile(),'');assert.equal(input.isConnected,false);
+ target.ironwoodBrowseImportFile();input=target.document.querySelector('input');Object.defineProperty(input,'files',{value:[{size:65*1024*1024}]});input.dispatchEvent(new dom.window.Event('change'));await flush();assert.match(JSON.parse(target.ironwoodPollImportFile()).error,/64 MiB/);
+ target.ironwoodBrowseImportFile();input=target.document.querySelector('input');Object.defineProperty(input,'files',{value:[{size:1,text:async()=>{throw Error('Unreadable');}}]});input.dispatchEvent(new dom.window.Event('change'));await flush();assert.match(JSON.parse(target.ironwoodPollImportFile()).error,/Unreadable/);
+ dom.window.close();
+});
