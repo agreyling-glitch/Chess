@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 pub const START_RATING: i32 = 1320;
 pub const MAX_TARGET: i32 = 3190;
 pub const K_FACTOR: f64 = 32.0;
+pub const MAIA_MIN_ELO: i32 = 0;
+pub const MAIA_MAX_ELO: i32 = 5000;
 pub const NODE_LEVELS: [u64; 10] = [1, 4, 16, 64, 256, 1024, 4096, 16384, 65536, 262144];
 fn default_level() -> u8 { 1 }
 fn default_elo() -> i32 { START_RATING }
@@ -13,10 +15,14 @@ pub enum TrainingEngine {
     #[default]
     Stockfish,
     Lc0 { identity: String, name: String, #[serde(default)] options: std::collections::BTreeMap<String, String> },
+    Maia3 { identity: String, name: String, #[serde(default)] options: std::collections::BTreeMap<String, String> },
 }
 impl TrainingEngine {
     pub fn is_lc0(&self) -> bool { matches!(self, Self::Lc0 { .. }) }
-    pub fn label(&self) -> &str { match self { Self::Stockfish => "Stockfish", Self::Lc0 { name, .. } => name } }
+    pub fn is_maia3(&self) -> bool { matches!(self, Self::Maia3 { .. }) }
+    pub fn is_companion(&self) -> bool { !matches!(self, Self::Stockfish) }
+    pub fn elo_bounds(&self) -> (i32,i32) { if self.is_maia3() {(MAIA_MIN_ELO,MAIA_MAX_ELO)} else {(START_RATING,MAX_TARGET)} }
+    pub fn label(&self) -> &str { match self { Self::Stockfish => "Stockfish", Self::Lc0 { name, .. } | Self::Maia3 { name, .. } => name } }
 }
 #[cfg(target_arch = "wasm32")]
 pub const STORAGE_KEY: &str = "ironwood.chess.training.v1";
@@ -66,10 +72,11 @@ pub struct Session {
 impl Session {
     pub fn opponent_label(&self) -> String {
         if self.engine.is_lc0() { format!("{} · Level {} · {} nodes", self.engine.label(), self.difficulty_level, self.node_budget) }
-        else { format!("Stockfish {} Elo", self.opponent_elo) }
+        else { format!("{} {} Elo", self.engine.label(), self.opponent_elo) }
     }
     pub fn search_command(&self) -> String {
         if self.engine.is_lc0() { format!("go nodes {}", self.node_budget.max(1)) }
+        else if self.engine.is_maia3() { "go nodes 1".into() }
         else { "go movetime 1000".into() }
     }
 }
@@ -161,7 +168,7 @@ pub struct Profile {
 impl Profile {
     pub fn initial_rating(&self) -> i32 {
         if self.engine.is_lc0() { self.starting_level.clamp(1, NODE_LEVELS.len() as u8) as i32 }
-        else { self.starting_elo.clamp(START_RATING, MAX_TARGET) }
+        else { let (min,max)=self.engine.elo_bounds(); self.starting_elo.clamp(min,max) }
     }
     pub fn rating(&self, side: Side) -> i32 {
         self.results
@@ -181,7 +188,8 @@ impl Profile {
             .unwrap_or(Side::White)
     }
     pub fn target(&self, side: Side) -> i32 {
-        self.rating(side).clamp(START_RATING, MAX_TARGET)
+        let (min,max)=self.engine.elo_bounds();
+        self.rating(side).clamp(min,max)
     }
     pub fn session(&self, id: String, started_at: String) -> Session {
         let side = self.next_side();
@@ -225,7 +233,10 @@ impl Profile {
             / (1.0 + 10.0_f64.powf((session.opponent_elo - settled.rating_before) as f64 / 400.0));
         settled.rating_after = Some(if self.engine.is_lc0() {
             (settled.rating_before + if score == 1.0 { 1 } else if score == 0.0 { -1 } else { 0 }).clamp(1, NODE_LEVELS.len() as i32)
-        } else { settled.rating_before + (K_FACTOR * (score - expected)).round() as i32 });
+        } else {
+            let next=settled.rating_before + (K_FACTOR * (score - expected)).round() as i32;
+            if self.engine.is_maia3() {let (min,max)=self.engine.elo_bounds();next.clamp(min,max)} else {next}
+        });
         settled.completed_at = Some(completed_at);
         self.results.push(ResultEntry {
             session: settled,
@@ -308,6 +319,28 @@ impl Profiles {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn maia_profile(elo:i32)->Profile {
+        Profile{engine:TrainingEngine::Maia3{identity:"http://localhost:8790/maia".into(),name:"Maia3 79M".into(),options:std::collections::BTreeMap::from([("Temperature".into(),"0".into())])},starting_elo:elo,..profile()}
+    }
+    #[test]
+    fn maia_progression_is_color_specific_bounded_and_settled_once() {
+        let mut p=maia_profile(800);
+        let white=p.session("white".into(),"now".into());
+        assert_eq!(white.opponent_elo,800);assert_eq!(white.search_command(),"go nodes 1");assert!(white.opponent_label().contains("Maia3 79M 800 Elo"));
+        assert!(p.settle(&white,"1-0","later".into(),false));assert!(!p.settle(&white,"1-0","later".into(),false));
+        assert_eq!(p.rating(Side::White),816);assert_eq!(p.rating(Side::Black),800);assert_eq!(p.overall(),800);
+        let black=p.session("black".into(),"now".into());assert_eq!(black.side,Side::Black);assert_eq!(black.opponent_elo,800);
+        assert!(p.settle(&black,"1-0","later".into(),true));assert_eq!(p.rating(Side::Black),784);
+        let draw=p.session("draw".into(),"now".into());assert_eq!(draw.opponent_elo,816);assert!(p.settle(&draw,"1/2-1/2","later".into(),false));assert_eq!(p.rating(Side::White),816);
+        let restored:Profile=serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(restored.engine,p.engine);assert_eq!(restored.target(Side::Black),784);assert_eq!(restored.results.len(),3);
+        let mut restored=restored;assert!(!restored.settle(&draw,"1/2-1/2","later".into(),false));
+        assert_eq!(serde_json::to_value(&restored.engine).unwrap()["kind"],"maia3");
+        for (start,result,expected) in [(0,"0-1",0),(5000,"1-0",5000),(-20,"1/2-1/2",0),(6000,"1/2-1/2",5000)] {
+            let mut p=maia_profile(start);let session=p.session("edge".into(),"now".into());p.settle(&session,result,"later".into(),false);assert_eq!(p.rating(Side::White),expected);
+        }
+        assert!(!p.settle(&profile().session("foreign".into(),"now".into()),"1-0","later".into(),false));
+    }
     fn lc0_profile() -> Profile {
         Profile {engine:TrainingEngine::Lc0 {identity:"http://localhost:8790/lc0".into(),name:"Lc0".into(),options:Default::default()},starting_level:3,..profile()}
     }

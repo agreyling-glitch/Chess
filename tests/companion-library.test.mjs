@@ -87,10 +87,10 @@ test('archive pages and matching selection fetch summaries only, with filters en
  const requests=[];
  const store=library(async(path,body)=>{
    requests.push({path,body});const url=new URL('http://local/'+path);assert.equal(url.pathname,'/archive/library');
-   assert.equal(url.searchParams.get('player'),'A & B');assert.equal(url.searchParams.get('search'),'é4');
+   assert.equal(url.searchParams.get('player'),'A & B');assert.equal(url.searchParams.get('search'),'é4');assert.equal(url.searchParams.get('special'),'short-games');
    return {games:[{id:'id',revision:3,title:'A & B vs Opponent'}],total:1,page:0,counts:{all:1},players:['A & B'],profiles:[]};
  });
- const filters={category:'all',player:'A & B',search:'é4',sort:'recent',page:0};
+ const filters={category:'all',player:'A & B',search:'é4',special:'short-games',sort:'recent',page:0};
  const page=await store.page(filters);assert.equal(page.games[0]._archive.revision,3);assert.equal(page.games[0].json,undefined);
  const selected=await store.selection(filters);assert.equal(selected[0].id,'id');assert.equal(requests.length,2);assert.ok(requests.every(request=>request.body===undefined));
 });

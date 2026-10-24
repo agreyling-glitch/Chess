@@ -17,6 +17,8 @@ pub fn initialize(db: &Connection) -> rusqlite::Result<()> {
     CREATE TABLE IF NOT EXISTS explorer_games(game_id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,revision INTEGER NOT NULL,status TEXT NOT NULL,white TEXT,black TEXT,white_key TEXT,black_key TEXT,played_date TEXT,white_elo INTEGER,black_elo INTEGER,result TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS explorer_positions(game_id TEXT NOT NULL REFERENCES games(id) ON DELETE CASCADE,position TEXT NOT NULL,uci TEXT NOT NULL,san TEXT NOT NULL,PRIMARY KEY(game_id,position,uci)) WITHOUT ROWID;
     CREATE INDEX IF NOT EXISTS explorer_lookup ON explorer_positions(position,uci,game_id);
+    CREATE INDEX IF NOT EXISTS explorer_status_counts ON explorer_games(status,game_id,revision);
+    CREATE INDEX IF NOT EXISTS explorer_game_revision ON games(id,revision);
     CREATE TABLE IF NOT EXISTS explorer_queue(game_id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE);
     CREATE TRIGGER IF NOT EXISTS explorer_game_insert AFTER INSERT ON games BEGIN UPDATE explorer_state SET generation=generation+1; INSERT OR IGNORE INTO explorer_queue VALUES(NEW.id); END;
     CREATE TRIGGER IF NOT EXISTS explorer_game_update AFTER UPDATE ON games BEGIN UPDATE explorer_state SET generation=generation+1; INSERT OR IGNORE INTO explorer_queue VALUES(NEW.id); END;
@@ -496,6 +498,14 @@ mod tests {
         crate::analysis_runs::initialize(&db).unwrap();
         crate::archive_library::initialize(&db).unwrap();
         db
+    }
+    #[test]
+    fn status_counts_use_covering_indexes_without_reading_documents() {
+        let db=database();
+        let plan=db.prepare("EXPLAIN QUERY PLAN SELECT i.status,count(*) FROM explorer_games i JOIN games g ON g.id=i.game_id AND g.revision=i.revision GROUP BY i.status").unwrap()
+            .query_map([],|row|row.get::<_,String>(3)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap().join(" ");
+        assert!(plan.contains("COVERING INDEX explorer_status_counts"),"{plan}");
+        assert!(plan.contains("COVERING INDEX explorer_game_revision"),"{plan}");
     }
     fn add(db: &mut Connection, pgn: &str) -> String {
         let docs = crate::archive_pgn::documents(pgn).unwrap();

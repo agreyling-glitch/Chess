@@ -90,7 +90,91 @@ impl UciOption {
         }
     }
 }
+// Discover rating controls from the selected engine, rather than its display name.
+#[derive(Clone)]
+pub(super) struct EloControl {
+    options: Vec<UciOption>,
+    toggle: Option<UciOption>,
+    pub min: u32,
+    pub max: u32,
+    pub value: u32,
+    pub limited: bool,
+}
+impl EloControl {
+    fn discover(options: &[UciOption], values: &std::collections::BTreeMap<String,String>) -> Option<Self> {
+        let primary=options.iter().find(|o|o.name=="Elo" && o.kind=="spin")
+            .or_else(||options.iter().find(|o|o.name=="UCI_Elo" && o.kind=="spin"))?;
+        let mut ratings=vec![primary.clone()];
+        if primary.name=="Elo" {
+            for name in ["SelfElo","OppoElo"] {
+                if let Some(option)=options.iter().find(|o|o.name==name && o.kind=="spin") {ratings.push(option.clone());}
+            }
+        }
+        let min=ratings.iter().map(|o|o.min.unwrap_or(0).max(0)).max()?;
+        let max=ratings.iter().map(|o|o.max.unwrap_or(5000).min(u32::MAX as i64)).min()?;
+        if min>max {return None;}
+        let toggle=(primary.name=="UCI_Elo").then(||options.iter().find(|o|o.name=="UCI_LimitStrength" && o.kind=="check").cloned()).flatten();
+        let current=if primary.name=="Elo" {values.get("SelfElo").or_else(||values.get(&primary.name))} else {values.get(&primary.name)};
+        let value=current.unwrap_or(&primary.default).parse::<i64>().unwrap_or(1500).clamp(min,max) as u32;
+        let limited=toggle.as_ref().is_none_or(|o|values.get(&o.name).unwrap_or(&o.default)=="true");
+        Some(Self{options:ratings,toggle,min:min as u32,max:max as u32,value,limited})
+    }
+    fn write(&self, values:&mut std::collections::BTreeMap<String,String>, elo:u32, limited:bool) {
+        let elo=elo.clamp(self.min,self.max).to_string();
+        for option in &self.options {values.insert(option.name.clone(),elo.clone());}
+        if let Some(option)=&self.toggle {values.insert(option.name.clone(),limited.to_string());}
+    }
+    pub(super) fn ui(&self, ui:&mut egui::Ui, elo:&mut u32, limited:&mut bool)->bool {
+        ui.scope(|ui| {
+            ui.spacing_mut().slider_width=(ui.available_width()-if self.toggle.is_some() {240.0} else {80.0}).clamp(60.0,280.0);
+            let mut changed=false;
+            if self.toggle.is_some() {changed|=ui.checkbox(limited,"Limit to Elo rating").changed();}
+            else {*limited=true;}
+            *elo=(*elo).clamp(self.min,self.max);
+            changed|=ui.add_enabled(*limited,egui::Slider::new(elo,self.min..=self.max).suffix(" Elo")).changed();
+            changed
+        }).inner
+    }
+}
+
 impl ChessApp {
+    pub(super) fn companion_elo_control(&self,config:&EngineConfig)->Option<EloControl> {
+        if config.opponent!=OpponentEngine::Companion {return None;}
+        EloControl::discover(self.engine_uci_catalog.get(&Self::verification_engine_key(config))?,&config.companion_options)
+    }
+    pub(super) fn prepare_new_game_strength(&mut self) {
+        if let Some(control)=self.companion_elo_control(&self.engine_config) {
+            self.new_game_elo=control.value;
+            self.new_game_limit_strength=control.limited;
+        } else {
+            self.new_game_elo=self.engine_config.elo.clamp(1320,3190);
+            self.new_game_limit_strength=self.engine_config.limit_strength;
+        }
+    }
+    pub(super) fn apply_new_game_strength(&mut self) {
+        if self.engine_config.opponent==OpponentEngine::Stockfish {
+            self.engine_config.limit_strength=self.new_game_limit_strength;
+            self.engine_config.elo=self.new_game_elo.clamp(1320,3190);
+        } else if let Some(control)=self.companion_elo_control(&self.engine_config) {
+            let key=Self::verification_engine_key(&self.engine_config);
+            // UCI options are remembered by engine identity, just as in Engine options.
+            for config in [&mut self.engine_config,&mut self.analysis_config,&mut self.strength_draft,&mut self.analysis_draft] {
+                if Self::verification_engine_key(config)==key {control.write(&mut config.companion_options,self.new_game_elo,self.new_game_limit_strength);}
+            }
+            self.engine_uci_preferences.insert(key,self.engine_config.companion_options.clone());
+        }
+        self.strength_draft=self.engine_config.clone();
+    }
+    pub(super) fn companion_play_elo_ui(&mut self,ui:&mut egui::Ui) {
+        let mut config=self.strength_draft.clone();
+        config.companion_options=self.uci_draft_values.clone();
+        if let Some(control)=self.companion_elo_control(&config) {
+            let (mut elo,mut limited)=(control.value,control.limited);
+            if control.ui(ui,&mut elo,&mut limited) {control.write(&mut self.uci_draft_values,elo,limited);}
+        } else {
+            ui.label(if self.engine_uci_catalog.contains_key(&Self::verification_engine_key(&config)) {"This engine does not advertise an Elo setting."} else {"Connect the engine to load its Elo settings."});
+        }
+    }
     pub(super) fn prepare_uci_settings(&mut self) {
         self.uci_settings_error.clear();
         let key = Self::verification_engine_key(&self.analysis_config);
@@ -306,6 +390,62 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn maia_options()->Vec<UciOption> {
+        ["option name Elo type spin default 1500 min 0 max 5000",
+         "option name SelfElo type spin default 1500 min 0 max 5000",
+         "option name OppoElo type spin default 1500 min 0 max 5000"]
+         .into_iter().map(|line|parse_option(line).unwrap()).collect()
+    }
+    #[test]
+    fn companion_elo_uses_advertised_ranges_and_supports_standard_limiters() {
+        let options=maia_options();let mut values=std::collections::BTreeMap::new();
+        let control=EloControl::discover(&options,&values).unwrap();
+        assert_eq!((control.min,control.max,control.value,control.limited),(0,5000,1500,true));
+        control.write(&mut values,7000,false);
+        for name in ["Elo","SelfElo","OppoElo"] {assert_eq!(values[name],"5000");}
+        assert!(!values.contains_key("UCI_LimitStrength"));
+        values.insert("SelfElo".into(),"1200".into());
+        assert_eq!(EloControl::discover(&options,&values).unwrap().value,1200);
+        let standard=[parse_option("option name UCI_Elo type spin default 1800 min 1320 max 3190").unwrap(),parse_option("option name UCI_LimitStrength type check default false").unwrap()];
+        let control=EloControl::discover(&standard,&values).unwrap();assert!(!control.limited);
+        control.write(&mut values,800,true);assert_eq!(values["UCI_Elo"],"1320");assert_eq!(values["UCI_LimitStrength"],"true");
+        assert!(EloControl::discover(&[parse_option("option name Threads type spin default 1 min 1 max 8").unwrap()],&values).is_none());
+        assert!(EloControl::discover(&[parse_option("option name Elo type spin default 1 min 100 max 10").unwrap()],&values).is_none());
+    }
+    #[test]
+    fn new_game_companion_rating_is_saved_and_applied_without_stockfish_clamping() {
+        let ctx=eframe::CreationContext::_new_kittest(egui::Context::default());let mut app=ChessApp::new(&ctx);
+        app.engine_config=EngineConfig{opponent:OpponentEngine::Companion,companion_name:"Custom renamed predictor".into(),companion_identity:"local/maia".into(),..Default::default()};
+        app.engine_config.companion_options.insert("Temperature".into(),"0.5".into());
+        app.analysis_config=app.engine_config.clone();
+        let key=ChessApp::verification_engine_key(&app.engine_config);app.engine_uci_catalog.insert(key.clone(),maia_options());
+        app.prepare_new_game_strength();assert_eq!(app.new_game_elo,1500);assert!(app.new_game_limit_strength);
+        let stockfish_elo=app.engine_config.elo;
+        app.new_game_elo=900;app.apply_new_game_strength();
+        assert_eq!(app.engine_config.elo,stockfish_elo);
+        for config in [&app.engine_config,&app.analysis_config,&app.strength_draft] {
+            for name in ["Elo","SelfElo","OppoElo"] {assert_eq!(config.companion_options[name],"900");}
+            assert_eq!(config.companion_options["Temperature"],"0.5");
+        }
+        app.prepare_new_game_strength();assert_eq!(app.new_game_elo,900);
+        let prefs:UserPreferences=serde_json::from_str(&serde_json::to_string(&app.preferences_snapshot()).unwrap()).unwrap();assert_eq!(prefs.engine_uci_preferences[&key]["Elo"],"900");
+        app.engine_config.companion_identity="local/lc0".into();app.engine_config.companion_options.clear();
+        assert!(app.companion_elo_control(&app.engine_config).is_none());
+        app.new_game_elo=1000;app.apply_new_game_strength();assert!(app.engine_config.companion_options.is_empty());
+        app.engine_config.opponent=OpponentEngine::Stockfish;app.apply_new_game_strength();assert_eq!(app.engine_config.elo,1320);
+    }
+    #[test]
+    fn play_rating_edits_reach_the_engine_override_map_only_after_apply() {
+        let ctx=eframe::CreationContext::_new_kittest(egui::Context::default());let mut app=ChessApp::new(&ctx);
+        app.engine_config=EngineConfig{opponent:OpponentEngine::Companion,companion_name:"Maia3".into(),companion_identity:"local/maia".into(),..Default::default()};
+        app.analysis_config=app.engine_config.clone();app.strength_draft=app.engine_config.clone();app.analysis_draft=app.engine_config.clone();
+        let key=ChessApp::verification_engine_key(&app.engine_config);app.engine_uci_catalog.insert(key,maia_options());
+        app.prepare_uci_settings();let control=app.companion_elo_control(&app.strength_draft).unwrap();
+        control.write(&mut app.uci_draft_values,2100,true);
+        assert!(app.engine_config.companion_options.is_empty());
+        assert!(app.apply_uci_settings());assert_eq!(app.engine_config.companion_options["Elo"],"2100");
+        assert_eq!(app.strength_draft.companion_options["SelfElo"],"2100");
+    }
     #[test]
     fn advertised_uci_types_validate_ranges_choices_and_text() {
         let threads = parse_option("option name Threads type spin default 2 min 1 max 8").unwrap();

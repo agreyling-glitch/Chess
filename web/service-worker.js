@@ -53,6 +53,7 @@ const SHELL_URLS = [
   '/analytics.js',
   '/privacy.html',
   '/game-storage.js',
+  '/import-zip.js',
   '/saved-games/',
   '/saved-games-window.js',
   '/library-window-state.js',

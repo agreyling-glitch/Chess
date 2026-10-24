@@ -146,7 +146,7 @@ test('a replacement engine applies its initial resource settings again', () => {
 
 test('production serves patched glue from app assets and WASM from engine origin', async () => {
   const source = readFileSync(new URL('../src/wrangler-worker.js', import.meta.url), 'utf8')
-    .replace('import { connect } from "cloudflare:sockets";', '')
+    .replace('import { connect } from "cloudflare:sockets";', '').replace('export class FicsBridge','class FicsBridge')
     .replace('export default {', 'globalThis.handler = {');
   const upstream = [];
   const assets = [];

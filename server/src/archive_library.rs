@@ -25,7 +25,26 @@ pub fn initialize(db: &Connection) -> Result<()> {
     if !migrated {
         tx.execute_batch("CREATE TABLE library_openings_v1(id INTEGER PRIMARY KEY); INSERT OR IGNORE INTO library_dirty SELECT id FROM games; DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;")?;
     }
+    let needs_filter_statistics:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM sqlite_master WHERE name='library_filter_statistics_v1') OR (SELECT count(*) FROM sqlite_master WHERE type='index' AND name LIKE 'library_filter_%')<9",[],|r|r.get(0))?;
+    // Expression indexes keep the existing card format and older Companion builds compatible.
+    // SQLite maintains these on every insert/update; complete game documents are untouched.
+    for (name, expression) in [
+        ("white", "white"), ("black", "black"), ("favorite", "favorite"),
+        ("profile", "profile"), ("analysis", "analysis"),
+        ("source", SOURCE_VALUE), ("date", DATE_VALUE),
+    ] {
+        tx.execute_batch(&format!("CREATE INDEX IF NOT EXISTS library_filter_{name} ON library_cards(({expression}),updated DESC,id);"))?;
+    }
+    tx.execute_batch(&format!("CREATE INDEX IF NOT EXISTS library_filter_opening ON library_cards(({ECO_VALUE}),({OPENING_VALUE}),updated DESC,id);
+        CREATE INDEX IF NOT EXISTS library_filter_eco_prefix ON library_cards(upper(json_extract(summary,'$.eco')),updated DESC,id);"))?;
+    if needs_filter_statistics {
+        // With real cardinalities SQLite prefers the selective Player/Date/etc.
+        // indexes when a broad category (e.g. Imported Games) is also selected.
+        tx.execute_batch("ANALYZE library_cards; CREATE TABLE IF NOT EXISTS library_filter_statistics_v1(id INTEGER PRIMARY KEY);")?;
+    }
     tx.commit()?;
+    // Refresh stale/missing planner statistics after substantial archive growth.
+    db.execute_batch("PRAGMA optimize=0x10002;")?;
     Ok(())
 }
 
@@ -69,6 +88,8 @@ pub(crate) fn summary_parsed(id:&str,revision:u64,updated:i64,document:&Document
             training["difficulty_level"],
             training["node_budget"]
         )
+    } else if engine_kind=="maia3" {
+        format!("{} {} Elo",training["engine"]["name"].as_str().unwrap_or("Maia3"),training["opponent_elo"])
     } else {
         format!("Stockfish {} Elo", training["opponent_elo"])
     };
@@ -197,6 +218,7 @@ pub struct Filter {
     pub source: String,
     pub date: String,
     pub analysis: String,
+    pub special: String,
     pub eco: String,
     pub opening: String,
     pub opening_choice: String,
@@ -210,6 +232,15 @@ const SOURCE_VALUE: &str = "coalesce(nullif((CASE WHEN trim(coalesce(json_extrac
 const DATE_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.playedAt'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE replace(trim(coalesce(json_extract(summary,'$.playedAt'),'')),'.','-') END";
 const ECO_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.eco'),'')) IN ('?','-') THEN '' ELSE upper(trim(coalesce(json_extract(summary,'$.eco'),''))) END";
 const OPENING_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.opening'),'')) IN ('?','-') THEN '' ELSE trim(coalesce(json_extract(summary,'$.opening'),'')) END";
+fn prefix_end(prefix:&str)->Option<String> {
+    let mut chars:Vec<char>=prefix.chars().collect();
+    while let Some(last)=chars.pop() {
+        let next=if last=='\u{d7ff}' {0xe000} else {last as u32+1};
+        if let Some(next)=char::from_u32(next) {chars.push(next);return Some(chars.into_iter().collect());}
+    }
+    None
+}
+
 pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     if [
         &filter.category,
@@ -225,6 +256,7 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     ]
     .iter()
     .any(|v| v.len() > 256)
+        || !["", "*", "short-games"].contains(&filter.special.as_str())
         || filter.opening_choice.len()>1024
         || filter.limit > if filter.selection { 1000 } else { 100 }
         || filter.page > 10_000_000
@@ -284,20 +316,52 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
             if pair.iter().any(|part|part.len()>256){return Err(invalid("Invalid opening choice"));}
             (1,pair[0].trim().to_uppercase(),pair[1].trim().to_owned())}
     };
-    let where_sql = format!("(?1='' OR (?1='favorites' AND favorite=1) OR category=?1) AND (?2='' OR white=?2 OR black=?2 OR (?2='?' AND (white='Unknown' OR black='Unknown'))) AND (?3='' OR profile=?3) AND (?4='' OR instr(search,?4)>0) AND (?5='' OR analysis=?5) AND (?6='' OR substr(upper(json_extract(summary,'$.eco')),1,length(?6))=?6) AND (?7='' OR instr(lower(json_extract(summary,'$.opening')),?7)>0) AND (?8='' OR ({SOURCE_VALUE})=?8 OR (?8='?' AND ({SOURCE_VALUE})='')) AND (?9='' OR ({DATE_VALUE})=?9 OR (?9='?' AND ({DATE_VALUE})='')) AND (?12=0 OR (?12=1 AND ({ECO_VALUE})=?10 AND ({OPENING_VALUE})=?11) OR (?12=2 AND ({ECO_VALUE})='' AND ({OPENING_VALUE})=''))");
-    let args = params![category, player, profile, search, analysis, eco, opening,source,date,choice_eco,choice_name,choice_mode];
+    // Omit inactive predicates instead of parameterized OR guards: guards prevent
+    // SQLite from seeking the filter indexes even when an exact value is supplied.
+    let mut predicates=Vec::new();
+    let mut args=Vec::<rusqlite::types::Value>::new();
+    let mut bind=|value:&str| {args.push(value.to_owned().into());format!("?{}",args.len())};
+    if filter.special == "short-games" { predicates.push("moves < 4".to_owned()); }
+    if category=="favorites" {predicates.push("favorite=1".to_owned());}
+    else if !category.is_empty() {predicates.push(format!("category={}",bind(category)));}
+    if !player.is_empty() {
+        let param=bind(player);
+        let mut clause=format!("white={param} OR black={param}");
+        if player=="?" {clause.push_str(" OR white='Unknown' OR black='Unknown'");}
+        predicates.push(format!("({clause})"));
+    }
+    if !profile.is_empty() {predicates.push(format!("profile={}",bind(profile)));}
+    if !search.is_empty() {predicates.push(format!("instr(search,{})>0",bind(&search)));}
+    if !analysis.is_empty() {predicates.push(format!("analysis={}",bind(analysis)));}
+    if !eco.is_empty() {
+        // Use a binary prefix range with the original (untrimmed) ECO semantics.
+        if let Some(upper)=prefix_end(&eco) {
+            predicates.push(format!("upper(json_extract(summary,'$.eco'))>={} AND upper(json_extract(summary,'$.eco'))<{}",bind(&eco),bind(&upper)));
+        } else {
+            let param=bind(&eco);
+            predicates.push(format!("substr(upper(json_extract(summary,'$.eco')),1,length({param}))={param}"));
+        }
+    }
+    if !opening.is_empty() {predicates.push(format!("instr(lower(json_extract(summary,'$.opening')), {})>0",bind(&opening)));}
+    if !source.is_empty() {predicates.push(format!("({SOURCE_VALUE})={}",bind(if source=="?" {""} else {source})));}
+    if !date.is_empty() {predicates.push(format!("({DATE_VALUE})={}",bind(if date=="?" {""} else {&date})));}
+    if choice_mode!=0 {
+        predicates.push(format!("({ECO_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_eco})));
+        predicates.push(format!("({OPENING_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_name})));
+    }
+    let where_sql=if predicates.is_empty() {"1".to_owned()} else {predicates.join(" AND ")};
     let revision: u64 = tx.query_row(
         "SELECT revision FROM library_cache_state WHERE id=1",
         [],
         |r| r.get(0),
     )?;
     let count_key = serde_json::to_string(&json!([
-        "total-source-date-v2", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice
+        "total-source-date-v2", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice,filter.special
     ]))?;
     let total = cached(&tx, &count_key, || {
         Ok(json!(tx.query_row(
             &format!("SELECT count(*) FROM library_cards WHERE {where_sql}"),
-            args,
+            rusqlite::params_from_iter(&args),
             |r| r.get::<_, u64>(0)
         )?))
     })?
@@ -308,11 +372,11 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     let mut cards = Vec::new();
     let sql = if filter.selection {
         format!(
-            "SELECT json_object('id',id,'revision',revision,'title',json_extract(summary,'$.title')) FROM library_cards WHERE {where_sql} ORDER BY {order} LIMIT {limit} OFFSET ?13"
+            "SELECT json_object('id',id,'revision',revision,'title',json_extract(summary,'$.title')) FROM library_cards WHERE {where_sql} ORDER BY {order} LIMIT {limit} OFFSET ?{}",args.len()+1
         )
     } else {
         format!(
-            "SELECT summary FROM library_cards WHERE {where_sql} ORDER BY {order} LIMIT {limit} OFFSET ?13"
+            "SELECT summary FROM library_cards WHERE {where_sql} ORDER BY {order} LIMIT {limit} OFFSET ?{}",args.len()+1
         )
     };
     let offset = if filter.selection {
@@ -320,8 +384,9 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     } else {
         page * limit as u64
     };
+    args.push((offset as i64).into());
     for row in tx.prepare(&sql)?.query_map(
-        params![category, player, profile, search, analysis, eco, opening, source,date,choice_eco,choice_name,choice_mode,offset],
+        rusqlite::params_from_iter(&args),
         |r| r.get::<_, String>(0),
     )? {
         cards.push(serde_json::from_str::<Value>(&row?)?);
@@ -387,15 +452,17 @@ fn facets(db: &Connection, category: &str) -> Result<Value> {
             |r| r.get::<_, u64>(0)
         )?),
     );
-    let players=db.prepare("SELECT white FROM library_cards WHERE (?1='' OR (?1='favorites' AND favorite=1) OR category=?1) UNION SELECT black FROM library_cards WHERE (?1='' OR (?1='favorites' AND favorite=1) OR category=?1) ORDER BY 1")?.query_map([category],|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?;
+    let scope=match category {""=>"1", "favorites"=>"favorite=1", _=>"category=?1"};
+    let scope_args=|| rusqlite::params_from_iter(if category.is_empty() || category=="favorites" {None} else {Some(category)});
+    let players=db.prepare(&format!("SELECT white FROM library_cards WHERE {scope} UNION SELECT black FROM library_cards WHERE {scope} ORDER BY 1"))?.query_map(scope_args(),|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?;
     let profiles=db.prepare("SELECT profile,max(json_extract(summary,'$.trainingProfileName')) FROM library_cards WHERE profile<>'' GROUP BY profile ORDER BY 2,1")?.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))?.collect::<std::result::Result<Vec<_>,_>>()?;
     let choices=|expression:&str,descending:bool|->Result<Vec<String>> {
-        let sql=format!("SELECT DISTINCT ({expression}) AS value FROM library_cards WHERE (?1='' OR (?1='favorites' AND favorite=1) OR category=?1) AND ({expression})<>'' ORDER BY value {}",if descending {"DESC"} else {"ASC"});
-        Ok(db.prepare(&sql)?.query_map([category],|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?)
+        let sql=format!("SELECT DISTINCT ({expression}) AS value FROM library_cards WHERE {scope} AND ({expression})<>'' ORDER BY value {}",if descending {"DESC"} else {"ASC"});
+        Ok(db.prepare(&sql)?.query_map(scope_args(),|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?)
     };
     let sources=choices(SOURCE_VALUE,false)?;
     let dates=choices(DATE_VALUE,true)?;
-    let openings=db.prepare(&format!("SELECT DISTINCT ({ECO_VALUE}),({OPENING_VALUE}) FROM library_cards WHERE (?1='' OR (?1='favorites' AND favorite=1) OR category=?1) AND (({ECO_VALUE})<>'' OR ({OPENING_VALUE})<>'') ORDER BY 1,2"))?.query_map([category],|r|Ok(json!({"eco":r.get::<_,String>(0)?,"opening":r.get::<_,String>(1)?})))?.collect::<std::result::Result<Vec<_>,_>>()?;
+    let openings=db.prepare(&format!("SELECT DISTINCT ({ECO_VALUE}),({OPENING_VALUE}) FROM library_cards WHERE {scope} AND (({ECO_VALUE})<>'' OR ({OPENING_VALUE})<>'') ORDER BY 1,2"))?.query_map(scope_args(),|r|Ok(json!({"eco":r.get::<_,String>(0)?,"opening":r.get::<_,String>(1)?})))?.collect::<std::result::Result<Vec<_>,_>>()?;
     Ok(json!({"counts":counts,"players":players,"profiles":profiles,"sources":sources,"dates":dates,"openings":openings}))
 }
 
@@ -410,6 +477,113 @@ mod tests {
         initialize(&db).unwrap();
         db
     }
+    #[test]
+    fn filter_index_migration_is_idempotent_and_preserves_annotations_and_runs() {
+        let mut db=database();
+        let mut doc=document(4);
+        let record=doc.record.as_mut().unwrap();
+        let mut saved:Value=serde_json::from_str(record["json"].as_str().unwrap()).unwrap();
+        saved["move_notes"]=json!(["Keep my starting note","Keep my move note"]);
+        record["json"]=json!(saved.to_string());
+        doc.analysis_runs.push(crate::analysis_runs::Run{id:"saved-run".into(),revision:1,created_at:1,metadata:json!({"engine_name":"Stockfish"}),payload:json!({"game_analysis":[{"score":42}]})});
+        archive::import(&mut db,vec![doc],None).unwrap();
+        let raw:String=db.query_row("SELECT document FROM games",[],|r|r.get(0)).unwrap();
+        let id:String=db.query_row("SELECT id FROM games",[],|r|r.get(0)).unwrap();
+        let runs=serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap();
+        let before=query(&mut db,Filter::default()).unwrap();
+        let indexes=db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'library_filter_%'").unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap();
+        assert_eq!(indexes.len(),9);
+        for name in indexes {db.execute_batch(&format!("DROP INDEX {name}")).unwrap();}
+        initialize(&db).unwrap();initialize(&db).unwrap();
+        assert_eq!(raw,db.query_row("SELECT document FROM games",[],|r|r.get::<_,String>(0)).unwrap());
+        assert_eq!(runs,serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap());
+        assert_eq!(before,query(&mut db,Filter::default()).unwrap());
+        // Rebuilding and replacing a card keeps SQLite's expression indexes current.
+        let mut changed=archive::get(&db,&id).unwrap().document;
+        changed.record.as_mut().unwrap()["source"]=json!("new source");
+        changed.metadata.insert("Date".into(),"2026.10.23".into());
+        changed.metadata.insert("ECO".into(),"C99".into());
+        changed.metadata.insert("Opening".into(),"Changed opening".into());
+        archive::update(&mut db,&id,1,changed).unwrap();
+        assert_eq!(query(&mut db,Filter{source:"new source".into(),date:"2026-10-23".into(),opening_choice:json!(["C99","Changed opening"]).to_string(),..Default::default()}).unwrap()["total"],1);
+        assert_eq!(query(&mut db,Filter{source:"test source".into(),..Default::default()}).unwrap()["total"],0);
+        assert_eq!(runs,serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap());
+        archive::delete(&mut db,&id,2).unwrap();
+        assert_eq!(query(&mut db,Filter{source:"new source".into(),..Default::default()}).unwrap()["total"],0);
+    }
+
+    #[test]
+    fn exact_filter_and_choice_queries_seek_or_cover_indexes() {
+        let db=database();
+        for (condition,expected) in [
+            ("white=?1 OR black=?1".to_owned(),vec!["library_filter_white","library_filter_black"]),
+            ("favorite=?1".to_owned(),vec!["library_filter_favorite"]),
+            ("analysis=?1".to_owned(),vec!["library_filter_analysis"]),
+            ("profile=?1".to_owned(),vec!["library_filter_profile"]),
+            (format!("({SOURCE_VALUE})=?1"),vec!["library_filter_source"]),
+            (format!("({DATE_VALUE})=?1"),vec!["library_filter_date"]),
+            (format!("({ECO_VALUE})=?1 AND ({OPENING_VALUE})=?1"),vec!["library_filter_opening"]),
+            ("upper(json_extract(summary,'$.eco'))>=?1 AND upper(json_extract(summary,'$.eco'))<?1".to_owned(),vec!["library_filter_eco_prefix"]),
+        ] {
+            let plan=db.prepare(&format!("EXPLAIN QUERY PLAN SELECT count(*) FROM library_cards WHERE {condition}")).unwrap().query_map(["test"],|r|r.get::<_,String>(3)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap().join(" ");
+            for name in expected {assert!(plan.contains(name),"{condition}: {plan}");}
+        }
+        for (select,index) in [("white","library_filter_white"),("black","library_filter_black"),(SOURCE_VALUE,"library_filter_source"),(DATE_VALUE,"library_filter_date")] {
+            let plan=db.prepare(&format!("EXPLAIN QUERY PLAN SELECT DISTINCT ({select}) FROM library_cards ORDER BY 1")).unwrap().query_map([],|r|r.get::<_,String>(3)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap().join(" ");
+            assert!(plan.contains(index),"{plan}");assert!(!plan.contains("TEMP B-TREE"),"{plan}");
+        }
+    }
+
+    #[test]
+    fn dynamic_filters_bind_values_and_preserve_prefix_and_unknown_matching() {
+        let mut db=database();
+        let docs=crate::archive_pgn::documents("[White \"?\"]\n[ECO \"B20\"]\n[Opening \"Sicilian\"]\n\n1. e4 c5 *\n\n[Black \"Unknown\"]\n[ECO \"B21\"]\n\n1. e4 c5 *").unwrap();
+        archive::import(&mut db,docs,None).unwrap();
+        assert_eq!(query(&mut db,Filter{player:"?".into(),eco:"b2".into(),..Default::default()}).unwrap()["total"],2);
+        for player in ["' OR 1=1 --","?1", "Unknown' UNION SELECT document FROM games --"] {
+            assert_eq!(query(&mut db,Filter{player:player.into(),..Default::default()}).unwrap()["total"],0);
+        }
+        assert_eq!(prefix_end("B2"),Some("B3".into()));
+        assert_eq!(prefix_end("B\u{10ffff}"),Some("C".into()));
+        assert_eq!(prefix_end("\u{10ffff}"),None);
+    }
+
+    // Run against a disposable, library-only snapshot of a real archive.
+    #[test]
+    #[ignore]
+    fn benchmark_real_library_filters() {
+        let path=std::env::var("IRONWOOD_LIBRARY_BENCH_DB").expect("Set a disposable snapshot path");
+        assert!(path.contains("tmp"), "Never benchmark a live archive");
+        let mut db=Connection::open(path).unwrap();
+        initialize(&db).unwrap();
+        let sample:String=db.query_row("SELECT summary FROM library_cards ORDER BY updated DESC,id LIMIT 1",[],|r|r.get(0)).unwrap();
+        let card:Value=serde_json::from_str(&sample).unwrap();
+        let cases=vec![
+            ("all",json!({})),
+            ("player",json!({"player":card["white"]})),
+            ("source",json!({"source":card["source"].as_str().filter(|v|!v.is_empty()).unwrap_or(card["venue"].as_str().unwrap_or("?"))})),
+            ("date",json!({"date":card["playedAt"]})),
+            ("opening",json!({"opening_choice":serde_json::to_string(&[&card["eco"],&card["opening"]]).unwrap()})),
+            ("combined",json!({"player":card["white"],"date":card["playedAt"],"opening_choice":serde_json::to_string(&[&card["eco"],&card["opening"]]).unwrap()})),
+            ("favorites",json!({"category":"favorites"})),
+            ("analysis",json!({"analysis":"unanalyzed"})),
+            ("deep_page",json!({"page":18000})),
+        ];
+        let mut results=Vec::new();
+        for (name,input) in cases {
+            db.execute("DELETE FROM library_query_cache",[]).unwrap();
+            let mut times=Vec::new();let mut result=Value::Null;
+            for _ in 0..2 {
+                let start=std::time::Instant::now();
+                result=query(&mut db,serde_json::from_value(input.clone()).unwrap()).unwrap();
+                times.push(start.elapsed().as_secs_f64()*1000.0);
+            }
+            results.push(json!({"name":name,"milliseconds":times,"total":result["total"],"games":result["games"],"counts":result["counts"],"players":result["players"],"sources":result["sources"],"dates":result["dates"],"openings":result["openings"]}));
+        }
+        let output=std::env::var("IRONWOOD_LIBRARY_BENCH_OUT").unwrap();
+        std::fs::write(output,serde_json::to_vec_pretty(&results).unwrap()).unwrap();
+        for value in results {println!("{}: {} ms; {} matching",value["name"],value["milliseconds"],value["total"]);}
+    }
     fn document(i: usize) -> Document {
         let mut doc=crate::archive_pgn::documents(&format!("[White \"Player {i}\"]\n[Black \"Opponent\"]\n[Date \"2026.10.20\"]\n[Site \"Test venue\"]\n\n1. e4 {{note}} (1. d4 d5) e5 *")).unwrap().remove(0);
         doc.record = Some(
@@ -417,6 +591,21 @@ mod tests {
             "json":serde_json::to_string(&json!({"board":"8/8/8/8/8/8/8/K6k w - - 0 1","history":[],"live_moves":vec!["e4";i%5+1],"game_analysis":if i%2==0{vec![json!({"score":0});i%5+2]}else{vec![]}})).unwrap()}),
         );
         doc
+    }
+    #[test]
+    fn short_game_special_filter_matches_selection_and_composes_with_category() {
+        let mut db=database();
+        let docs=crate::archive_pgn::documents("[White \"Zero\"]\n\n*\n\n[White \"One\"]\n\n1. e4 *\n\n[White \"Three\"]\n\n1. d4 d5 2. c4 *\n\n[White \"Four\"]\n\n1. e4 e5 2. Nf3 Nc6 *").unwrap();
+        archive::import(&mut db,docs,None).unwrap();
+        assert_eq!(query(&mut db,Filter::default()).unwrap()["total"],4);
+        let short=query(&mut db,Filter{special:"short-games".into(),..Default::default()}).unwrap();
+        assert_eq!(short["total"],3);
+        let selection=query(&mut db,Filter{special:"short-games".into(),selection:true,..Default::default()}).unwrap();
+        assert_eq!(selection["games"].as_array().unwrap().len(),3);
+        let single=query(&mut db,Filter{special:"short-games".into(),player:"Three".into(),category:"imported".into(),..Default::default()}).unwrap();
+        assert_eq!(single["total"],1);
+        assert_eq!(query(&mut db,Filter{special:"short-games".into(),player:"Four".into(),..Default::default()}).unwrap()["total"],0);
+        assert!(query(&mut db,Filter{special:"unknown".into(),..Default::default()}).is_err());
     }
     #[test]
     fn source_date_choices_filtering_and_selection_agree() {
@@ -649,6 +838,19 @@ mod tests {
         );
     }
 
+    #[test]
+    fn maia_training_archive_cards_keep_engine_rating_and_original_documents() {
+        let mut db=database();let mut doc=document(3);
+        let record=doc.record.as_mut().unwrap();let mut saved:Value=serde_json::from_str(record["json"].as_str().unwrap()).unwrap();
+        saved["training"]=json!({"profile_id":"maia-profile","profile_name":"Dad","side":"Black","engine":{"kind":"maia3","name":"Maia3 79M","identity":"http://localhost:8790/maia","options":{"Temperature":"0"}},"opponent_elo":800,"rating_before":800,"rating_after":816});
+        saved["move_notes"]=json!(["Keep this note"]);record["json"]=json!(saved.to_string());
+        let ids=archive::import(&mut db,vec![doc],None).unwrap();let id=ids["ids"][0].as_str().unwrap();
+        let before:String=db.query_row("SELECT document FROM games WHERE id=?1",[id],|r|r.get(0)).unwrap();
+        let result=query(&mut db,Filter{category:"training".into(),profile:"maia-profile".into(),..Default::default()}).unwrap();
+        assert_eq!(result["total"],1);assert_eq!(result["games"][0]["white"],"Maia3 79M 800 Elo");assert_eq!(result["games"][0]["black"],"Dad");
+        assert_eq!(result["games"][0]["trainingEngineKind"],"maia3");assert_eq!(result["games"][0]["ratingAfter"],816);
+        assert_eq!(before,db.query_row("SELECT document FROM games WHERE id=?1",[id],|r|r.get::<_,String>(0)).unwrap());
+    }
     #[test]
     fn training_unknown_players_analysis_and_empty_pages_match_controls() {
         let mut db = database();

@@ -259,7 +259,14 @@ function connect(mode, username = '', password = '') {
   };
   connection.onmessage = event => {
     if (socket !== connection) return;
-    const parsed = parseFicsChunk(buffer, String(event.data));
+    let text=String(event.data);
+    if(text.startsWith('{')) {
+      let envelope;try{envelope=JSON.parse(text);}catch{/* legacy raw text */}
+      if(envelope?.type==='fics-data'&&typeof envelope.data==='string'&&typeof envelope.receipt==='string') {
+        connection.send(JSON.stringify({type:'ack',receipt:envelope.receipt}));text=envelope.data;
+      }
+    }
+    const parsed = parseFicsChunk(buffer, text);
     buffer = parsed.rest;
     for (const line of parsed.lines) handleLine(line);
     handleLoginPrompt(buffer);

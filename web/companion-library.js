@@ -96,7 +96,7 @@ export class ArchiveLibrary {
     this.check();this.libraryFacets ??= new Map();
     const category=filters.category||'all',cached=this.libraryFacets.get(category);
     const query=new URLSearchParams({...filters,limit:10,...(cached?.revision!==undefined?{facets_revision:cached.revision}:{})});
-    for(const key of ['source','date','opening_choice'])if(!query.get(key)||query.get(key)==='*')query.delete(key);
+    for(const key of ['source','date','opening_choice','special'])if(!query.get(key)||query.get(key)==='*')query.delete(key);
     const path=`archive/library?${query}`;
     if(!isActive())throw Error('Archive loading was cancelled.');
     const result=prefetch?await this.request(path):await archiveRequestWithRetry(this,path,undefined,undefined,undefined,isActive);
@@ -114,7 +114,7 @@ export class ArchiveLibrary {
     const games=[],seen=new Set();let total,revision,limit=this.selectionLimit||1000;
     for(let page=0;;page++) {
       const query=new URLSearchParams({...filters,selection:true,page,limit});
-      for(const key of ['source','date','opening_choice'])if(!query.get(key)||query.get(key)==='*')query.delete(key);
+      for(const key of ['source','date','opening_choice','special'])if(!query.get(key)||query.get(key)==='*')query.delete(key);
       let result;
       try {result=await archiveRequestWithRetry(this,`archive/library?${query}`,undefined,undefined,undefined,isActive);}
       catch(error){

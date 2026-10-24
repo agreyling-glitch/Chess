@@ -53,7 +53,12 @@ export default {
         },
       });
     }
-    if (url.pathname === "/fics/socket") return bridgeFics(request);
+    if (url.pathname === "/fics/socket") {
+      const error = validateFicsUpgrade(request);
+      if (error) return error;
+      // One Durable Object owns admission for all edge isolates and all clients.
+      return env.FICS_BRIDGE.get(env.FICS_BRIDGE.idFromName("global")).fetch(request);
+    }
     let response;
 
     if (url.pathname === "/robots.txt") {
@@ -87,24 +92,49 @@ export default {
   },
 };
 
-function bridgeFics(request) {
+function validateFicsUpgrade(request) {
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response("WebSocket required", { status: 426 });
   }
   if (request.headers.get("Origin") !== new URL(request.url).origin) {
     return new Response("Invalid origin", { status: 403 });
   }
+  return null;
+}
+
+export class FicsBridge {
+  constructor() { this.active=new Map();this.attempts=new Map(); }
+  fetch(request) {
+    const error=validateFicsUpgrade(request);if(error)return error;
+    const now=Date.now(),ip=request.headers.get('CF-Connecting-IP')||'unknown';
+    for(const [key,entry] of this.attempts)if(now-entry.start>=60_000)this.attempts.delete(key);
+    const rate=this.attempts.get(ip)||{start:now,count:0};
+    if(this.active.size>=128||[...this.active.values()].filter(value=>value===ip).length>=4||rate.count>=8||(!this.attempts.has(ip)&&this.attempts.size>=4096)) {
+      return new Response('Too many FICS connections. Try again shortly.',{status:429,headers:{'Retry-After':'60'}});
+    }
+    rate.count++;this.attempts.set(ip,rate);
+    const key={};this.active.set(key,ip);
+    return bridgeFics(request,()=>this.active.delete(key));
+  }
+}
+
+function bridgeFics(request, release) {
   let socket;
   try {
     socket = connect({ hostname: "freechess.org", port: 5000 });
   } catch {
+    release();
     return new Response("FICS is unavailable", { status: 502 });
   }
   const [client, server] = Object.values(new WebSocketPair());
   server.accept();
   const writer = socket.writable.getWriter();
   const encoder = new TextEncoder();
-  let pending = Promise.resolve();
+  let pending = Promise.resolve(),queuedBytes=0,unacknowledgedBytes=0;
+  const receipts=new Map();
+  let commandStart=Date.now(),commands=0,frames=0,outputStart=Date.now(),outputBytes=0,totalOutput=0;
+  let lastActivity=Date.now();
+  let loginTimer,idleTimer,lifetimeTimer;
   let closed = false;
   let registeredLoginNameSent = false;
   let registeredPasswordSent = false;
@@ -114,18 +144,38 @@ function bridgeFics(request) {
   const close = () => {
     if (closed) return;
     closed = true;
-    socket.close();
+    clearTimeout(loginTimer);clearInterval(idleTimer);clearTimeout(lifetimeTimer);
+    receipts.clear();unacknowledgedBytes=0;
+    release();
+    try { socket.close(); } catch { /* already closed */ }
     try { server.close(1000, "FICS connection closed"); } catch { /* already closed */ }
   };
+  loginTimer=setTimeout(close,120_000);
+  idleTimer=setInterval(()=>{
+    const oldest=receipts.values().next().value;
+    if(Date.now()-lastActivity>30*60_000||(oldest&&Date.now()-oldest.at>30_000))close();
+  },10_000);
+  lifetimeTimer=setTimeout(close,6*60*60_000);
+  socket.closed?.catch(close);
   server.addEventListener("message", event => {
-    if (typeof event.data !== "string") {
+    if(closed)return;
+    if (typeof event.data !== "string" || event.data.length>1024) {
       close();
       return;
     }
+    const now=Date.now();
+    if(now-commandStart>=10_000){commandStart=now;commands=0;frames=0;}
+    if(++frames>2000){close();return;}
+    lastActivity=now;
     let command = event.data;
     if (command.startsWith('{')) {
       let credential;
       try { credential = JSON.parse(command); } catch { close(); return; }
+      if(credential?.type==='ack') {
+        const entry=typeof credential.receipt==='string'&&receipts.get(credential.receipt);
+        if(!entry){close();return;}
+        unacknowledgedBytes-=entry.bytes;receipts.delete(credential.receipt);return;
+      }
       if (credential?.type === 'command' && sessionReady &&
           typeof credential.value === 'string' && /^[\x20-\x7e]{1,256}$/.test(credential.value)) {
         command = credential.value;
@@ -147,7 +197,16 @@ function bridgeFics(request) {
       }
       registeredLoginNameSent = true;
     }
-    pending = pending.then(() => writer.write(encoder.encode(command + "\n"))).catch(close);
+    if(++commands>120){close();return;}
+    const bytes=encoder.encode(command+"\n");
+    if(queuedBytes+bytes.length>32*1024){close();return;}
+    queuedBytes+=bytes.length;
+    pending=pending.then(async()=>{
+      if(closed)return;
+      let timer;
+      try {await Promise.race([writer.write(bytes),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('Write timeout')),10_000);})]);}
+      finally {clearTimeout(timer);queuedBytes-=bytes.length;}
+    }).catch(close);
   });
   server.addEventListener("close", close);
   server.addEventListener("error", close);
@@ -158,16 +217,24 @@ function bridgeFics(request) {
       while (!closed) {
         const { value, done } = await reader.read();
         if (done) break;
+        const now=Date.now();
+        if(now-outputStart>=1000){outputStart=now;outputBytes=0;}
+        outputBytes+=value.byteLength;totalOutput+=value.byteLength;
+        if(value.byteLength>128*1024||outputBytes>512*1024||totalOutput>256*1024*1024||server.bufferedAmount>1024*1024){close();break;}
+        lastActivity=now;
         const data = decoder.decode(value, { stream: true });
         if (data) {
           serverPromptTail = (serverPromptTail + data.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\r/g, '')).slice(-256);
           if (/password:\s*$/i.test(serverPromptTail)) awaitingPassword = true;
-          if (/fics%\s*$/i.test(serverPromptTail)) sessionReady = true;
-          server.send(data);
+          if (/fics%\s*$/i.test(serverPromptTail)) {sessionReady = true;clearTimeout(loginTimer);}
+          if(unacknowledgedBytes+value.byteLength>512*1024||receipts.size>=256){close();break;}
+          const receipt=crypto.randomUUID();
+          receipts.set(receipt,{bytes:value.byteLength,at:now});unacknowledgedBytes+=value.byteLength;
+          server.send(JSON.stringify({type:'fics-data',data,receipt}));
         }
       }
     } catch (error) {
-      if (!closed) server.send(`\nConnection error: ${String(error)}\n`);
+      if (!closed) {try {server.send("\nFICS connection error. Please reconnect.\n");}catch{/* closed */}}
     } finally {
       close();
     }

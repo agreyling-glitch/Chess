@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const body = source.slice(source.indexOf('    const removeGames = async targets => {') + '    const removeGames = async targets => {'.length, source.indexOf('    const render = () => {'));
+const body = source.slice(source.indexOf('    const removeGames = async targets => {') + '    const removeGames = async targets => {'.length, source.indexOf('    clearFilters.onclick=()=>{'));
 
 test('deleting the active game restores the saved-games view after reset', async () => {
   const session = new Map();
@@ -12,7 +12,7 @@ test('deleting the active game restores the saved-games view after reset', async
   let reloaded = 0;
   const context = vm.createContext({
     deleting:false, operationBusy:false, provider:null, getArchiveActive:()=>null, busy:()=>{}, games, selectedIds:new Set(['test-game']), importedFingerprints:new Set(),
-    category:'training', profileFilter:'profile', playerFilter:'*', sourceFilter:'Lichess',dateFilter:'2026-10-20', ecoFilter:'B20', openingFilter:'Sicilian', analysisFilter:'complete', sortOrder:'moves-asc', page:2,
+    category:'training', profileFilter:'profile', playerFilter:'*', sourceFilter:'Lichess',dateFilter:'2026-10-20', ecoFilter:'B20', openingFilter:'Sicilian', analysisFilter:'complete', specialFilter:'short-games', sortOrder:'moves-asc', page:2,
     ACTIVE_ID_KEY:'active', ACTIVE_ARCHIVE_KEY:'archive', CURRENT_GAME_KEY:'current', ACTIVE_CATEGORY_KEY:'category', LIBRARY_RETURN_KEY:'return',
     localStorage:{getItem:key=>local.get(key),removeItem:key=>local.delete(key)},
     sessionStorage:{setItem:(key,value)=>session.set(key,value)},
@@ -29,7 +29,7 @@ test('deleting the active game restores the saved-games view after reset', async
   assert.equal(restored.category,'training');
   assert.equal(restored.page,2);
   assert.equal(restored.ecoFilter,'B20');assert.equal(restored.openingFilter,'Sicilian');
-  assert.equal(restored.sortOrder,'moves-asc');
+  assert.equal(restored.sortOrder,'moves-asc');assert.equal(restored.specialFilter,'short-games');
   assert.equal(restored.maximized,true);
   let opened;
   const startup = source.slice(source.indexOf("if (typeof document !== 'undefined')", source.indexOf('// Deleting the active game resets')));

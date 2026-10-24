@@ -638,3 +638,25 @@ test('Browse fills import text without importing and handles cancel, size and re
  target.ironwoodBrowseImportFile();input=target.document.querySelector('input');Object.defineProperty(input,'files',{value:[{size:1,text:async()=>{throw Error('Unreadable');}}]});input.dispatchEvent(new dom.window.Event('change'));await flush();assert.match(JSON.parse(target.ironwoodPollImportFile()).error,/Unreadable/);
  dom.window.close();
 });
+
+test('Browse reads a ZIP of PGNs into the paste field and reports archive errors without importing',async()=>{
+ const {installImportFilePicker}=await import('../web/app-bootstrap.js');const {zip}=await import('./helpers/zip-fixture.mjs');
+ const {dom,target}=environment();installImportFilePicker(target);let saves=0;target.ironwoodSaveGame=()=>saves++;
+ const choose=async archive=>{
+  target.ironwoodBrowseImportFile();const input=target.document.querySelector('input[type=file]');assert.match(input.accept,/\.zip/);
+  Object.defineProperty(input,'files',{value:[{name:'games.zip',type:'application/zip',size:archive.length,arrayBuffer:async()=>archive}]});input.dispatchEvent(new dom.window.Event('change'));
+  let result;for(let i=0;i<100&&!result;i++){await new Promise(resolve=>setTimeout(resolve,10));result=target.ironwoodPollImportFile();}assert.ok(result,'ZIP selection must complete');assert.equal(input.isConnected,false);return JSON.parse(result);
+ };
+ const pgn='[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *';assert.deepEqual(await choose(zip([{name:'game.pgn',text:pgn}])),{text:pgn});
+ assert.match((await choose(zip([{name:'readme.txt'}]))).error,/does not contain any PGN/);assert.equal(saves,0);dom.window.close();
+});
+
+test('dropped ZIP bridge shares Browse extraction and rejects damaged archives without saving',async()=>{
+ const {installImportFilePicker}=await import('../web/app-bootstrap.js');const {zip}=await import('./helpers/zip-fixture.mjs');
+ const {dom,target}=environment();installImportFilePicker(target);let saved=0;target.ironwoodSaveGame=()=>saved++;
+ const first='[White "Alice"]\n[Black "Bob"]\n\n1. e4 e5 *',second='[White "Carol"]\n[Black "Dan"]\n\n1. d4 d5 *';
+ assert.equal(await target.ironwoodReadPgnZip(new Uint8Array(zip([{name:'first.pgn',text:first},{name:'folder/second.PGN',text:second}]))),first+'\n\n'+second);
+ await assert.rejects(target.ironwoodReadPgnZip(new Uint8Array([1,2,3])),/damaged/);
+ await assert.rejects(target.ironwoodReadPgnZip(zip([{name:'large.pgn',declaredSize:65*1024*1024}])),/64 MiB/);
+ assert.equal(target.ironwoodPollImportFile(),'');assert.equal(saved,0);dom.window.close();
+});

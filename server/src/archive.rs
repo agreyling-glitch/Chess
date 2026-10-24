@@ -213,6 +213,7 @@ impl Archive {
         tx.prepare("SELECT game_id,id,revision,created_at,metadata,payload FROM analysis_runs LIMIT 0")?;
         tx.commit()?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;")?;
+        initialize_statistics(&connection)?;
         crate::explorer::initialize(&connection)?;
         crate::archive_library::initialize(&connection).map_err(|e| e.1)?;
         crate::archive_library::synchronize(&mut connection).map_err(|e| e.1)?;
@@ -222,6 +223,7 @@ impl Archive {
         })
     }
     /// CPU validation shares admission control, but never acquires the database mutex.
+    pub(crate) fn idle(&self) -> bool { self.slots.available_permits()==4 && self.connection.try_lock().is_ok() }
     pub async fn prepare<T: Send + 'static>(&self, operation: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
         let permit=self.slots.clone().try_acquire_owned().map_err(|_|Error("busy","Archive is busy; retry shortly"))?;
         tokio::task::spawn_blocking(move || {let _permit=permit;operation()}).await
@@ -246,6 +248,12 @@ impl Archive {
         })
         .await
         .map_err(|_| Error("archive_failed", "Archive worker failed"))?
+    }
+    /// A single bounded background queue waits for admission instead of failing a file under foreground load.
+    pub(crate) async fn run_background<T:Send+'static>(&self,operation:impl FnOnce(&mut Connection)->Result<T>+Send+'static)->Result<T>{
+        let permit=self.slots.clone().acquire_owned().await.map_err(|_|Error("busy","Archive is stopping"))?;
+        let connection=self.connection.clone();
+        tokio::task::spawn_blocking(move||{let _permit=permit;let mut db=connection.lock().map_err(|_|Error("archive_failed","Archive lock unavailable"))?;operation(&mut db)}).await.map_err(|_|Error("archive_failed","Archive worker failed"))?
     }
 }
 
@@ -274,6 +282,12 @@ pub fn get_optional(db: &Connection, id: &str) -> Result<Option<Game>> {
         )
         .optional()?)
 }
+const STATS_CATEGORY: &str = "CASE WHEN json_extract(document,'$.record.category')='puzzles' OR json_extract(document,'$.metadata.Event')='Lichess puzzle' THEN 'puzzles' WHEN json_extract(document,'$.metadata.TrainingProfileId') IS NOT NULL OR json_extract(document,'$.record.category')='training' THEN 'training' WHEN json_extract(document,'$.record.category') IN ('mine','observed','imported') THEN json_extract(document,'$.record.category') ELSE 'imported' END";
+fn initialize_statistics(db: &Connection) -> rusqlite::Result<()> {
+    db.execute_batch(&format!("CREATE INDEX IF NOT EXISTS archive_stats_category ON games(({STATS_CATEGORY}));
+        CREATE INDEX IF NOT EXISTS archive_stats_favorites ON games(id) WHERE json_extract(document,'$.record.favorite')=1;"))
+}
+
 /// Archive-local usage; this does not represent free space on the host volume.
 pub fn stats(db: &Connection) -> Result<Value> {
     let games: u64 = db.query_row("SELECT count(*) FROM games", [], |r| r.get(0))?;
@@ -285,7 +299,9 @@ pub fn stats(db: &Connection) -> Result<Value> {
         |r| r.get(0),
     )?;
     let mut categories = serde_json::Map::new();
-    let mut statement = db.prepare("SELECT CASE WHEN json_extract(document,'$.record.category')='puzzles' OR json_extract(document,'$.metadata.Event')='Lichess puzzle' THEN 'puzzles' WHEN json_extract(document,'$.metadata.TrainingProfileId') IS NOT NULL OR json_extract(document,'$.record.category')='training' THEN 'training' WHEN json_extract(document,'$.record.category') IN ('mine','observed','imported') THEN json_extract(document,'$.record.category') ELSE 'imported' END AS category,count(*) FROM games GROUP BY category")?;
+    // These expression/partial indexes preserve legacy category precedence without
+    // fetching or parsing every complete document while holding the archive lock.
+    let mut statement = db.prepare(&format!("SELECT {STATS_CATEGORY} AS category,count(*) FROM games GROUP BY category"))?;
     for row in statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))? {
         let (category, count) = row?;
         categories.insert(category, json!(count));
@@ -354,9 +370,9 @@ pub fn list(db: &Connection, filter: Filter) -> Result<Value> {
     let summaries:Vec<_>=games.into_iter().map(|g|json!({"id":g.id,"revision":g.revision,"created_at":g.created_at,"updated_at":g.updated_at,"metadata":g.document.metadata,"has_record":g.document.record.is_some()})).collect();
     Ok(json!({"games":summaries,"next":next}))
 }
-pub struct PreparedImport { games: Vec<PreparedGame> }
+pub struct PreparedImport { games: Vec<PreparedGame>, discarded: usize }
 struct PreparedGame { id:String,stamp:i64,document:String,fingerprint:String,runs:Vec<crate::analysis_runs::PreparedRun>,card:Value }
-fn prepare_parsed(games:Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<PreparedImport> {
+pub(crate) fn prepare_parsed(games:Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<PreparedImport> {
     let mut prepared=Vec::with_capacity(games.len());
     for (mut doc,parsed) in games {
         doc.validate_fields()?;
@@ -366,7 +382,7 @@ fn prepare_parsed(games:Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<Pr
         let card=crate::archive_library::summary_parsed(&id,1,stamp,&doc,&parsed)?;
         prepared.push(PreparedGame{id,stamp,card,runs,fingerprint,document:serde_json::to_string(&doc)?});
     }
-    Ok(PreparedImport{games:prepared})
+    Ok(PreparedImport{games:prepared,discarded:0})
 }
 pub fn prepare_import(documents:Vec<Document>) -> Result<PreparedImport> {
     if documents.is_empty()||documents.len()>MAX_BATCH{return Err(invalid("Import requires 1 to 1000 games"));}
@@ -374,18 +390,31 @@ pub fn prepare_import(documents:Vec<Document>) -> Result<PreparedImport> {
     for document in documents {let game=document.validated()?;parsed.push((document,game));}
     prepare_parsed(parsed)
 }
+pub(crate) fn prepare_pgn_parsed(games: Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<PreparedImport> {
+    let count = games.len();
+    let games: Vec<_> = games.into_iter().filter(|(_,game)|game.moves >= 4).collect();
+    let discarded = count - games.len();
+    let mut prepared = prepare_parsed(games)?;
+    prepared.discarded = discarded;
+    Ok(prepared)
+}
 pub fn prepare_pgn_import(pgn:&str) -> Result<PreparedImport> {
     let games=crate::archive_pgn::parse(pgn)?.into_iter().map(|game|{
         let document=Document{format:"ironwood-companion-game".into(),version:1,record:None,analysis_runs:Vec::new(),metadata:game.tags.clone(),pgn:game.pgn.clone()};
         (document,game)
     }).collect();
-    prepare_parsed(games)
+    prepare_pgn_parsed(games)
 }
 pub fn import(db:&mut Connection,documents:Vec<Document>,collection:Option<String>) -> Result<Value> {
     commit_import(db,prepare_import(documents)?,collection)
 }
 pub fn commit_import(db:&mut Connection,prepared:PreparedImport,collection:Option<String>) -> Result<Value> {
     let tx = db.transaction()?;
+    let result=commit_import_rows(&tx,prepared,collection)?;
+    tx.commit()?;
+    Ok(result)
+}
+pub(crate) fn commit_import_rows(tx:&Connection,prepared:PreparedImport,collection:Option<String>) -> Result<Value> {
     if let Some(c) = &collection
         && !tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM collections WHERE id=?1)",
@@ -416,7 +445,7 @@ pub fn commit_import(db:&mut Connection,prepared:PreparedImport,collection:Optio
             imported += 1;
             game.id
         };
-        crate::analysis_runs::merge_prepared(&tx,&game_id,&game.runs)?;
+        crate::analysis_runs::merge_prepared(tx,&game_id,&game.runs)?;
         if let Some(c) = &collection {
             let changed = tx.execute(
                 "INSERT OR IGNORE INTO memberships VALUES(?1,?2)",
@@ -431,8 +460,7 @@ pub fn commit_import(db:&mut Connection,prepared:PreparedImport,collection:Optio
         }
         ids.push(game_id);
     }
-    tx.commit()?;
-    Ok(json!({"imported":imported,"duplicates":duplicates,"ids":ids}))
+    Ok(json!({"imported":imported,"duplicates":duplicates,"discarded":prepared.discarded,"ids":ids}))
 }
 pub fn update(db: &mut Connection, id: &str, revision: u64, mut doc: Document) -> Result<Game> {
     doc.validate()?;
@@ -696,20 +724,54 @@ mod tests {
         db.execute_batch("PRAGMA foreign_keys=ON;CREATE TABLE games(id TEXT PRIMARY KEY,revision INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,document TEXT NOT NULL,fingerprint TEXT UNIQUE);CREATE TABLE collections(id TEXT PRIMARY KEY,name TEXT NOT NULL,revision INTEGER NOT NULL);CREATE TABLE memberships(collection_id TEXT REFERENCES collections(id) ON DELETE CASCADE,game_id TEXT REFERENCES games(id) ON DELETE CASCADE,PRIMARY KEY(collection_id,game_id));").unwrap();
         crate::analysis_runs::initialize(&db).unwrap();
         crate::archive_library::initialize(&db).unwrap();
+        initialize_statistics(&db).unwrap();
         db
+    }
+    #[test]
+    fn storage_statistics_indexes_preserve_documents_and_track_category_changes() {
+        let mut db=memory();
+        let mut documents=crate::archive_pgn::documents("[White \"Notes\"]\n\n1. e4 {keep note} e5 *").unwrap();
+        let doc=&mut documents[0];doc.record=Some(json!({"id":"stats-test","category":"mine","favorite":true,"json":json!({"board":"8/8/8/8/8/8/8/K6k w - - 0 1","history":[]}).to_string()}));
+        let result=import(&mut db,documents,None).unwrap();let id=result["ids"][0].as_str().unwrap();
+        let original=get(&db,id).unwrap();
+        initialize_statistics(&db).unwrap();initialize_statistics(&db).unwrap();
+        assert_eq!(serde_json::to_value(&original.document).unwrap(),serde_json::to_value(&get(&db,id).unwrap().document).unwrap());
+        let first=stats(&db).unwrap();assert_eq!(first["games"],1);assert_eq!(first["favorites"],1);assert_eq!(first["categories"]["mine"],1);
+        let mut document=original.document;document.metadata.insert("TrainingProfileId".into(),"metadata-only".into());
+        document.record.as_mut().unwrap()["favorite"]=json!(false);
+        let updated=update(&mut db,id,original.revision,document).unwrap();
+        let second=stats(&db).unwrap();assert_eq!(second["favorites"],0);assert_eq!(second["categories"]["training"],1);
+        let mut document=updated.document;document.metadata.insert("Event".into(),"Lichess puzzle".into());
+        update(&mut db,id,updated.revision,document).unwrap();assert_eq!(stats(&db).unwrap()["categories"]["puzzles"],1);
+        for (sql,index) in [(format!("SELECT {STATS_CATEGORY},count(*) FROM games GROUP BY 1"),"archive_stats_category"),("SELECT count(*) FROM games WHERE json_extract(document,'$.record.favorite')=1".into(),"archive_stats_favorites")] {
+            let plan=db.prepare(&format!("EXPLAIN QUERY PLAN {sql}")).unwrap().query_map([],|row|row.get::<_,String>(3)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap().join(" ");
+            assert!(plan.contains(index),"{plan}");
+        }
+    }
+    #[test]
+    fn pgn_import_discards_short_mainlines_without_affecting_record_transfers() {
+        let mut db=memory();
+        for pgn in ["*", "1. e4 *", "1. e4 e5 *", "1. e4 e5 2. Nf3 *", "1. e4 (1. d4 d5 2. c4 e6) e5 *"] {
+            let result=commit_import(&mut db,prepare_pgn_import(pgn).unwrap(),None).unwrap();
+            assert_eq!(result["discarded"],1);assert_eq!(result["imported"],0);
+        }
+        let result=commit_import(&mut db,prepare_pgn_import("1. e4 e5 2. Nf3 Nc6 *").unwrap(),None).unwrap();
+        assert_eq!(result["discarded"],0);assert_eq!(result["imported"],1);
+        let documents=crate::archive_pgn::documents("1. d4 *").unwrap();
+        assert_eq!(import(&mut db,documents,None).unwrap()["imported"],1,"Saved records still transfer intact");
     }
     #[test]
     fn prepared_pgn_import_reuses_validation_for_library_cards() {
         let mut db=memory();
         crate::archive_pgn::PARSE_COUNT.with(|count|count.set(0));
-        let prepared=prepare_pgn_import("[White \"Cached\"]\n\n1. e4 {keep note} c5 *").unwrap();
+        let prepared=prepare_pgn_import("[White \"Cached\"]\n\n1. e4 {keep note} c5 2. Nf3 Nc6 *").unwrap();
         assert_eq!(crate::archive_pgn::PARSE_COUNT.with(|count|count.get()),1);
         let imported=commit_import(&mut db,prepared,None).unwrap();
         crate::archive_library::synchronize(&mut db).unwrap();
         assert_eq!(crate::archive_pgn::PARSE_COUNT.with(|count|count.get()),1);
         assert_eq!(db.query_row("SELECT count(*) FROM library_dirty",[],|row|row.get::<_,usize>(0)).unwrap(),0);
         let game=get(&db,imported["ids"][0].as_str().unwrap()).unwrap();assert!(game.document.pgn.contains("keep note"));
-        assert_eq!(crate::archive_library::query(&mut db,Default::default()).unwrap()["games"][0]["eco"],"B20");
+        assert_eq!(crate::archive_library::query(&mut db,Default::default()).unwrap()["games"][0]["eco"],"B30");
     }
     #[tokio::test]
     async fn preparation_does_not_hold_database_lock() {

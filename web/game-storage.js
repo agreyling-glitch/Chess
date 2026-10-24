@@ -609,12 +609,12 @@ export async function receiveCompanionDocuments(documents, {returnIds=false} = {
 const trainingNodeLevels = [1,4,16,64,256,1024,4096,16384,65536,262144];
 function trainingEngine(value) {
   if (value == null || value.kind === 'stockfish') return {kind:'stockfish'};
-  if (value.kind !== 'lc0' || typeof value.identity !== 'string' || typeof value.name !== 'string' || !value.name.trim()) throw Error('Invalid training engine');
+  if (!['lc0','maia3'].includes(value.kind) || typeof value.identity !== 'string' || typeof value.name !== 'string' || !value.name.trim()) throw Error('Invalid training engine');
   let address; try { address = new URL(value.identity); } catch { throw Error('Invalid training engine address'); }
   if (!['http:','https:'].includes(address.protocol) || address.username || address.password || address.search || address.hash || address.pathname === '/') throw Error('Invalid training engine address');
   const options = Object.entries(value.options || {}).sort(([a],[b])=>a.localeCompare(b));
   if (options.length > 64 || options.some(([name,text])=>name.length>256 || /[\r\n\0]/.test(name) || typeof text !== 'string' || text.length>4096 || /[\r\n\0]/.test(text))) throw Error('Invalid training engine options');
-  return {kind:'lc0',identity:value.identity,name:value.name,options:Object.fromEntries(options)};
+  return {kind:value.kind,identity:value.identity,name:value.name,options:Object.fromEntries(options)};
 }
 const sameTrainingEngine = (a,b) => JSON.stringify(trainingEngine(a)) === JSON.stringify(trainingEngine(b));
 export function validateTrainingProfiles(value) {
@@ -624,9 +624,10 @@ export function validateTrainingProfiles(value) {
     if (!profile || typeof profile.id !== 'string' || !profile.id || ids.has(profile.id) ||
         typeof profile.name !== 'string' || !profile.name.trim() || !Array.isArray(profile.results)) throw new Error('Invalid training profile');
     ids.add(profile.id);
-    const engine = trainingEngine(profile.engine), lc0 = engine.kind === 'lc0';
+    const engine = trainingEngine(profile.engine), lc0 = engine.kind === 'lc0', maia = engine.kind === 'maia3';
+    const minElo=maia?0:1320,maxElo=maia?5000:3190;
     if (lc0 && (!Number.isInteger(profile.starting_level) || profile.starting_level<1 || profile.starting_level>trainingNodeLevels.length)) throw Error('Invalid starting training level');
-    if (profile.starting_elo != null && (!Number.isInteger(profile.starting_elo) || profile.starting_elo<1320 || profile.starting_elo>3190)) throw Error('Invalid starting training Elo');
+    if (profile.starting_elo != null && (!Number.isInteger(profile.starting_elo) || profile.starting_elo<minElo || profile.starting_elo>maxElo)) throw Error('Invalid starting training Elo');
     const sessions = new Set();
     for (const entry of profile.results) {
       const s = entry?.session;
@@ -635,9 +636,10 @@ export function validateTrainingProfiles(value) {
       if (!s || typeof s.id !== 'string' || !s.id || sessions.has(s.id) || s.profile_id !== profile.id ||
           typeof s.profile_name !== 'string' || !['White','Black'].includes(s.side) ||
           !sameTrainingEngine(profile.engine,s.engine) ||
-          !Number.isInteger(s.opponent_elo) || (lc0 ? s.opponent_elo !== 0 : s.opponent_elo < 1320 || s.opponent_elo > 3190) ||
+          !Number.isInteger(s.opponent_elo) || (lc0 ? s.opponent_elo !== 0 : s.opponent_elo < minElo || s.opponent_elo > maxElo) ||
           (lc0 && (!Number.isInteger(s.difficulty_level) || s.difficulty_level<1 || s.difficulty_level>trainingNodeLevels.length || s.node_budget !== trainingNodeLevels[s.difficulty_level-1])) ||
           (lc0 && (s.rating_before<1 || s.rating_before>trainingNodeLevels.length || s.rating_after<1 || s.rating_after>trainingNodeLevels.length)) ||
+          (maia && (s.rating_before<minElo || s.rating_before>maxElo || s.rating_after<minElo || s.rating_after>maxElo)) ||
           !Number.isInteger(s.rating_before) || !Number.isInteger(s.rating_after) ||
           typeof s.started_at !== 'string' || typeof s.completed_at !== 'string' ||
           !['1-0','0-1','1/2-1/2'].includes(entry.result) || entry.score !== expectedScore || typeof entry.timed_out !== 'boolean') throw new Error('Invalid training result');
@@ -656,7 +658,7 @@ export function mergeTrainingProfiles(current, incoming) {
   for (const p of backup.profiles) {
     let target = result.profiles.find(q => q.id === p.id);
     if (!target) { target = { ...p, results: [] }; result.profiles.push(target); }
-    if (!sameTrainingEngine(target.engine,p.engine) || (target.starting_level || 1)!==(p.starting_level || 1) || (target.starting_elo || 1320)!==(p.starting_elo || 1320)) throw Error('Training profile engine or starting difficulty differs. Import it as a separate profile.');
+    if (!sameTrainingEngine(target.engine,p.engine) || (target.starting_level || 1)!==(p.starting_level || 1) || (target.starting_elo ?? 1320)!==(p.starting_elo ?? 1320)) throw Error('Training profile engine or starting difficulty differs. Import it as a separate profile.');
     for (const entry of p.results) {
       const existing = target.results.find(r => r.session.id === entry.session.id);
       if (!existing) target.results.push(entry);
@@ -664,8 +666,8 @@ export function mergeTrainingProfiles(current, incoming) {
                (existing.analysis?.phases.reduce((n,p) => n+p.moves,0) || 0)) existing.analysis = entry.analysis;
     }
     target.results.sort((a,b) => a.session.completed_at.localeCompare(b.session.completed_at) || a.session.id.localeCompare(b.session.id));
-    const lc0 = trainingEngine(target.engine).kind === 'lc0';
-    const initial = lc0 ? target.starting_level : target.starting_elo || 1320;
+    const kind=trainingEngine(target.engine).kind,lc0=kind==='lc0';
+    const initial = lc0 ? target.starting_level : target.starting_elo ?? 1320;
     const ratings = { White: initial, Black: initial };
     for (const entry of target.results) {
       const s = entry.session;
@@ -673,7 +675,8 @@ export function mergeTrainingProfiles(current, incoming) {
       const expected = 1/(1+10**((s.opponent_elo-s.rating_before)/400));
       const delta = 32*(entry.score-expected);
       // Rust rounds negative half-points away from zero.
-      s.rating_after = lc0 ? Math.max(1,Math.min(trainingNodeLevels.length,s.rating_before+(entry.score===1?1:entry.score===0?-1:0))) : s.rating_before + Math.sign(delta)*Math.round(Math.abs(delta));
+      const next=s.rating_before + Math.sign(delta)*Math.round(Math.abs(delta));
+      s.rating_after = lc0 ? Math.max(1,Math.min(trainingNodeLevels.length,s.rating_before+(entry.score===1?1:entry.score===0?-1:0))) : kind==='maia3' ? Math.max(0,Math.min(5000,next)) : next;
       ratings[s.side] = s.rating_after;
     }
   }
@@ -1494,13 +1497,21 @@ function pgnTag(pgn, name) {
   return pgn?.match(new RegExp(`^\\[${name} "([^"]+)"\\]`, 'm'))?.[1];
 }
 
-function pgnMoveCount(pgn) {
+export function pgnMoveCount(pgn) {
   if (!pgn) return 0;
-  let body = pgn.split(/\r?\n/).filter(line => !line.trimStart().startsWith('[')).join('\n');
-  body = body.replace(/\{[^}]*\}|;[^\n]*/g, ' ');
-  while (/\([^()]*\)/.test(body)) body = body.replace(/\([^()]*\)/g, ' ');
-  return body.replace(/\d+\.(?:\.\.)?/g, ' ').split(/\s+/)
-    .filter(token => token && token !== '...' && !token.startsWith('$') && !['*', '1-0', '0-1', '1/2-1/2'].includes(token)).length;
+  let depth=0,braces=0,lineComment=false,tag=false,lineStart=true,token='',count=0;
+  const flush=()=>{const move=token.replace(/^\d+\.(?:\.\.)?/,'');if(move&&move!=='...'&&!move.startsWith('$')&&!['*','1-0','0-1','1/2-1/2'].includes(move))count++;token='';};
+  for(const ch of pgn) {
+    if(ch==='\n'){lineComment=false;tag=false;lineStart=true;flush();continue;}
+    if(lineComment||tag)continue;
+    if(braces){if(ch==='{')braces++;else if(ch==='}')braces--;continue;}
+    if(lineStart&&ch==='['){tag=true;flush();continue;}
+    if(!/\s/.test(ch))lineStart=false;
+    if(ch==='{'){braces=1;flush();}else if(ch===';'){lineComment=true;flush();}
+    else if(ch==='('){depth++;flush();}else if(ch===')'){depth=Math.max(0,depth-1);flush();}
+    else if(!depth){if(/\s/.test(ch))flush();else if(token.length<4096)token+=ch;}
+  }
+  flush();return count;
 }
 
 const openingCache=new Map();
@@ -1527,7 +1538,7 @@ export function gameDetails(json) {
   const puzzleId = puzzle ? pgnTag(game.review_pgn, 'PuzzleId') : null;
   // Preserve historical opponent names for games saved before the engine was removed.
   const training = game.training;
-  const opponent = training ? training.engine?.kind === 'lc0' ? `${training.engine.name} · Level ${training.difficulty_level} · ${training.node_budget} nodes` : `Stockfish ${training.opponent_elo} Elo` : game.engine_config?.opponent === 'Companion' ? game.engine_config.companion_name || 'Companion engine' : game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
+  const opponent = training ? training.engine?.kind === 'lc0' ? `${training.engine.name} · Level ${training.difficulty_level} · ${training.node_budget} nodes` : training.engine?.kind === 'maia3' ? `${training.engine.name} ${training.opponent_elo} Elo` : `Stockfish ${training.opponent_elo} Elo` : game.engine_config?.opponent === 'Companion' ? game.engine_config.companion_name || 'Companion engine' : game.engine_config?.opponent === 'Lc0' ? 'Lc0 · Good Gyal' : 'Stockfish 19';
   let profileName = training?.profile_name || null;
   if (training?.profile_id) {
     try {
@@ -1583,6 +1594,10 @@ export function sortSavedGames(games, order = 'recent') {
     if (order === 'moves-desc' && moves) return -moves;
     return (b.updatedAt || 0) - (a.updatedAt || 0) || String(a.id).localeCompare(String(b.id));
   });
+}
+
+export function gameMatchesSpecialFilter(game, filter = '*') {
+  return !filter || filter === '*' || filter === 'short-games' && Number.isFinite(game.moves) && game.moves >= 0 && game.moves < 4;
 }
 
 export function gameMatchesCategory(game, category) {
@@ -2457,9 +2472,13 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   controls.className = 'game-library-controls';
   controls.setAttribute('aria-label', 'Find and manage saved games');
   const filterSection=document.createElement('details');filterSection.className='game-library-filter-section';filterSection.open=readWindowState(window,'filters').open===true;
-  const filterSummary=document.createElement('summary');filterSummary.textContent='Filters';filterSection.append(filterSummary,filters);
-  filterSection.addEventListener('toggle',()=>writeWindowState(window,'filters',{open:filterSection.open}));
-  controls.append(tabs, filterSection);
+  const filterSummary=document.createElement('summary');filterSummary.textContent='Filters';filterSection.append(filterSummary);
+  const clearFilters=document.createElement('button');clearFilters.type='button';clearFilters.textContent='Clear filters';clearFilters.className='game-library-clear-filters';clearFilters.hidden=true;
+  filters.hidden=!filterSection.open;
+  filterSection.addEventListener('toggle',()=>{filters.hidden=!filterSection.open;writeWindowState(window,'filters',{open:filterSection.open});});
+  const filterActions=document.createElement('div');filterActions.className='game-library-filter-actions';
+  filterActions.append(filterSection,clearFilters);
+  controls.append(tabs,filterActions,filters);
   const browserContent = document.createElement('div'); browserContent.className = 'game-library-browser'; browserContent.append(controls,selection,list,pager);
   const notice=document.createElement('p');notice.className='game-library-notice';notice.setAttribute('role','status');notice.hidden=true;
   let source='browser', sourceEpoch=0, selectAllEpoch=0, ready=false, operationBusy=false, loadSource=async()=>{}, renderCurrent=()=>{}, saveCurrentView=()=>{};
@@ -2487,7 +2506,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     let archivePage=null, loadedQuery='', requestedQuery='', queryEpoch=0, queryTimer=null;
     const selectedRecords=new Map();
     const remote=()=>Boolean(provider?.page);
-    const query=()=>({category,player:playerFilter,profile:profileFilter,source:sourceFilter,date:dateFilter,opening_choice:ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'',analysis:analysisFilter,sort:sortOrder,page});
+    const query=()=>({category,player:playerFilter,profile:profileFilter,source:sourceFilter,date:dateFilter,opening_choice:ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'',analysis:analysisFilter,special:specialFilter,sort:sortOrder,page});
     const selectedGames=()=>remote()?[...selectedIds].map(id=>selectedRecords.get(id)).filter(Boolean):games.filter(game=>selectedIds.has(game.id));
     let browserLoadedVersion=-1, refreshTimer=null, sourceLoading=true, prefetchTimer=null;
     const cacheKey=key=>`${archiveConnectionVersion}:${provider?.endpoint}:${key}`;
@@ -2546,16 +2565,17 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     let sourceFilter=restore?.sourceFilter||'*',dateFilter=restore?.dateFilter||'*';
     let ecoFilter=restore?.ecoFilter||'',openingFilter=restore?.openingFilter||'';
     let analysisFilter = restore?.analysisFilter || '*';
+    let specialFilter = restore?.specialFilter || '*';
     let sortOrder = restore?.sortOrder || localStorage.getItem('ironwood.chess.library-sort.v1') || 'recent';
     if (!['recent', 'moves-asc', 'moves-desc'].includes(sortOrder)) sortOrder = 'recent';
     let page = Number.isSafeInteger(restore?.page) ? Math.max(0, restore.page) : 0;
     const pageSize = 10;
     const selectedIds = new Set();
-    const initialView=()=>({category:'all',profile:'*',player:'*',source:'*',date:'*',analysis:'*',sort:'recent',page:0});
+    const initialView=()=>({category:'all',profile:'*',player:'*',source:'*',date:'*',analysis:'*',special:'*',sort:'recent',page:0});
     const restoreView=view=>{
       const settings=view?.settings||initialView();
       category=settings.category;profileFilter=settings.profile;playerFilter=settings.player;sourceFilter=settings.source||'*';dateFilter=settings.date||'*';[ecoFilter,openingFilter]=settings.opening_choice==='?'?['?','']:settings.opening_choice?JSON.parse(settings.opening_choice):[settings.eco||'',settings.opening||''];
-      analysisFilter=settings.analysis;sortOrder=settings.sort;page=settings.page;
+      analysisFilter=settings.analysis;specialFilter=settings.special||'*';sortOrder=settings.sort;page=settings.page;
       selectedIds.clear();selectedRecords.clear();
       for(const id of view?.selected||[])selectedIds.add(id);
       for(const record of view?.records||[])selectedRecords.set(record.id,record);
@@ -2639,7 +2659,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           localStorage.removeItem(ACTIVE_ID_KEY);
           localStorage.removeItem(ACTIVE_CATEGORY_KEY);
           if(!window.ironwoodLibraryWindowNavigate)sessionStorage.setItem(LIBRARY_RETURN_KEY, JSON.stringify({
-            category, profileFilter, playerFilter, sourceFilter, dateFilter, ecoFilter, openingFilter, analysisFilter, sortOrder, page,
+            category, profileFilter, playerFilter, sourceFilter, dateFilter, ecoFilter, openingFilter, analysisFilter, specialFilter, sortOrder, page,
             maximized: dialog.classList.contains('maximized'),
           }));
           if(window.ironwoodLibraryWindowNavigate){await refreshGames();window.ironwoodLibraryWindowNavigate(false);}else location.reload();
@@ -2652,7 +2672,13 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         selection.append(message);
       } finally { deleting = false; busy(false); }
     };
+    clearFilters.onclick=()=>{
+      if(operationBusy)return;
+      category='all';playerFilter=profileFilter=sourceFilter=dateFilter=analysisFilter=specialFilter='*';ecoFilter=openingFilter='';
+      selectedIds.clear();selectedRecords.clear();selectAllEpoch++;page=0;render();list.scrollTop=0;
+    };
     const render = () => {
+      clearFilters.hidden=category==='all'&&[playerFilter,profileFilter,sourceFilter,dateFilter,analysisFilter,specialFilter].every(value=>!value||value==='*')&&!ecoFilter&&!openingFilter;
       list.querySelectorAll('.game-library-menu-button[aria-expanded="true"]').forEach(trigger=>trigger.click());
       tabs.replaceChildren();
       const categoryLabel=document.createElement('label');categoryLabel.textContent='Category ';
@@ -2722,6 +2748,14 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       analysisSelect.addEventListener('change', () => { analysisFilter = analysisSelect.value; selectedIds.clear(); page = 0; render(); });
       analysisLabel.append(analysisSelect);
       filters.append(analysisLabel);
+      const specialLabel=document.createElement('label');specialLabel.append('Special filters ');
+      const specialSelect=document.createElement('select');specialSelect.setAttribute('aria-label','Special filters');
+      for(const [value,text] of [['*','None'],['short-games','Fewer than 2 full moves']]) {
+        const option=document.createElement('option');option.value=value;option.textContent=text;specialSelect.append(option);
+      }
+      specialSelect.value=specialFilter;
+      specialSelect.addEventListener('change',()=>{specialFilter=specialSelect.value;selectedIds.clear();selectedRecords.clear();page=0;render();});
+      specialLabel.append(specialSelect);filters.append(specialLabel);
       const sortLabel = document.createElement('label'); sortLabel.textContent = 'Sort ';
       const sortSelect = document.createElement('select'); sortSelect.setAttribute('aria-label', 'Sort saved games');
       for (const [value, text] of [['recent', 'Recently saved'], ['moves-asc', 'Fewest moves first'], ['moves-desc', 'Most moves first']]) {
@@ -2752,7 +2786,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         if(requestedQuery!==key){requestedQuery=key;clearTimeout(queryTimer);queryTimer=setTimeout(()=>void loadArchivePage(key),150);}
         return;
       }
-      const visible = remote()?games:sortSavedGames(games.filter(game => ((!ecoFilter&&!openingFilter)|| (ecoFilter==='?'?!savedGameFilterValue(game.eco)&&!savedGameFilterValue(game.opening):savedGameFilterValue(game.eco).toUpperCase()===ecoFilter&&savedGameFilterValue(game.opening)===openingFilter)) && (sourceFilter==='*'||(sourceFilter==='?'?!savedGameSourceLabel(game):savedGameSourceLabel(game)===sourceFilter)) && (dateFilter==='*'||(dateFilter==='?'?!savedGameFilterValue(game.playedAt,true):savedGameFilterValue(game.playedAt,true)===dateFilter)) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
+      const visible = remote()?games:sortSavedGames(games.filter(game => gameMatchesSpecialFilter(game,specialFilter) && ((!ecoFilter&&!openingFilter)|| (ecoFilter==='?'?!savedGameFilterValue(game.eco)&&!savedGameFilterValue(game.opening):savedGameFilterValue(game.eco).toUpperCase()===ecoFilter&&savedGameFilterValue(game.opening)===openingFilter)) && (sourceFilter==='*'||(sourceFilter==='?'?!savedGameSourceLabel(game):savedGameSourceLabel(game)===sourceFilter)) && (dateFilter==='*'||(dateFilter==='?'?!savedGameFilterValue(game.playedAt,true):savedGameFilterValue(game.playedAt,true)===dateFilter)) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||

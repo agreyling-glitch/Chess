@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import vm from 'node:vm';
-const source=readFileSync(new URL('../src/wrangler-worker.js',import.meta.url),'utf8').replace('import { connect } from "cloudflare:sockets";','').replace('export default','globalThis.worker =');
+const source=readFileSync(new URL('../src/wrangler-worker.js',import.meta.url),'utf8').replace('import { connect } from "cloudflare:sockets";','').replace('export class FicsBridge','class FicsBridge').replace('export default','globalThis.worker =');
 function fixture(reply=()=>new Response('engine bytes')){
  const calls=[],local=[];const context=vm.createContext({URL,Request,Response,Headers,fetch:async request=>{calls.push(request);return reply(request);},connect:()=>assert.fail('engine requests must not create FICS connections')});vm.runInContext(source,context);
  const env={ENGINE_ORIGIN:'https://engine.example',ASSETS:{fetch:async request=>{local.push(request);return new Response('local asset');}}};

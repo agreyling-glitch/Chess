@@ -138,3 +138,35 @@ test('repeated profile imports deduplicate saved game sessions and remap unrelat
   assert.equal(JSON.parse(imported[0].json).training.id,'h');
   assert.equal(newTrainingGames([...existing,...imported],[saved('original','p','h')]).length,0);
 });
+
+
+test('Maia3 profile backups preserve low Elo, color progress, engine options and saved game labels',()=>{
+  const engine={kind:'maia3',identity:'http://localhost:8790/maia3',name:'Maia3 79M (GPU)',options:{Temperature:'0',Elo:'1500'}};
+  const make=(id,side='White',start=800,win=true)=>{
+    const entry=result(id,side);Object.assign(entry.session,{engine,node_budget:0,difficulty_level:0,opponent_elo:start,rating_before:start,rating_after:start+(win?16:-16)});
+    if(!win){entry.result=side==='White'?'0-1':'1-0';entry.score=0;}return entry;
+  };
+  const a={selected_id:'p',profiles:[{id:'p',name:'Maia practice',engine,starting_elo:800,starting_level:1,results:[make('01-white'),make('02-black','Black',800,false)]}]};
+  assert.deepEqual(validateTrainingProfiles(a),a);
+  const bundle=buildTrainingProfileExport(a,[],['p']);assert.deepEqual(validateTrainingProfileImport(bundle).trainingProfiles,a);
+  const b=structuredClone(a);b.profiles[0].results=[make('03-next','White',816)];
+  const merged=mergeTrainingProfiles(a,b);assert.deepEqual(merged.profiles[0].results.map(e=>e.session.rating_after),[816,784,832]);
+  assert.equal(mergeTrainingProfiles(merged,b).profiles[0].results.length,3);
+  const game=gameDetails(JSON.stringify({board:'start',player_side:'White',training:a.profiles[0].results[0].session}));
+  assert.equal(game.black,'Maia3 79M (GPU) 800 Elo');assert.equal(game.trainingEngineKind,'maia3');
+  assert.equal(game.category,'training');
+  const zero={selected_id:'p',profiles:[{...a.profiles[0],starting_elo:0,results:[]}]};assert.equal(mergeTrainingProfiles(zero,zero).profiles[0].starting_elo,0);
+  const wrong=structuredClone(a);wrong.profiles[0].results[0].session.opponent_elo=5001;assert.throws(()=>validateTrainingProfiles(wrong),/Invalid training result/);
+  wrong.profiles[0].results=[];wrong.profiles[0].starting_elo=-1;assert.throws(()=>validateTrainingProfiles(wrong),/Invalid starting training Elo/);
+  assert.throws(()=>mergeTrainingProfiles(profiles([]),a),/engine or starting difficulty differs/);
+});
+
+test('Maia3 replay clamps rating boundaries and preserves zero instead of Stockfish defaults',()=>{
+  const engine={kind:'maia3',identity:'http://localhost:8790/maia',name:'Maia3',options:{}};
+  for(const [start,win,expected] of [[0,false,0],[5000,true,5000]]){
+    const entry=result('edge');Object.assign(entry.session,{engine,opponent_elo:start,rating_before:start,rating_after:expected});if(!win){entry.result='0-1';entry.score=0;}
+    const p={selected_id:'p',profiles:[{id:'p',name:'Edges',engine,starting_elo:start,results:[entry]}]};
+    assert.equal(mergeTrainingProfiles(null,p).profiles[0].results[0].session.rating_after,expected);
+    assert.equal(mergeTrainingProfiles(null,p).profiles[0].results[0].session.rating_before,start);
+  }
+});

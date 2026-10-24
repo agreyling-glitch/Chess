@@ -79,3 +79,22 @@ test('advertised string options and one-shot UCI actions use typed messages and 
     assert.deepEqual(search.limit,{kind:'time',milliseconds:5000});assert.equal(search.options.BackendOptions,'gpu=0');assert.equal(search.options['Clear Hash'],undefined);
   }finally{adapter.close();}
 });
+
+
+test('Maia Elo overrides reach each play search without browser Stockfish strength defaults',async()=>{
+  const {adapter,sent}=fixture();
+  adapter.details.options=[
+    {name:'Elo',kind:'spin',min:0,max:5000},
+    {name:'SelfElo',kind:'spin',min:0,max:5000},
+    {name:'OppoElo',kind:'spin',min:0,max:5000},
+    {name:'MultiPV',kind:'spin',min:1,max:20},
+  ];
+  adapter.overrides={Elo:'900',SelfElo:'900',OppoElo:'900'};
+  await adapter.command('setoption name UCI_Elo value 1320');
+  await adapter.command('setoption name UCI_LimitStrength value false');
+  await adapter.command('setoption name MultiPV value 1');
+  await adapter.command('position startpos');
+  await adapter.command('go movetime 650');
+  assert.deepEqual(sent[0].options,{MultiPV:'1',Elo:'900',SelfElo:'900',OppoElo:'900'});
+  adapter.close();
+});

@@ -14,6 +14,8 @@
   "vars": {
     "ENGINE_ORIGIN": "https://engine.ironwoodchess.com"
   },
+  "durable_objects": { "bindings": [{ "name": "FICS_BRIDGE", "class_name": "FicsBridge" }] },
+  "migrations": [{ "tag": "fics-bridge-v1", "new_sqlite_classes": ["FicsBridge"] }],
   "assets": {
     "binding": "ASSETS",
     "directory": "./.wrangler-assets",

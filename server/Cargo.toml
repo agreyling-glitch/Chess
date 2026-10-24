@@ -28,6 +28,7 @@ shakmaty-syzygy = "=0.28.0"
 rusqlite = { version = "=0.40.1", default-features = false, features = ["bundled", "backup", "fallible_uint"] }
 pgn-reader = "=0.29.0"
 sha2 = "0.10"
+flate2 = { version = "=1.1.10", default-features = false, features = ["rust_backend"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

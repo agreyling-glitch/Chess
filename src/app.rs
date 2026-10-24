@@ -368,6 +368,8 @@ extern "C" {
     fn browse_import_file();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollImportFile)]
     fn poll_import_file() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodReadPgnZip)]
+    async fn read_pgn_zip(bytes: js_sys::Uint8Array) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
     fn fetch_lichess(input: &str, options: &str);
@@ -1930,6 +1932,7 @@ pub struct ChessApp {
     batch_pgn_imported: usize,
     batch_pgn_duplicates: usize,
     batch_pgn_failed: usize,
+    batch_pgn_discarded: usize,
     batch_pgn_storage_failed_seen: usize,
     batch_pgn_first_error: Option<String>,
     batch_pgn_result_open: bool,
@@ -3374,6 +3377,7 @@ impl ChessApp {
             batch_pgn_imported: 0,
             batch_pgn_duplicates: 0,
             batch_pgn_failed: 0,
+            batch_pgn_discarded: 0,
             batch_pgn_storage_failed_seen: 0,
             batch_pgn_first_error: None,
             batch_pgn_result_open: false,
@@ -4559,7 +4563,7 @@ impl ChessApp {
                 ui.horizontal(|ui| {
                 ui.label(RichText::new("Paste a game or collection").size(17.0).strong().color(gold));
                     #[cfg(target_arch="wasm32")]
-                    if ui.add(egui::Button::new(RichText::new("Browse…").color(Color32::WHITE)).raised_gray()).on_hover_text("Choose a PGN or analysis JSON file").clicked(){browse_import_file();}
+                    if ui.add(egui::Button::new(RichText::new("Browse…").color(Color32::WHITE)).raised_gray()).on_hover_text("Choose a PGN, ZIP of PGNs, or analysis JSON file").clicked(){browse_import_file();}
                 });
                 ui.label(RichText::new("Paste PGN or analysis JSON, or drag a .pgn or .json file onto the app.").size(13.0).weak());
                 egui::ScrollArea::vertical()
@@ -4930,15 +4934,16 @@ impl ChessApp {
         if import {
             self.batch_pgn_queue = self
                 .batch_pgn_games
-                .iter()
+                .drain(..)
                 .filter(|game| game.selected)
-                .map(|game| game.text.clone())
+                .map(|game| game.text)
                 .collect();
             self.batch_pgn_imported = 0;
             self.batch_pgn_duplicates = 0;
             self.batch_pgn_total = self.batch_pgn_queue.len();
             self.batch_pgn_checked = 0;
             self.batch_pgn_failed = 0;
+            self.batch_pgn_discarded = 0;
             self.batch_pgn_storage_failed_seen = 0;
             self.batch_pgn_first_error = None;
             self.batch_pgn_stopped = false;
@@ -5061,6 +5066,7 @@ impl ChessApp {
                                 });
                             });
                         });
+                    ui.label(format!("{} discarded · fewer than 2 full moves", self.batch_pgn_discarded));
                     if let Some(error) = &self.batch_pgn_first_error {
                         ui.add_space(12.0);
                         ui.label(
@@ -5087,7 +5093,7 @@ impl ChessApp {
                 } else {
                     let completed = self.batch_pgn_checked;
                     let accounted =
-                        self.batch_pgn_imported + self.batch_pgn_duplicates + self.batch_pgn_failed;
+                        self.batch_pgn_imported + self.batch_pgn_duplicates + self.batch_pgn_failed + self.batch_pgn_discarded;
                     let progress_total = if self.batch_pgn_stopped {
                         completed
                     } else {
@@ -5103,11 +5109,12 @@ impl ChessApp {
                         if !status.retry_message.is_empty() {ui.colored_label(Color32::from_rgb(242,208,145),status.retry_message);}
                     }
                     ui.label(format!(
-                        "{completed} of {} checked · {} saved · {} already saved · {} failed",
+                        "{completed} of {} checked · {} saved · {} already saved · {} failed · {} discarded",
                         self.batch_pgn_total,
                         self.batch_pgn_imported,
                         self.batch_pgn_duplicates,
-                        self.batch_pgn_failed
+                        self.batch_pgn_failed,
+                        self.batch_pgn_discarded
                     ));
                     if self.batch_pgn_stopped {
                         ui.label("Stopped · waiting for pending saves to finish…");
@@ -5907,17 +5914,23 @@ impl ChessApp {
                     egui::Grid::new("new_game_settings").spacing([16.0, 8.0]).show(ui, |ui| {
                         if !self.new_game_both_sides {
                             ui.label("Engine");
-                            ui.label(self.new_game_opponent.label());
+                            ui.add(egui::Label::new(if self.new_game_opponent==self.engine_config.opponent {self.engine_config.label()} else {self.new_game_opponent.label()}).wrap());
                             ui.end_row();
                             ui.label(RichText::new("Engine strength").size(14.0));
-                            ui.add_enabled_ui(self.new_game_opponent == OpponentEngine::Stockfish, |ui| {
+                            if self.new_game_opponent==OpponentEngine::Companion {
+                                if let Some(control)=self.companion_elo_control(&self.engine_config) {
+                                    ui.vertical(|ui| {control.ui(ui,&mut self.new_game_elo,&mut self.new_game_limit_strength);});
+                                } else {
+                                    ui.add(egui::Label::new(if self.engine_uci_catalog.contains_key(&Self::verification_engine_key(&self.engine_config)) {"This engine does not advertise an Elo setting. Other controls are in Engine options."} else {"Connect the engine to load its Elo settings."}).wrap());
+                                }
+                            } else { ui.vertical(|ui| {
                                 ui.checkbox(&mut self.new_game_limit_strength, "Limit to Elo rating");
                                 ui.add_enabled(self.new_game_limit_strength,
                                     egui::Slider::new(&mut self.new_game_elo, 1320..=3190).suffix(" Elo"));
                                 if !self.new_game_limit_strength {
                                     ui.label(RichText::new("Uses your current skill-level setting").small().weak());
                                 }
-                            });
+                            }); }
                             ui.end_row();
                         }
 
@@ -6082,9 +6095,7 @@ impl ChessApp {
                                 self.engine_enabled = !self.new_game_both_sides;
                                 self.engine_config.opponent = self.new_game_opponent;
                                 if !self.new_game_both_sides {
-                                    self.engine_config.limit_strength = self.new_game_limit_strength;
-                                    self.engine_config.elo = self.new_game_elo.clamp(1320, 3190);
-                                    self.strength_draft = self.engine_config.clone();
+                                    self.apply_new_game_strength();
                                 }
                                 self.reset_for_side(side);
                                 self.board = match self.new_game_position {
@@ -7649,6 +7660,7 @@ impl ChessApp {
         clock: bool,
         available_threads: u32,
     ) {
+        if name=="Engine Elo" {self.companion_play_elo_ui(ui);return;}
         let selected = if analysis || full_game { &self.analysis_draft } else { &self.strength_draft };
         if selected.opponent == OpponentEngine::Companion && name == "Candidate lines" {
             let option = self.engine_uci_catalog.get(&Self::verification_engine_key(selected)).and_then(|options|options.iter().find(|option|option.name=="MultiPV" && option.kind=="spin"));
@@ -8027,7 +8039,7 @@ impl ChessApp {
                     } else if remote && analysis {
                         &["Search limit", "Time limit", "Search depth", "Search nodes", "Candidate lines"]
                     } else if remote && !full_game {
-                        &["Search limit", "Time per move", "Search depth", "Search nodes"]
+                        &["Engine Elo", "Search limit", "Time per move", "Search depth", "Search nodes"]
                     } else if full_game && self.full_game_analysis_draft.budget == FullGameBudget::Seconds {
                         &["Budget", "Seconds per position", "Second pass", "Search threads", "Hash memory", "Candidate lines", "Strength", "Network"]
                     } else if full_game {
@@ -9275,7 +9287,34 @@ impl ChessApp {
         Ok((positions,moves))
     }
 
+    fn validate_pgn_complexity(text: &str) -> Result<(), String> {
+        if text.len()>1024*1024 {return Err("A single PGN game exceeds the 1 MiB limit.".into());}
+        let (mut braces,mut variations,mut comment_bytes,mut token)=(0usize,0usize,0usize,0usize);
+        let mut line_comment=false;
+        for ch in text.chars() {
+            if line_comment {if ch=='\n' {line_comment=false;}continue;}
+            if braces>0 {
+                comment_bytes+=ch.len_utf8();
+                if comment_bytes>256*1024 {return Err("PGN comment exceeds 256 KiB.".into());}
+                if ch=='{' {braces+=1;} else if ch=='}' {braces-=1;}
+                if braces>64 {return Err("PGN comment nesting exceeds 64 levels.".into());}
+                continue;
+            }
+            match ch {
+                ';'=>line_comment=true,
+                '{'=>{braces=1;comment_bytes=0;token=0;},
+                '('=>{variations+=1;token=0;if variations>64 {return Err("PGN variation nesting exceeds 64 levels.".into());}},
+                ')'=>{variations=variations.saturating_sub(1);token=0;},
+                c if c.is_whitespace()=>token=0,
+                _=>{token+=ch.len_utf8();if token>4096 {return Err("PGN token exceeds 4096 bytes.".into());}}
+            }
+        }
+        if text.lines().any(|line|line.trim_start().starts_with('[')&&line.len()>4096) {return Err("PGN tag exceeds 4096 bytes.".into());}
+        Ok(())
+    }
+
     pub(crate) fn parse_pgn_mainline(text: &str) -> Result<(Vec<Board>, Vec<String>), String> {
+        Self::validate_pgn_complexity(text)?;
         let initial_fen = Self::pgn_tag(text, "FEN");
         let mut board = initial_fen
             .as_deref()
@@ -9326,6 +9365,7 @@ impl ChessApp {
             {
                 continue;
             }
+            if moves.len()>=4096 {return Err("PGN exceeds 4096 half-moves.".into());}
             let chess_move = Self::parse_san_move(&board, token)
                 .ok_or_else(|| format!("Could not parse move {}: {token}", moves.len() + 1))?;
             board = board.make_move_new(chess_move);
@@ -9338,7 +9378,8 @@ impl ChessApp {
         Ok((positions, moves))
     }
 
-    fn split_pgn_games(text: &str) -> Vec<String> {
+    fn split_pgn_games(text: &str) -> Result<Vec<String>, String> {
+        if text.len()>64*1024*1024 {return Err("Choose a PGN collection smaller than 64 MiB.".into());}
         let mut games = Vec::new();
         let mut current = String::new();
         let mut seen_moves = false;
@@ -9351,11 +9392,14 @@ impl ChessApp {
                 && trimmed.contains(" \"");
             if tag && seen_moves {
                 if !current.trim().is_empty() {
+                    if games.len()>=100_000 {return Err("Import at most 100,000 games at a time.".into());}
+                    Self::validate_pgn_complexity(&current)?;
                     games.push(current.trim().to_owned());
                 }
                 current.clear();
                 seen_moves = false;
             }
+            if current.len()+line.len()+1>1024*1024 {return Err("A single PGN game exceeds the 1 MiB limit.".into());}
             current.push_str(line);
             current.push('\n');
             if !tag
@@ -9375,9 +9419,11 @@ impl ChessApp {
             }
         }
         if !current.trim().is_empty() {
+            if games.len()>=100_000 {return Err("Import at most 100,000 games at a time.".into());}
+            Self::validate_pgn_complexity(&current)?;
             games.push(current.trim().to_owned());
         }
-        games
+        Ok(games)
     }
 
     fn pgn_annotation_directive<'a>(comment: &'a str, name: &str) -> Option<&'a str> {
@@ -9658,7 +9704,16 @@ impl ChessApp {
         }
     }
 
-    fn save_imported_pgn_without_opening(&self, text: &str) -> Result<(), String> {
+    fn import_pgn_is_short(text: &str) -> Result<bool, String> {
+        match Self::cached_pgn_timeline(text) {
+            Ok((_, moves)) => Ok(moves.len() < 4),
+            Err(error) if error == "No legal mainline moves were found in the PGN." => Ok(true),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn save_imported_pgn_without_opening(&self, text: &str) -> Result<bool, String> {
+        if Self::import_pgn_is_short(text)? { return Ok(false); }
         let (positions, moves) = Self::cached_pgn_timeline(text)?;
         #[cfg(target_arch = "wasm32")]
         {
@@ -9724,7 +9779,7 @@ impl ChessApp {
         }
         #[cfg(not(target_arch = "wasm32"))]
         let _ = (positions, moves);
-        Ok(())
+        Ok(true)
     }
 
     fn load_import_text(&mut self) -> bool {
@@ -9740,7 +9795,10 @@ impl ChessApp {
         #[cfg(target_arch = "wasm32")]
         ensure_imported_index();
         if !self.import_input.trim_start().starts_with('{') {
-            let games = Self::split_pgn_games(&self.import_input);
+            let games = match Self::split_pgn_games(&self.import_input) {
+                Ok(games)=>games,
+                Err(error)=>{self.pgn_error=Some(error);self.pgn_dialog_open=true;return;}
+            };
             if games.len() > 1 {
                 self.batch_pgn_games = games.into_iter().map(BatchPgnGame::new).collect();
                 self.batch_pgn_players = self
@@ -9777,6 +9835,10 @@ impl ChessApp {
                 self.pgn_dialog_open = true;
                 return;
             }
+        }
+        if !self.import_input.trim_start().starts_with('{') && Self::import_pgn_is_short(&self.import_input).unwrap_or(false) {
+            self.pgn_error = Some("Game discarded: fewer than 2 full moves.".into());
+            return;
         }
         #[cfg(target_arch = "wasm32")]
         self.load_import_text();
@@ -13599,6 +13661,22 @@ impl ChessApp {
         );
     }
 
+    fn live_board_vertical_chrome(&self, spacing: f32, available_width: f32, allow_moves: bool) -> f32 {
+        let players = !self.review_positions.is_empty() || (self.fics_active && self.fics_playing);
+        let player_height = if players { 128.0 + spacing * 2.0 } else { 44.0 + spacing };
+        let observe_height = if !self.focus_mode && self.fics_active && !self.fics_playing && !self.fics_observed_games.is_empty() { 36.0 } else { 0.0 };
+        let actions_height = if allow_moves && self.board_game_actions_available() {
+            if self.fics_active { 120.0 } else if available_width < 380.0 { 84.0 } else { 44.0 }
+        } else if !self.focus_mode && self.fics_active && self.fics_observing { 44.0 } else { 0.0 };
+        player_height + observe_height + actions_height
+    }
+
+    fn game_sidebar_width(available: Vec2, chrome: f32, balance: f32, perspective: bool) -> f32 {
+        let board_height = (available.y - chrome).max(180.0);
+        let board_width = board_height * if perspective { 1.4 } else { 1.0 };
+        (available.x - board_width - balance - 16.0).clamp(300.0, (available.x - 240.0).max(300.0))
+    }
+
     fn board_ui(&mut self, ui: &mut egui::Ui) {
         self.board_ui_with_moves(ui, true);
     }
@@ -13722,7 +13800,7 @@ impl ChessApp {
         let board_available_width = (available.x - balance_width).max(180.0);
         let board_size = board_available_width
             .min(
-                (available.y - artwork_status_height - player_area_height - observe_tabs_height - online_actions_height)
+                (available.y - artwork_status_height - self.live_board_vertical_chrome(ui.spacing().item_spacing.y, available.x, allow_moves))
                     .max(180.0),
             )
             .max(180.0);
@@ -16548,6 +16626,42 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn pgn_import_budgets_preserve_normal_notation_and_reject_excessive_work() {
+        let deep=format!("1. e4 {}d4{} e5 *","(".repeat(65),")".repeat(65));
+        assert!(ChessApp::split_pgn_games(&deep).unwrap_err().contains("nesting"));
+        assert!(ChessApp::parse_pgn_mainline(&deep).unwrap_err().contains("nesting"));
+        assert!(ChessApp::validate_pgn_complexity(&"x".repeat(4097)).unwrap_err().contains("token"));
+        assert!(ChessApp::validate_pgn_complexity(&format!("{{{}}}","x".repeat(256*1024+1))).unwrap_err().contains("comment"));
+        assert!(ChessApp::split_pgn_games(&"x".repeat(1024*1024+1)).unwrap_err().contains("1 MiB"));
+        let many="[Event \"test\"]\n\n*\n".repeat(100_001);
+        assert!(ChessApp::split_pgn_games(&many).unwrap_err().contains("100,000"));
+        let moves=format!("{}1. e4 *","1. Nf3 Nf6 2. Ng1 Ng8 ".repeat(1024));
+        assert!(ChessApp::parse_pgn_mainline(&moves).unwrap_err().contains("4096"));
+        let normal="[White \"Name (example)\"]\n\n1. e4 {keep note} (1. d4 d5) e5 2. Nf3 Nc6 *";
+        assert_eq!(ChessApp::split_pgn_games(normal).unwrap(),vec![normal.to_owned()]);
+        assert_eq!(ChessApp::parse_pgn_mainline(normal).unwrap().1.len(),4);
+    }
+    #[test]
+    fn imported_pgn_requires_two_full_moves() {
+        let app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        for pgn in ["*","1. e4 *","1. e4 e5 *","1. e4 e5 2. Nf3 *","1. e4 (1. d4 d5 2. c4 e6) e5 *"] {
+            assert!(!app.save_imported_pgn_without_opening(pgn).unwrap());
+        }
+        assert!(app.save_imported_pgn_without_opening("1. e4 e5 2. Nf3 Nc6 *").unwrap());
+    }
+    #[test]
+    fn sidebar_resizing_prioritizes_height_fitted_board() {
+        let width = ChessApp::game_sidebar_width(egui::vec2(1600.0, 1160.0), 144.0, 44.0, false);
+        assert_eq!(width, 524.0);
+        // Horizontal growth goes to the right panel; vertical growth goes to the board.
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1800.0, 1160.0), 144.0, 44.0, false), width + 200.0);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 1260.0), 144.0, 44.0, false), width - 100.0);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(3000.0, 800.0), 144.0, 44.0, false), 2284.0);
+        assert!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 800.0), 144.0, 44.0, false) > width);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(900.0, 1160.0), 144.0, 44.0, false), 300.0);
+        assert!(ChessApp::game_sidebar_width(egui::vec2(2000.0, 1000.0), 144.0, 44.0, true) < ChessApp::game_sidebar_width(egui::vec2(2000.0, 1000.0), 144.0, 44.0, false));
+    }
+    #[test]
     fn archive_run_selection_restores_results_without_changing_engine_or_annotations(){
         let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
         app.review_positions=vec![Board::default()];app.move_notes=vec!["Keep my annotation".into()];
@@ -16752,6 +16866,22 @@ mod tests {
         app.new_game_training=true;
         let after=draw(&mut app);
         assert!(after<=before+1.0,"Training widened window from {before} to {after}");
+    }
+
+    #[test]
+    fn new_game_shows_selected_companion_name_and_its_actual_rating() {
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.new_game_dialog_open=true;app.new_game_opponent=OpponentEngine::Companion;
+        app.engine_config=EngineConfig{opponent:OpponentEngine::Companion,companion_name:"Maia3 79M (GPU)".into(),companion_identity:"local/maia".into(),..Default::default()};
+        let key=ChessApp::verification_engine_key(&app.engine_config);
+        app.engine_uci_catalog.insert(key,vec![engine_uci_settings::parse_option("option name Elo type spin default 1500 min 0 max 5000").unwrap()]);
+        app.prepare_new_game_strength();let mut texts=Vec::new();
+        for _ in 0..4 {
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1300.0,1100.0))),..Default::default()},|_|app.new_game_dialog(&ctx));
+            texts.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape{Some(text.galley.job.text.clone())}else{None}));
+        }
+        assert!(texts.iter().any(|text|text=="Maia3 79M (GPU)"),"{texts:?}");
+        assert!(!texts.iter().any(|text|text=="Companion engine"));assert_eq!(app.new_game_elo,1500);assert!(app.new_game_limit_strength);
     }
 
     #[test]
@@ -19186,7 +19316,7 @@ mod tests {
     #[test]
     fn splits_tagged_pgn_collection_without_merging_games() {
         let collection = "[Event \"First\"]\n[White \"Ada\"]\n\n1. e4 e5 1-0\n\n[Event \"Second\"]\n[Black \"Ben\"]\n\n1. d4 d5 0-1\n";
-        let games = ChessApp::split_pgn_games(collection);
+        let games = ChessApp::split_pgn_games(collection).unwrap();
         assert_eq!(games.len(), 2);
         assert_eq!(
             ChessApp::pgn_tag(&games[0], "White").as_deref(),
@@ -19625,7 +19755,18 @@ impl eframe::App for ChessApp {
             {
                 let ctx = ctx.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    let result = file.bytes_async().await.map(|bytes| String::from_utf8_lossy(&bytes).into_owned());
+                    let zipped=file.path().extension().and_then(|extension|extension.to_str()).is_some_and(|extension|extension.eq_ignore_ascii_case("zip"));
+                    let result = if file.web_file().is_some_and(|file|file.size()>64.0*1024.0*1024.0) {
+                        Err("Choose a PGN, JSON or ZIP file smaller than 64 MiB.".to_owned())
+                    } else {
+                        match file.bytes_async().await {
+                            Ok(bytes) if zipped => read_pgn_zip(js_sys::Uint8Array::from(bytes.as_slice())).await
+                                .map_err(|error|js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|message|message.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not read ZIP file.".to_owned()))
+                                .and_then(|text|text.as_string().ok_or_else(||"ZIP import did not return PGN text.".to_owned())),
+                            Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                            Err(error) => Err(error),
+                        }
+                    };
                     ctx.data_mut(|data| data.insert_temp(drop_id, result));
                     ctx.request_repaint();
                 });
@@ -19678,6 +19819,10 @@ impl eframe::App for ChessApp {
         {
             processed_this_frame = true;
             self.batch_pgn_checked += 1;
+            if Self::import_pgn_is_short(&text).unwrap_or(false) {
+                self.batch_pgn_discarded += 1;
+                continue;
+            }
             #[cfg(target_arch = "wasm32")]
             let duplicate = !self.batch_pgn_archive && is_imported_duplicate(&text);
             #[cfg(not(target_arch = "wasm32"))]
@@ -19686,7 +19831,8 @@ impl eframe::App for ChessApp {
                 self.batch_pgn_duplicates += 1;
             } else {
                 match self.save_imported_pgn_without_opening(&text) {
-                    Ok(()) => {
+                    Ok(false) => { self.batch_pgn_discarded += 1; }
+                    Ok(true) => {
                         #[cfg(not(target_arch = "wasm32"))]
                         {
                             self.batch_pgn_imported += 1;
@@ -19836,8 +19982,7 @@ impl eframe::App for ChessApp {
                         self.new_game_lichess = self.lichess.active || !self.fics_active;
                         self.new_game_both_sides = !self.engine_enabled && !self.fics_active;
                         self.new_game_opponent = self.engine_config.opponent;
-                        self.new_game_limit_strength = self.engine_config.limit_strength;
-                        self.new_game_elo = self.engine_config.elo.clamp(1320, 3190);
+                        self.prepare_new_game_strength();
                         self.new_game_color = match self.player_side {
                             PlayerSide::White => NewGameColor::White,
                             PlayerSide::Black => NewGameColor::Black,
@@ -20247,11 +20392,14 @@ impl eframe::App for ChessApp {
         if !self.puzzle_mode() {
         let tab_id = egui::Id::new("game_sidebar_tab");
         let mut selected_tab = ctx.data(|data| data.get_temp::<usize>(tab_id).unwrap_or(0));
-        let panel = egui::Panel::right("game_sidebar_panel")
-            .default_size((ctx.content_rect().width() * 0.44).max(320.0))
-            .min_size(300.0)
-            .max_size((ctx.content_rect().width() * 0.65).max(300.0))
-            .resizable(true);
+        let available = root_ui.available_size();
+        let chrome = self.live_board_vertical_chrome(root_ui.spacing().item_spacing.y, available.x, true);
+        let balance = if !self.focus_mode && !self.training_live() && (!self.fics_active || self.fics_game_finished) { 44.0 } else { 0.0 };
+        let sidebar_width = Self::game_sidebar_width(available, chrome, balance, self.board_3d_rendering());
+        // Recompute the split every frame so browser resizing keeps the board fitted to height.
+        let panel = egui::Panel::right("game_sidebar_height_fit_panel")
+            .exact_size(sidebar_width)
+            .resizable(false);
         panel
             .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
             .show(root_ui, |ui| {

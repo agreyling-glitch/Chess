@@ -26,6 +26,8 @@ pub mod engine;
 pub mod explorer;
 pub mod registration;
 pub mod updates;
+pub mod import_queue;
+mod import_zip;
 mod tablebases;
 pub use config::Config;
 
@@ -49,6 +51,8 @@ struct Shared {
 #[derive(Clone)]
 pub struct Control {
     pub updates: updates::Manager,
+    pub imports: import_queue::Manager,
+    engine_work: Arc<EngineWork>,
     engines: Arc<tokio::sync::Semaphore>,
     max_engines: usize,
     stop: tokio::sync::watch::Sender<bool>,
@@ -59,14 +63,29 @@ pub struct Control {
     registrations: Arc<tokio::sync::Semaphore>,
 }
 
+struct EngineWork { count:std::sync::atomic::AtomicUsize,last:Mutex<Instant> }
+impl Default for EngineWork {fn default()->Self{Self{count:std::sync::atomic::AtomicUsize::new(0),last:Mutex::new(Instant::now()-Duration::from_secs(2))}}}
+struct EngineActivity {work:Arc<EngineWork>,busy:bool}
+impl EngineActivity {
+    fn set(&mut self,busy:bool){
+        if self.busy==busy{return;}self.busy=busy;
+        *self.work.last.lock().unwrap()=Instant::now();
+        if busy {self.work.count.fetch_add(1,std::sync::atomic::Ordering::SeqCst);}else{self.work.count.fetch_sub(1,std::sync::atomic::Ordering::SeqCst);}
+    }
+}
+impl Drop for EngineActivity {fn drop(&mut self){self.set(false);}}
+
 impl Control {
+    fn engine_activity(&self)->EngineActivity{EngineActivity{work:self.engine_work.clone(),busy:false}}
+    pub(crate) fn engine_idle(&self)->bool{self.engine_work.count.load(std::sync::atomic::Ordering::SeqCst)==0&&self.engine_work.last.lock().unwrap().elapsed()>=Duration::from_secs(2)}
     /// Hold every engine slot and the registration slot until shutdown starts.
     /// This closes the idle-check/new-engine race without interrupting a session.
-    pub fn reserve_update(&self) -> Option<(tokio::sync::OwnedSemaphorePermit, tokio::sync::OwnedSemaphorePermit)> {
+    pub fn reserve_update(&self) -> Option<(tokio::sync::OwnedSemaphorePermit, tokio::sync::OwnedSemaphorePermit, tokio::sync::OwnedSemaphorePermit)> {
         if self.stopping() { return None; }
         let engines = self.engines.clone().try_acquire_many_owned(self.max_engines as u32).ok()?;
         let registration = self.registrations.clone().try_acquire_owned().ok()?;
-        Some((engines, registration))
+        let imports=self.imports.reserve()?;
+        Some((engines, registration, imports))
     }
     pub fn active_connections(&self) -> u32 { self.max_connections.saturating_sub(self.sockets.available_permits() as u32) }
     pub fn active_engines(&self) -> usize { self.max_engines.saturating_sub(self.engines.available_permits()) }
@@ -81,6 +100,7 @@ impl Control {
         let _ = receiver.changed().await;
     }
     pub async fn drained(&self) {
+        self.imports.drained().await;
         let _permit = self
             .sockets
             .clone()
@@ -123,6 +143,8 @@ pub fn app_with_registration(
     let engines = Arc::new(tokio::sync::Semaphore::new(config.engine_limits.max_processes));
     let control = Control {
         updates: updates::Manager::default(),
+        imports: import_queue::Manager::default(),
+        engine_work: Arc::default(),
         engines: engines.clone(), max_engines: config.engine_limits.max_processes,
         registrations: Arc::new(tokio::sync::Semaphore::new(1)),
         tablebases: tablebases.clone(),
@@ -146,6 +168,7 @@ pub fn app_with_registration(
         control: control.clone(),
         rate: Arc::default(),
     };
+    control.imports.configure(shared.archive.clone());
     if let Some(archive) = &shared.archive {
         explorer::spawn(archive.clone(), control.clone());
     }
@@ -653,6 +676,7 @@ async fn session(mut socket: WebSocket, shared: Shared, origin: String) {
 async fn engine_session(socket: &mut WebSocket, shared: Shared) {
     use engine::Engine;
     let mut engine: Option<Engine> = None;
+    let mut activity=shared.control.engine_activity();
     let mut tick = tokio::time::interval(Duration::from_millis(50));
     let mut last_input = Instant::now();
     loop {
@@ -731,6 +755,7 @@ async fn engine_session(socket: &mut WebSocket, shared: Shared) {
                                 .find(|e| e.id == engine_id)
                                 .cloned()
                         } {
+                            activity.set(true);
                             if let Ok(permit) = shared.engines.clone().try_acquire_owned() {
                                 match Engine::spawn(
                                     &config,
@@ -799,6 +824,7 @@ async fn engine_session(socket: &mut WebSocket, shared: Shared) {
                                     options,
                                     limit,
                                 };
+                                activity.set(true);
                                 let result = tokio::select! { _ = shared.control.cancelled() => Err("Server is stopping"), result = e.search(request) => result };
                                 match result {
                                     Ok(()) => {
@@ -843,6 +869,7 @@ async fn engine_session(socket: &mut WebSocket, shared: Shared) {
                             if e.session_id != session_id {
                                 error = Some("Unknown engine session");
                             } else {
+                                activity.set(true);
                                 match e.set_idle_option(&name, &value).await {
                                     Ok(()) => {
                                         if !send(
@@ -914,6 +941,7 @@ async fn engine_session(socket: &mut WebSocket, shared: Shared) {
             }
             Event::Message(_) => break,
         }
+        activity.set(engine.as_ref().is_some_and(|engine|engine.active.is_some()));
         if let Some(message) = error
             && !send(
                 socket,
@@ -960,6 +988,7 @@ mod tests {
             engine_limits: config::EngineLimits::default(),
             archive: None,
             tablebase_directories: vec![],
+            automatic_import: true,
         }
     }
     #[tokio::test]
@@ -1034,6 +1063,8 @@ mod tests {
             sockets: sockets.clone(),
             control: Control {
                 updates: updates::Manager::default(),
+                imports: import_queue::Manager::default(),
+                engine_work: Arc::default(),
                 engines: Arc::new(tokio::sync::Semaphore::new(4)),
                 max_engines: 4,
                 registrations: Arc::new(tokio::sync::Semaphore::new(1)),

@@ -515,16 +515,19 @@ export async function startChessApp({
 // A file selection only fills the paste field; Continue remains an explicit step.
 export function installImportFilePicker(target) {
   let result='',selection=0;
+  target.ironwoodReadPgnZip=async bytes=>(await import('./import-zip.js')).readPgnZip(bytes);
   target.ironwoodPollImportFile=()=>{const value=result;result='';return value;};
   target.ironwoodBrowseImportFile=()=>{
     const generation=++selection,input=target.document.createElement('input');
-    input.type='file';input.accept='.pgn,.json,application/x-chess-pgn,application/json';input.hidden=true;
+    input.type='file';input.accept='.pgn,.json,.zip,application/x-chess-pgn,application/json,application/zip,application/x-zip-compressed';input.hidden=true;
     input.addEventListener('cancel',()=>input.remove(),{once:true});
     input.addEventListener('change',async()=>{
       try {
         const file=input.files?.[0];if(!file)return;
-        if(file.size>64*1024*1024)throw Error('Choose a PGN or JSON file smaller than 64 MiB.');
-        const text=await file.text();if(generation===selection)result=JSON.stringify({text});
+        if(file.size>64*1024*1024)throw Error('Choose a PGN, JSON or ZIP file smaller than 64 MiB.');
+        const zipped=/\.zip$/i.test(file.name||'')||['application/zip','application/x-zip-compressed'].includes(file.type);
+        const text=zipped?await target.ironwoodReadPgnZip(await file.arrayBuffer()):await file.text();
+        if(generation===selection)result=JSON.stringify({text});
       }catch(error){if(generation===selection)result=JSON.stringify({error:`Could not read import file: ${error.message}`});}
       finally{input.remove();}
     },{once:true});

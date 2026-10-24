@@ -93,6 +93,8 @@ pub struct Config {
     pub archive: Option<PathBuf>,
     #[serde(default)]
     pub tablebase_directories: Vec<PathBuf>,
+    #[serde(default = "automatic_import_default", skip_serializing_if = "automatic_import_enabled")]
+    pub automatic_import: bool,
     #[serde(skip)]
     pub(crate) token: String,
 }
@@ -121,6 +123,7 @@ impl Config {
             engine_limits: EngineLimits::default(),
             archive: default_archive(),
             tablebase_directories: vec![],
+            automatic_import: true,
             token: String::new(),
         }
     }
@@ -270,6 +273,8 @@ impl Config {
     }
 }
 
+fn automatic_import_default() -> bool { true }
+fn automatic_import_enabled(value:&bool)->bool { *value }
 fn default_archive() -> Option<PathBuf> {
     Some(PathBuf::from("archive/archive.sqlite3"))
 }
@@ -331,7 +336,7 @@ impl DataDirectory {
             let folder = entry.file_type()?.is_dir();
             let allowed = name == "companion.lock"
                 || (name == "engines" && folder)
-                || (name == "archive" && folder && fs::read_dir(entry.path())?.next().is_none());
+                || ((name == "archive" || name == "Import" || name == "Reports") && folder && fs::read_dir(entry.path())?.next().is_none());
             if !allowed {
                 return Err("Initialization requires an empty dedicated data directory (an engines folder is allowed)".into());
             }
@@ -347,7 +352,7 @@ impl DataDirectory {
     }
 
     fn ensure_folders(&self) -> Result<(), Error> {
-        for name in ["engines", "archive"] {
+        for name in ["engines", "archive", "Import", "Reports"] {
             let path = self.path.join(name);
             if path.exists() {
                 if !path.is_dir() || fs::symlink_metadata(&path)?.file_type().is_symlink() {

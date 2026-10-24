@@ -180,6 +180,8 @@ async fn run() -> Result<(), Error> {
     }
     let address: SocketAddr = config.listen.parse()?;
     let deadline = Duration::from_secs(config.limits.shutdown_timeout_seconds);
+    let automatic_import=config.automatic_import;
+    let import_startup_marker=update_pending.clone();
     #[cfg(windows)]
     let tray_config = config.clone();
     let (router, control) = app_with_registration(config, Some(std::fs::canonicalize(&path)?))?;
@@ -201,6 +203,7 @@ async fn run() -> Result<(), Error> {
         data: storage.path.clone(), config: path.clone(), address: listener.local_addr()?.to_string(),
         native_windows: cfg!(windows) && tray_enabled && !docker, container: docker,
     });
+    control.imports.start(control.clone(),storage.path.clone(),automatic_import,import_startup_marker)?;
     #[cfg(windows)]
     let _tray = if tray_enabled {
         Some(tray::start(

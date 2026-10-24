@@ -1,5 +1,15 @@
 [
   {
+    "name": "adler2",
+    "version": "2.0.1",
+    "license": "0BSD OR MIT OR Apache-2.0",
+    "repository": "https://github.com/oyvindln/adler2",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "arrayvec",
     "version": "0.7.8",
     "license": "MIT OR Apache-2.0",
@@ -140,6 +150,16 @@
     ]
   },
   {
+    "name": "crc32fast",
+    "version": "1.5.2",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/srijs/rust-crc32fast",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "crypto-common",
     "version": "0.1.7",
     "license": "MIT OR Apache-2.0",
@@ -203,6 +223,16 @@
     "version": "0.1.13",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/rust-lang/cc-rs",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "flate2",
+    "version": "1.1.10",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/flate2-rs",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -369,7 +399,7 @@
   },
   {
     "name": "ironwood-server",
-    "version": "0.1.0",
+    "version": "0.1.2",
     "license": "GPL-3.0-or-later",
     "repository": null,
     "targets": [
@@ -461,6 +491,16 @@
     "version": "0.3.17",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/hyperium/mime",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "miniz_oxide",
+    "version": "0.9.1",
+    "license": "MIT OR Zlib OR Apache-2.0",
+    "repository": "https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -756,6 +796,16 @@
     ]
   },
   {
+    "name": "simd-adler32",
+    "version": "0.3.10",
+    "license": "MIT",
+    "repository": "https://github.com/mcountryman/simd-adler32",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "slab",
     "version": "0.4.12",
     "license": "MIT",
@@ -1008,6 +1058,16 @@
     "version": "0.8.57",
     "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
     "repository": "https://github.com/google/zerocopy",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zlib-rs",
+    "version": "0.6.8",
+    "license": "Zlib",
+    "repository": "https://github.com/trifectatechfoundation/zlib-rs",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"

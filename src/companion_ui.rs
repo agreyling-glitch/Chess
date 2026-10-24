@@ -107,7 +107,7 @@ impl ChessApp {
             self.engine_status = "Companion training paused · enable Companion in Version diagnostics to resume".into();
             return;
         }
-        if enabled && self.training_live() && self.training.as_ref().is_some_and(|s| s.engine.is_lc0())
+        if enabled && self.training_live() && self.training.as_ref().is_some_and(|s| s.engine.is_companion())
             && self.engine_status.starts_with("Companion training paused") {
             self.engine_status = "Companion training resumed".into();
             self.queue_live_engine_resume();
@@ -141,6 +141,7 @@ impl ChessApp {
             if opponent == OpponentEngine::Stockfish { config.uci_options = options.clone(); }
         }
         self.new_game_opponent = opponent;
+        if self.new_game_dialog_open {self.prepare_new_game_strength();}
         self.verification_draft = self.verify_after_analysis();
         if changed {
             self.full_game_analysis_config = self.engine_full_game_preferences.get(&Self::verification_engine_key(&self.analysis_config)).cloned().unwrap_or_else(|| FullGameAnalysisConfig::for_engine(opponent));

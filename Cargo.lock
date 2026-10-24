@@ -1535,6 +1535,7 @@ name = "ironwood-server"
 version = "0.1.2"
 dependencies = [
  "axum",
+ "flate2",
  "getrandom 0.3.4",
  "ironwood-protocol",
  "pgn-reader",

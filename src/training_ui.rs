@@ -41,16 +41,52 @@ struct ProfileManager {
 
 impl ChessApp {
     pub(super) fn companion_training_blocked(&self) -> bool {
-        self.training.as_ref().is_some_and(|s| s.engine.is_lc0()) && !crate::companion::enabled() && self.game_result() == "*"
+        self.training.as_ref().is_some_and(|s| s.engine.is_companion()) && !crate::companion::enabled() && self.game_result() == "*"
+    }
+    fn maia3_training_choice(&self, config: &EngineConfig)->Option<training::TrainingEngine> {
+        if config.opponent!=OpponentEngine::Companion || !config.label().to_ascii_lowercase().replace(['-',' '],"").contains("maia3") {return None;}
+        // A fresh profile pop-out has the saved engine identity but no in-memory
+        // option catalog yet. Recognize Maia3's published UCI contract there;
+        // when discovered options exist, reject incompatible rating controls.
+        if self.engine_uci_catalog.get(&Self::verification_engine_key(config)).is_some_and(|options|
+            !["Elo","SelfElo","OppoElo"].iter().all(|name|options.iter().any(|o|o.name==*name && o.kind=="spin" && o.min.unwrap_or(0)<=0 && o.max.unwrap_or(5000)>=5000))) {return None;}
+        Some(training::TrainingEngine::Maia3{identity:config.companion_identity.clone(),name:config.companion_name.clone(),options:config.companion_options.clone()})
+    }
+    fn training_engine_choices(&self, enabled: bool, catalog: &serde_json::Value) -> Vec<(training::TrainingEngine, String)> {
+        let mut choices = vec![(training::TrainingEngine::Stockfish, "Built-in Stockfish · target Elo".into())];
+        if !enabled { return choices; }
+        let mut seen = std::collections::BTreeSet::new();
+        for entry in catalog["engines"].as_array().into_iter().flatten() {
+            let (Some(identity), Some(name), Some(label)) = (entry["identity"].as_str(), entry["engine_label"].as_str(), entry["label"].as_str()) else { continue; };
+            if identity.is_empty() || !seen.insert(identity.to_owned()) { continue; }
+            let mut config = EngineConfig { opponent: OpponentEngine::Companion, companion_identity: identity.into(), companion_name: name.into(), ..EngineConfig::default() };
+            for saved in [&self.engine_config, &self.analysis_config] {
+                if saved.opponent == OpponentEngine::Companion && saved.companion_identity == identity { config.companion_options = saved.companion_options.clone(); }
+            }
+            if let Some(options) = self.engine_uci_preferences.get(&Self::verification_engine_key(&config)) { config.companion_options = options.clone(); }
+            if let Some(engine) = self.maia3_training_choice(&config) {
+                choices.push((engine, format!("{label} · adaptive Elo")));
+            } else {
+                let normalized = name.to_ascii_lowercase();
+                if normalized.contains("lc0") || normalized.contains("leela") {
+                    choices.push((training::TrainingEngine::Lc0 { identity: identity.into(), name: name.into(), options: config.companion_options }, format!("{label} · node-based levels")));
+                }
+            }
+        }
+        choices
     }
     pub(super) fn training_engine_config(session: &Session) -> EngineConfig {
         let mut config = EngineConfig { limit_strength:true, elo:session.opponent_elo.max(1320) as u32,
             threads:Self::engine_thread_count(), move_time_ms:1000, multipv:1, ..EngineConfig::default() };
-        if let training::TrainingEngine::Lc0 {identity,name,options} = &session.engine {
+        if let training::TrainingEngine::Lc0 {identity,name,options} | training::TrainingEngine::Maia3 {identity,name,options} = &session.engine {
             config.opponent = OpponentEngine::Companion;
             config.companion_identity = identity.clone(); config.companion_name = name.clone();
             config.companion_options = options.clone(); config.limit_strength = false;
             config.search_limit = SearchLimit::Nodes; config.nodes = session.node_budget.max(1);
+            if session.engine.is_maia3() {
+                config.elo=session.opponent_elo.clamp(training::MAIA_MIN_ELO,training::MAIA_MAX_ELO) as u32;
+                for name in ["Elo","SelfElo","OppoElo"] {config.companion_options.insert(name.into(),config.elo.to_string());}
+            }
         }
         config
     }
@@ -233,13 +269,14 @@ impl ChessApp {
         let mut profiles = self.training_profiles.clone();
         let id = Self::training_id();
         let draft = self.puzzle_context.data(|d| d.get_temp::<ProfileManager>(egui::Id::new("training_profile_manager"))).unwrap_or_default();
-        if draft.engine.is_lc0() && !crate::companion::enabled() {
+        if draft.engine.is_companion() && !crate::companion::enabled() {
             self.training_error = Some("Enable Companion in Version diagnostics to use this training profile.".into()); return;
         }
+        let (min_elo,max_elo)=draft.engine.elo_bounds();
         profiles.profiles.push(Profile {
             engine: draft.engine,
             starting_level: draft.starting_level.clamp(1, training::NODE_LEVELS.len() as u8),
-            starting_elo: draft.starting_elo.clamp(training::START_RATING, training::MAX_TARGET),
+            starting_elo: draft.starting_elo.clamp(min_elo,max_elo),
             id: id.clone(),
             name,
             results: vec![],
@@ -386,7 +423,7 @@ impl ChessApp {
             return;
         };
         let session = profile.session(Self::training_id(), Self::training_now());
-        if session.engine.is_lc0() && !crate::companion::enabled() {
+        if session.engine.is_companion() && !crate::companion::enabled() {
             self.training_error = Some("Enable Companion in Version diagnostics to use this training profile.".into()); return;
         }
         if self.fics_active {
@@ -437,7 +474,7 @@ impl ChessApp {
         if !companion_enabled {
             manager.engine = training::TrainingEngine::Stockfish;
         }
-        if let training::TrainingEngine::Lc0 { identity, options, .. } = &mut manager.engine {
+        if let training::TrainingEngine::Lc0 { identity, options, .. } | training::TrainingEngine::Maia3 { identity, options, .. } = &mut manager.engine {
             if *identity == self.analysis_config.companion_identity { *options = self.analysis_config.companion_options.clone(); }
         }
         if let Ok(status) = serde_json::from_str::<serde_json::Value>(&profile_action("poll", "")) {
@@ -460,13 +497,13 @@ impl ChessApp {
         }
         if manager.busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(150)); }
         if !companion_enabled {
-            manager.selected.retain(|id| self.training_profiles.profiles.iter().any(|p| &p.id == id && !p.engine.is_lc0()));
-            if self.training_profiles.selected().is_some_and(|p| p.engine.is_lc0()) {
-                self.training_profiles.selected_id = self.training_profiles.profiles.iter().find(|p| !p.engine.is_lc0()).map(|p| p.id.clone()).unwrap_or_default();
+            manager.selected.retain(|id| self.training_profiles.profiles.iter().any(|p| &p.id == id && !p.engine.is_companion()));
+            if self.training_profiles.selected().is_some_and(|p| p.engine.is_companion()) {
+                self.training_profiles.selected_id = self.training_profiles.profiles.iter().find(|p| !p.engine.is_companion()).map(|p| p.id.clone()).unwrap_or_default();
             }
         }
         if self.training_error.as_deref() == Some("Enable Companion in Version diagnostics to use this training profile.")
-            && (companion_enabled || self.training_profiles.selected().is_some_and(|p| !p.engine.is_lc0())) {
+            && (companion_enabled || self.training_profiles.selected().is_some_and(|p| !p.engine.is_companion())) {
             self.training_error = None;
         }
         let roomy = self.training_dialog_open && !self.new_game_dialog_open;
@@ -505,10 +542,10 @@ impl ChessApp {
                     ui.spacing_mut().interact_size.y = 32.0;
                     egui::ScrollArea::vertical().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
                         egui::Grid::new(("training_profiles_table", companion_enabled)).striped(true).num_columns(if companion_enabled {6} else {5}).min_col_width(0.0).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
-                            let visible_count = self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_lc0()).count();
+                            let visible_count = self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_companion()).count();
                             let mut all = visible_count > 0 && manager.selected.len() == visible_count;
                             if ui.checkbox(&mut all, "").on_hover_text("Select all profiles").changed() {
-                                manager.selected = if all { self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_lc0()).map(|p| p.id.clone()).collect() } else { Vec::new() };
+                                manager.selected = if all { self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_companion()).map(|p| p.id.clone()).collect() } else { Vec::new() };
                             }
                             Self::game_moves_glass_label(ui, Vec2::new(name_width, 30.0), "Profile", true);
                             if companion_enabled { Self::game_moves_glass_label(ui, Vec2::new(engine_width, 30.0), "Engine", true); }
@@ -517,7 +554,7 @@ impl ChessApp {
                             }
                             ui.end_row();
                             for profile in &self.training_profiles.profiles {
-                                if profile.engine.is_lc0() && !companion_enabled { continue; }
+                                if profile.engine.is_companion() && !companion_enabled { continue; }
                                 let mut selected = manager.selected.contains(&profile.id);
                                 if ui.checkbox(&mut selected, "").changed() {
                                     if selected { manager.selected.push(profile.id.clone()); } else { manager.selected.retain(|id| id != &profile.id); }
@@ -529,7 +566,7 @@ impl ChessApp {
                                     self.training_profiles.selected_id = profile.id.clone();
                                 }
                                 if companion_enabled {
-                                    let engine = if profile.engine.is_lc0() { profile.engine.label() } else { "Stockfish 19" };
+                                    let engine = if profile.engine.is_companion() { profile.engine.label() } else { "Stockfish 19" };
                                     ui.add_sized([engine_width, 34.0], egui::Label::new(engine).truncate()).on_hover_text(engine);
                                 }
                                 let difficulty = |side| if profile.engine.is_lc0() { format!("Level {}",profile.rating(side)) } else { format!("{} Elo",profile.rating(side)) };
@@ -608,16 +645,27 @@ impl ChessApp {
                 ui.label(RichText::new("Create a new profile").strong().color(gold));
                 ui.add_enabled_ui(!manager.busy && !manager.delete_open && !self.training_live(), |ui| {
                     if companion_enabled {
-                        egui::ComboBox::from_id_salt("training_profile_engine").selected_text(manager.engine.label()).show_ui(ui, |ui| {
-                            ui.selectable_value(&mut manager.engine, training::TrainingEngine::Stockfish, "Built-in Stockfish · target Elo");
-                            let name = self.analysis_config.companion_name.to_lowercase();
-                            if self.analysis_config.opponent == OpponentEngine::Companion && (name.contains("lc0") || name.contains("leela")) {
-                                ui.selectable_value(&mut manager.engine, training::TrainingEngine::Lc0 {
-                                    identity:self.analysis_config.companion_identity.clone(), name:self.analysis_config.companion_name.clone(), options:self.analysis_config.companion_options.clone()
-                                }, format!("{} · node-based levels",self.analysis_config.label()));
-                            }
+                        let previous_engine=manager.engine.clone();
+                        #[cfg(target_arch = "wasm32")]
+                        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let catalog = serde_json::Value::Null;
+                        let choices = self.training_engine_choices(companion_enabled, &catalog);
+                        let selected_label = choices.iter().find(|(engine, _)| engine == &manager.engine).map(|(_, label)| label.as_str()).unwrap_or(manager.engine.label()).to_owned();
+                        ui.horizontal(|ui| {
+                            egui::ComboBox::from_id_salt("training_profile_engine").selected_text(selected_label).show_ui(ui, |ui| {
+                                for (engine, label) in choices { ui.selectable_value(&mut manager.engine, engine, label); }
+                            });
+                            #[cfg(target_arch = "wasm32")]
+                            if Self::analysis_refresh_button(ui, catalog["busy"] != true, "Refresh training engines").clicked() { refresh_companion_engines(); }
                         });
-                        ui.small("Select lc0 in Engine Settings to create a profile for that engine. Each profile keeps its engine options.");
+                        if previous_engine != manager.engine {
+                            if let training::TrainingEngine::Maia3 { options, .. } = &manager.engine {
+                                manager.starting_elo = options.get("SelfElo").or_else(|| options.get("Elo")).and_then(|value| value.parse().ok()).unwrap_or(1500);
+                            }
+                        }
+                        if catalog["busy"] == true { ui.small("Checking available training engines…"); }
+                        ui.small("Choose a training engine. Each profile keeps its own engine options.");
                     }
                     if manager.engine.is_lc0() {
                         manager.starting_level = manager.starting_level.clamp(1, training::NODE_LEVELS.len() as u8);
@@ -625,8 +673,10 @@ impl ChessApp {
                         ui.small(format!("{} nodes per move · levels are not calibrated Elo",training::NODE_LEVELS[manager.starting_level as usize - 1]));
                         ui.small("Create a new profile after replacing engine or network files so progress stays comparable.");
                     } else {
-                        manager.starting_elo = manager.starting_elo.clamp(training::START_RATING, training::MAX_TARGET);
-                        ui.add(egui::Slider::new(&mut manager.starting_elo, training::START_RATING..=training::MAX_TARGET).text("Starting target Elo"));
+                        let (min,max)=manager.engine.elo_bounds();
+                        manager.starting_elo = manager.starting_elo.clamp(min,max);
+                        ui.add(egui::Slider::new(&mut manager.starting_elo, min..=max).text("Starting target Elo"));
+                        if manager.engine.is_maia3() {ui.small("Maia3 adjusts its Elo after completed games. This tracks training difficulty, not an official rating.");}
                     }
                 });
                 ui.horizontal(|ui| {
@@ -772,7 +822,7 @@ impl ChessApp {
             ui.label(RichText::new(profile.map(|p| p.session(String::new(),String::new()).opponent_label()).unwrap_or_else(|| format!("Stockfish {target} Elo"))).size(if roomy { 16.0 } else { 14.0 }));
         });
         ui.label(
-            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Standard chess · Unlimited time for you · lc0 uses the level's node budget" } else { "Standard chess  ·  Unlimited time for you  ·  Stockfish thinks up to 1 second per move" })
+            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Standard chess · Unlimited time for you · lc0 uses the level's node budget" } else if profile.is_some_and(|p|p.engine.is_maia3()) { "Standard chess · Unlimited time for you · Maia3 predicts a human-style move at your target Elo" } else { "Standard chess  ·  Unlimited time for you  ·  Stockfish thinks up to 1 second per move" })
                 .size(if roomy { 16.0 } else { 13.0 })
                 .color(muted),
         );
@@ -782,12 +832,12 @@ impl ChessApp {
                 .size(16.0)
                 .strong(),
         );
-        ui.label(RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Each color has its own level: a win raises it by one, a loss lowers it by one, and a draw keeps it unchanged. Your next game switches sides." } else { "Finish a game to update that color’s rating. Your next game switches sides, and Stockfish adjusts to your rating." }).size(if roomy { 16.0 } else { 13.0 }).color(muted));
+        ui.label(RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Each color has its own level: a win raises it by one, a loss lowers it by one, and a draw keeps it unchanged. Your next game switches sides." } else if profile.is_some_and(|p|p.engine.is_maia3()) { "Each color progresses separately. Wins increase Maia3's target Elo, losses lower it, and draws keep it steady when ratings match. Your next game switches sides." } else { "Finish a game to update that color’s rating. Your next game switches sides, and Stockfish adjusts to your rating." }).size(if roomy { 16.0 } else { 13.0 }).color(muted));
         ui.add_space(if roomy { 10.0 } else { 5.0 });
         ui.label(RichText::new("Review your game and spot patterns afterward. Hints and takebacks are paused during training.").size(if roomy { 16.0 } else { 13.0 }).color(muted));
         ui.add_space(if roomy { 12.0 } else { 6.0 });
         ui.label(
-            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Node-based difficulty levels · not Elo · even low levels can be strong with a powerful network" } else { "Ironwood training Elo · not an official rating" })
+            RichText::new(if profile.is_some_and(|p| p.engine.is_lc0()) { "Node-based difficulty levels · not Elo · even low levels can be strong with a powerful network" } else if profile.is_some_and(|p|p.engine.is_maia3()) { "Maia3 training difficulty · Elo guides human-move predictions, not a verified playing strength" } else { "Ironwood training Elo · not an official rating" })
                 .size(if roomy { 16.0 } else { 11.0 })
                 .color(muted),
         );
@@ -827,14 +877,14 @@ impl ChessApp {
         }
         ui.add_space(2.0);
         #[cfg(target_arch = "wasm32")]
-        if !finished && session.engine.is_lc0() && crate::companion::enabled() && self.engine_start_failed {
+        if !finished && session.engine.is_companion() && crate::companion::enabled() && self.engine_start_failed {
             ui.label("Check Game → Companion connection… before retrying.");
             if ui.button("Retry engine connection").clicked() {
                 self.engine = None; self.engine_ready = false; self.engine_start_failed = false;
                 self.queue_live_engine_resume();
             }
         }
-            if finished && (!session.engine.is_lc0() || crate::companion::enabled()) && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
+            if finished && (!session.engine.is_companion() || crate::companion::enabled()) && ui.add_sized([ui.available_width(), 38.0], egui::Button::new(
                 RichText::new("Next training game").size(13.0).strong().color(Color32::from_rgb(24, 27, 31)))
                 .fill(gold).corner_radius(6.0).raised_gold()).clicked() {
                 self.training_profiles.selected_id = session.profile_id.clone();
@@ -1015,8 +1065,10 @@ impl ChessApp {
         }
         let mut close = false;
         let mut detached = false;
-        let mut window = egui::Window::new("Training profiles").id(egui::Id::new("training_profiles"))
-            .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(true)
+        let maximize_id = egui::Id::new("training_profiles_maximized");
+        let mut maximized = ctx.data(|data| data.get_temp::<bool>(maximize_id).unwrap_or(false));
+        let mut window = egui::Window::new("Training profiles").id(egui::Id::new(("training_profiles", maximized)))
+            .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(!maximized).movable(!maximized)
             .default_pos(egui::pos2(48.0,48.0))
             .default_size(Vec2::new(780.0, (ctx.content_rect().height()-96.0).clamp(240.0,800.0)))
             .min_size(Vec2::new(360.0,240.0))
@@ -1025,7 +1077,10 @@ impl ChessApp {
             .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
                 offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160),
             }));
-        if Self::is_training_companion() { window=window.fixed_rect(ctx.content_rect().shrink(8.0)).resizable(false).movable(false); }
+        if Self::is_training_companion() || maximized {
+            let bounds = ctx.content_rect().shrink(8.0);
+            window=window.max_size(bounds.size()).fixed_rect(bounds).resizable(false).movable(false);
+        }
         let response=window.show(ctx, |ui| {
             let grain=ui.painter().add(egui::Shape::Noop);
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
@@ -1033,10 +1088,15 @@ impl ChessApp {
             ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(15.0));
             ui.spacing_mut().item_spacing.y = 8.0;
             ui.horizontal(|ui| {
-                ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
+                ui.add_sized([(ui.available_width()-122.0).max(80.0),28.0],
                     egui::Label::new(RichText::new("Training profiles").size(21.0).strong()).selectable(false).truncate());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close Training Profiles").clicked() { close=true; }
+                    if !Self::is_training_companion() && Self::glossy_board_button(ui, if maximized { "❐" } else { "□" }, false, true)
+                        .on_hover_text(if maximized { "Restore Training Profiles window" } else { "Maximize Training Profiles window" }).clicked() {
+                        maximized = !maximized;
+                        ui.ctx().request_repaint();
+                    }
                     #[cfg(target_arch="wasm32")]
                     if !training_companion_mode() && Self::glossy_board_button(ui,"↗",false,true)
                         .on_hover_text("Move Training Profiles to a separate window").clicked() { detached=open_training_companion(); }
@@ -1110,6 +1170,7 @@ impl ChessApp {
             ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
                 egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
         });
+        ctx.data_mut(|data| data.insert_temp(maximize_id, maximized));
         if let Some(window)=response {
             Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id),window.response.rect);
         }
@@ -1124,6 +1185,72 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn maia_training_applies_each_sessions_elo_and_stays_private() {
+        let mut app=app();app.training=None;
+        let mut profile=app.training_profiles.selected().unwrap().clone();
+        profile.engine=training::TrainingEngine::Maia3{identity:"http://localhost:8790/maia".into(),name:"Maia3".into(),options:std::collections::BTreeMap::from([("Temperature".into(),"0.5".into()),("Elo".into(),"2000".into()),("SelfElo".into(),"2000".into()),("OppoElo".into(),"2000".into())])};
+        profile.starting_elo=800;
+        let session=profile.session("maia".into(),"now".into());let config=ChessApp::training_engine_config(&session);
+        assert_eq!(config.opponent,OpponentEngine::Companion);assert!(!config.limit_strength);assert_eq!(config.nodes,1);assert_eq!(config.elo,800);
+        for name in ["Elo","SelfElo","OppoElo"] {assert_eq!(config.companion_options[name],"800");}
+        assert_eq!(config.companion_options["Temperature"],"0.5");assert_eq!(session.search_command(),"go nodes 1");
+        profile.settle(&session,"1-0","later".into(),false);
+        let black=profile.session("black".into(),"now".into());profile.settle(&black,"0-1","later".into(),false);
+        let next=profile.session("next".into(),"now".into());let next_config=ChessApp::training_engine_config(&next);assert_eq!(next_config.companion_options["SelfElo"],"816");
+        app.training_profiles.profiles=vec![profile];app.start_training_game();assert!(app.training.is_none());assert!(app.training_error.as_ref().unwrap().contains("Enable Companion"));
+        app.training=Some(session);assert!(app.companion_training_blocked());
+        app.training=None;
+        app.puzzle_context.data_mut(|d|d.insert_temp(egui::Id::new("training_profile_manager"),ProfileManager{engine:next.engine,starting_elo:800,..Default::default()}));
+        let before=app.training_profiles.profiles.len();app.training_profile_name="Must stay private".into();app.create_training_profile();assert_eq!(app.training_profiles.profiles.len(),before);
+    }
+    #[test]
+    fn maia_training_profile_controls_are_hidden_when_companion_is_disabled() {
+        let ctx=egui::Context::default();let cc=eframe::CreationContext::_new_kittest(ctx.clone());let mut app=ChessApp::new(&cc);
+        app.training_profiles=training::Profiles{selected_id:"private".into(),profiles:vec![Profile{id:"private".into(),name:"Hidden Maia3 profile".into(),engine:training::TrainingEngine::Maia3{identity:"http://localhost:8790/maia".into(),name:"Maia3".into(),options:Default::default()},starting_elo:800,starting_level:1,results:vec![]}]};
+        let mut texts=Vec::new();
+        for _ in 0..3 {
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1100.0,1100.0))),..Default::default()},|ui|app.training_setup_ui(ui));
+            texts.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape{Some(text.galley.job.text.clone())}else{None}));
+        }
+        assert!(!texts.iter().any(|text|text.contains("Maia3")),"{texts:?}");
+        assert!(app.training_profiles.selected_id.is_empty());assert_eq!(app.training_profiles.profiles.len(),1,"Hidden data must be retained");
+    }
+    #[test]
+    fn training_choices_list_all_providers_without_switching_live_engines() {
+        let mut app = app();
+        let before = app.analysis_config.companion_identity.clone();
+        let catalog = serde_json::json!({"engines":[
+            {"identity":"windows/lc0","engine_label":"Lc0 v0.32.1","label":"Lc0 — Windows"},
+            {"identity":"windows/maia","engine_label":"Maia3 79M (GPU)","label":"Maia3 — Windows"},
+            {"identity":"other/lc0","engine_label":"Lc0","label":"Lc0 — Other"},
+            {"identity":"windows/other","engine_label":"Other engine","label":"Other"},
+            {"identity":"windows/lc0","engine_label":"Lc0","label":"Duplicate"}
+        ]});
+        app.engine_uci_preferences.insert("companion:windows/lc0".into(), std::collections::BTreeMap::from([("Backend".into(),"cuda".into())]));
+        let choices = app.training_engine_choices(true, &catalog);
+        assert_eq!(choices.len(),4);
+        assert!(choices[0].0 == training::TrainingEngine::Stockfish);
+        assert!(choices[2].0.is_maia3());
+        assert!(choices[3].1.contains("Other"));
+        let training::TrainingEngine::Lc0 {identity,options,..} = &choices[1].0 else {panic!("Expected lc0")};
+        assert_eq!(identity,"windows/lc0");
+        assert_eq!(options.get("Backend").map(String::as_str),Some("cuda"));
+        assert_eq!(app.analysis_config.companion_identity,before);
+        assert_eq!(app.training_engine_choices(false,&catalog).len(),1);
+        assert_eq!(app.training_engine_choices(true,&serde_json::Value::Null).len(),1);
+    }
+    #[test]
+    fn maia_training_choice_supports_popouts_and_rejects_incompatible_options() {
+        let mut app=app();app.analysis_config.opponent=OpponentEngine::Companion;app.analysis_config.companion_name="Maia3 79M".into();app.analysis_config.companion_identity="http://localhost:8790/maia".into();
+        assert!(app.maia3_training_choice(&app.analysis_config).unwrap().is_maia3(),"Fresh pop-outs must recognize the saved engine");
+        let key=ChessApp::verification_engine_key(&app.analysis_config);
+        app.engine_uci_catalog.insert(key.clone(),vec![]);assert!(app.maia3_training_choice(&app.analysis_config).is_none());
+        let options=["Elo","SelfElo","OppoElo"].iter().map(|name|engine_uci_settings::parse_option(&format!("option name {name} type spin default 1500 min 0 max 5000")).unwrap()).collect();
+        app.engine_uci_catalog.insert(key,options);assert!(app.maia3_training_choice(&app.analysis_config).unwrap().is_maia3());
+        app.analysis_config.companion_name="Lc0".into();assert!(app.maia3_training_choice(&app.analysis_config).is_none());
+        app.analysis_config.opponent=OpponentEngine::Stockfish;assert!(app.maia3_training_choice(&app.analysis_config).is_none());
+    }
     #[test]
     fn lc0_session_uses_its_profile_options_and_cannot_start_with_preview_disabled() {
         let mut app = app();

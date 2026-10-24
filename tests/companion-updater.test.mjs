@@ -57,7 +57,7 @@ test('update validation pauses clients, then custom-config archive recovery pres
       assert.equal((await fetch(endpoint, { method: 'POST', headers: { ...headers, Authorization: 'Bearer wrong', 'Content-Type': 'application/json' }, body: '{}' })).status, 401);
       assert.equal((await fetch(endpoint, { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{"url":"https://evil.example"}' })).status, 400);
     }
-    const imported = await fetch(server.address + '/api/v1/archive/import', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ pgn: '[White "Recovery fixture"]\n[Black "Preserved"]\n[Result "*"]\n\n1. e4 e5 *' }) });
+    const imported = await fetch(server.address + '/api/v1/archive/import', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ pgn: '[White "Recovery fixture"]\n[Black "Preserved"]\n[Result "*"]\n\n1. e4 e5 2. Nf3 Nc6 *' }) });
     assert.equal(imported.status, 200);
     assert.equal((await imported.json()).imported, 1);
     await stop(server);

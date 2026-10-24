@@ -1,9 +1,9 @@
 ---
 title: "Import games"
 lastmod: 2026-10-23T00:00:00-05:00
-description: "Choose an import source, review a game collection, or enter a handwritten scoresheet."
+description: "Import PGN files and zipped game collections, fetch online games, or enter a handwritten scoresheet."
 category: "using-ironwood"
-keywords: [import, tabs, PGN, JSON, collection, Lichess, Chess.com, scoresheet]
+keywords: [import, tabs, PGN, ZIP, compressed, drag and drop, JSON, collection, Lichess, Chess.com, scoresheet]
 weight: 12
 ---
 
@@ -11,7 +11,13 @@ Open **Game → Import…** to choose among four tabs. Drag the title or outer b
 
 ## Paste a game or collection
 
-Paste [PGN](/help/pgn/) for one game or a collection, or paste an Ironwood Analysis JSON export. Use the gray **Browse…** button to choose a `.pgn` or `.json` file, or drag a file onto the app. Browse fills the paste area; **Continue** remains the next step. Files selected with Browse can be up to 64 MiB. **Clear** empties the text and **Continue** opens the game or collection for review. Analysis JSON restores saved analysis immediately.
+Paste [PGN](/help/pgn/) for one game or a collection, or paste an Ironwood Analysis JSON export. Use the gray **Browse…** button to choose a `.pgn`, `.json`, or `.zip` file. Browse fills the paste area; **Continue** remains the next step. **Clear** empties the text. Analysis JSON restores saved analysis immediately. You can also drag a PGN, JSON or ZIP file onto the app to enter the normal game or collection import flow.
+
+### Import a ZIP collection
+
+Choose a ZIP with **Browse…**, then **Continue**, or drop the ZIP onto the app. Ironwood reads the archive locally and combines every `.pgn` file, including files inside folders. Other files are ignored; ZIP archives of Analysis JSON exports are not supported. For a collection, select the games you want to save in the review window. Existing duplicate detection still applies.
+
+Both the ZIP file and the combined uncompressed PGN content can be up to **64 MiB**, with at most **1,000 archive entries**, including folders and unrelated files. Files are checked for corruption before the PGN text enters the import flow. Standard stored and deflated ZIP files are supported. Unzip password-protected, ZIP64, multi-part or unsupported archives first, then choose their PGN files. If the browser cannot decompress the ZIP, unzip it first as well.
 
 Resize the window vertically for a larger paste area. The middle sunken section expands with it; Clear and Continue remain directly below on the outer background.
 

@@ -29,6 +29,8 @@ const CLOSE_TOKEN: usize = 21;
 const CLOSE_STATUS: usize = 22;
 const CHECK_UPDATE: usize = 23;
 const INSTALL_UPDATE: usize = 24;
+const IMPORTS: usize = 25;
+const REPORTS: usize = 26;
 const MASK: &str = "••••••••••••••••••••••••••••••••";
 
 fn wide(text: &str) -> Vec<u16> {
@@ -226,6 +228,8 @@ impl State {
                 (OPEN, "Open Ironwood".into()),
                 (ENGINES, "Open engines folder".into()),
                 (ARCHIVE, "Open archive folder".into()),
+                (IMPORTS, "Open import folder".into()),
+                (REPORTS, "Open import reports".into()),
                 (DATA, "Open Companion data folder".into()),
                 (COPY, "Copy connection token".into()),
                 (SHOW, "Show connection token…".into()),
@@ -292,8 +296,8 @@ impl State {
                     .unwrap_or(self.config.engines.len());
                 let prior = std::fs::read_to_string(self.directory.join("last-update.txt"))
                     .unwrap_or_default();
-                self.show_status(&format!("{}\r\nVersion {}\r\nAddress: {}\r\nConnected clients: {}\r\nEngine sessions: {}\r\nRegistered engines: {}\r\n\r\nData: {}\r\n\r\n{}",
-                    self.status(),env!("CARGO_PKG_VERSION"),self.address,self.control.active_connections(),self.control.active_engines(),count,friendly_path(&self.directory),if self.update_message.is_empty() { &prior } else { &self.update_message }));
+                self.show_status(&format!("{}\r\nVersion {}\r\nAddress: {}\r\nConnected clients: {}\r\nEngine sessions: {}\r\nRegistered engines: {}\r\n\r\nData: {}\r\nAutomatic imports: {}\r\n\r\n{}",
+                    self.status(),env!("CARGO_PKG_VERSION"),self.address,self.control.active_connections(),self.control.active_engines(),count,friendly_path(&self.directory),self.control.imports.status(),if self.update_message.is_empty() { &prior } else { &self.update_message }));
             }
             OPEN => self.open(&ironwood_url(&self.config.allowed_origins)),
             ENGINES => self.open(&friendly_path(
@@ -311,6 +315,8 @@ impl State {
                     .unwrap_or_else(|| self.directory.join("archive")),
             )),
             DATA => self.open(&friendly_path(&self.directory)),
+            IMPORTS => self.open(&friendly_path(&self.directory.join("Import"))),
+            REPORTS => self.open(&friendly_path(&self.directory.join("Reports"))),
             COPY => {
                 if !copy_token(self.root, self.config.owner_credential()) {
                     self.show_status(
@@ -428,9 +434,11 @@ impl State {
                 );
                 for (x, label, id) in [
                     (20, "Open Ironwood", OPEN),
-                    (170, "Engines folder", ENGINES),
-                    (320, "Archive folder", ARCHIVE),
-                    (470, "Show token…", SHOW),
+                    (120, "Engines folder", ENGINES),
+                    (220, "Archive folder", ARCHIVE),
+                    (320, "Import folder", IMPORTS),
+                    (420, "Reports folder", REPORTS),
+                    (520, "Show token…", SHOW),
                 ] {
                     control(
                         self.status_window,
@@ -439,7 +447,7 @@ impl State {
                         BS_PUSHBUTTON as u32,
                         x,
                         280,
-                        140,
+                        90,
                         34,
                         id,
                     );
@@ -708,6 +716,8 @@ fn draw_item(item: &DRAWITEMSTRUCT) {
                 OPEN => "Open Ironwood",
                 ENGINES => "Open engines folder",
                 ARCHIVE => "Open archive folder",
+                IMPORTS => "Open import folder",
+                REPORTS => "Open import reports",
                 DATA => "Open Companion data folder",
                 COPY => "Copy connection token",
                 SHOW => "Show connection token…",

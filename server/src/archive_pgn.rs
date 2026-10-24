@@ -12,6 +12,11 @@ pub struct Parsed {
     pub pgn: String,
 }
 struct Parser;
+pub(crate) struct ImportReader(Reader<std::io::Cursor<Vec<u8>>>);
+impl ImportReader {
+    pub(crate) fn new(bytes:Vec<u8>) -> Self { Self(Reader::new(std::io::Cursor::new(bytes))) }
+    pub(crate) fn next(&mut self) -> Result<Option<Result<Parsed>>> { self.0.read_game(&mut Parser).map_err(|_|invalid("Malformed PGN stream")) }
+}
 pub struct Text {
     tags: BTreeMap<String, String>,
     tokens: Vec<String>,

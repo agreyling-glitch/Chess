@@ -88,6 +88,7 @@ impl Manager {
         let mut status = state.status.clone();
         status.can_install = status.state == "available"
             && control.active_engines() == 0
+            && !control.imports.busy()
             && control.registrations.available_permits() > 0
             && !control.stopping();
         status

@@ -1,15 +1,22 @@
 ---
-title: "Saved Games search, playback, and engine delivery security"
+title: "Saved Games search, ZIP imports, playback, and engine delivery security"
 date: 2026-10-23T00:00:00-05:00
 slug: "2026-10-23-library-playback-and-engine-security"
 version: "2026.10.23"
-description: "Search openings and library filters, replay moves with adjustable autoplay, open a responsive library window, and secure engine asset delivery."
+description: "Import zipped PGN collections, search library filters, replay moves with adjustable autoplay, and secure engine asset delivery."
 ---
 
 ## Engine delivery security
 
 - Restricted the engine proxy to known Stockfish assets on its configured host. Requests cannot select another upstream host, redirects are rejected, and upstream cookies and service-worker permission headers are not passed through.
 - Added regression tests covering host escapes, redirects, unsupported paths, safe headers, conditional requests, and local engine delivery.
+
+## ZIP game imports
+
+- Added ZIP selection to **Browse…** in **Import Games → Paste a game or collection**, alongside PGN and Analysis JSON files.
+- Added drag-and-drop ZIP imports through the same PGN extraction and normal game or collection import flow. Multiple PGN files, including those in folders, are combined; unrelated archive files are ignored.
+- Added file-integrity checks, a 64 MiB limit for both the archive and combined uncompressed PGNs, and a maximum of 1,000 archive entries. Damaged, password-protected, ZIP64 and multi-part archives show an error instead of partially importing content.
+- Kept game selection and duplicate detection in the existing import workflow. Browse fills the paste area without saving games; choose **Continue** to proceed.
 
 ## Find and manage saved games
 

@@ -1,6 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+test('bounded server envelopes are acknowledged and still drive normal guest login',async()=>{
+ let connection;
+ class FakeWebSocket {
+  static OPEN=1;
+  constructor(){this.readyState=1;this.sent=[];connection=this;}
+  send(value){this.sent.push(value);}close(){this.readyState=3;}
+ }
+ globalThis.window={};globalThis.location={protocol:'https:',host:'ironwoodchess.com'};globalThis.WebSocket=FakeWebSocket;
+ await import('../web/fics/bridge.js?bounded-output');window.ironwoodFicsConnect();
+ connection.onmessage({data:JSON.stringify({type:'fics-data',receipt:'receipt-1',data:'login: '})});
+ assert.deepEqual(JSON.parse(connection.sent[0]),{type:'ack',receipt:'receipt-1'});
+ assert.equal(connection.sent[1],'guest');
+ connection.onmessage({data:JSON.stringify({type:'fics-data',receipt:'receipt-2',data:'\nPress return to enter as GuestABCD\n'})});
+ assert.equal(connection.sent.at(-1),'');
+ connection.onmessage({data:JSON.stringify({type:'fics-data',receipt:'receipt-3',data:'fics% '})});
+ assert.deepEqual(connection.sent.slice(-3),['set style 12','set seek 0','sought']);
+});
+
 test('guest login produces an authoritative board event for the Ironwood board', async () => {
   let connection;
   class FakeWebSocket {

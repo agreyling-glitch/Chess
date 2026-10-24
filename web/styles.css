@@ -372,7 +372,7 @@ canvas { display:block; }
 #game-library-dialog .game-library-filter-section summary { display:inline-block; vertical-align:middle; width:max-content; padding:7px 10px; cursor:pointer; color:#eee9dd; border:1px solid #59636c; border-radius:4px; background:linear-gradient(#3c454e,#252e35); box-shadow:inset 0 1px 1px #ffffff25,0 2px 2px #0009; }
 #game-library-dialog .game-library-filter-section summary::before { content:'▸ '; }
 #game-library-dialog .game-library-filter-section[open] summary::before { content:'▾ '; }
-#game-library-dialog .game-library-filter-section[open] .game-library-filters { display:flex; flex-wrap:wrap; gap:10px 14px; padding-top:12px; }
+#game-library-dialog .game-library-filters:not([hidden]) { display:flex; flex-wrap:wrap; gap:10px 14px; padding-top:12px; }
 #game-library-dialog .game-library-filters .game-library-refresh { width:32px; height:32px; padding:0; font-size:24px; line-height:1; box-shadow:inset 0 1px 1px #ffffff35,0 2px 2px #000b; }
 #game-library-dialog .game-library-filters { margin-bottom:0; }
 #game-library-dialog .game-library-browser { container-type:inline-size; }
@@ -405,3 +405,12 @@ canvas { display:block; }
   #game-library-dialog .game-library-title-group { flex-wrap:wrap; }
   .saved-games-window #game-library-dialog.detached[open] { padding:10px; }
 }
+
+#game-library-dialog .game-library-clear-filters { vertical-align:middle; margin-left:8px; padding:7px 10px; border:1px solid #59636c; border-radius:4px; color:#eee9dd; background:linear-gradient(#3c454e,#252e35); box-shadow:inset 0 1px 1px #ffffff25,0 2px 2px #0009; cursor:pointer; }
+#game-library-dialog .game-library-clear-filters[hidden],#game-library-dialog .game-library-filters[hidden] { display:none; }
+
+#game-library-dialog .game-library-controls { display:flex; flex-wrap:wrap; align-items:center; column-gap:12px; row-gap:8px; }
+#game-library-dialog .game-library-tabs { margin:0; }
+#game-library-dialog .game-library-filter-actions { display:inline-flex; flex-wrap:nowrap; align-items:center; gap:8px; flex:none; }
+#game-library-dialog .game-library-filter-actions .game-library-clear-filters { margin:0; white-space:nowrap; }
+#game-library-dialog .game-library-filters { flex-basis:100%; }

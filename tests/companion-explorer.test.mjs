@@ -20,7 +20,7 @@ test('background opening index remains consistent across archive edits, rebuild,
   try{
     let server=await start();assert.equal((await server.request('capabilities')).value.services.explorer,true);
     const path='archive/explorer?'+new URLSearchParams({fen});assert.equal((await server.request(path,undefined,'wrong')).status,401);
-    const pgn='[White "Ada"]\n[Black "Bob"]\n[WhiteElo "1800"]\n[Date "2026.10.17"]\n\n1. e4 e5 1-0\n\n[White "Other"]\n\n1. e4 c5 *';
+    const pgn='[White "Ada"]\n[Black "Bob"]\n[WhiteElo "1800"]\n[Date "2026.10.17"]\n\n1. e4 e5 2. Nf3 Nc6 1-0\n\n[White "Other"]\n\n1. e4 c5 2. Nf3 d6 *';
     const imported=(await server.request('archive/import',{pgn})).value;assert.equal(imported.imported,2);await server.settled();const initial=(await server.request(path)).value;
     assert.equal(initial.total,2);assert.equal(initial.moves[0].total,2);assert.equal(initial.moves[0].unknown,1);assert.equal(initial.moves[0].percentages.white,100);assert.equal(initial.missing_metadata.white_elo,1);
     const filtered=(await server.request(path+'&player=Ada&color=white&white_elo_min=1750')).value;assert.equal(filtered.total,1);assert.equal(filtered.recentGames[0].id,imported.ids[0]);

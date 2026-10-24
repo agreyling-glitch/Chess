@@ -29,7 +29,7 @@ done
   const caps=(await request('capabilities')).value;for(const name of ['uci','archive','explorer','tablebases'])assert.equal(caps.services[name],true);
   checks.push('authentication-origin-capabilities');
   if(mode==='exercise'){
-   assert.equal((await request('archive/import',{pgn:'[White "Container Validation"]\n[Black "Fixture"]\n\n1. e4 e5 *'})).value.imported,1);
+   assert.equal((await request('archive/import',{pgn:'[White "Container Validation"]\n[Black "Fixture"]\n\n1. e4 e5 2. Nf3 Nc6 *'})).value.imported,1);
   }
   const games=(await request('archive/games?white=Container%20Validation')).value.games;assert.equal(games.length,1);
   assert.match((await request(`archive/games/${games[0].id}`)).value.document.pgn,/1\. e4 (?:1\.\.\. )?e5/);
