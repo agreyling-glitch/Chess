@@ -70,6 +70,16 @@
     ]
   },
   {
+    "name": "base64",
+    "version": "0.23.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/marshallpierce/rust-base64",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "bitflags",
     "version": "2.13.2",
     "license": "MIT OR Apache-2.0",
@@ -140,6 +150,16 @@
     ]
   },
   {
+    "name": "chess-scid-rw",
+    "version": "1.0.0",
+    "license": "GPL-3.0-or-later",
+    "repository": "https://github.com/Fab2bprog/chess-scid-rw",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "cpufeatures",
     "version": "0.2.17",
     "license": "MIT OR Apache-2.0",
@@ -184,6 +204,26 @@
     "version": "0.10.7",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/RustCrypto/traits",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "displaydoc",
+    "version": "0.2.7",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/yaahc/displaydoc",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "equivalent",
+    "version": "1.0.2",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/indexmap-rs/equivalent",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -239,10 +279,48 @@
     ]
   },
   {
+    "name": "foldhash",
+    "version": "0.2.0",
+    "license": "Zlib",
+    "repository": "https://github.com/orlp/foldhash",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "foreign-types",
+    "version": "0.3.2",
+    "license": "MIT/Apache-2.0",
+    "repository": "https://github.com/sfackler/foreign-types",
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "foreign-types-shared",
+    "version": "0.1.1",
+    "license": "MIT/Apache-2.0",
+    "repository": "https://github.com/sfackler/foreign-types",
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "form_urlencoded",
     "version": "1.2.2",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/servo/rust-url",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "futures-channel",
+    "version": "0.3.34",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/futures-rs",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -314,7 +392,18 @@
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/rust-random/getrandom",
     "targets": [
-      "x86_64-pc-windows-msvc"
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "hashbrown",
+    "version": "0.17.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-lang/hashbrown",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
     ]
   },
   {
@@ -378,10 +467,130 @@
     ]
   },
   {
+    "name": "hyper-tls",
+    "version": "0.6.0",
+    "license": "MIT/Apache-2.0",
+    "repository": "https://github.com/hyperium/hyper-tls",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "hyper-util",
     "version": "0.1.21",
     "license": "MIT",
     "repository": "https://github.com/hyperium/hyper-util",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_collections",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_locale_core",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_normalizer",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_normalizer_data",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_properties",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_properties_data",
+    "version": "2.3.0",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "icu_provider",
+    "version": "2.3.1",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "idna",
+    "version": "1.1.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/servo/rust-url/",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "idna_adapter",
+    "version": "1.2.2",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/hsivonen/idna_adapter",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "indexmap",
+    "version": "2.14.2",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/indexmap-rs/indexmap",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "ipnet",
+    "version": "2.12.2",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/krisprice/ipnet",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -399,7 +608,7 @@
   },
   {
     "name": "ironwood-server",
-    "version": "0.1.2",
+    "version": "0.1.4",
     "license": "GPL-3.0-or-later",
     "repository": null,
     "targets": [
@@ -433,6 +642,7 @@
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/rust-lang/libc",
     "targets": [
+      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
     ]
   },
@@ -457,10 +667,30 @@
     ]
   },
   {
+    "name": "litemap",
+    "version": "0.8.3",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "log",
     "version": "0.4.34",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/rust-lang/log",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "lzma-rust2",
+    "version": "0.23.0",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/hasenbanck/lzma-rust2/",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -517,6 +747,16 @@
     ]
   },
   {
+    "name": "native-tls",
+    "version": "0.2.18",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rust-native-tls/rust-native-tls",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "nohash-hasher",
     "version": "0.2.0",
     "license": "Apache-2.0 OR MIT",
@@ -543,6 +783,42 @@
     "repository": "https://github.com/matklad/once_cell",
     "targets": [
       "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "openssl",
+    "version": "0.10.81",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/rust-openssl/rust-openssl",
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "openssl-macros",
+    "version": "0.1.1",
+    "license": "MIT/Apache-2.0",
+    "repository": null,
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "openssl-probe",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rustls/openssl-probe",
+    "targets": [
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "openssl-sys",
+    "version": "0.9.117",
+    "license": "MIT",
+    "repository": "https://github.com/rust-openssl/rust-openssl",
+    "targets": [
       "x86_64-unknown-linux-gnu"
     ]
   },
@@ -581,6 +857,16 @@
     "version": "0.3.34",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/rust-lang/pkg-config-rs",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "potential_utf",
+    "version": "0.1.6",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -647,6 +933,16 @@
     ]
   },
   {
+    "name": "reqwest",
+    "version": "0.13.5",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/seanmonstar/reqwest",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "rusqlite",
     "version": "0.40.1",
     "license": "MIT",
@@ -667,6 +963,16 @@
     ]
   },
   {
+    "name": "rustls-pki-types",
+    "version": "1.15.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/rustls/pki-types",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "ryu",
     "version": "1.0.23",
     "license": "Apache-2.0 OR BSL-1.0",
@@ -674,6 +980,15 @@
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "schannel",
+    "version": "0.1.30",
+    "license": "MIT",
+    "repository": "https://github.com/steffengy/schannel-rs",
+    "targets": [
+      "x86_64-pc-windows-msvc"
     ]
   },
   {
@@ -731,6 +1046,16 @@
     "version": "0.7.1",
     "license": "MIT/Apache-2.0",
     "repository": "https://github.com/nox/serde_urlencoded",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "sevenz-rust2",
+    "version": "0.24.1",
+    "license": "Apache-2.0",
+    "repository": "https://github.com/hasenbanck/sevenz-rust",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -836,6 +1161,16 @@
     ]
   },
   {
+    "name": "stable_deref_trait",
+    "version": "1.2.1",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/storyyeller/stable_deref_trait",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "syn",
     "version": "2.0.119",
     "license": "MIT OR Apache-2.0",
@@ -866,6 +1201,16 @@
     ]
   },
   {
+    "name": "synstructure",
+    "version": "0.14.0",
+    "license": "MIT",
+    "repository": "https://github.com/mystor/synstructure",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "thiserror",
     "version": "2.0.20",
     "license": "MIT OR Apache-2.0",
@@ -880,6 +1225,16 @@
     "version": "2.0.20",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/dtolnay/thiserror",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "tinystr",
+    "version": "0.8.4",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -906,6 +1261,16 @@
     ]
   },
   {
+    "name": "tokio-native-tls",
+    "version": "0.3.1",
+    "license": "MIT",
+    "repository": "https://github.com/tokio-rs/tls",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "tokio-tungstenite",
     "version": "0.29.0",
     "license": "MIT",
@@ -920,6 +1285,16 @@
     "version": "0.5.3",
     "license": "MIT",
     "repository": "https://github.com/tower-rs/tower",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "tower-http",
+    "version": "0.6.11",
+    "license": "MIT",
+    "repository": "https://github.com/tower-rs/tower-http",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -976,10 +1351,30 @@
     ]
   },
   {
+    "name": "try-lock",
+    "version": "0.2.5",
+    "license": "MIT",
+    "repository": "https://github.com/seanmonstar/try-lock",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "tungstenite",
     "version": "0.29.0",
     "license": "MIT OR Apache-2.0",
     "repository": "https://github.com/snapview/tungstenite-rs",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "typed-path",
+    "version": "0.13.0",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/chipsenkbeil/typed-path",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -1006,6 +1401,26 @@
     ]
   },
   {
+    "name": "url",
+    "version": "2.5.8",
+    "license": "MIT OR Apache-2.0",
+    "repository": "https://github.com/servo/rust-url",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "utf8_iter",
+    "version": "1.0.4",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/hsivonen/utf8_iter",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "vcpkg",
     "version": "0.2.15",
     "license": "MIT/Apache-2.0",
@@ -1020,6 +1435,16 @@
     "version": "0.9.5",
     "license": "MIT/Apache-2.0",
     "repository": "https://github.com/SergioBenitez/version_check",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "want",
+    "version": "0.3.2",
+    "license": "MIT",
+    "repository": "https://github.com/seanmonstar/want",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"
@@ -1044,6 +1469,36 @@
     ]
   },
   {
+    "name": "writeable",
+    "version": "0.6.4",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "yoke",
+    "version": "0.8.3",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "yoke-derive",
+    "version": "0.8.3",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
     "name": "zerocopy",
     "version": "0.8.57",
     "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
@@ -1058,6 +1513,76 @@
     "version": "0.8.57",
     "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
     "repository": "https://github.com/google/zerocopy",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zerofrom",
+    "version": "0.1.8",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zerofrom-derive",
+    "version": "0.1.8",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zeroize",
+    "version": "1.9.1",
+    "license": "Apache-2.0 OR MIT",
+    "repository": "https://github.com/RustCrypto/utils",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zerotrie",
+    "version": "0.2.5",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zerovec",
+    "version": "0.11.8",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zerovec-derive",
+    "version": "0.11.6",
+    "license": "Unicode-3.0",
+    "repository": "https://github.com/unicode-org/icu4x",
+    "targets": [
+      "x86_64-pc-windows-msvc",
+      "x86_64-unknown-linux-gnu"
+    ]
+  },
+  {
+    "name": "zip",
+    "version": "9.1.0",
+    "license": "MIT",
+    "repository": "https://github.com/zip-rs/zip2",
     "targets": [
       "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu"

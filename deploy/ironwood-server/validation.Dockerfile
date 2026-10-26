@@ -1,6 +1,7 @@
 ARG COMPANION_IMAGE=ironwood-companion:validation
 FROM ${COMPANION_IMAGE} AS companion
 FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 WORKDIR /validation
 COPY deploy/ironwood-server/validation-tools/package*.json ./
 RUN npm ci --ignore-scripts --omit=optional --no-audit --no-fund

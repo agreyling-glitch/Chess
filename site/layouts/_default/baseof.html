@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111418">
   <meta name="description" content="{{ with .Description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
-  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="robots" content="{{ if .Draft }}noindex,nofollow{{ else }}index,follow,max-image-preview:large{{ end }}">
   <title>{{ with .Params.seo_title }}{{ . }}{{ else }}{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}{{ end }}</title>
   <link rel="canonical" href="{{ .Permalink }}">
   {{ partial "seo.html" . }}
@@ -24,17 +24,19 @@
       <a href="/features/">Features</a>
       <a href="/gallery/">Gallery</a>
       <a href="/help/">Help</a>
+      <a href="/downloads/companion/">Companion</a>
       <a href="/blog/">Journal</a>
       <a href="/changelog/">Changelog</a>
       <a class="play-link" href="/play/">Play now</a>
     </nav>
   </header>
-  <main>{{ block "main" . }}{{ end }}</main>
+  <main>{{ if .Draft }}<p class="companion-draft-notice">Draft preview · This page is not included in the public site.</p>{{ end }}{{ block "main" . }}{{ end }}</main>
   <footer>
     <span>Ironwood Chess</span>
     <a href="/features/">Features</a>
     <a href="/gallery/">Gallery</a>
     <a href="/help/">Help</a>
+    <a href="/downloads/companion/">Companion</a>
     <a href="/blog/">Journal</a>
     <a href="/changelog/">Changelog</a>
     <a href="/open-source-notices.html">Open-source notices</a>

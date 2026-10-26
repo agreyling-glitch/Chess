@@ -9,6 +9,7 @@ web/piece-themes/
 web/board-themes/
 .wrangler-assets/
 .hugo-public/
+site/public/
 site/.hugo_build.lock
 .wrangler/
 output/

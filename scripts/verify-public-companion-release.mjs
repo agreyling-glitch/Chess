@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import {createHash, webcrypto} from 'node:crypto';
+import {readFileSync, writeFileSync} from 'node:fs';
+import {releaseKey} from '../web/companion-release-key.js';
+
+const root='https://companion-releases.ironwoodchess.com/public/windows-x64/';
+const request=url=>fetch(url,{redirect:'error',credentials:'omit',signal:AbortSignal.timeout(120000)});
+const reply=await request(root+'manifest.json');
+assert.equal(reply.status,200,'Anonymous public feed must be available');
+const envelope=await reply.json(), payload=Buffer.from(envelope.payload,'base64');
+const key=await webcrypto.subtle.importKey('jwk',releaseKey,{name:'RSASSA-PKCS1-v1_5',hash:'SHA-256'},false,['verify']);
+assert.ok(await webcrypto.subtle.verify('RSASSA-PKCS1-v1_5',key,Buffer.from(envelope.signature,'base64'),Buffer.concat([Buffer.from('Ironwood Companion private-preview release v1\n'),payload])),'Release signature mismatch');
+const release=JSON.parse(payload);
+assert.equal(release.format,2);assert.equal(release.product,'Ironwood Companion');assert.equal(release.platform,'windows-x64');
+assert.equal(release.protocol,1);assert.equal(release.data_schema,1);assert.equal(release.signing_mode,'private-preview-key');
+assert.match(release.version,/^\d+\.\d+\.\d+$/);assert.ok(Date.parse(release.expires)>Date.now());
+assert.equal(release.url,`${root}${release.version}/ironwood-companion-windows-x64.zip`);
+const expected=JSON.parse(readFileSync('output/companion/windows-clean-validation.json'));
+assert.equal(release.sha256,expected.packageSha256,'Published package differs from the clean-tested package');
+const archive=await request(release.url);assert.equal(archive.status,200);
+const hash=createHash('sha256');let size=0;
+for await(const chunk of archive.body){size+=chunk.length;assert.ok(size<=256*1024*1024);hash.update(chunk);}
+assert.equal(hash.digest('hex'),release.sha256,'Public ZIP checksum mismatch');
+const base='https://companion-releases.ironwoodchess.com';
+assert.equal((await request(base+'/private-preview/windows-x64/manifest.json')).status,401);
+assert.equal((await fetch(base+'/private-preview/windows-x64/manifest.json',{headers:{Authorization:'Bearer invalid'},redirect:'error'})).status,401);
+assert.notEqual((await request(base+'/public/linux-x64/manifest.json')).status,200);
+const allowed=await fetch(root+'manifest.json',{headers:{Origin:'https://ironwoodchess.com'},redirect:'error'});
+assert.equal(allowed.status,200);assert.equal(allowed.headers.get('Access-Control-Allow-Origin'),'https://ironwoodchess.com');
+assert.equal((await fetch(root+'manifest.json',{headers:{Origin:'https://untrusted.example'},redirect:'error'})).status,403);
+const report={timestamp:new Date().toISOString(),status:'passed',version:release.version,packageSha256:release.sha256,bytes:size,expires:release.expires,checks:['anonymous-public-feed','pinned-release-signature','clean-tested-zip-sha256','private-channel-authentication','platform-isolation','exact-origin-cors']};
+writeFileSync('output/companion/public-delivery-validation.json',JSON.stringify(report,null,2)+'\n');
+console.log(JSON.stringify(report,null,2));

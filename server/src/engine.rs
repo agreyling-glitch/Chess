@@ -213,6 +213,9 @@ impl Engine {
                 .await?;
         }
         for (name, value) in self.configured.clone() {
+            if self.details.options.iter().any(|option|option.name==name&&option.kind=="button") {
+                return Err("Engine action buttons cannot be configured as startup defaults");
+            }
             self.set_option(&name, &value, true).await?;
             if let Some(option) = self
                 .details

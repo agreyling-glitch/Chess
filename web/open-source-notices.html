@@ -40,6 +40,13 @@
     <h1>Open-source notices</h1>
     <p>Ironwood Chess's original application code, interface, and project artwork are licensed under the GNU General Public License, version 3 or later. The third-party components below retain their respective licenses.</p>
 
+    <section id="sevenz"><h2>7z archive decoding</h2><p>Browser archive decoding uses sevenz-rust2 and lzma-rust2 by the hasenbanck contributors, licensed under Apache 2.0. The bundled sevenz reader limits decoder memory and header allocations. <a href="/licenses/sevenz-apache-2.0.txt">Apache 2.0 license</a> · <a href="https://github.com/hasenbanck/sevenz-rust2">sevenz-rust2 source</a> · <a href="https://github.com/hasenbanck/lzma-rust2">lzma-rust2 source</a></p></section>
+    <section id="scid">
+      <h2>Scid database reader</h2>
+      <p>Scid import uses chess-scid-rw by Fabrice, including decoder code derived from Scid and chess code from Vendetta Chess GUI, under GPL-3.0-or-later. Ironwood bundles commit 6253187d211ed872a3b545fc251e85fec88dd8f8 with stricter handling of truncated comments.</p>
+      <p><a href="/licenses/ironwood-gpl-3.0.txt">GPLv3 license</a> · <a href="https://github.com/Fab2bprog/chess-scid-rw/tree/6253187d211ed872a3b545fc251e85fec88dd8f8" rel="external">Upstream source</a> · <a href="https://github.com/agreyling-glitch/Chess/tree/main/vendor/chess-scid-rw" rel="external">Bundled source and changes</a></p>
+    </section>
+
     <section id="egui">
       <h2>egui and eframe user interface</h2>
       <p>Ironwood Chess uses egui, eframe, and egui_extras by Emil Ernerfeldt and the egui contributors for its Rust user interface. These libraries are dual-licensed under MIT or Apache 2.0; Ironwood uses them under the MIT license.</p>

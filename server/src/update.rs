@@ -24,9 +24,18 @@ fn trust_policy(mode: Option<&'static str>, certificate: Option<&'static str>, p
         _ => None,
     }
 }
+fn private_release_access(feed: &str) -> bool {
+    feed != "https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json"
+}
 #[cfg(test)]
 mod tests {
     use super::trust_policy;
+    #[test]
+    fn public_feed_does_not_use_private_release_credentials() {
+        assert!(!super::private_release_access("https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json"));
+        assert!(super::private_release_access("https://companion-releases.ironwoodchess.com/private-preview/windows-x64/manifest.json"));
+        assert!(super::private_release_access("https://other.example/public/windows-x64/manifest.json"));
+    }
     #[test]
     fn updater_uses_windows_powershell_security_modules() {
         let folder = std::env::temp_dir().join(format!("ironwood-updater-modules-{}", std::process::id()));
@@ -122,9 +131,10 @@ pub fn check(data: &Path) -> Result<Option<Candidate>, Error> {
         .arg("-TrustMode")
         .arg(signing_mode)
         .arg("-CurrentVersion")
-        .arg(env!("CARGO_PKG_VERSION"))
-        .arg("-CredentialFile")
-        .arg(data.join(".release-channel-credential"));
+        .arg(env!("CARGO_PKG_VERSION"));
+    if private_release_access(feed) {
+        check.arg("-CredentialFile").arg(data.join(".release-channel-credential"));
+    }
     check.arg(if signing_mode == "authenticode" { "-Certificate" } else { "-PublicKey" }).arg(pin);
     let status = check.status()?;
     if !status.success() {

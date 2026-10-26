@@ -11,11 +11,17 @@ test('new library window initializes only export helpers and restores the origin
  assert.equal(appLoads,1);assert.equal(target.ironwoodExportSavedGame,exporter);assert.deepEqual(opened,{windowState:state});assert.equal(target.document.querySelector('#library-loading').hidden,true);
  target.ironwoodLibraryWindowNavigate();assert.equal(reloads,1);assert.equal(focus,1);target.ironwoodLibraryWindowNavigate(false);assert.equal(reloads,2);assert.equal(focus,1);
 });
-test('private integrations stay disabled when opening a library window with the feature off',async()=>{
- const target=environment();let accessed=0;target.opener={closed:false,location:{origin:'https://test.local'},ironwoodCompanionConnection(){accessed++;return {credential:'must-not-be-read'};}};
- installLibraryWindow(target);assert.equal(accessed,0);await assert.rejects(target.ironwoodCompanionLibrary(),/disabled/);
- let changed=0;target.addEventListener('ironwood-companion-feature-changed',()=>changed++);target.dispatchEvent(new target.StorageEvent('storage',{key:'ironwood.experimental.companion'}));assert.equal(changed,1);
+test('public library windows inherit only same-origin Companion connections',()=>{
+ const target=environment();let accessed=0;
+ target.localStorage.setItem('ironwood.experimental.companion','false');
+ target.opener={closed:false,location:{origin:'https://test.local'},ironwoodCompanionConnection(){accessed++;return null;}};
+ installLibraryWindow(target);assert.equal(accessed,1);assert.equal(target.ironwoodCompanionFeatureEnabled(),true);
+ const foreign=environment();let foreignReads=0;
+ foreign.opener={closed:false,location:{origin:'https://other.example'},ironwoodCompanionConnection(){foreignReads++;return null;}};
+ installLibraryWindow(foreign);assert.equal(foreignReads,0);
+ target.close();foreign.close();
 });
+
 test('standalone library startup failures leave a clear error message',async()=>{
  const target=environment();await startLibraryWindow(target,{loadApp:async()=>{throw Error('offline');}});assert.match(target.document.querySelector('#library-loading').textContent,/offline/);assert.equal(target.document.querySelector('#library-loading').getAttribute('role'),'alert');
 });

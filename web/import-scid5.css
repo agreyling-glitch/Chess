@@ -1,0 +1,55 @@
+#scid-import-dialog{box-sizing:border-box;width:min(1000px,95vw);height:min(760px,90vh);min-width:min(400px,95vw);min-height:min(320px,90vh);max-width:100vw;max-height:100dvh;overflow:hidden;background:#171a1e;color:#ecebe4;border:3px solid #d3ad62;border-top-color:#f0d9a8;border-left-color:#e7c47b;border-right-color:#58401e;border-bottom-color:#43301b;border-radius:12px;padding:24px;font:14px system-ui,sans-serif;color-scheme:dark;box-shadow:inset 0 0 0 1px #e7c47b,inset 0 0 0 3px #5b5548,0 20px 70px #000b;scrollbar-color:#816b42 #0d1116}
+#scid-import-dialog::backdrop{background:#000b}
+#scid-import-dialog h2{margin:0 0 12px;color:#f1ce83;font-size:21px}
+#scid-import-dialog .scid-content>p{color:#b2b8c1;line-height:1.5}
+#scid-import-dialog .scid-controls,#scid-import-dialog .scid-actions{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+#scid-import-dialog .scid-controls{padding:14px;background:#0d1116;border:1px solid #ffffff19;border-radius:6px;box-shadow:inset 1px 1px 2px #000d,inset 2px 2px 3px #0007,inset -1px -1px 1px #ffffff45}
+#scid-import-dialog label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:150px;color:#eeddbb}
+#scid-import-dialog :is(input:not([type=checkbox]),select){box-sizing:border-box;width:100%;padding:8px;border:1px solid #586068;border-radius:5px;background:#242b31;color:#eee9dd;font:inherit;box-shadow:inset 0 1px 3px #0007}
+#scid-import-dialog [hidden]{display:none!important}
+#scid-import-dialog input[type=checkbox]{accent-color:#d3ad62}
+#scid-import-dialog button{padding:8px 13px;border:1px solid #816b42;border-radius:5px;background:linear-gradient(#414950,#252c33 50%,#222930 51%,#292f35);color:#f1ce83;cursor:pointer;font:inherit;box-shadow:0 2px 4px #0005,inset 0 1px #ffffff30}
+#scid-import-dialog button:hover:not(:disabled){border-color:#d3ad62;background:linear-gradient(#574a32,#393326)}
+#scid-import-dialog button:active:not(:disabled){box-shadow:inset 0 2px 4px #0008}
+#scid-import-dialog button:disabled{opacity:.5;cursor:default}
+#scid-import-dialog button:focus-visible,#scid-import-dialog input:focus-visible{outline:2px solid #e7bc65;outline-offset:2px}
+#scid-import-dialog progress{appearance:none;-webkit-appearance:none;display:block;box-sizing:border-box;width:100%;height:28px;min-height:28px;margin:8px 0 12px;overflow:hidden;border:2px solid #a8874d;border-top-color:#e7c47b;border-left-color:#d3ad62;border-radius:6px;background:#0b1015;accent-color:#d3ad62;box-shadow:inset 0 2px 5px #000c,0 1px 0 #ffffff25}
+#scid-import-dialog progress::-webkit-progress-bar{background:#0b1015;border-radius:3px;box-shadow:inset 0 2px 5px #000c}
+#scid-import-dialog progress::-webkit-progress-value{background:linear-gradient(#f0d79c,#d3ad62 45%,#b48b40 55%,#d3ad62);border-radius:3px;box-shadow:inset 0 1px #fff3ce,inset 0 -1px #78541f}
+#scid-import-dialog progress::-moz-progress-bar{background:linear-gradient(#f0d79c,#d3ad62 45%,#b48b40 55%,#d3ad62);border-radius:3px;box-shadow:inset 0 1px #fff3ce,inset 0 -1px #78541f}
+#scid-import-dialog .scid-progress-row{display:flex;flex-wrap:wrap;align-items:center;gap:14px;flex:none;margin:8px 0 12px}
+#scid-import-dialog .scid-progress-row progress{flex:1;min-width:100px;margin:0}
+#scid-import-dialog .scid-timing{flex:none;color:#f1ce83;font-size:13px;font-variant-numeric:tabular-nums}
+@media(max-width:650px){#scid-import-dialog .scid-progress-row{flex-wrap:wrap}#scid-import-dialog .scid-timing{width:100%}}
+#scid-import-dialog table{width:100%;border-collapse:collapse;font-size:13px;background:#14191f}
+#scid-import-dialog td{padding:7px 5px;border-bottom:1px solid #ffffff16;overflow-wrap:anywhere}
+#scid-import-dialog tr:nth-child(even){background:#191f25}
+#scid-import-dialog tr:hover{background:#292820}
+#scid-import-dialog tr:has(input:checked){background:#393326;color:#f4ddb0}
+#scid-import-dialog .scid-note{font-size:13px;color:#b2b8c1}
+#scid-import-dialog .scid-content>.scid-activity{color:#f1ce83;padding:8px 12px;background:#0d1116;border-left:3px solid #d3ad62;border-radius:4px}
+#scid-import-dialog .scid-content>.scid-archive-total{color:#f1ce83;font-weight:600;font-variant-numeric:tabular-nums}
+@media(max-width:600px){#scid-import-dialog{padding:14px}#scid-import-dialog td{padding:5px 2px;font-size:11px}}
+
+/* Heavy grain stays on the outer frame; trays remain opaque. */
+#scid-import-dialog{background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.32%22%2F%3E%3C%2Fsvg%3E");background-repeat:repeat;background-size:256px 256px;}
+#scid-import-dialog[open]{display:flex;flex-direction:column}
+#scid-import-dialog .scid-content{display:flex;flex-direction:column;flex:1;min-height:0;overflow:auto;padding:2px}
+#scid-import-dialog h2{flex:none;cursor:grab;touch-action:none;user-select:none;padding:4px 0 8px}
+#scid-import-dialog h2:active{cursor:grabbing}
+#scid-import-dialog .scid-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex:none;cursor:grab;touch-action:none;user-select:none}
+#scid-import-dialog .scid-heading:active{cursor:grabbing}
+#scid-import-dialog .scid-close{flex:none;display:grid;place-items:center;width:32px;height:30px;padding:0;border:1px solid #899198;border-right-color:#343a40;border-bottom-color:#22282e;border-radius:5px;background:linear-gradient(#5a626a,#353d45 48%,#293139 52%,#3c444c);color:#f2f2ef;font:22px/1 system-ui,sans-serif;box-shadow:inset 0 1px #ffffff50,inset 1px 0 #ffffff25,0 2px 3px #0008}
+#scid-import-dialog .scid-close:hover:not(:disabled){background:linear-gradient(#727b83,#454e57);border-color:#bcc2c7;color:#fff}
+#scid-import-dialog .scid-content>p,#scid-import-dialog .scid-controls,#scid-import-dialog .scid-actions,#scid-import-dialog progress{flex:none}
+#scid-import-dialog .scid-content>p{margin:8px 0}
+#scid-import-dialog .scid-game-list{flex:1;min-height:100px;overflow:auto;padding:8px;background:#0d1116;border:1px solid #ffffff19;border-radius:6px;box-shadow:inset 1px 1px 2px #000d,inset 2px 2px 3px #0007,inset -1px -1px 1px #ffffff45}
+#scid-import-dialog .scid-resize{position:absolute;z-index:2;touch-action:none}
+#scid-import-dialog .scid-resize-n,#scid-import-dialog .scid-resize-s{left:12px;right:12px;height:8px;cursor:ns-resize}
+#scid-import-dialog .scid-resize-e,#scid-import-dialog .scid-resize-w{top:12px;bottom:12px;width:8px;cursor:ew-resize}
+#scid-import-dialog .scid-resize-n{top:0}#scid-import-dialog .scid-resize-s{bottom:0}#scid-import-dialog .scid-resize-e{right:0}#scid-import-dialog .scid-resize-w{left:0}
+#scid-import-dialog .scid-resize-ne,#scid-import-dialog .scid-resize-nw,#scid-import-dialog .scid-resize-se,#scid-import-dialog .scid-resize-sw{width:14px;height:14px;z-index:3}
+#scid-import-dialog .scid-resize-ne{top:0;right:0;cursor:nesw-resize}#scid-import-dialog .scid-resize-nw{top:0;left:0;cursor:nwse-resize}#scid-import-dialog .scid-resize-se{bottom:0;right:0;cursor:nwse-resize}#scid-import-dialog .scid-resize-sw{bottom:0;left:0;cursor:nesw-resize}
+
+#scid-import-dialog .scid-actions .scid-location-select{width:170px;max-width:100%;min-height:28px;padding:4px;border:1px solid #535d61;border-radius:4px;background:#080b0f;color:#ecebe4;font:13px system-ui;box-shadow:inset 1px 2px 3px #0008;color-scheme:dark;cursor:pointer}
+#scid-import-dialog .scid-location-select option{background:#242b31;color:#eee9dd}

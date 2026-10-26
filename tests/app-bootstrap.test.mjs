@@ -541,28 +541,22 @@ test('Training Profiles pop-out reuses its window, shares activity, and sends st
   assert.equal(main.target.ironwoodTakeTrainingChanged(),false);
 });
 
-test('Companion add-on is hidden by default and its persistent diagnostics switch gates deferred tools',async()=>{
-  const {installCompanionFeature,companionEnabled}=await import('../web/companion-feature.js');
+test('Companion is publicly available despite old preview preferences and tools stay deferred',async()=>{
+  const {companionEnabled}=await import('../web/companion-feature.js');
   const dom=new JSDOM('<body></body>',{url:'http://localhost/play/'}), target=dom.window;
+  target.localStorage.setItem('ironwood.experimental.companion','false');
   const loaded=[];
   installDeferredTools(target,async path=>{loaded.push(path);target.ironwoodRefreshCompanionEngines=()=>{};});
-  assert.equal(companionEnabled(target),false);
-  target.ironwoodRefreshCompanionEngines();target.ironwoodArchiveExplorer('fen');await flush();
-  assert.equal(target.ironwoodCompanionDiagnostics(),'{}');
-  target.ironwoodRefreshCompanionDiagnostics();target.ironwoodCheckCompanionUpdates();target.ironwoodInstallCompanionUpdate();await flush();
-  assert.deepEqual(loaded,[]);
-  target.ironwoodSetCompanionFeatureEnabled(true);
   assert.equal(companionEnabled(target),true);
+  assert.deepEqual(loaded,[]);
+  target.ironwoodSetCompanionFeatureEnabled(false);
+  assert.equal(target.ironwoodCompanionFeatureEnabled(),true);
   target.ironwoodRefreshCompanionEngines();await flush();await flush();
   assert.deepEqual(loaded,['/companion-engines.js']);
-  let closed=0;const dialog=target.document.createElement('dialog');dialog.id='companion-archive';dialog.close=()=>{closed++;dialog.remove();};target.document.body.append(dialog);
-  target.ironwoodSetCompanionFeatureEnabled(false);
-  assert.equal(closed,1);assert.equal(companionEnabled(target),false);
-  installCompanionFeature(target);assert.equal(target.ironwoodCompanionFeatureEnabled(),false);
   dom.window.close();
 });
 
-test('analysis catalog loads automatically after reload only when Companion is enabled', async () => {
+test('public Companion catalog loads on demand after reload', async () => {
   const dom = new JSDOM('<body></body>', {url:'http://localhost/play/'});
   const target = dom.window, loaded = [];
   let reads = 0;
@@ -570,10 +564,7 @@ test('analysis catalog loads automatically after reload only when Companion is e
     loaded.push(path);
     target.ironwoodCompanionEngineCatalog = () => { reads++; return '{"engines":[{"label":"Lc0"}]}'; };
   });
-  target.ironwoodCompanionEngineCatalog();
-  await flush();
   assert.deepEqual(loaded, []);
-  target.ironwoodSetCompanionFeatureEnabled(true);
   assert.equal(JSON.parse(target.ironwoodCompanionEngineCatalog()).busy,true);
   target.ironwoodCompanionEngineCatalog();
   await flush(); await flush();
@@ -592,8 +583,9 @@ test('restored engine initializes through the shared connection without loading 
       assert.equal(identity, 'http://localhost:8790/lc0');
       return {endpoint:'http://localhost:8790', credential:'shared-token', engineId:'lc0', overrides};
     }};
-  });
+  }, path => `${path}?v=test-version`);
   const worker = {postMessage: message => messages.push(message)};
+  target.ironwoodCompanionFeatureEnabled = () => false;
   await target.ironwoodInitializeCompanionEngine(worker, {type:'init'}, 'unused');
   assert.deepEqual(loaded, []);
   assert.match(messages.pop().companionError, /disabled/);
@@ -659,4 +651,12 @@ test('dropped ZIP bridge shares Browse extraction and rejects damaged archives w
  await assert.rejects(target.ironwoodReadPgnZip(new Uint8Array([1,2,3])),/damaged/);
  await assert.rejects(target.ironwoodReadPgnZip(zip([{name:'large.pgn',declaredSize:65*1024*1024}])),/64 MiB/);
  assert.equal(target.ironwoodPollImportFile(),'');assert.equal(saved,0);dom.window.close();
+});
+
+test('Browse .7z uses the same File bridge as drop, bypasses the text-size cap and reports decoder errors',async()=>{
+ const {installImportFilePicker}=await import('../web/app-bootstrap.js');const {dom,target}=environment();installImportFilePicker(target);dom.window.HTMLInputElement.prototype.click=function(){};
+ let calls=0;target.ironwoodOpenSevenZipFile=async file=>{calls++;assert.equal(file.name,'database.7z');return '1. e4 e5 *';};
+ const choose=async()=>{target.ironwoodBrowseImportFile();const input=target.document.querySelector('input');assert.match(input.accept,/\.7z/);Object.defineProperty(input,'files',{value:[{name:'database.7z',size:5*1024*1024*1024}]});input.dispatchEvent(new dom.window.Event('change'));await flush();return JSON.parse(target.ironwoodPollImportFile());};
+ assert.deepEqual(await choose(),{text:'1. e4 e5 *'});assert.equal(calls,1);
+ target.ironwoodOpenSevenZipFile=async()=>{throw Error('Damaged archive');};assert.match((await choose()).error,/Damaged archive/);dom.window.close();
 });

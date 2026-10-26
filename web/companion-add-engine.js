@@ -1,5 +1,6 @@
 import { CompanionArchiveClient } from './companion-archive-client.js';
 import { companionEngineConnections } from './companion-connection.js';
+import { mountEngineDownloads } from './companion-engine-downloads.js';
 export async function addCompanionEngine(provider) {
   if (window.ironwoodCompanionFeatureEnabled?.() === false) return false;
   if (document.querySelector('#companion-add-engine')) return false;
@@ -13,7 +14,13 @@ export async function addCompanionEngine(provider) {
     const dialog = document.createElement('dialog'); dialog.id = 'companion-add-engine';
     dialog.innerHTML = `<form>
       <header data-drag><p class="eyebrow">IRONWOOD COMPANION</p><h2>Add an engine</h2><span class="drag-hint">Drag to move · Resize from the corner</span></header>
+      <div role="tablist" aria-label="Engine installation method" class="engine-install-tabs">
+        <button type="button" role="tab" id="engine-auto-tab" aria-controls="engine-auto-panel" aria-selected="true" data-tab="auto">Auto-install</button>
+        <button type="button" role="tab" id="engine-manual-tab" aria-controls="engine-manual-panel" aria-selected="false" tabindex="-1" data-tab="manual">Manual</button>
+      </div>
       <div class="engine-dialog-body">
+        <div id="engine-auto-panel" role="tabpanel" aria-labelledby="engine-auto-tab" data-auto></div>
+        <div id="engine-manual-panel" role="tabpanel" aria-labelledby="engine-manual-tab" data-manual hidden>
         <p>Choose a folder, then select its engine executable. Keep the engine and its supporting files together under engines.</p>
         <section data-picker><h3>1. Choose an engine folder</h3>
           <div class="engine-browser">
@@ -25,15 +32,29 @@ export async function addCompanionEngine(provider) {
           <label>Engine name<input name="label" maxlength="128" placeholder="Detected automatically after selection" disabled></label>
           <details class="engine-advanced"><summary>Advanced: command-line arguments</summary><label>Arguments as a JSON array<input name="args" value="[ ]" spellcheck="false"></label><p>Usually leave this as <code>[ ]</code> (no arguments). Each argument must be a separate string.</p><button type="button" data-revalidate class="secondary">Validate again</button></details>
         </section>
+      <p role="status" aria-live="polite">Choose a folder on Companion to add an existing engine.</p>
+        </div>
       </div>
-      <p role="status" aria-live="polite">Reading engine folders…</p>
-      <footer class="actions"><button type="submit" disabled>Save engine</button><button type="button" data-close class="secondary">Cancel</button></footer>
+      <footer class="actions"><button type="submit" hidden disabled>Save engine</button><button type="button" data-close class="secondary">Close</button></footer>
     </form>`;
     const form = dialog.querySelector('form'), status = dialog.querySelector('[role=status]'), submit = form.querySelector('[type=submit]');
     const picker = form.querySelector('[data-picker]'), list = form.querySelector('.engine-file-list');
     const root = form.querySelector('[data-tree-root]');
-    let alive = true, timer, added = false, saving = false, requestId, revision = 0, browseRevision = 0, selectedFolder, selectedBranch = root;
+    let alive = true, timer, added = false, downloadAdded = false, saving = false, requestId, revision = 0, browseRevision = 0, selectedFolder, selectedBranch = root;
     const sameConnection = () => { return window.ironwoodCompanionFeatureEnabled?.() !== false && companionEngineConnections().some(value => value.endpoint === shared.endpoint && value.credential === shared.credential); };
+    const disposeDownloads=mountEngineDownloads(window,dialog.querySelector('[data-auto]'),client,{isCurrent:()=>alive&&sameConnection(),onInstalled:()=>{downloadAdded=true;void window.ironwoodRefreshCompanionEngines?.();}});
+    dialog.addEventListener('close',disposeDownloads,{once:true});
+    let activeTab='auto',manualLoaded=false;
+    function selectTab(name){
+      if(saving)return;activeTab=name;
+      form.querySelector('[data-auto]').hidden=name!=='auto';form.querySelector('[data-manual]').hidden=name!=='manual';submit.hidden=name!=='manual';
+      for(const tab of form.querySelectorAll('[role=tab]')){const selected=tab.dataset.tab===name;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1;}
+      if(name==='manual'&&!manualLoaded){manualLoaded=true;void browse();}
+    }
+    for(const tab of form.querySelectorAll('[role=tab]')){
+      tab.onclick=()=>selectTab(tab.dataset.tab);
+      tab.onkeydown=event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const name=event.key==='Home'?'auto':event.key==='End'?'manual':activeTab==='auto'?'manual':'auto';selectTab(name);form.querySelector(`[data-tab="${name}"]`).focus();}};
+    }
     const current = turn => alive && turn === revision && sameConnection();
     async function discard() {
       const previous = requestId; requestId = undefined; clearTimeout(timer); submit.disabled = true;
@@ -114,7 +135,7 @@ export async function addCompanionEngine(provider) {
     form.querySelector('[data-revalidate]').onclick = () => void validate();
     form.elements.args.oninput = () => { ++revision; void discard(); form.elements.label.disabled = true; status.textContent = 'Arguments changed. Click Validate again before saving.'; };
     form.onsubmit = async event => {
-      event.preventDefault(); if (!alive || !sameConnection()) { status.textContent = 'Connection changed. Close this window and try again.'; return; }
+      event.preventDefault(); if (activeTab!=='manual')return; if (!alive || !sameConnection()) { status.textContent = 'Connection changed. Close this window and try again.'; return; }
       if (!requestId || submit.disabled) return;
       const turn = revision; saving = true; submit.disabled = true;
       // Freeze the validated selection while Save commits it.
@@ -129,7 +150,7 @@ export async function addCompanionEngine(provider) {
     };
     form.querySelector('[data-close]').onclick = () => dialog.close();
     dialog.addEventListener('cancel', event => { if (form.querySelector('[data-close]').disabled) event.preventDefault(); });
-    dialog.addEventListener('close', () => { alive = false; ++revision; clearTimeout(timer); if (requestId && !added) void client.request(`engine-registrations/${requestId}/cancel`, {}).catch(() => {}); dialog.remove(); resolve(added); }, { once: true });
+    dialog.addEventListener('close', () => { alive = false; ++revision; clearTimeout(timer); if (requestId && !added) void client.request(`engine-registrations/${requestId}/cancel`, {}).catch(() => {}); dialog.remove(); resolve(added||downloadAdded); }, { once: true });
     const header = form.querySelector('[data-drag]');
     let drag;
     header.onpointerdown = event => {
@@ -145,6 +166,6 @@ export async function addCompanionEngine(provider) {
       dialog.style.top = `${Math.max(0, Math.min(window.innerHeight - 50, drag.top + event.clientY - drag.y))}px`;
     };
     header.onpointerup = header.onpointercancel = () => { drag = null; };
-    document.body.append(dialog); dialog.showModal(); void browse();
+    document.body.append(dialog); dialog.showModal();
   });
 }

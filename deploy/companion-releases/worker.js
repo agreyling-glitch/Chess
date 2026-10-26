@@ -11,14 +11,20 @@ async function matches(actual,expected) {
   return different === 0;
 }
 async function release(request,env) {
-    if (!env.RELEASE_READ_TOKEN || env.RELEASE_READ_TOKEN.length < 32) return reply(503,'Channel unavailable');
-    const authorization = request.headers.get('Authorization') || '';
-    if (authorization.length > 1024 || !await matches(authorization,`Bearer ${env.RELEASE_READ_TOKEN}`)) return reply(401,'Authentication required',{'WWW-Authenticate':'Bearer'});
     if (!['GET','HEAD'].includes(request.method)) return reply(405,'Read only',{'Allow':'GET, HEAD'});
     const url = new URL(request.url);
     if (url.protocol !== 'https:' || url.search || url.pathname.includes('%')) return reply(400,'Invalid release request');
     const key = url.pathname.slice(1);
-    if (key !== `${root}manifest.json` && !/^private-preview\/windows-x64\/\d+\.\d+\.\d+\/ironwood-companion-windows-x64\.zip(?:\.sha256)?$/.test(key)) return reply(404,'Not found');
+    const publicRelease = key === 'public/windows-x64/manifest.json' || /^public\/windows-x64\/\d+\.\d+\.\d+\/ironwood-companion-windows-x64\.zip(?:\.sha256)?$/.test(key);
+    if (publicRelease) {
+      // Public preparation stays closed until the release deployment enables it.
+      if (env.PUBLIC_WINDOWS_RELEASES !== '1') return reply(503,'Public channel not enabled');
+    } else {
+      if (!env.RELEASE_READ_TOKEN || env.RELEASE_READ_TOKEN.length < 32) return reply(503,'Channel unavailable');
+      const authorization = request.headers.get('Authorization') || '';
+      if (authorization.length > 1024 || !await matches(authorization,`Bearer ${env.RELEASE_READ_TOKEN}`)) return reply(401,'Authentication required',{'WWW-Authenticate':'Bearer'});
+      if (key !== `${root}manifest.json` && !/^private-preview\/windows-x64\/\d+\.\d+\.\d+\/ironwood-companion-windows-x64\.zip(?:\.sha256)?$/.test(key)) return reply(404,'Not found');
+    }
     try {
       const object = request.method === 'HEAD' ? await env.RELEASES.head(key) : await env.RELEASES.get(key);
       if (!object) return reply(404,'Not found');

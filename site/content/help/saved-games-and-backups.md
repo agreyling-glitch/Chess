@@ -57,6 +57,8 @@ The **Puzzles** category stores puzzle move history separately from ordinary gam
 
 ## Storage information
 
+{{< companion-help >}}
+
 Open **Storage → Storage information** for local record counts and the browser’s reported storage estimate. Drag the title to move the window and its edges or corners to resize it. The record sections scroll inside the gold-bordered window. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.
 
 Use **ECO code** to filter an exact code (for example, `B90`) or a prefix (`B`), and **Opening name** to search part of a name (for example, `Sicilian`). The filters work together with player, category and analysis filters. Games without opening tags are classified from their moves using the deepest recognized opening position, including transpositions. Existing opening tags are preserved; custom starting positions and unrecognized lines can remain unclassified.

@@ -1,5 +1,5 @@
 import {CompanionArchiveClient,browserDocuments} from './companion-archive-client.js';
-import {companionConnection,requireCompanionConnection} from './companion-connection.js';
+import {companionConnection,companionConnections,requireCompanionConnection} from './companion-connection.js';
 export const ARCHIVE_IMPORT_BATCH_SIZE=128;
 const IMPORT_BYTES=15*1024*1024;
 const yieldImport=()=>new Promise(resolve=>setTimeout(resolve,0));
@@ -7,17 +7,22 @@ const yieldImport=()=>new Promise(resolve=>setTimeout(resolve,0));
 const importQueues=new WeakMap(),importPacers=new WeakMap();
 export class ImportPacer {
   constructor(now=Date.now,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))) {this.now=now;this.sleep=sleep;this.window=now();this.count=0;this.latency=0;}
-  async wait(budget) {
+  async wait(budget,onWait) {
     const now=this.now();let delay=0;
     if(budget && now<budget.resetAt) {
       const reserve=Math.min(budget.limit-1,Math.ceil(budget.limit/4));
       if(budget.remaining<=reserve)delay=budget.resetAt-now+50;
-      else if(budget.busy)delay=Math.min(1000,Math.max(200,this.latency/2));
+      else {
+        // Spread requests across the remaining budget instead of racing to
+        // the reserve and then appearing to stop until the minute resets.
+        delay=Math.max(0,Math.ceil((budget.resetAt-now)/(budget.remaining-reserve))-this.latency);
+        if(budget.busy)delay=Math.max(delay,Math.min(1000,Math.max(200,this.latency/2)));
+      }
     } else {
       if(now-this.window>=60000){this.window=now;this.count=0;}
       if(this.count>=120)delay=Math.max(0,this.window+60050-now);
     }
-    if(delay)await this.sleep(delay);
+    if(delay){onWait?.(`Waiting ${Math.ceil(delay/1000)} seconds for archive request capacity…`);try{await this.sleep(delay);}finally{onWait?.('');}}
     if(this.now()-this.window>=60000){this.window=this.now();this.count=0;}
     this.count++;
   }
@@ -31,7 +36,7 @@ export async function importWithRetry(storage, documents, sleep = milliseconds =
 export async function archiveRequestWithRetry(storage, path, body, sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)), onRetry, isActive = () => true) {
   for(let attempt=0;;attempt++) {
     if(!isActive())throw Error('Archive loading was cancelled.');
-    try { const result=await storage.request(path,body);onRetry?.('');return result; }
+    try { const result=await storage.request(path,body,onRetry);onRetry?.('');return result; }
     catch(error) {
       const transient=[408,429,500,502,503,504].includes(error.status)
         || (!error.status && (error instanceof TypeError || ['AbortError','TimeoutError'].includes(error.name)));
@@ -48,12 +53,12 @@ export class ArchiveLibrary {
     const current=this.connection();
     if (globalThis.window?.ironwoodCompanionFeatureEnabled?.() === false || current?.endpoint!==this.endpoint || current?.credential!==this.client.credential) throw Error('Companion connection changed. Reconnect and refresh the archive.');
   }
-  async request(path,body) {
+  async request(path,body,onWait) {
     const perform=async()=>{
       this.check();
       if(!importPacers.has(this.client))importPacers.set(this.client,new ImportPacer());
       const pacer=importPacers.get(this.client);
-      if(path==='archive/import')await pacer.wait(this.client.importBudget);
+      if(path==='archive/import')await pacer.wait(this.client.importBudget,onWait);
       this.check();const start=Date.now();
       try {const value=await this.client.request(path,body);this.check();return value;}
       finally {if(path==='archive/import')pacer.latency=Date.now()-start;}
@@ -178,6 +183,42 @@ export class ArchiveLibrary {
     }
     await commit();return ids;
   }
+  // Scid already supplies complete PGN, with no Browser-only save state or
+  // analysis-run payload to transfer. Let the archive validate it once.
+  async importPgnBatch(pgns,progress,onRetry) {
+    if(!Array.isArray(pgns)||pgns.length>ARCHIVE_IMPORT_BATCH_SIZE)throw Error('Import at most 128 PGN games per batch.');
+    const encoder=new TextEncoder();let batch=[],size=10,lastYield=performance.now();
+    const send=async games=>{
+      if(!games.length)return;
+      let result;
+      try{result=await archiveRequestWithRetry(this,'archive/import',{pgn:games.join('\n\n')},undefined,onRetry);}
+      catch(error){
+        // Validation failure commits nothing. Isolate an invalid game without
+        // changing retry behavior for rate limits, authentication or I/O errors.
+        if(error.status!==413&&!(error.status===400&&error.code==='invalid_request'))throw error;
+        if(games.length>1){const middle=Math.ceil(games.length/2);await send(games.slice(0,middle));await send(games.slice(middle));return;}
+        progress({imported:0,duplicates:0,discarded:0,failed:1,firstError:error.message||String(error)},1);return;
+      }
+      const counts=[result.imported,result.duplicates,result.discarded??0];
+      if(counts.some(n=>!Number.isSafeInteger(n)||n<0)||counts.reduce((a,b)=>a+b,0)!==games.length)throw Error('Archive did not confirm every PGN game.');
+      progress(result,games.length);
+    };
+    const commit=async()=>{await send(batch);batch=[];size=10;};
+    for(let i=0;i<pgns.length;i++){
+      if(i===0||performance.now()-lastYield>=8){await yieldImport();lastYield=performance.now();}
+      const pgn=pgns[i];
+      if(typeof pgn!=='string'||!pgn.trim())throw Error('Scid supplied an empty PGN game.');
+      if(encoder.encode(pgn).length>1024*1024){
+        await commit();progress({imported:0,duplicates:0,discarded:0,failed:1,firstError:'A single PGN game exceeds the 1 MiB limit.'},1);continue;
+      }
+      // Include JSON escaping and separators in the 15 MiB request budget.
+      const bytes=encoder.encode(JSON.stringify(pgn)).length-2+(batch.length?4:0);
+      if(size+bytes>IMPORT_BYTES)await commit();
+      batch.push(pgn);size+=bytes;
+    }
+    await commit();
+  }
+
   async importBatchRecords(records,progress,onRetry) {
     let batch=[],size=0;
     const commit=async()=>{
@@ -207,7 +248,8 @@ export class ArchiveLibrary {
 }
 if(typeof window!=='undefined')window.ironwoodCompanionLibrary=async(options={})=>{
   if(window.ironwoodCompanionFeatureEnabled?.()===false)throw Error('Companion testing is disabled.');
-  const shared=options.interactive===false ? companionConnection() : await requireCompanionConnection();
+  const selectedConnection=()=>companionConnections().find(item=>item.connected&&item.endpoint===options.endpoint&&item.capabilities?.services?.archive!==false);
+  const shared=options.endpoint ? selectedConnection() : options.interactive===false ? companionConnection() : await requireCompanionConnection();
   if(!shared)throw Error('Connect to Companion to access the archive.');
-  return new ArchiveLibrary(new CompanionArchiveClient(shared.endpoint,shared.credential),options);
+  return new ArchiveLibrary(new CompanionArchiveClient(shared.endpoint,shared.credential),{...options,...(options.endpoint?{connection:selectedConnection}:{})});
 };

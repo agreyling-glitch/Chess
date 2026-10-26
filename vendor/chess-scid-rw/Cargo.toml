@@ -1,0 +1,35 @@
+[package]
+name = "chess-scid-rw"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.87"
+authors = ["Fabrice"]
+license = "GPL-3.0-or-later"
+description = "Pure-Rust reader/writer for SCID chess database files (si4: .si4/.sn4/.sg4, si5: .si5/.sn5/.sg5), with zero external dependencies."
+repository = "https://github.com/Fab2bprog/chess-scid-rw"
+readme = "README.md"
+keywords = ["chess", "scid", "pgn", "database", "parser"]
+categories = ["parser-implementations", "games"]
+
+[features]
+default = ["chess-extras"]
+# Interactive-editing / bonus surface of the vendored chess engine that
+# the SCID decoder itself never calls: Polyglot opening books, PGN
+# import (`import_pgn`/`import_pgn_trusted`), undo/redo, playing a
+# variation, promoting/removing a variation, and the linear "flatten"
+# tree view. On by default so nothing changes for existing users;
+# disable with `default-features = false` if you only need to read
+# SCID databases and want a smaller build. See `README.md`.
+chess-extras = []
+
+[dependencies]
+# Intentionally empty: the chess representation needed to decode SCID's
+# move encoding is vendored in `src/chess` rather than pulled from an
+# external crate — see `src/lib.rs`. This crate only ever depends on `std`.
+
+[dev-dependencies]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

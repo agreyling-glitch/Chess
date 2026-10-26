@@ -5,6 +5,12 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   install3dCompanion(target);
   installImportFilePicker(target);
   installCompanionFeature(target);
+  let folderProgressLoading=false;
+  target.ironwoodCompanionImportProgress=()=>{
+    if(!target.ironwoodCompanionFeatureEnabled())return '';
+    if(!folderProgressLoading){folderProgressLoading=true;void loadModule(asset('/companion-import-progress.js')).then(module=>module.installCompanionImportProgress(target)).catch(()=>{folderProgressLoading=false;});}
+    return '';
+  };
   const document = target.document;
   const notice = (message, role) => {
     const status = document.createElement('div');
@@ -22,10 +28,13 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   const tool = (path, name) => {
     let pending, attempts = 0;
     const load = () => pending ||= Promise.resolve().then(() => {
-      const url = asset(path);
+      // Other Companion modules import this stateful registry by its canonical
+      // URL. A version query here would create a second, stale connection list.
+      const sharedConnection = path === '/companion-connection.js';
+      const url = sharedConnection ? path : asset(path);
       // Use a fresh URL on retry for browsers that retain failed module loads;
       // successful loads stay shared and never initialize a second client.
-      const retry = ++attempts > 1 ? `${url.includes('?') ? '&' : '?'}retry=${attempts}` : '';
+      const retry = ++attempts > 1 && !sharedConnection ? `${url.includes('?') ? '&' : '?'}retry=${attempts}` : '';
       return loadModule(url + retry);
     }).catch(error => {
       pending = undefined;
@@ -46,7 +55,7 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   };
   const fics = tool('/fics/bridge.js', 'FICS');
   const companionEngines = tool('/companion-engines.js', 'Companion engines');
-  for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine']) companionEngines.action(method);
+  for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine', 'ironwoodManageCompanionEngines']) companionEngines.action(method);
   let catalogRequested = false;
   target.ironwoodCompanionEngineCatalog = () => {
     if (!target.ironwoodCompanionFeatureEnabled()) return '{"engines":[],"busy":false,"status":""}';
@@ -82,6 +91,12 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     if (!target.ironwoodCompanionFeatureEnabled()) return '{}';
     void companionDiagnostics.load().catch(error => report('Companion diagnostics', error));
     return '{"connection_status":"Checking…","busy":true}';
+  };
+  const indexProgress=tool('/companion-index-progress.js','Opening index progress');
+  target.ironwoodCompanionIndexProgress=()=>{
+    if(!target.ironwoodCompanionFeatureEnabled())return '{}';
+    void indexProgress.load().catch(error=>report('Opening index progress',error));
+    return '{}';
   };
   for (const method of ['ironwoodDownloadCompanion', 'ironwoodRefreshCompanionDiagnostics', 'ironwoodCheckCompanionUpdates', 'ironwoodInstallCompanionUpdate']) companionDiagnostics.action(method);
   target.ironwoodInitializeCompanionEngine = async (worker, init, identity) => {
@@ -405,6 +420,8 @@ function installFallbacks(target) {
     target[`ironwood${name}`] ??= () => {};
   for (const name of ['IsImportedDuplicate', 'ImportedIndexReady', 'ArchiveImportAvailable', 'HasDeferredUpdate', 'ExplorerSignedIn'])
     target[`ironwood${name}`] ??= () => false;
+  target.ironwoodImportLocationCatalog ??= () => JSON.stringify({selected:'browser',label:'Browser',locations:[{value:'browser',label:'Browser',enabled:true}],ready:true});
+  target.ironwoodSetImportLocation ??= () => false;
   target.ironwoodStorageStatus ??= () => 'Browser storage estimate unavailable';
   target.ironwoodArchiveAnalysisRuns ??= () => '{"available":false}';
   target.ironwoodBeginArchiveAnalysisRun ??= raw => JSON.stringify({...JSON.parse(raw),id:crypto.randomUUID(),created_at:Date.now()});
@@ -478,6 +495,8 @@ export async function startChessApp({
     target.ironwoodPrepareArchivedPgn = app.prepare_archived_pgn;
     target.ironwoodValidateScoresheet = app.validate_scoresheet_pgn;
     target.ironwoodPreviewScoresheet = app.preview_scoresheet;
+    target.ironwoodCreateScidImport = (...parts) => new app.ScidImport(...parts);
+    target.ironwoodCreateScid5Reader = names => new app.Scid5Reader(names);
     loading?.remove();
     // wasm-bindgen's async Rust start returns before WebRunner has initialized
     // its painter. Keep the historical init checkpoint for local comparisons,
@@ -512,23 +531,56 @@ export async function startChessApp({
   }
 }
 
-// A file selection only fills the paste field; Continue remains an explicit step.
+// Publish file contents to Rust. Collections open selection directly; single
+// games/JSON stay in the paste field. Neither handoff saves games automatically.
 export function installImportFilePicker(target) {
-  let result='',selection=0;
+  let result='',selection=0,status='',sevenzController;
   target.ironwoodReadPgnZip=async bytes=>(await import('./import-zip.js')).readPgnZip(bytes);
+  const readScid=async(files,generation)=>{
+    status='Reading Scid database…';
+    try {
+      return await (await import('./import-scid.js')).readScidFiles(files,(...parts)=>target.ironwoodCreateScidImport(...parts),{
+        cancelled:()=>generation!==selection,
+        onProgress:(current,total)=>{if(generation===selection)status=`Reading Scid games: ${current} / ${total}…`;},
+      });
+    } finally {if(generation===selection)status='';}
+  };
+  target.ironwoodReadScidFiles=files=>readScid(files,++selection);
+  target.ironwoodScidSelectionReady=text=>{result=JSON.stringify({text});};
+  const openScid5=async files=>{
+    status='Opening Scid 5 database…';
+    try{return await (await import('./import-scid5.js')).showScid5Import(target,files);}
+    finally{status='';}
+  };
+  target.ironwoodOpenScid5Files=openScid5;
+  target.ironwoodOpenSevenZipFile=async (file,generation=++selection)=>{
+    sevenzController?.abort();const controller=new target.AbortController();sevenzController=controller;
+    try{return await (await import('./import-sevenz.js')).openSevenZip(target,file,{signal:controller.signal,readScid:files=>readScid(files,generation),onProgress:message=>{if(generation===selection)status=message;}});}
+    finally{if(generation===selection)status='';if(sevenzController===controller)sevenzController=null;}
+  };
+  target.ironwoodImportFileStatus=()=>status;
+  target.ironwoodCancelImportFile=()=>{sevenzController?.abort();selection++;status='';result='';};
   target.ironwoodPollImportFile=()=>{const value=result;result='';return value;};
   target.ironwoodBrowseImportFile=()=>{
-    const generation=++selection,input=target.document.createElement('input');
-    input.type='file';input.accept='.pgn,.json,.zip,application/x-chess-pgn,application/json,application/zip,application/x-zip-compressed';input.hidden=true;
+    const generation=++selection,input=target.document.createElement('input');status='';
+    input.type='file';input.multiple=true;input.accept='.pgn,.json,.zip,.7z,.si4,.sn4,.sg4,.si5,.sn5,.sg5,application/x-chess-pgn,application/json,application/zip,application/x-zip-compressed,application/x-7z-compressed';input.hidden=true;
     input.addEventListener('cancel',()=>input.remove(),{once:true});
     input.addEventListener('change',async()=>{
       try {
-        const file=input.files?.[0];if(!file)return;
+        const files=Array.from(input.files||[]),file=files[0];if(!file)return;
+        if(files.some(file=>/\.7z$/i.test(file.name||''))){if(files.length!==1)throw Error('Choose one .7z archive at a time.');const text=await target.ironwoodOpenSevenZipFile(file,generation);if(generation===selection&&text!==null)result=JSON.stringify({text});return;}
+        if(files.some(file=>/\.(?:si|sn|sg)5$/i.test(file.name||''))){await openScid5(files);return;}
+        if(files.some(file=>/\.(?:si|sn|sg)[345]$/i.test(file.name||''))){
+          const text=await readScid(files,generation);
+          if(generation===selection)result=JSON.stringify({text});
+          return;
+        }
+        if(files.length!==1)throw Error('Choose one PGN, JSON or ZIP file, or the three matching Scid files.');
         if(file.size>64*1024*1024)throw Error('Choose a PGN, JSON or ZIP file smaller than 64 MiB.');
         const zipped=/\.zip$/i.test(file.name||'')||['application/zip','application/x-zip-compressed'].includes(file.type);
         const text=zipped?await target.ironwoodReadPgnZip(await file.arrayBuffer()):await file.text();
         if(generation===selection)result=JSON.stringify({text});
-      }catch(error){if(generation===selection)result=JSON.stringify({error:`Could not read import file: ${error.message}`});}
+      }catch(error){if(generation===selection)result=JSON.stringify({error:`Could not read import file: ${error.message||error}`});}
       finally{input.remove();}
     },{once:true});
     target.document.body.append(input);input.click();

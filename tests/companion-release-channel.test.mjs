@@ -72,3 +72,18 @@ test('browser downloads allow exact Ironwood origins but still require release a
   assert.equal(response.headers.get('access-control-allow-origin'),site);
   assert.equal((await worker.fetch(new Request(origin+path,{headers:{Origin:'https://ironwoodchess.com.evil.example',Authorization:`Bearer ${token}`}}),env)).status,403);
 });
+
+
+test('public Windows releases are opt-in and never expose the private channel',async()=>{
+ const {env,reads}=setup();const url=origin+'/public/windows-x64/manifest.json';
+ assert.equal((await worker.fetch(new Request(url),env)).status,503);assert.deepEqual(reads,[]);
+ const publicEnv={...env,PUBLIC_WINDOWS_RELEASES:'1',RELEASE_READ_TOKEN:''};
+ assert.equal((await worker.fetch(new Request(url),publicEnv)).status,200);
+ assert.equal((await worker.fetch(new Request(origin+'/public/windows-x64/0.1.4/ironwood-companion-windows-x64.zip'),publicEnv)).status,200);
+ assert.equal((await worker.fetch(new Request(origin+path),{...env,PUBLIC_WINDOWS_RELEASES:'1'})).status,401);
+ for(const suffix of ['/public/linux-x64/manifest.json','/public/windows-x64/owner-token','/public/windows-x64/0.1.4/source/private-key.json']){
+  assert.notEqual((await worker.fetch(new Request(origin+suffix),publicEnv)).status,200);
+ }
+ assert.equal((await worker.fetch(new Request(url,{method:'POST'}),publicEnv)).status,405);
+ assert.deepEqual(reads,['public/windows-x64/manifest.json','public/windows-x64/0.1.4/ironwood-companion-windows-x64.zip']);
+});

@@ -44,17 +44,20 @@ test('batch archive imports bypass browser storage, account for duplicates and s
   let enabled=true, duplicate=false;
   const originalFlag=window.ironwoodCompanionFeatureEnabled, originalLibrary=window.ironwoodCompanionLibrary;
   const storage={
+    endpoint:'http://archive',
     check(){if(!enabled)throw Error('Disabled');},
     async request(path){assert.equal(path,'capabilities');return {services:{archive:true}};},
     async importBatchRecords(batch,progress){for(const record of batch){assert.equal(record.category,'imported');assert.match(record.json,/Ada/);}progress({imported:duplicate?0:batch.length,duplicates:duplicate?batch.length:0},batch.length);},
     credential:'must-not-appear-in-status',
   };
   window.ironwoodCompanionFeatureEnabled=()=>enabled;
-  window.ironwoodCompanionLibrary=async options=>{assert.equal(options.interactive,false);return storage;};
+  window.ironwoodCompanionLibrary=async options=>{assert.equal(options.interactive,false);assert.equal(options.endpoint,'http://archive');return storage;};
+  window.ironwoodCompanionConnections=()=>[{endpoint:'http://archive',name:'QNAP',connected:true}];
+  ironwoodSetImportLocation('http://archive');
   try {
     assert.equal(ironwoodArchiveImportAvailable(),false); await flush();
     assert.equal(ironwoodArchiveImportAvailable(),true);
-    ironwoodBeginBatchImport(true); ironwoodStoreImportedGame(makeGame([])); await new Promise(resolve=>setTimeout(resolve,550));
+    ironwoodBeginBatchImport(true); assert.equal(ironwoodSetImportLocation('browser'),false); ironwoodStoreImportedGame(makeGame([])); await new Promise(resolve=>setTimeout(resolve,550));
     let status=JSON.parse(ironwoodBatchImportStatus());assert.equal(status.saved,1);assert.equal(status.pending,0);
     duplicate=true;ironwoodStoreImportedGame(makeGame([]));await new Promise(resolve=>setTimeout(resolve,550));
     status=JSON.parse(ironwoodBatchImportStatus());assert.equal(status.duplicates,1);assert.equal(status.saved,1);

@@ -12,9 +12,12 @@ use windows_sys::Win32::{
     Foundation::*,
     Graphics::{Dwm::DwmSetWindowAttribute, Gdi::*},
     System::{DataExchange::*, LibraryLoader::GetModuleHandleW, Memory::*},
-    UI::{Controls::*, Input::KeyboardAndMouse::EnableWindow, Shell::*, WindowsAndMessaging::*},
+    UI::{Controls::*, Input::KeyboardAndMouse::{EnableWindow,GetCapture,SetCapture,ReleaseCapture,SetFocus}, Shell::*, WindowsAndMessaging::*},
 };
 
+#[path = "companion_console.rs"]
+mod console;
+const COPY_ADDRESS: usize = 27;
 const CALLBACK: u32 = WM_APP + 1;
 const STATUS: usize = 10;
 const OPEN: usize = 11;
@@ -86,6 +89,8 @@ struct State {
     reveal_button: HWND,
     status_window: HWND,
     status_edit: HWND,
+    status_scroll: HWND,
+    last_status_text: String,
     revealed: bool,
     icon: HICON,
     last_status: String,
@@ -124,7 +129,7 @@ pub fn start(
                 0, 0, 0, 0, null_mut(), null_mut(), instance, std::ptr::null());
             if root.is_null() { let _ = tx.send(Err("Could not create the Windows tray window")); return; }
             STATE.with(|slot| *slot.borrow_mut() = Some(State { root,token_window:null_mut(),token_edit:null_mut(),reveal_button:null_mut(),
-                status_window:null_mut(),status_edit:null_mut(),revealed:false,icon:null_mut(),last_status:String::new(),taskbar_created:RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()),
+                status_window:null_mut(),status_edit:null_mut(),status_scroll:null_mut(),last_status_text:String::new(),revealed:false,icon:null_mut(),last_status:String::new(),taskbar_created:RegisterWindowMessageW(wide("TaskbarCreated").as_ptr()),
                 config,directory,configuration_path,address,control,
                 update_message:String::new(),update_button:null_mut(),last_update_state:String::new() }));
             let added = STATE.with(|slot| slot.borrow_mut().as_mut().unwrap().update_icon(true));
@@ -137,8 +142,8 @@ pub fn start(
             let _ = tx.send(Ok(root as usize));
             let mut message: MSG = std::mem::zeroed();
             while GetMessageW(&mut message, null_mut(), 0, 0) > 0 {
-                let token=STATE.with(|slot|slot.borrow().as_ref().map(|s|s.token_window).unwrap_or(null_mut()));
-                if !token.is_null() && IsDialogMessageW(token,&message)!=0 { continue; }
+                let dialogs=STATE.with(|slot|slot.borrow().as_ref().map(|s|[s.token_window,s.status_window]).unwrap_or([null_mut();2]));
+                if dialogs.into_iter().any(|dialog|!dialog.is_null()&&IsDialogMessageW(dialog,&message)!=0) { continue; }
                 TranslateMessage(&message); DispatchMessageW(&message);
             }
             STATE.with(|slot| *slot.borrow_mut()=None);
@@ -167,6 +172,8 @@ impl State {
             "Stopping".into()
         } else if self.control.active_engines() > 0 {
             "Engine active".into()
+        } else if let Some(label)=self.control.imports.activity_label() {
+            label.into()
         } else {
             "Ready".into()
         }
@@ -288,17 +295,8 @@ impl State {
                 }
                 self.action(STATUS);
             }
-            STATUS => {
-                let count = std::fs::read(&self.configuration_path)
-                    .ok()
-                    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-                    .and_then(|v| v["engines"].as_array().map(Vec::len))
-                    .unwrap_or(self.config.engines.len());
-                let prior = std::fs::read_to_string(self.directory.join("last-update.txt"))
-                    .unwrap_or_default();
-                self.show_status(&format!("{}\r\nVersion {}\r\nAddress: {}\r\nConnected clients: {}\r\nEngine sessions: {}\r\nRegistered engines: {}\r\n\r\nData: {}\r\nAutomatic imports: {}\r\n\r\n{}",
-                    self.status(),env!("CARGO_PKG_VERSION"),self.address,self.control.active_connections(),self.control.active_engines(),count,friendly_path(&self.directory),self.control.imports.status(),if self.update_message.is_empty() { &prior } else { &self.update_message }));
-            }
+            COPY_ADDRESS => { if !copy_token(self.status_window,&format!("http://{}",self.address)) {self.show_status("Could not copy address. Try again when the clipboard is available.");} },
+            STATUS => self.refresh_status(true),
             OPEN => self.open(&ironwood_url(&self.config.allowed_origins)),
             ENGINES => self.open(&friendly_path(
                 &std::env::var_os("IRONWOOD_ENGINE_DIRECTORY")
@@ -363,6 +361,18 @@ impl State {
     fn can_update(&self) -> bool {
         self.control.updates.status(&self.control).can_install
     }
+    fn refresh_status(&mut self,activate:bool) {
+        if !activate && (self.status_window.is_null() || unsafe {IsWindowVisible(self.status_window)==0 || IsIconic(self.status_window)!=0}) {return;}
+                let count = std::fs::read(&self.configuration_path)
+                    .ok()
+                    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                    .and_then(|v| v["engines"].as_array().map(Vec::len))
+                    .unwrap_or(self.config.engines.len());
+                let prior = std::fs::read_to_string(self.directory.join("last-update.txt"))
+                    .unwrap_or_default();
+                self.show_status_text(&format!("{}\r\nVersion {}\r\nAddress: {}\r\nConnected clients: {}\r\nEngine sessions: {}\r\nRegistered engines: {}\r\n\r\nData: {}\r\nAutomatic imports: {}\r\n\r\n{}",
+                    self.status(),env!("CARGO_PKG_VERSION"),self.address,self.control.active_connections(),self.control.active_engines(),count,friendly_path(&self.directory),self.control.imports.status_details(),if self.update_message.is_empty() { &prior } else { &self.update_message }),activate);
+    }
     fn poll_update(&mut self) {
         let update = self.control.updates.status(&self.control);
         let key = format!("{}:{}", update.state, update.message);
@@ -370,7 +380,7 @@ impl State {
             self.last_update_state = key;
             self.update_message = update.message;
             if !self.status_window.is_null() {
-                self.action(STATUS);
+                self.refresh_status(false);
             }
         }
         unsafe {
@@ -379,18 +389,19 @@ impl State {
             }
         }
     }
-    fn show_status(&mut self, text: &str) {
+    fn show_status(&mut self,text:&str){self.show_status_text(text,true);}
+    fn show_status_text(&mut self, text: &str,activate:bool) {
         unsafe {
             if self.status_window.is_null() {
                 self.status_window = CreateWindowExW(
                     WS_EX_DLGMODALFRAME | WS_EX_APPWINDOW,
                     wide("IronwoodCompanionTray").as_ptr(),
                     wide("Ironwood Companion status").as_ptr(),
-                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+                    WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                     CW_USEDEFAULT,
                     CW_USEDEFAULT,
-                    650,
-                    460,
+                    1040,
+                    820,
                     null_mut(),
                     null_mut(),
                     GetModuleHandleW(std::ptr::null()),
@@ -399,87 +410,28 @@ impl State {
                 if self.status_window.is_null() {
                     return;
                 }
-                self.status_edit = control(
-                    self.status_window,
-                    "EDIT",
-                    "",
-                    ES_READONLY as u32 | ES_MULTILINE as u32 | ES_AUTOVSCROLL as u32,
-                    20,
-                    18,
-                    590,
-                    245,
-                    0,
-                );
-                control(
-                    self.status_window,
-                    "BUTTON",
-                    "Refresh",
-                    BS_PUSHBUTTON as u32,
-                    20,
-                    360,
-                    110,
-                    34,
-                    STATUS,
-                );
-                control(
-                    self.status_window,
-                    "BUTTON",
-                    "Close",
-                    BS_PUSHBUTTON as u32,
-                    500,
-                    360,
-                    110,
-                    34,
-                    CLOSE_STATUS,
-                );
-                for (x, label, id) in [
-                    (20, "Open Ironwood", OPEN),
-                    (120, "Engines folder", ENGINES),
-                    (220, "Archive folder", ARCHIVE),
-                    (320, "Import folder", IMPORTS),
-                    (420, "Reports folder", REPORTS),
-                    (520, "Show token…", SHOW),
-                ] {
-                    control(
-                        self.status_window,
-                        "BUTTON",
-                        label,
-                        BS_PUSHBUTTON as u32,
-                        x,
-                        280,
-                        90,
-                        34,
-                        id,
-                    );
-                }
-                control(
-                    self.status_window,
-                    "BUTTON",
-                    "Check for updates…",
-                    BS_PUSHBUTTON as u32,
-                    20,
-                    320,
-                    190,
-                    34,
-                    CHECK_UPDATE,
-                );
-                self.update_button = control(
-                    self.status_window,
-                    "BUTTON",
-                    "Update and restart",
-                    BS_PUSHBUTTON as u32,
-                    225,
-                    320,
-                    190,
-                    34,
-                    INSTALL_UPDATE,
-                );
-                EnableWindow(self.update_button, self.can_update() as i32);
+                self.last_status_text.clear();
+                let (edit,rail,update)=console::create(self.status_window);
+                self.status_edit=edit;self.status_scroll=rail;self.update_button=update;
+                EnableWindow(self.update_button,self.can_update() as i32);
             }
-            SetWindowTextW(self.status_edit, wide(text).as_ptr());
-            ShowWindow(self.status_window, SW_SHOW);
-            ShowWindow(self.status_window, SW_RESTORE);
-            SetForegroundWindow(self.status_window);
+            if self.last_status_text!=text {
+                let mut start=0u32;let mut end=0u32;
+                SendMessageW(self.status_edit,EM_GETSEL,&mut start as *mut u32 as usize,&mut end as *mut u32 as isize);
+                let first=SendMessageW(self.status_edit,EM_GETFIRSTVISIBLELINE,0,0);
+                let activity=console::update(self.status_window,text);
+                SetWindowTextW(self.status_edit,wide(&activity).as_ptr());
+                layout_status_scroll(self.status_edit,self.status_scroll);
+                SendMessageW(self.status_edit,EM_SETSEL,start as usize,end as isize);
+                scroll_status_to(self.status_edit,self.status_scroll,first as i32);
+                InvalidateRect(self.status_scroll,std::ptr::null(),0);
+                self.last_status_text=text.into();
+            }
+            if activate {
+                ShowWindow(self.status_window, SW_SHOW);
+                ShowWindow(self.status_window, SW_RESTORE);
+                SetForegroundWindow(self.status_window);
+            }
         }
     }
     fn show_token(&mut self) {
@@ -592,6 +544,102 @@ impl State {
         }
     }
 }
+#[derive(Debug,PartialEq)]
+struct ScrollThumb { top:i32,height:i32,max_first:i32,travel:i32 }
+fn scroll_thumb(lines:i32,visible:i32,first:i32,height:i32)->Option<ScrollThumb>{
+    let visible=visible.max(1);
+    if lines<=visible||height<=0{return None;}
+    let thumb=((i64::from(height)*i64::from(visible)/i64::from(lines)) as i32).clamp(24.min(height),height);
+    let max_first=lines-visible;let travel=height-thumb;
+    let top=(i64::from(first.clamp(0,max_first))*i64::from(travel)/i64::from(max_first)) as i32;
+    Some(ScrollThumb{top,height:thumb,max_first,travel})
+}
+unsafe fn status_lines(edit:HWND)->(i32,i32,i32){unsafe{
+    let mut rect:RECT=std::mem::zeroed();SendMessageW(edit,EM_GETRECT,0,&mut rect as *mut RECT as isize);
+    let dc=GetDC(edit);let font=SendMessageW(edit,WM_GETFONT,0,0) as HGDIOBJ;
+    let old=if font.is_null(){null_mut()}else{SelectObject(dc,font)};
+    let mut metrics:TEXTMETRICW=std::mem::zeroed();GetTextMetricsW(dc,&mut metrics);
+    if !old.is_null(){SelectObject(dc,old);}ReleaseDC(edit,dc);
+    (SendMessageW(edit,EM_GETLINECOUNT,0,0) as i32,(rect.bottom-rect.top)/metrics.tmHeight.max(1),SendMessageW(edit,EM_GETFIRSTVISIBLELINE,0,0) as i32)
+}}
+unsafe fn layout_status_scroll(edit:HWND,rail:HWND){unsafe{
+    if edit.is_null()||rail.is_null(){return;}
+    // Measure at full width first, so a formerly visible bar cannot itself keep
+    // text wrapped enough to prevent it disappearing again.
+    let flags=SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE;
+    let mut edit_rect=RECT::default();let mut rail_rect=RECT::default();
+    GetWindowRect(edit,&mut edit_rect);GetWindowRect(rail,&mut rail_rect);
+    let width=(rail_rect.right-edit_rect.left).max(1);let height=(rail_rect.bottom-rail_rect.top).max(1);
+    SetWindowPos(edit,null_mut(),0,0,width,height,flags);
+    let (lines,visible,_)=status_lines(edit);
+    if lines>visible.max(1){SetWindowPos(edit,null_mut(),0,0,(rail_rect.left-edit_rect.left-6).max(1),height,flags);ShowWindow(rail,SW_SHOWNOACTIVATE);}else{ShowWindow(rail,SW_HIDE);}
+    InvalidateRect(rail,std::ptr::null(),0);
+}}
+unsafe fn scroll_status_to(edit:HWND,rail:HWND,target:i32){unsafe{
+    let (lines,visible,first)=status_lines(edit);let target=target.clamp(0,(lines-visible.max(1)).max(0));
+    SendMessageW(edit,EM_LINESCROLL,0,(target-first) as isize);InvalidateRect(rail,std::ptr::null(),0);
+}}
+unsafe fn paint_status_scroll(dc:HDC,rect:&RECT,thumb:Option<&ScrollThumb>){unsafe{
+    FillRect(dc,rect,inset());
+    if let Some(t)=thumb{
+        FrameRect(dc,rect,gold());
+        let body=RECT{left:2,top:t.top,right:rect.right-2,bottom:t.top+t.height};FillRect(dc,&body,gold());
+        let highlight=CreateSolidBrush(0x00b7dff7);let shadow=CreateSolidBrush(0x002b547a);
+        FillRect(dc,&RECT{left:2,top:t.top,right:rect.right-2,bottom:t.top+2},highlight);
+        FillRect(dc,&RECT{left:2,top:t.top+t.height-2,right:rect.right-2,bottom:t.top+t.height},shadow);
+        DeleteObject(highlight);DeleteObject(shadow);
+    }
+}}
+unsafe extern "system" fn status_edit_proc(window:HWND,message:u32,wparam:WPARAM,lparam:LPARAM,id:usize,data:usize)->LRESULT{unsafe{
+    if message==WM_MOUSEWHEEL{
+        let delta=((wparam>>16) as u16 as i16) as i32+GetWindowLongPtrW(window,GWLP_USERDATA) as i32;
+        let ticks=delta/120;SetWindowLongPtrW(window,GWLP_USERDATA,(delta%120) as isize);
+        let (_,visible,first)=status_lines(window);let mut amount=3u32;
+        SystemParametersInfoW(SPI_GETWHEELSCROLLLINES,0,&mut amount as *mut u32 as *mut c_void,0);
+        let step=if amount==u32::MAX{visible.max(1)}else{amount.min(i32::MAX as u32) as i32};
+        scroll_status_to(window,data as HWND,first.saturating_sub(ticks.saturating_mul(step)));return 0;
+    }
+    let result=DefSubclassProc(window,message,wparam,lparam);
+    if matches!(message,WM_MOUSEWHEEL|WM_KEYDOWN|WM_CHAR|WM_VSCROLL|EM_LINESCROLL|WM_SIZE){InvalidateRect(data as HWND,std::ptr::null(),0);}
+    if message==WM_NCDESTROY{RemoveWindowSubclass(window,Some(status_edit_proc),id);}
+    result
+}}
+unsafe extern "system" fn status_scroll_proc(window:HWND,message:u32,wparam:WPARAM,lparam:LPARAM,id:usize,data:usize)->LRESULT{unsafe{
+    let edit=data as HWND;
+    if message==WM_NCDESTROY{RemoveWindowSubclass(window,Some(status_scroll_proc),id);return DefSubclassProc(window,message,wparam,lparam);}
+    let mut rect:RECT=std::mem::zeroed();GetClientRect(window,&mut rect);
+    let (lines,visible,first)=status_lines(edit);let thumb=scroll_thumb(lines,visible,first,rect.bottom);
+    match message {
+        WM_ERASEBKGND=>1,
+        WM_PAINT=>{
+            let mut paint:PAINTSTRUCT=std::mem::zeroed();let dc=BeginPaint(window,&mut paint);
+            paint_status_scroll(dc,&rect,thumb.as_ref());
+            EndPaint(window,&paint);0
+        },
+        WM_LBUTTONDOWN=>{
+            if let Some(t)=thumb{
+                let y=((lparam>>16) as u16 as i16) as i32;
+                SetFocus(edit);
+                if y>=t.top&&y<t.top+t.height{SetWindowLongPtrW(window,GWLP_USERDATA,(y-t.top+1) as isize);SetCapture(window);}
+                else{scroll_status_to(edit,window,first+if y<t.top{-visible.max(1)}else{visible.max(1)});}
+            }0
+        },
+        WM_MOUSEMOVE=>{
+            let offset=GetWindowLongPtrW(window,GWLP_USERDATA);
+            if offset>0&&GetCapture()==window{if let Some(t)=thumb{
+                let y=((lparam>>16) as u16 as i16) as i32;
+                let top=(y-(offset as i32-1)).clamp(0,t.travel);
+                let target=(i64::from(top)*i64::from(t.max_first)/i64::from(t.travel.max(1))) as i32;
+                scroll_status_to(edit,window,target);
+            }}0
+        },
+        WM_LBUTTONUP=>{SetWindowLongPtrW(window,GWLP_USERDATA,0);if GetCapture()==window{ReleaseCapture();}0},
+        WM_CAPTURECHANGED=>{SetWindowLongPtrW(window,GWLP_USERDATA,0);0},
+        WM_MOUSEWHEEL=>SendMessageW(edit,message,wparam,lparam),
+        WM_KEYDOWN=>{SetFocus(edit);SendMessageW(edit,message,wparam,lparam)},
+        _=>DefSubclassProc(window,message,wparam,lparam),
+    }
+}}
 // Controls contain only a placeholder until the user explicitly chooses Reveal.
 #[allow(clippy::too_many_arguments)]
 fn control(
@@ -770,7 +818,10 @@ unsafe extern "system" fn window_proc(
     lparam: LPARAM,
 ) -> LRESULT {
     match message {
+        WM_SIZE => unsafe {if console::is_console(window){console::layout(window);RedrawWindow(window,std::ptr::null(),null_mut(),RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);return 0;} DefWindowProcW(window,message,wparam,lparam)},
+        WM_GETMINMAXINFO => unsafe {if console::is_console(window){let info=&mut *(lparam as *mut MINMAXINFO);info.ptMinTrackSize=POINT{x:940,y:760};return 0;} DefWindowProcW(window,message,wparam,lparam)},
         WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT => unsafe {
+            if console::is_console(window){return console::control_color(wparam as HDC,lparam as HWND); }
             SetTextColor(wparam as HDC, GOLD);
             SetBkColor(wparam as HDC, INSET);
             inset() as LRESULT
@@ -782,7 +833,8 @@ unsafe extern "system" fn window_proc(
             1
         },
         WM_DRAWITEM => {
-            draw_item(unsafe { &*(lparam as *const DRAWITEMSTRUCT) });
+            let item=unsafe{&*(lparam as *const DRAWITEMSTRUCT)};
+            if unsafe{console::is_console(window)} {unsafe{console::draw_button(item)};}else{draw_item(item);}
             1
         }
         WM_PAINT => unsafe {
@@ -790,8 +842,9 @@ unsafe extern "system" fn window_proc(
             let dc = BeginPaint(window, &mut paint);
             let mut rect: RECT = std::mem::zeroed();
             GetClientRect(window, &mut rect);
+            if console::is_console(window){console::paint(window,dc,&rect);}else{
             FillRect(dc, &rect, background());
-            FrameRect(dc, &rect, gold());
+            FrameRect(dc, &rect, gold());}
             EndPaint(window, &paint);
             0
         },
@@ -856,6 +909,7 @@ unsafe extern "system" fn window_proc(
                 {
                     state.update_icon(false);
                     state.poll_update();
+                    state.refresh_status(false);
                 }
             });
             0
@@ -880,6 +934,7 @@ unsafe extern "system" fn window_proc(
                     } else if window == state.status_window {
                         state.status_window = null_mut();
                         state.status_edit = null_mut();
+                        state.status_scroll = null_mut();
                         state.update_button = null_mut();
                     } else {
                         unsafe {
@@ -945,6 +1000,44 @@ unsafe extern "system" fn window_proc(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scroll_thumb_only_exists_for_overflow_and_reaches_both_ends(){
+        assert!(scroll_thumb(20,20,0,345).is_none());assert!(scroll_thumb(1,20,0,345).is_none());
+        let top=scroll_thumb(100,20,0,345).unwrap();let end=scroll_thumb(100,20,80,345).unwrap();
+        assert_eq!(top.top,0);assert_eq!(end.top+end.height,345);
+        assert_eq!(top.max_first,80);assert!(top.height>=24);
+        assert_eq!(scroll_thumb(i32::MAX,20,i32::MAX,345).unwrap().height,24);
+    }
+    #[test]
+    fn gold_scroll_pixels_match_the_status_theme(){unsafe{
+        let screen=GetDC(null_mut());let dc=CreateCompatibleDC(screen);let bitmap=CreateCompatibleBitmap(screen,14,345);let previous=SelectObject(dc,bitmap);
+        let thumb=scroll_thumb(100,20,20,345).unwrap();
+        paint_status_scroll(dc,&RECT{left:0,top:0,right:14,bottom:345},Some(&thumb));
+        let actual=GetPixel(dc,7,thumb.top+thumb.height/2);
+        SelectObject(dc,previous);DeleteObject(bitmap);DeleteDC(dc);ReleaseDC(null_mut(),screen);
+        assert_eq!(actual,GOLD);
+    }}
+    #[test]
+    fn status_scroll_hides_when_text_fits_and_scrolls_overflow(){unsafe{
+        let instance=GetModuleHandleW(std::ptr::null());let class=wide("IronwoodStatusScrollTest");
+        let definition=WNDCLASSW{lpfnWndProc:Some(DefWindowProcW),hInstance:instance,lpszClassName:class.as_ptr(),..std::mem::zeroed()};
+        assert_ne!(RegisterClassW(&definition),0);
+        let parent=CreateWindowExW(0,class.as_ptr(),wide("Status scroll test").as_ptr(),WS_OVERLAPPED,0,0,650,560,null_mut(),null_mut(),instance,std::ptr::null());
+        assert!(!parent.is_null());
+        let edit=control(parent,"EDIT","",ES_READONLY as u32|ES_MULTILINE as u32|ES_AUTOVSCROLL as u32,20,18,590,345,0);
+        let rail=control(parent,"STATIC","Scroll status",0x100,596,18,14,345,0);
+        SetWindowSubclass(edit,Some(status_edit_proc),2,rail as usize);
+        SetWindowTextW(edit,wide("Everything fits").as_ptr());layout_status_scroll(edit,rail);
+        assert_eq!(GetWindowLongPtrW(rail,GWL_STYLE)&WS_VISIBLE as isize,0);
+        SetWindowTextW(edit,wide(&"A status line\r\n".repeat(100)).as_ptr());layout_status_scroll(edit,rail);
+        assert_ne!(GetWindowLongPtrW(rail,GWL_STYLE)&WS_VISIBLE as isize,0);
+        scroll_status_to(edit,rail,i32::MAX);let (_,_,bottom)=status_lines(edit);assert!(bottom>0);
+        SendMessageW(edit,WM_MOUSEWHEEL,(120u32<<16) as usize,0);assert!(status_lines(edit).2<bottom);
+        SetWindowTextW(edit,wide("Short again").as_ptr());layout_status_scroll(edit,rail);
+        assert_eq!(GetWindowLongPtrW(rail,GWL_STYLE)&WS_VISIBLE as isize,0);
+        let mut rect:RECT=std::mem::zeroed();GetClientRect(edit,&mut rect);assert_eq!(rect.right,590);
+        DestroyWindow(parent);UnregisterClassW(class.as_ptr(),instance);
+    }}
     #[test]
     fn desktop_destinations_have_no_credentials() {
         assert_eq!(

@@ -28,7 +28,8 @@ test('persistent archive HTTP round trips, transactions, conflicts, collections,
     const group=(await server.request('archive/collections',{action:'create',name:'Research'})).value;const collection=group.id;
     const imported=await server.request('archive/import',{documents:[document],collection});assert.equal(imported.status,200);assert.equal(imported.value.imported,1);const id=imported.value.ids[0];
     assert.equal((await server.request('archive/import',{documents:[document]})).value.duplicates,1);
-    assert.deepEqual((await server.request(`archive/games/${id}`)).value.document,document);
+    const loadedDocument=(await server.request(`archive/games/${id}`)).value.document;
+    assert.deepEqual(loadedDocument,{...document,pgn:`[Opening "King's Pawn Game"]\n${pgn}`,metadata:{...document.metadata,Opening:"King's Pawn Game"}});
     const queries=['white=ad','black=grace','date_from=2026.10.01&date_to=2026.10.31','result=*','opening=C20','profile=profile-one',`collection=${collection}`];
     for(const query of queries)assert.equal((await server.request(`archive/games?${query}`)).value.games.length,1,query);
     assert.equal((await server.request('archive/games?white=missing')).value.games.length,0);
@@ -53,10 +54,10 @@ test('persistent archive HTTP round trips, transactions, conflicts, collections,
     const writes=await Promise.all([server.request(`archive/games/${id}/update`,{revision:1,document:edited}),server.request(`archive/games/${id}/update`,{revision:1,document:edited})]);assert.deepEqual(writes.map(r=>r.status).sort(),[200,409]);
     assert.equal((await server.request(`archive/games/${id}/delete`,{revision:1})).status,409);
     const version=(await server.request(`archive/games/${id}`)).value;assert.equal(version.revision,2);
-    const pg=(await server.request('archive/export',{ids:[id],format:'pgn'})).value.pgn;assert.equal(pg,pgn);
+    const pg=(await server.request('archive/export',{ids:[id],format:'pgn'})).value.pgn;assert.equal(pg,loadedDocument.pgn);
     assert.deepEqual((await server.request('archive/export',{ids:[id],format:'json'})).value.documents[0].record,record);
     await server.stop();server=await start(dir);children.push(server.child);assert.deepEqual((await server.request(`archive/games/${id}`)).value,version);
-    const backup=(await server.request('archive/backup')).value;assert.equal(backup.schema_version,3);assert.equal(backup.games[0].document.analysis_runs.length,2);
+    const backup=(await server.request('archive/backup')).value;assert.equal(backup.schema_version,4);assert.equal(backup.games[0].document.analysis_runs.length,2);
     assert.equal((await server.request('archive/restore',backup)).status,409);
     const restored=await start(await directory('restored'));children.push(restored.child);assert.equal((await restored.request('archive/restore',{...backup,schema_version:999})).status,400);assert.equal((await restored.request('archive/restore',backup)).value.restored,1);assert.deepEqual((await restored.request('archive/backup')).value,backup);
     assert.equal((await server.request(`${runPath}/delete`,{runs:[['lc0',1]]},'wrong')).status,401);
@@ -87,7 +88,7 @@ test('unified Saved games provider round-trips complete records through the real
   const record={id:'browser-record',category:'imported',favorite:true,source:'original',updatedAt:123,json:JSON.stringify({board:'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',history:[],review_pgn:pgn,move_notes:['keep note'],game_analysis:[{score_cp:45}]}),custom:{keep:true}};
   const store=new ArchiveLibrary({endpoint,credential:token,request:async(path,body)=>{const response=await server.request(path,body);if(response.status!==200)throw Error(response.value.message);return response.value;}},{connection:()=>current,details:()=>({white:'Ada',black:'Grace',result:'*'}),exporter:()=>pgn,prepare:()=>record.json,receive:async documents=>{browser.push(...structuredClone(documents));return {received:documents.length,duplicates:0,ids:['restored-browser']};}});
   const [id]=await store.importRecords([record]);const rows=await store.list();assert.equal(rows.length,1);assert.equal(rows[0].json,record.json);assert.equal(rows[0].favorite,true);
-  const stats=await store.stats();assert.equal(stats.games,1);assert.equal(stats.favorites,1);assert.equal(stats.categories.imported,1);assert.equal(stats.schema_version,3);assert.equal(stats.collections,0);assert.ok(stats.database_bytes>0);assert.equal(stats.total_bytes,stats.database_bytes+stats.wal_bytes+stats.shared_memory_bytes);assert.ok(stats.reusable_bytes<=stats.allocated_bytes);assert.ok(!JSON.stringify(stats).includes(root));assert.equal((await server.request('archive/stats',undefined,'wrong')).status,401);
+  const stats=await store.stats();assert.equal(stats.games,1);assert.equal(stats.favorites,1);assert.equal(stats.categories.imported,1);assert.equal(stats.schema_version,4);assert.equal(stats.collections,0);assert.ok(stats.database_bytes>0);assert.equal(stats.total_bytes,stats.database_bytes+stats.wal_bytes+stats.shared_memory_bytes);assert.ok(stats.reusable_bytes<=stats.allocated_bytes);assert.ok(!JSON.stringify(stats).includes(root));assert.equal((await server.request('archive/stats',undefined,'wrong')).status,401);
   const updated=await store.write({...await store.read(id),favorite:false});assert.equal(updated._archive.revision,2);assert.equal(updated.category,'imported');
   await store.moveToBrowser([id]);assert.equal(browser[0].record.favorite,false);assert.equal(browser[0].record.json,record.json);assert.deepEqual(browser[0].record.custom,{keep:true});assert.equal((await store.list()).length,0);assert.equal((await store.stats()).games,0);
   await server.stop();

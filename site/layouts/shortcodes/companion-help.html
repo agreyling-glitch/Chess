@@ -1,0 +1,5 @@
+{{ with .Site.GetPage "/help/companion-setup" }}
+{{ if or (not .Draft) (eq hugo.Environment "companion-preview") }}
+<aside class="help-on-page"><strong>Using Companion?</strong> <a href="{{ .RelPermalink }}">Windows setup and connection instructions</a> · <a href="/help/companion-engines-and-storage/">Engines and archive storage</a> · <a href="/help/companion-troubleshooting/">Troubleshooting</a></aside>
+{{ end }}
+{{ end }}

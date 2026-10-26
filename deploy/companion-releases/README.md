@@ -1,8 +1,9 @@
-# Internal Companion private-preview release channel
+# Companion release channels
 
-Provisioned on 2026-10-21 with signed private-preview release 0.1.0. This is internal operations documentation, not a
-public announcement or download page. Keep the Companion browser feature flag
-off by default.
+Public Windows x64 release **0.1.4** was published with owner authorization on October 26, 2026.
+The public feed and versioned ZIP are available without a release-access token. The website download, Features and Help pages are live, and Companion setup no longer requires an About checkbox.
+
+The remaining private-preview instructions below describe the separately protected historical channel, provisioned on 2026-10-21. Its token requirements remain in place.
 
 Live validation confirmed anonymous and invalid-token requests return 401,
 authenticated manifest and package downloads return 200, and the Windows
@@ -136,3 +137,41 @@ the deployment bundle. These do not substitute for live channel validation.
 Cloudflare's [R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)
 documents the private bucket binding; [Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 documents secret provisioning. No new third-party runtime library is introduced.
+
+## Public Windows channel
+
+Owner decision, 2026-10-25: prepare Windows x64 without paid Authenticode signing.
+The existing DPAPI-protected RSA key signs manifest format 2 and the complete ZIP
+is verified against its signed SHA-256 before extraction. The internal trust-mode
+identifier and signature domain remain `private-preview-key` for compatibility;
+this name does not require private downloads. No private key enters the package.
+
+The new allowlisted prefix is `/public/windows-x64/`. A separate
+`PUBLIC_WINDOWS_RELEASES=1` Worker setting is required to serve it anonymously.
+The checked-in value is `1`, deployed for the public Windows release.
+Disabled public routes return 503 so the publisher cannot mistake disabled
+access for a missing immutable version. Private-preview paths retain bearer-token
+protection even when public Windows delivery is enabled. Linux/macOS paths and
+bucket listing are not exposed.
+
+Prepare locally using the existing public pin and protected key:
+
+```powershell
+$releasePublic = Get-Content "$env:LOCALAPPDATA/Ironwood/ReleaseSigning/release-public-key.json" -Raw | ConvertFrom-Json
+.\scripts\package-companion.ps1 -Channel public -UpdateSigningMode private-preview-key -UpdatePublicKey $releasePublic.public_key -UpdateFeed https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json
+.\scripts\publish-companion-release.ps1 -Channel public -Version 0.1.4 -ReleaseKeyFile "$env:LOCALAPPDATA/Ironwood/ReleaseSigning/release-key.dpapi.json"
+```
+
+Stop the current Windows Companion before packaging and preserve its data folder.
+The second command verifies package identity and prepares a signed manifest without
+uploads. Stable local output: `output/companion/update-manifest.json`.
+Public manifests are valid for 90 days; renew the signed feed before expiry.
+The native public-feed path does not load private release-access credentials.
+Companion's separate local owner token is still mandatory for archive/engine use.
+
+After explicit publication approval: validate the exact ZIP on clean Windows,
+choose the public app/help entry points, enable and deploy the public Worker route,
+then run the publisher with `-Publish`. Check anonymous signed-manifest/package
+delivery and confirm private routes remain protected. Keep versioned ZIPs immutable.
+Publish the matching `.sha256` sidecar separately if offering a checksum link; the
+signed manifest is the updater's authoritative checksum. Public delivery was verified on October 26, 2026; see `output/companion/public-delivery-validation.json`.

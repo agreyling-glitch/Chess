@@ -34,6 +34,12 @@ test('settings engine selector validates selections and discards results after d
     await new Promise(resolve => setImmediate(resolve));
     const catalog = JSON.parse(window.ironwoodCompanionEngineCatalog());
     assert.equal(catalog.engines[0].identity,'http://localhost:8790/lc0');
+    await connectCompanion('http://localhost:8790','test-token',{name:'Win11'});
+    window.ironwoodCompanionEngineCatalog();
+    await new Promise(resolve => setImmediate(resolve));
+    const renamed = JSON.parse(window.ironwoodCompanionEngineCatalog()).engines[0];
+    assert.equal(renamed.label,'Lc0 — Win11');
+    assert.equal(renamed.identity,catalog.engines[0].identity);
     const reads = calls.length;
     window.ironwoodCompanionEngineCatalog();
     await new Promise(resolve => setImmediate(resolve));

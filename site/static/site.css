@@ -132,3 +132,20 @@ footer span { margin-right:auto; } footer a { color:var(--gold); }
 .features-jump-links{display:flex;flex-wrap:wrap;gap:12px 24px;padding:22px 0;border-bottom:1px solid #ffffff20}
 .features-jump-links a{color:var(--gold);text-underline-offset:4px}
 .feature-section h2{scroll-margin-top:28px}
+.companion-draft-notice{max-width:1200px;margin:24px auto 0;padding:14px 20px;border:1px solid #d3ad6266;border-radius:8px;color:var(--gold);background:#1c201b}
+.companion-download-hero{display:grid;grid-template-columns:1.1fr 1fr;gap:64px;align-items:center;max-width:1200px;margin:auto;padding:72px 24px 54px}
+.companion-download-hero h1{font:clamp(2.8rem,5.4vw,5rem)/1.08 Georgia,serif;margin:18px 0 26px}
+.companion-guide-link{color:var(--gold);text-underline-offset:5px}
+.companion-download-card{padding:30px;border:1px solid #d3ad6270;border-radius:12px;background:#121a18;min-width:0;box-shadow:0 14px 40px #0003}
+.companion-download-card h2{font-size:1.7rem;margin:14px 0}
+.companion-download-card p{line-height:1.65;color:var(--muted)}
+.companion-download-button{display:block;box-sizing:border-box;width:100%;margin:24px 0 12px;padding:16px 20px;border:1px solid var(--gold);border-radius:6px;background:var(--gold);color:#161812;text-align:center;font:600 1rem/1.4 system-ui;text-decoration:none}
+.companion-download-button:disabled{background:#343b32;border-color:#74806b;color:#e0e5db;cursor:default}
+.companion-download-button:focus-visible{outline:3px solid white;outline-offset:4px}
+.companion-download-card details{border-top:1px solid #ffffff20;padding-top:20px;margin-top:22px}
+.companion-download-card summary{cursor:pointer;color:var(--gold)}
+.companion-download-card code{overflow-wrap:anywhere;font-size:.82rem}
+.companion-download-body{max-width:850px;margin:0 auto;padding:0 24px 72px}
+@media(max-width:760px){.companion-download-hero{grid-template-columns:1fr;gap:30px;padding-top:36px}.companion-download-card{padding:24px}.companion-draft-notice{margin:18px 20px 0}}
+
+.companion-download-body .highlight{min-width:0;max-width:100%}.companion-download-body pre{max-width:100%;overflow-x:auto;padding:16px;border:1px solid #ffffff20;border-radius:6px}.companion-download-body pre code{white-space:pre;overflow-wrap:normal}

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$ZipPath,[string]$ReportPath='tmp/companion-windows-validation.json',[ValidateSet('development','clean-vm','windows-sandbox')][string]$EnvironmentKind='development',[string]$EnvironmentEvidence='')
+param([Parameter(Mandatory=$true)][string]$ZipPath,[string]$ReportPath='tmp/companion-windows-validation.json',[ValidateSet('development','clean-vm','windows-sandbox')][string]$EnvironmentKind='development',[string]$EnvironmentEvidence='',[string]$PublisherPackage='')
 $ErrorActionPreference='Stop'
 $checks=New-Object 'System.Collections.Generic.List[string]'
 $processes=New-Object 'System.Collections.Generic.List[System.Diagnostics.Process]'
@@ -183,12 +183,22 @@ try{
     $caps=(Request $server 'capabilities').value;
     Require ($caps.services.uci -and $caps.services.archive -and $caps.services.explorer -and $caps.services.tablebases) 'Service configuration failed';
     $checks.Add('restricted-path-health-auth-origin-capabilities')
-    $pgn="[White `"Portable`"]`n[Black `"Validation`"]`n`n1. e4 e5 *";
+    $pgn="[White `"Portable`"]`n[Black `"Validation`"]`n`n1. e4 e5 2. Nf3 Nc6 *";
     $imported=(Request $server 'archive/import' @{
         pgn=$pgn
     }).value;
     Require ($imported.imported -eq 1) 'Archive import failed';
     $id=$imported.ids[0]
+    $exportReply=Request $server 'archive/export' @{ids=@($id);format='pgn'};
+    Require ($exportReply.status -eq 200) 'Archive PGN export request failed';
+    $exported=$exportReply.value.pgn;
+    Require ($exported -match '2\.\s*Nf3\s+(?:2\.\.\.\s+)?Nc6') 'Binary archive PGN export lost moves';
+    $duplicate=(Request $server 'archive/import' @{pgn=$exported}).value;
+    Require ($duplicate.imported -eq 0 -and $duplicate.duplicates -eq 1) 'PGN round-trip duplicate detection failed';
+    $short=(Request $server 'archive/import' @{pgn='1. e4 e5 *'}).value;
+    Require ($short.discarded -eq 1 -and $short.imported -eq 0) 'Short-game discard policy failed';
+    $checks.Add('binary-archive-pgn-export-round-trip-duplicates-short-policy');
+
     $deadline=[DateTime]::UtcNow.AddSeconds(10);
     do{
         $pending=(Request $server 'archive/explorer/status').value.pending;
@@ -239,6 +249,38 @@ try{
         $checks.Add('uci-handshake-search-close-inbox-powershell-fixture')
     }finally{
         $socket.Dispose()
+    }
+    if ($PublisherPackage) {
+        $catalog=(Request $server 'engine-download-catalog').value
+        $package=@($catalog.packages | Where-Object id -eq $PublisherPackage)
+        Require ($package.Count -eq 1) 'Publisher package unavailable on this platform'
+        $started=Request $server 'engine-downloads' @{package=$PublisherPackage}
+        Require ($started.status -in 200,202) 'Publisher download did not start'
+        $deadline=[DateTime]::UtcNow.AddMinutes(10)
+        do {
+            $jobs=(Request $server 'engine-downloads').value.jobs
+            $job=@($jobs | Where-Object id -eq $PublisherPackage)[0]
+            if ($job.phase -in 'ready','paused','cancelled') { break }
+            Start-Sleep -Seconds 2
+        } while ([DateTime]::UtcNow -lt $deadline)
+        Require ($job.phase -eq 'ready' -and $job.engine_id) ('Publisher install failed: '+$job.message)
+        $report.publisherEngine=[ordered]@{package=$PublisherPackage;source=$package[0].source;license=$package[0].license}
+        $ticket=(Request $server 'tickets' $null $token 'http://localhost:8788' 'POST').value.ticket
+        $socket=New-Object Net.WebSockets.ClientWebSocket
+        try {
+            $socket.Options.SetRequestHeader('Origin','http://localhost:8788')
+            $socket.ConnectAsync([uri]($server.address.Replace('http:','ws:')+'/api/v1/socket'),[Threading.CancellationToken]::None).GetAwaiter().GetResult()|Out-Null
+            Send-Message $socket @{type='authenticate';ticket=$ticket}
+            Receive-Type $socket 'ready'|Out-Null
+            Send-Message $socket @{type='open_engine';request_id='publisher-open';engine_id=$job.engine_id}
+            $opened=Receive-Type $socket 'engine_opened'
+            Send-Message $socket @{type='search';session_id=$opened.session_id;search_id='publisher-search';position_id='initial';fen=[uri]::UnescapeDataString($fen);limit=@{kind='depth';plies=2}}
+            $best=Receive-Type $socket 'bestmove'
+            Require ($best.bestmove -match '^[a-h][1-8][a-h][1-8][qrbn]?$') 'Publisher engine did not return a move'
+            Send-Message $socket @{type='close_engine';session_id=$opened.session_id}
+            Receive-Type $socket 'engine_closed'|Out-Null
+            $checks.Add('publisher-direct-download-install-real-uci-search')
+        } finally { $socket.Dispose() }
     }
     Stop-Companion $server;
     $server=Start-Companion;

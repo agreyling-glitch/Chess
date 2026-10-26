@@ -11,11 +11,68 @@ pub struct Parsed {
     pub tags: BTreeMap<String, String>,
     pub pgn: String,
 }
+struct BoundaryCounter;
+impl Visitor for BoundaryCounter {
+    type Tags = ();
+    type Movetext = ();
+    type Output = ();
+    fn begin_tags(&mut self) -> ControlFlow<(), ()> {
+        ControlFlow::Continue(())
+    }
+    fn begin_movetext(&mut self, _: ()) -> ControlFlow<(), ()> {
+        ControlFlow::Continue(())
+    }
+    fn end_game(&mut self, _: ()) {}
+}
+// Count boundaries without validating moves or constructing game documents.
+pub(crate) fn count_games(
+    reader: impl std::io::Read,
+    check: &mut impl FnMut() -> std::result::Result<(), String>,
+) -> std::result::Result<u64, String> {
+    let mut reader = Reader::new(reader);
+    let mut total = 0;
+    loop {
+        check()?;
+        if reader
+            .read_game(&mut BoundaryCounter)
+            .map_err(|_| "Could not count PGN games")?
+            .is_none()
+        {
+            break;
+        }
+        total += 1;
+    }
+    Ok(total)
+}
 struct Parser;
-pub(crate) struct ImportReader(Reader<std::io::Cursor<Vec<u8>>>);
+pub(crate) struct ImportReader(Reader<Box<dyn std::io::Read + Send>>);
 impl ImportReader {
-    pub(crate) fn new(bytes:Vec<u8>) -> Self { Self(Reader::new(std::io::Cursor::new(bytes))) }
-    pub(crate) fn next(&mut self) -> Result<Option<Result<Parsed>>> { self.0.read_game(&mut Parser).map_err(|_|invalid("Malformed PGN stream")) }
+    pub(crate) fn skip_games(&mut self, count: u64) -> Result<u64> {
+        let mut skipped = 0;
+        while skipped < count {
+            if self
+                .0
+                .read_game(&mut BoundaryCounter)
+                .map_err(|_| invalid("Malformed PGN checkpoint"))?
+                .is_none()
+            {
+                break;
+            }
+            skipped += 1;
+        }
+        Ok(skipped)
+    }
+    pub(crate) fn new(bytes: Vec<u8>) -> Self {
+        Self::from_reader(std::io::Cursor::new(bytes))
+    }
+    pub(crate) fn from_reader(reader: impl std::io::Read + Send + 'static) -> Self {
+        Self(Reader::new(Box::new(reader)))
+    }
+    pub(crate) fn next(&mut self) -> Result<Option<Result<Parsed>>> {
+        self.0
+            .read_game(&mut Parser)
+            .map_err(|_| invalid("Malformed PGN stream"))
+    }
 }
 pub struct Text {
     tags: BTreeMap<String, String>,
@@ -110,7 +167,10 @@ impl Visitor for Parser {
         text.tokens.push(san.to_string());
         text.position.play_unchecked(m);
         text.plies += 1;
-        if text.stack.is_empty() { text.mainline_plies += 1; text.sans.push(san.to_string()); }
+        if text.stack.is_empty() {
+            text.mainline_plies += 1;
+            text.sans.push(san.to_string());
+        }
         ControlFlow::Continue(())
     }
     fn nag(&mut self, text: &mut Text, nag: Nag) -> ControlFlow<Self::Output> {
@@ -176,7 +236,8 @@ impl Visitor for Parser {
         Ok(Parsed {
             moves: text.mainline_plies,
             sans: text.sans,
-            final_fen: Fen::from_position(&text.position, shakmaty::EnPassantMode::Legal).to_string(),
+            final_fen: Fen::from_position(&text.position, shakmaty::EnPassantMode::Legal)
+                .to_string(),
             tags,
             pgn: format!("{headers}\n\n{}\n", text.tokens.join(" ")),
         })
@@ -186,7 +247,7 @@ impl Visitor for Parser {
 thread_local! { pub(crate) static PARSE_COUNT:std::cell::Cell<usize>=const {std::cell::Cell::new(0)}; }
 pub fn parse(input: &str) -> Result<Vec<Parsed>> {
     #[cfg(test)]
-    PARSE_COUNT.with(|count|count.set(count.get()+1));
+    PARSE_COUNT.with(|count| count.set(count.get() + 1));
     if input.len() > crate::archive::MAX_BODY {
         return Err(invalid("PGN exceeds import limit"));
     }
@@ -210,7 +271,7 @@ pub fn documents(input: &str) -> Result<Vec<Document>> {
     Ok(parse(input)?
         .into_iter()
         .map(|game| Document {
-            analysis_runs:Vec::new(),
+            analysis_runs: Vec::new(),
             format: "ironwood-companion-game".into(),
             version: 1,
             record: None,

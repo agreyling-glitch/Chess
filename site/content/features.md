@@ -1,8 +1,8 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-23T00:00:00-05:00
-description: "Play locally or online, analyze with Stockfish 19, compare Lichess players, practice puzzles, annotate positions, and keep your study library on your device."
+lastmod: 2026-10-26T00:00:00-05:00
+description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
 ---
@@ -22,6 +22,8 @@ The live board stays on the left, with **Moves**, **Prediction**, and **Analysis
 Saved analyses remain separate runs, so you can compare results without replacing earlier work. Replay the engine continuation directly in Move Analysis with a mini player and a rounded outline around the current move. **Try the best move** appears when the engine recommends a different move.
 
 For full-game analysis, choose a **node budget** or **1–60 seconds per position**. Node mode keeps Quick, Standard, Deep and Custom quality choices. Turn **Verify critical moves after analysis** on or off; after the first pass, **Verify critical moves** lets you request the deeper check manually. The analysis button names Stockfish, and the bottom-bar **Engine** button opens its settings. [Analysis budgets and settings](/help/search-depth-and-settings/).
+
+{{< companion-features >}}
 
 ## Inspect the full game graph
 

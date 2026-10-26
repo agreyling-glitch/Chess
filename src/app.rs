@@ -251,6 +251,8 @@ extern "C" {
     fn select_companion_engine(identity: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodAddCompanionEngine)]
     fn add_companion_engine();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodManageCompanionEngines)]
+    fn manage_companion_engines(identity: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionEngineCatalog)]
     fn companion_engine_catalog() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenCompanionArchive)]
@@ -368,8 +370,20 @@ extern "C" {
     fn browse_import_file();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollImportFile)]
     fn poll_import_file() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodImportFileStatus)]
+    fn import_file_status() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionImportProgress)]
+    fn companion_folder_import_progress() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCancelImportFile)]
+    fn cancel_import_file();
     #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodReadPgnZip)]
     async fn read_pgn_zip(bytes: js_sys::Uint8Array) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodReadScidFiles)]
+    async fn read_scid_files(files: js_sys::Array) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodOpenScid5Files)]
+    async fn open_scid5_files(files: js_sys::Array) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+    #[wasm_bindgen::prelude::wasm_bindgen(catch, js_namespace = window, js_name = ironwoodOpenSevenZipFile)]
+    async fn open_sevenz_file(file: wasm_bindgen::JsValue) -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
     fn fetch_lichess(input: &str, options: &str);
@@ -433,6 +447,10 @@ extern "C" {
     fn begin_batch_import_storage(archive: bool);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveImportAvailable)]
     fn archive_import_available() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodImportLocationCatalog)]
+    fn import_location_catalog() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodSetImportLocation)]
+    fn set_import_location(value: &str) -> bool;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodBatchImportStatus)]
     fn batch_import_storage_status() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodEndBatchImport)]
@@ -455,6 +473,8 @@ extern "C" {
     fn refresh_version_diagnostics();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionDiagnostics)]
     fn companion_diagnostics() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionIndexProgress)]
+    fn companion_index_progress() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRefreshCompanionDiagnostics)]
     fn refresh_companion_diagnostics();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCheckCompanionUpdates)]
@@ -1938,6 +1958,7 @@ pub struct ChessApp {
     batch_pgn_result_open: bool,
     batch_pgn_stopped: bool,
     batch_pgn_archive: bool,
+    batch_pgn_location_name: String,
     import_tab: usize,
     chess_com_input: String,
     import_input: String,
@@ -3383,6 +3404,7 @@ impl ChessApp {
             batch_pgn_result_open: false,
             batch_pgn_stopped: false,
             batch_pgn_archive: false,
+            batch_pgn_location_name: "Browser".into(),
             import_tab: 0,
             chess_com_input: String::new(),
             import_input: String::new(),
@@ -4184,99 +4206,109 @@ impl ChessApp {
                     egui::CollapsingHeader::new("Version diagnostics")
                         .id_salt("about_version_diagnostics")
                         .show(ui, |ui| {
-                            let is_match = diagnostics.status.starts_with("All loaded");
-                            let status_color = if is_match {
-                                Color32::from_rgb(104, 190, 128)
-                            } else if diagnostics.status.contains("mismatch") {
-                                Color32::from_rgb(230, 119, 112)
-                            } else {
-                                muted
-                            };
-                            ui.label(
-                                RichText::new(&diagnostics.status)
-                                    .strong()
-                                    .color(status_color),
-                            );
-                            ui.add_space(6.0);
-                            egui::Grid::new("about_version_grid")
-                                .num_columns(2)
-                                .spacing([16.0, 4.0])
-                                .show(ui, |ui| {
-                                    for (label, detail) in [
-                                        (
-                                            "Environment",
-                                            Self::diagnostic_value(&diagnostics.environment),
-                                        ),
-                                        (
-                                            "Loaded shell",
-                                            Self::diagnostic_value(&diagnostics.app_version),
-                                        ),
-                                        (
-                                            "Server shell",
-                                            Self::diagnostic_value(&diagnostics.server_app_version),
-                                        ),
-                                        (
-                                            "Loaded WASM",
-                                            Self::diagnostic_value(&diagnostics.package_version),
-                                        ),
-                                        (
-                                            "Server WASM",
-                                            Self::diagnostic_value(
-                                                &diagnostics.server_package_version,
-                                            ),
-                                        ),
-                                        (
-                                            "Loaded engine",
-                                            Self::diagnostic_value(&diagnostics.engine_version),
-                                        ),
-                                        (
-                                            "Server engine",
-                                            Self::diagnostic_value(
-                                                &diagnostics.server_engine_version,
-                                            ),
-                                        ),
-                                        (
-                                            "Service worker",
-                                            Self::diagnostic_value(
-                                                &diagnostics.service_worker_state,
-                                            ),
-                                        ),
-                                        (
-                                            "Worker shell",
-                                            Self::diagnostic_value(
-                                                &diagnostics.service_worker_version,
-                                            ),
-                                        ),
-                                    ] {
-                                        ui.label(RichText::new(label).color(muted));
-                                        ui.label(RichText::new(detail).monospace().size(11.0));
-                                        ui.end_row();
-                                    }
-                                });
-                            ui.add_space(8.0);
+                            let tab_id = egui::Id::new("about_diagnostics_companion_tab");
+                            let mut companion_tab = ui.ctx().data_mut(|data| data.get_temp::<bool>(tab_id).unwrap_or(false));
                             ui.horizontal(|ui| {
-                                if ui.button("Refresh").clicked() {
-                                    #[cfg(target_arch = "wasm32")]
-                                    refresh_version_diagnostics();
-                                    ctx.request_repaint_after(std::time::Duration::from_millis(
-                                        500,
-                                    ));
+                                if Self::fics_primary_tab(ui, "App", !companion_tab).clicked() {
+                                    companion_tab = false;
                                 }
-                                if ui.button("Copy diagnostics").clicked() {
-                                    ctx.copy_text(Self::version_diagnostics_report(&diagnostics));
+                                if Self::fics_primary_tab(ui, "Companion", companion_tab).clicked() {
+                                    companion_tab = true;
                                 }
-                                ui.label(
-                                    RichText::new("No games or personal data included.")
-                                        .size(10.0)
-                                        .color(muted),
-                                );
                             });
-                            let mut companion = crate::companion::enabled();
-                            if ui.checkbox(&mut companion, "Companion").changed() {
-                                crate::companion::set_enabled(companion);
+                            ui.ctx().data_mut(|data| data.insert_temp(tab_id, companion_tab));
+                            ui.add_space(8.0);
+                            if !companion_tab {
+                                let is_match = diagnostics.status.starts_with("All loaded");
+                                let status_color = if is_match {
+                                    Color32::from_rgb(104, 190, 128)
+                                } else if diagnostics.status.contains("mismatch") {
+                                    Color32::from_rgb(230, 119, 112)
+                                } else {
+                                    muted
+                                };
+                                ui.label(
+                                    RichText::new(&diagnostics.status)
+                                        .strong()
+                                        .color(status_color),
+                                );
+                                ui.add_space(6.0);
+                                egui::Grid::new("about_version_grid")
+                                    .num_columns(2)
+                                    .spacing([16.0, 4.0])
+                                    .show(ui, |ui| {
+                                        for (label, detail) in [
+                                            (
+                                                "Environment",
+                                                Self::diagnostic_value(&diagnostics.environment),
+                                            ),
+                                            (
+                                                "Loaded shell",
+                                                Self::diagnostic_value(&diagnostics.app_version),
+                                            ),
+                                            (
+                                                "Server shell",
+                                                Self::diagnostic_value(&diagnostics.server_app_version),
+                                            ),
+                                            (
+                                                "Loaded WASM",
+                                                Self::diagnostic_value(&diagnostics.package_version),
+                                            ),
+                                            (
+                                                "Server WASM",
+                                                Self::diagnostic_value(
+                                                    &diagnostics.server_package_version,
+                                                ),
+                                            ),
+                                            (
+                                                "Loaded engine",
+                                                Self::diagnostic_value(&diagnostics.engine_version),
+                                            ),
+                                            (
+                                                "Server engine",
+                                                Self::diagnostic_value(
+                                                    &diagnostics.server_engine_version,
+                                                ),
+                                            ),
+                                            (
+                                                "Service worker",
+                                                Self::diagnostic_value(
+                                                    &diagnostics.service_worker_state,
+                                                ),
+                                            ),
+                                            (
+                                                "Worker shell",
+                                                Self::diagnostic_value(
+                                                    &diagnostics.service_worker_version,
+                                                ),
+                                            ),
+                                        ] {
+                                            ui.label(RichText::new(label).color(muted));
+                                            ui.label(RichText::new(detail).monospace().size(11.0));
+                                            ui.end_row();
+                                        }
+                                    });
+                                ui.add_space(8.0);
+                                ui.horizontal(|ui| {
+                                    if ui.button("Refresh").clicked() {
+                                        #[cfg(target_arch = "wasm32")]
+                                        refresh_version_diagnostics();
+                                        ctx.request_repaint_after(std::time::Duration::from_millis(
+                                            500,
+                                        ));
+                                    }
+                                    if ui.button("Copy diagnostics").clicked() {
+                                        ctx.copy_text(Self::version_diagnostics_report(&diagnostics));
+                                    }
+                                    ui.label(
+                                        RichText::new("No games or personal data included.")
+                                            .size(10.0)
+                                            .color(muted),
+                                    );
+                                });
                             }
                             #[cfg(target_arch = "wasm32")]
-                            if companion {
+                            if companion_tab {
                                 ui.add_space(8.0);
                                 ui.label(RichText::new("Ironwood Companion").strong().color(gold));
                                 let details: serde_json::Value = serde_json::from_str(&companion_diagnostics()).unwrap_or_default();
@@ -4293,10 +4325,10 @@ impl ChessApp {
                                     if ui.add_enabled(!busy && !active && details["can_install"].as_bool().unwrap_or(false),egui::Button::new("Update and restart")).on_disabled_hover_text("An update must be available, and games, analysis and engine sessions must be finished.").clicked() { install_companion_update(); }
                                 });
                                 ui.add_space(8.0);
-                                ui.label(RichText::new("Private Windows download").strong());
-                                ui.label("Windows x64 · private preview. Requires a release-access token, separate from your connection token.");
+                                ui.label(RichText::new("Windows download and setup").strong());
+                                ui.label("Windows x64 · Download and connect Companion without a release-access token.");
                                 if ui.button("Download Companion for Windows…").clicked() { download_companion(); }
-                                ui.label("Extract the ZIP into a permanent folder, run ironwood-companion.exe, then use Show token in its tray menu to pair through Manage connection. Windows may show an unknown-publisher warning during private preview.");
+                                ui.label("Extract the ZIP into a permanent folder, open current/ironwood-companion.exe, then use Show token to pair through Manage connection. See the download page for Windows publisher-signature information.");
                                 ctx.request_repaint_after(std::time::Duration::from_secs(1));
                             }
                         });
@@ -4367,8 +4399,14 @@ impl ChessApp {
         if !self.pgn_dialog_open { return; }
         #[cfg(target_arch = "wasm32")]
         {
+            // File-picker promises complete outside egui's input loop. Keep
+            // polling even when the board and pointer are otherwise idle.
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
             if let Ok(result)=serde_json::from_str::<serde_json::Value>(&poll_import_file()) {
-                if let Some(text)=result["text"].as_str(){self.import_input=text.into();self.pgn_error=None;self.import_tab=0;}
+                if let Some(text)=result["text"].as_str(){
+                    self.accept_browsed_import(text.to_owned());
+                    if !self.pgn_dialog_open { return; }
+                }
                 if let Some(error)=result["error"].as_str(){self.pgn_error=Some(error.into());}
             }
             for text in [poll_lichess(), poll_chess_com(), poll_scoresheet()] {
@@ -4401,7 +4439,26 @@ impl ChessApp {
                 let gold = Color32::from_rgb(211,173,98);
                 ui.spacing_mut().item_spacing = Vec2::new(12.0,12.0);
                 cancel = Self::dialog_header(ui, "Import Games");
+                #[cfg(target_arch = "wasm32")]
+                Self::import_location_selector(ui);
                 ui.label(RichText::new("Bring your games into Ironwood for review and analysis.").color(Color32::from_rgb(185,198,207)));
+                #[cfg(target_arch = "wasm32")]
+                if crate::companion::enabled() {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                    if let Ok(progress)=serde_json::from_str::<serde_json::Value>(&companion_folder_import_progress()) {
+                        Self::import_sunken_section(ui,false,|ui| {
+                            ui.label(RichText::new("Companion Import folder").strong().color(gold));
+                            for field in ["filename","message","counts"] {
+                                if let Some(text)=progress[field].as_str().filter(|text|!text.is_empty()){ui.label(text);}
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                if let Some(fraction)=progress["fraction"].as_f64(){ui.add(egui::ProgressBar::new(fraction as f32).desired_width(260.0).desired_height(24.0).fill(gold).show_percentage());}
+                                else if progress["active"].as_bool()==Some(true){ui.spinner();}
+                                if let Some(text)=progress["timing"].as_str(){ui.label(RichText::new(text).color(gold));}
+                            });
+                        });
+                    }
+                }
                 Self::import_sunken_section(ui, false, |ui| {
                     ui.horizontal_wrapped(|ui| {
                         for (index, label) in ["Paste a game or collection", "Lichess", "Chess.com", "Scoresheet"].iter().enumerate() {
@@ -4563,9 +4620,21 @@ impl ChessApp {
                 ui.horizontal(|ui| {
                 ui.label(RichText::new("Paste a game or collection").size(17.0).strong().color(gold));
                     #[cfg(target_arch="wasm32")]
-                    if ui.add(egui::Button::new(RichText::new("Browse…").color(Color32::WHITE)).raised_gray()).on_hover_text("Choose a PGN, ZIP of PGNs, or analysis JSON file").clicked(){browse_import_file();}
+                    if ui.add(egui::Button::new(RichText::new("Browse…").color(Color32::WHITE)).raised_gray()).on_hover_text("Choose PGN, ZIP, .7z, analysis JSON, or three matching Scid 4 or Scid 5 files").clicked(){browse_import_file();}
                 });
-                ui.label(RichText::new("Paste PGN or analysis JSON, or drag a .pgn or .json file onto the app.").size(13.0).weak());
+                ui.label(RichText::new("Paste PGN or analysis JSON, or browse/drop PGN, ZIP, .7z, JSON or matching Scid 4 / Scid 5 files. Scid 5 supports large databases.").size(13.0).weak());
+                ui.label(RichText::new("Scid import is read-only. Custom tags, pre-game comments and Scid-specific flags are not imported; move symbols use the supported subset.").size(12.0).weak());
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let status = import_file_status();
+                    if !status.is_empty() {
+                        ui.horizontal(|ui| {
+                            ui.spinner(); ui.label(status);
+                            if ui.button("Cancel reading").clicked() { cancel_import_file(); }
+                        });
+                        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                    }
+                }
                 egui::ScrollArea::vertical()
                     .id_salt("import_game_text")
                     .max_height((content_height - 156.0).max(100.0))
@@ -4591,7 +4660,11 @@ impl ChessApp {
                     ui.horizontal(|ui| {
                         if ui.add(egui::Button::new(RichText::new("Clear").color(Color32::from_rgb(25,29,35))).raised_gray()).clicked() { self.import_input.clear(); self.pgn_error = None; }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            import = ui.add_enabled(!self.import_input.trim().is_empty(),egui::Button::new(RichText::new("Continue").strong().color(Color32::from_rgb(30,26,20)))
+                            #[cfg(target_arch = "wasm32")]
+                            let reading = !import_file_status().is_empty();
+                            #[cfg(not(target_arch = "wasm32"))]
+                            let reading = false;
+                            import = ui.add_enabled(!reading && !self.import_input.trim().is_empty(),egui::Button::new(RichText::new("Continue").strong().color(Color32::from_rgb(30,26,20)))
                                 .fill(gold).min_size(Vec2::new(110.0,34.0)).raised_gold()).clicked();
                         });
                     });
@@ -4644,10 +4717,6 @@ impl ChessApp {
         let mut cancel = false;
         let mut open = true;
         let mut archive = false;
-        #[cfg(target_arch = "wasm32")]
-        let archive_available = crate::companion::enabled() && archive_import_available();
-        #[cfg(not(target_arch = "wasm32"))]
-        let archive_available = false;
         let selected = self
             .batch_pgn_games
             .iter()
@@ -4915,10 +4984,12 @@ impl ChessApp {
                     let ready=imported_index_ready();
                     #[cfg(not(target_arch = "wasm32"))]
                     let ready=true;
-                    import=ui.add_enabled(selected>0 && ready,egui::Button::new(RichText::new(if archive_available {format!("Import to Browser ({selected})")} else {format!("Import selected ({selected})")}).strong().color(Color32::from_rgb(25,22,16))).min_size(Vec2::new(190.0,36.0)).raised_gold()).clicked();
-                    if archive_available {
-                        archive=ui.add_enabled(selected>0,egui::Button::new(RichText::new(format!("Import to Archive ({selected})")).strong().color(Color32::from_rgb(25,22,16))).min_size(Vec2::new(190.0,36.0)).raised_gold()).clicked();
-                    }
+                    #[cfg(target_arch = "wasm32")]
+                    let (to_archive,destination_ready)=Self::import_location_selector(ui);
+                    #[cfg(not(target_arch = "wasm32"))]
+                    let (to_archive,destination_ready)=(false,true);
+                    import=ui.add_enabled(selected>0 && destination_ready && (to_archive||ready),egui::Button::new(RichText::new(format!("Import selected ({selected})")).strong().color(Color32::from_rgb(25,22,16))).min_size(Vec2::new(190.0,36.0)).raised_gold()).clicked();
+                    if import { archive=to_archive; }
                     if narrow && ui.add(egui::Button::new("Close").raised_gray()).clicked() { cancel=true; }
                 });
                 let paper=Self::paper_grain_texture(ui.ctx());let surface=ui.min_rect().expand(12.0);
@@ -4929,7 +5000,11 @@ impl ChessApp {
             });
         if let Some(response)=response {Self::paint_fics_window_border(&ctx.layer_painter(response.response.layer_id),response.response.rect);}
         if archive { import=true; }
-        if import { self.batch_pgn_archive=archive; }
+        if import {
+            self.batch_pgn_archive=archive;
+            #[cfg(target_arch = "wasm32")]
+            { self.batch_pgn_location_name=serde_json::from_str::<serde_json::Value>(&import_location_catalog()).ok().and_then(|v|v["label"].as_str().map(str::to_owned)).unwrap_or_else(||"Browser".into()); }
+        }
 
         if import {
             self.batch_pgn_queue = self
@@ -5025,7 +5100,7 @@ impl ChessApp {
                         );
                         ui.add_space(6.0);
                         ui.label(
-                            RichText::new(if self.batch_pgn_archive {"Your selected games are ready in Saved games > Archive."} else {"Your selected games are ready in Saved games."})
+                            RichText::new(format!("Your selected games are ready in Saved games > {}.",self.batch_pgn_location_name))
                                 .color(Color32::from_rgb(181, 187, 190)),
                         );
                     });
@@ -5102,7 +5177,7 @@ impl ChessApp {
                     ui.heading("Importing games");
                     Self::linen_sunken_section(ui, |ui| {
                         Self::import_progress_bar(ui,accounted,progress_total);
-                        ui.label(if self.batch_pgn_archive {"Destination: Archive"} else {"Destination: Browser storage"});
+                        ui.label(format!("Destination: {}",self.batch_pgn_location_name));
                     });
                     #[cfg(target_arch = "wasm32")]
                     if let Ok(status)=serde_json::from_str::<BatchImportStatus>(&batch_import_storage_status()) {
@@ -9791,6 +9866,44 @@ impl ChessApp {
         }
     }
 
+    fn accept_browsed_import(&mut self, text: String) {
+        self.pgn_error = None;
+        self.import_tab = 0;
+        if !text.trim_start().starts_with('{') {
+            match Self::split_pgn_games(&text) {
+                Ok(games) if games.len() > 1 => {
+                    // Match dropped collections before a multi-megabyte PGN
+                    // ever reaches TextEdit layout. Saving still requires selection.
+                    self.open_import_collection(games);
+                    return;
+                }
+                Err(error) => { self.pgn_error = Some(error); return; }
+                _ => {}
+            }
+        }
+        self.import_input = text;
+    }
+
+    fn open_import_collection(&mut self, games: Vec<String>) {
+        #[cfg(target_arch = "wasm32")]
+        ensure_imported_index();
+        self.batch_pgn_games = games.into_iter().map(BatchPgnGame::new).collect();
+        self.batch_pgn_players = self.batch_pgn_games.iter()
+            .flat_map(|game| [game.white.clone(), game.black.clone()])
+            .filter(|player| !player.is_empty() && player != "White" && player != "Black").collect();
+        self.batch_pgn_players.sort_by_key(|player| player.to_lowercase());
+        self.batch_pgn_players.dedup();
+        self.batch_pgn_player_filter = None;
+        self.batch_pgn_player_search.clear();
+        self.batch_pgn_page = 0;
+        self.pgn_error = None;
+        #[cfg(target_arch = "wasm32")]
+        refresh_storage_status();
+        self.import_input.clear();
+        self.pgn_dialog_open = false;
+        self.batch_pgn_dialog_open = true;
+    }
+
     fn begin_import(&mut self) {
         #[cfg(target_arch = "wasm32")]
         ensure_imported_index();
@@ -9799,26 +9912,13 @@ impl ChessApp {
                 Ok(games)=>games,
                 Err(error)=>{self.pgn_error=Some(error);self.pgn_dialog_open=true;return;}
             };
-            if games.len() > 1 {
-                self.batch_pgn_games = games.into_iter().map(BatchPgnGame::new).collect();
-                self.batch_pgn_players = self
-                    .batch_pgn_games
-                    .iter()
-                    .flat_map(|game| [game.white.clone(), game.black.clone()])
-                    .filter(|player| !player.is_empty() && player != "White" && player != "Black")
-                    .collect();
-                self.batch_pgn_players
-                    .sort_by_key(|player| player.to_lowercase());
-                self.batch_pgn_players.dedup();
-                self.batch_pgn_player_filter = None;
-                self.batch_pgn_player_search.clear();
-                self.batch_pgn_page = 0;
-                self.pgn_error = None;
+            if games.len() > 1 || {
                 #[cfg(target_arch = "wasm32")]
-                refresh_storage_status();
-                self.import_input.clear();
-                self.pgn_dialog_open = false;
-                self.batch_pgn_dialog_open = true;
+                { serde_json::from_str::<serde_json::Value>(&import_location_catalog()).ok().is_some_and(|v| v["selected"].as_str().unwrap_or("browser") != "browser") }
+                #[cfg(not(target_arch = "wasm32"))]
+                { false }
+            } {
+                self.open_import_collection(games);
                 return;
             }
             #[cfg(target_arch = "wasm32")]
@@ -11118,6 +11218,12 @@ impl ChessApp {
         ui.label(RichText::new(&status).color(color));
         if !message.is_empty(){
             ui.add(egui::Label::new(RichText::new(&message).color(if error{Color32::from_rgb(232,112,112)}else{Color32::from_rgb(192,192,184)})).truncate()).on_hover_text(&message);
+        }
+        let index=serde_json::from_str::<serde_json::Value>(&companion_index_progress()).unwrap_or_default();
+        if index["available"]==true {
+            let detail=index["detail"].as_str().unwrap_or("");
+            if let Some(counts)=index["counts"].as_str(){ui.label(RichText::new(counts).color(Color32::from_rgb(211,173,98))).on_hover_text(detail);}
+            if let Some(timing)=index["timing"].as_str(){ui.label(RichText::new(timing).color(Color32::from_rgb(192,192,184))).on_hover_text(detail);}
         }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
     }
@@ -19314,6 +19420,59 @@ mod tests {
     }
 
     #[test]
+    fn browsed_collection_matches_drop_without_filling_the_text_editor() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut browsed = ChessApp::new(&context);
+        let mut dropped = ChessApp::new(&context);
+        let game = format!("[Event \"Collection\"]\n[White \"Ada\"]\n[Black \"Ben\"]\n\n1. e4 {{{}}} e5 2. Nf3 Nc6 *\n\n", "note ".repeat(200));
+        let text = game.repeat(8561);
+        assert!(text.len() > 8_000_000);
+        browsed.pgn_dialog_open = true;
+        browsed.accept_browsed_import(text.clone());
+        dropped.import_input = text;
+        dropped.begin_import();
+        assert!(browsed.batch_pgn_dialog_open);
+        assert!(!browsed.pgn_dialog_open);
+        assert!(browsed.import_input.is_empty());
+        assert_eq!(browsed.batch_pgn_games.len(), 8561);
+        assert_eq!(browsed.batch_pgn_players, dropped.batch_pgn_players);
+        assert_eq!(browsed.batch_pgn_games[0].text, dropped.batch_pgn_games[0].text);
+        assert!(browsed.batch_pgn_games.iter().all(|game| !game.selected));
+        assert_eq!(browsed.batch_pgn_total, 0, "Opening selection must not start saving");
+    }
+
+    #[test]
+    fn browsed_single_game_and_json_stay_available_for_continue() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.pgn_dialog_open = true;
+        for text in ["[White \"Ada\"]\n\n1. e4 e5 2. Nf3 Nc6 *", "{\"schema\":\"ironwood-analysis\"}"] {
+            app.accept_browsed_import(text.to_owned());
+            assert_eq!(app.import_input, text);
+            assert!(app.pgn_dialog_open);
+            assert!(!app.batch_pgn_dialog_open);
+        }
+    }
+
+    #[test]
+    fn scid_collection_uses_existing_game_selection() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx);
+        let mut app = ChessApp::new(&context);
+        let files = vec![
+            ("sample.si4".into(), include_bytes!("../tests/fixtures/scid/sample.si4").to_vec()),
+            ("sample.sn4".into(), include_bytes!("../tests/fixtures/scid/sample.sn4").to_vec()),
+            ("sample.sg4".into(), include_bytes!("../tests/fixtures/scid/sample.sg4").to_vec()),
+        ];
+        app.import_input = crate::scid_import::read_files(&files).unwrap();
+        app.begin_import();
+        assert!(app.batch_pgn_dialog_open);
+        assert_eq!(app.batch_pgn_games.len(), 2);
+        assert_eq!(app.batch_pgn_players, vec!["Ada", "Ben"]);
+        assert!(app.pgn_error.is_none());
+    }
+
+    #[test]
     fn splits_tagged_pgn_collection_without_merging_games() {
         let collection = "[Event \"First\"]\n[White \"Ada\"]\n\n1. e4 e5 1-0\n\n[Event \"Second\"]\n[Black \"Ben\"]\n\n1. d4 d5 0-1\n";
         let games = ChessApp::split_pgn_games(collection).unwrap();
@@ -19750,29 +19909,98 @@ impl eframe::App for ChessApp {
             }
         }
         let drop_id = egui::Id::new("dropped_game_contents");
-        if let Some(file) = ctx.input(|input| input.raw.dropped_files.first().cloned()) {
+        let dropped_files = ctx.input(|input| input.raw.dropped_files.clone());
+        if let Some(file) = dropped_files.first().cloned() {
+            let scid = dropped_files.iter().any(|file| crate::scid_import::is_scid_path(file.path()));
+            let sevenz=file.path().extension().and_then(|e|e.to_str()).is_some_and(|e|e.eq_ignore_ascii_case("7z"));
+            #[cfg(target_arch = "wasm32")]
+            if scid || sevenz { self.pgn_dialog_open = true; self.import_tab = 0; }
             #[cfg(target_arch = "wasm32")]
             {
                 let ctx = ctx.clone();
                 wasm_bindgen_futures::spawn_local(async move {
-                    let zipped=file.path().extension().and_then(|extension|extension.to_str()).is_some_and(|extension|extension.eq_ignore_ascii_case("zip"));
-                    let result = if file.web_file().is_some_and(|file|file.size()>64.0*1024.0*1024.0) {
-                        Err("Choose a PGN, JSON or ZIP file smaller than 64 MiB.".to_owned())
-                    } else {
-                        match file.bytes_async().await {
-                            Ok(bytes) if zipped => read_pgn_zip(js_sys::Uint8Array::from(bytes.as_slice())).await
-                                .map_err(|error|js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|message|message.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not read ZIP file.".to_owned()))
-                                .and_then(|text|text.as_string().ok_or_else(||"ZIP import did not return PGN text.".to_owned())),
-                            Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
-                            Err(error) => Err(error),
+                    let result = if sevenz {
+                        if dropped_files.len()!=1 {Err("Choose one .7z archive at a time.".into())}
+                        else if let Some(web_file)=file.web_file(){
+                            match open_sevenz_file(web_file.clone().into()).await {
+                                Ok(value) if value.is_null()=>return,
+                                Ok(value)=>value.as_string().ok_or_else(||"7z import did not return PGN text.".into()),
+                                Err(error)=>Err(js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|v|v.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not open .7z archive.".into())),
+                            }
+                        }else{Err("Could not read the dropped .7z archive.".into())}
+                    } else if scid {
+                        let scid5 = dropped_files.iter().any(|file| file.path().extension().and_then(|e| e.to_str()).is_some_and(|e| matches!(e.to_ascii_lowercase().as_str(), "si5"|"sn5"|"sg5")));
+                        if scid5 {
+                            let files = js_sys::Array::new();
+                            for file in &dropped_files {
+                                if let Some(web_file) = file.web_file() { files.push(web_file); }
+                            }
+                            let result = open_scid5_files(files).await;
+                            if let Err(error) = result {
+                                let message=js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|m|m.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not open Scid 5 database.".into());
+                                ctx.data_mut(|data| data.insert_temp(drop_id, Err::<String,String>(message)));
+                                ctx.request_repaint();
+                            }
+                            return;
                         }
+                        let files = js_sys::Array::new();
+                        let mut error = None;
+                        let mut total = 0usize;
+                        for file in &dropped_files {
+                            if file.web_file().is_some_and(|file| file.size() > 64.0*1024.0*1024.0) {
+                                error = Some("The three Scid files together exceed the 64 MiB import limit.".to_owned()); break;
+                            }
+                            match file.bytes_async().await {
+                                Ok(bytes) => {
+                                    total = total.saturating_add(bytes.len());
+                                    if total > 64*1024*1024 { error = Some("The three Scid files together exceed the 64 MiB import limit.".to_owned()); break; }
+                                    let part = js_sys::Object::new();
+                                    let name = file.path().file_name().and_then(|name| name.to_str()).unwrap_or_default();
+                                    let _ = js_sys::Reflect::set(&part, &"name".into(), &name.into());
+                                    let _ = js_sys::Reflect::set(&part, &"bytes".into(), &js_sys::Uint8Array::from(bytes.as_slice()));
+                                    files.push(&part);
+                                }
+                                Err(message) => { error = Some(message); break; }
+                            }
+                        }
+                        if let Some(error) = error { Err(error) } else {
+                            read_scid_files(files).await
+                                .map_err(|error|js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|message|message.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not read Scid files.".to_owned()))
+                                .and_then(|text|text.as_string().ok_or_else(||"Scid import did not return PGN text.".to_owned()))
+                        }
+                    } else {
+                        let zipped=file.path().extension().and_then(|extension|extension.to_str()).is_some_and(|extension|extension.eq_ignore_ascii_case("zip"));
+                        let result = if file.web_file().is_some_and(|file|file.size()>64.0*1024.0*1024.0) {
+                            Err("Choose a PGN, JSON or ZIP file smaller than 64 MiB.".to_owned())
+                        } else {
+                            match file.bytes_async().await {
+                                Ok(bytes) if zipped => read_pgn_zip(js_sys::Uint8Array::from(bytes.as_slice())).await
+                                    .map_err(|error|js_sys::Reflect::get(&error,&"message".into()).ok().and_then(|message|message.as_string()).or_else(||error.as_string()).unwrap_or_else(||"Could not read ZIP file.".to_owned()))
+                                    .and_then(|text|text.as_string().ok_or_else(||"ZIP import did not return PGN text.".to_owned())),
+                                Ok(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
+                                Err(error) => Err(error),
+                            }
+                        };
+                        result
                     };
                     ctx.data_mut(|data| data.insert_temp(drop_id, result));
                     ctx.request_repaint();
                 });
             }
             #[cfg(not(target_arch = "wasm32"))]
-            ctx.data_mut(|data| data.insert_temp(drop_id, file.bytes().map(|bytes| String::from_utf8_lossy(&bytes).into_owned())));
+            {
+                let result = if scid {
+                    (|| {
+                        let mut files = Vec::new();
+                        for file in &dropped_files {
+                            let bytes = file.bytes()?;
+                            files.push((file.path().to_path_buf(), bytes.to_vec()));
+                        }
+                        crate::scid_import::read_files(&files)
+                    })()
+                } else { file.bytes().map(|bytes| String::from_utf8_lossy(&bytes).into_owned()) };
+                ctx.data_mut(|data| data.insert_temp(drop_id, result));
+            }
         }
         if let Some(result) = ctx.data_mut(|data| { let result = data.get_temp::<Result<String, String>>(drop_id); data.remove::<Result<String, String>>(drop_id); result }) {
             match result {
@@ -20255,6 +20483,15 @@ impl eframe::App for ChessApp {
                     Self::set_menu_item_font(ui);
                     if ui.button("Contents…").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab(HELP_URL));
+                        ui.close();
+                    }
+                    if ui.button("Companion setup…").clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab("https://ironwoodchess.com/downloads/companion/"));
+                        ui.close();
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if ui.button("Companion connections…").clicked() {
+                        manage_companion_connection();
                         ui.close();
                     }
                     if ui.button("Join our Discord…").clicked() {

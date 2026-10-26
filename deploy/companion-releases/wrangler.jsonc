@@ -7,5 +7,6 @@
   "preview_urls": false,
   "routes": [{"pattern": "companion-releases.ironwoodchess.com", "custom_domain": true}],
   "r2_buckets": [{"binding": "RELEASES", "bucket_name": "ironwood-companion-private"}],
+  "vars": {"PUBLIC_WINDOWS_RELEASES": "1"},
   "observability": {"enabled": false}
 }

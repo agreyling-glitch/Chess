@@ -1,0 +1,5 @@
+version = "0.1.4"
+available = true
+platform = "Windows 11 · Intel / AMD 64-bit"
+url = "https://companion-releases.ironwoodchess.com/public/windows-x64/0.1.4/ironwood-companion-windows-x64.zip"
+sha256 = "0f0b6ac8f96662cf44cb890d4787bec41efdd7c40d5347341ef234fe649c3b6b"

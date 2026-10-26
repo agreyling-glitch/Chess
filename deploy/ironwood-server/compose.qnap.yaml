@@ -1,0 +1,25 @@
+# Private preview. Use after importing/building ironwood-companion:qnap-preview.
+services:
+  companion:
+    image: ironwood-companion:qnap-preview
+    ports:
+      - "8790:8790"
+    # Prepare host folders first; service UID 10001 needs access to their contents.
+    # Existing permission errors: scripts/repair-qnap-folder-permissions.ps1.
+    volumes:
+      - ironwood-companion-qnap-data:/data
+      - /share/Container/Ironwood/Import:/data/Import
+      - /share/Container/Ironwood/Reports:/data/Reports
+    read_only: true
+    # SQLite and archive processing need writable temporary storage.
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    # Container Station 3 requires resource limits in Advanced Settings.
+    # Leave resource limits unset for the owner's unlimited-resource setup.
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+volumes:
+  ironwood-companion-qnap-data:

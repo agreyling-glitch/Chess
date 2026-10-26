@@ -1,0 +1,11 @@
+{{ with .Site.GetPage "/help/companion-setup" }}
+{{ if or (not .Draft) (eq hugo.Environment "companion-preview") }}
+<h2 id="desktop-engines-and-archive">Bring your desktop engines and archive</h2>
+<p><strong>Ironwood Companion</strong> connects the browser app to engines and a game archive on your computer. Keep using Ironwood in your browser while Companion handles the desktop work. The Windows download is for <strong>Windows 11, Intel/AMD 64-bit</strong>; Companion is optional.</p>
+<p><strong>Choose your engine.</strong> Auto-install a supported engine directly from its original publisher, or add a compatible engine you already own. Select it for play or analysis, adjust its engine options, and manage its name and launch settings from Ironwood. Engine packages and models stay on the Companion computer.</p>
+<p><strong>Choose your storage.</strong> Keep games in Browser storage or select a named Companion archive in Saved games, Import, and Storage information. Each location has its own library. Connect more than one Companion and distinguish their engines and archives by name; connecting does not automatically move or synchronize your games.</p>
+<p><strong>Let collections import in the background.</strong> Place PGN, ZIP, or 7z files in Companion’s Import folder, including archives of matching Scid database files. Follow saved-game counts, duplicates, import speed, and estimated time remaining in Ironwood. Opening indexing has its own progress, and import reports are available from Companion.</p>
+<p>Companion keeps its data separately from the application files and verifies updates against Ironwood’s release key and package checksum. The Windows executable has no publisher signature; see the download page for setup and verification details.</p>
+<p><a href="/downloads/companion/">Companion for Windows →</a> · <a href="{{ .RelPermalink }}">Setup guide</a> · <a href="/help/companion-engines-and-storage/">Engines and archive guide</a></p>
+{{ end }}
+{{ end }}

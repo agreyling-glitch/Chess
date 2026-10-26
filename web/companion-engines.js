@@ -1,4 +1,5 @@
 import { addCompanionEngine } from './companion-add-engine.js';
+import { manageCompanionEngines } from './companion-manage-engines.js';
 import { companionEngineConnections, onCompanionConnectionsChange } from './companion-connection.js';
 import { CompanionEngineAdapter } from './companion-engine-adapter.js';
 
@@ -87,5 +88,12 @@ window.ironwoodAddCompanionEngine = async () => {
   }
   if (shared && sameConnection(shared)) await addCompanionEngine(shared);
   else if (!providers.length) state.status = 'Add an engine provider in Companion connections first.';
+  await window.ironwoodRefreshCompanionEngines();
+};
+window.ironwoodManageCompanionEngines=async(identity='')=>{
+  if(!enabled()||!allowed||state.busy)return;
+  const providers=companionEngineConnections();
+  if(!providers.length){state.status='Connect an engine provider first.';return;}
+  await manageCompanionEngines(providers,{identity,isCurrent:sameConnection,onSaved:()=>void window.ironwoodRefreshCompanionEngines()});
   await window.ironwoodRefreshCompanionEngines();
 };

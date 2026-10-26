@@ -414,3 +414,19 @@ canvas { display:block; }
 #game-library-dialog .game-library-filter-actions { display:inline-flex; flex-wrap:nowrap; align-items:center; gap:8px; flex:none; }
 #game-library-dialog .game-library-filter-actions .game-library-clear-filters { margin:0; white-space:nowrap; }
 #game-library-dialog .game-library-filters { flex-basis:100%; }
+
+/* Use the same flat field treatment as Special filters. */
+#game-library-dialog .game-library-tabs select,
+#game-library-dialog .game-library-filters .library-player-trigger {
+  min-height:28px;
+  padding:4px 25px 4px 8px;
+  border:1px solid #535d61;
+  border-radius:4px;
+  background:#080b0f;
+  color:#ecebe4;
+  box-shadow:inset 1px 2px 3px #0008;
+  font:13px system-ui;
+  color-scheme:dark;
+}
+
+#game-library-dialog .game-library-filters > label { display:inline-flex; align-items:center; }

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { JSDOM } from 'jsdom';
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const preview = source.slice(source.indexOf('const PREVIEW_AUTOPLAY_SPEED_KEY'), source.indexOf('function confirmDeleteGames'));
+const preview = source.slice(source.indexOf('const gameCountFormat'),source.indexOf('function readWindowState'))+'\n'+source.slice(source.indexOf('const PREVIEW_AUTOPLAY_SPEED_KEY'), source.indexOf('function confirmDeleteGames'));
 test('preview navigation and 2-second autoplay stop at end and on close', async () => {
   const { window } = new JSDOM('<button id="trigger">Preview</button>');
   window.HTMLDialogElement.prototype.showModal = function() { this.open = true; };

@@ -1,0 +1,27 @@
+{{ define "main" }}
+{{ $release := hugo.Data.companion }}
+<section class="companion-download-hero">
+  <div>
+    <p class="eyebrow">Ironwood on your computer</p>
+    <h1>Your engines.<br>Your game archive.</h1>
+    <p class="lede">{{ .Description }}</p>
+    <a class="companion-guide-link" href="/help/companion-setup/">Read the setup guide →</a>
+    <p><a href="https://github.com/agreyling-glitch/Chess">View Ironwood on GitHub ↗</a> · <a href="#build-from-source">Build for your platform</a></p>
+  </div>
+  <aside class="companion-download-card" aria-label="Windows download">
+    <p class="eyebrow">Ironwood Companion {{ $release.version }}</p>
+    <h2>Companion for Windows</h2>
+    <p>{{ $release.platform }}</p>
+    {{ if $release.available }}
+      <a class="companion-download-button" href="{{ $release.url }}" referrerpolicy="no-referrer">Download for Windows</a>
+      <p>Portable ZIP · Extract, then run</p>
+    {{ else }}
+      <button class="companion-download-button" type="button" disabled>Windows download coming soon</button>
+      <p>The public download is not available yet. These setup instructions are being prepared for release.</p>
+    {{ end }}
+    <p class="companion-platform-note">Windows 11 x64 tested. Other platforms are not included.</p>
+    <details><summary>Verify the Windows package</summary><p>Compare the ZIP's SHA-256 with this value before running it:</p><code>{{ $release.sha256 }}</code><p>In PowerShell, <code>Get-FileHash -Algorithm SHA256</code> followed by the path to your ZIP shows its checksum.</p></details>
+  </aside>
+</section>
+<article class="prose companion-download-body">{{ .Content }}</article>
+{{ end }}

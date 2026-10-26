@@ -1,7 +1,31 @@
 /* tslint:disable */
 /* eslint-disable */
 
+/**
+ * si5 keeps names only; index records and game blobs are supplied as bounded
+ * chunks from File.slice(), preserving 47-bit offsets on wasm32.
+ */
+export class Scid5Reader {
+    free(): void;
+    [Symbol.dispose](): void;
+    decode_game(record: Uint8Array, blob: Uint8Array): string;
+    index_entries(bytes: Uint8Array): string;
+    constructor(names: Uint8Array);
+}
+
+export class ScidImport {
+    free(): void;
+    [Symbol.dispose](): void;
+    game_count(): number;
+    game_pgn(n: number): string;
+    constructor(si4: Uint8Array, sn4: Uint8Array, sg4: Uint8Array);
+}
+
 export function export_saved_game(json: string, format: string): string;
+
+export function ironwoodSevenZipExtract(size: number, read: Function, write: Function, progress: Function): void;
+
+export function ironwoodSevenZipList(size: number, read: Function): string;
 
 export function prepare_archived_pgn(pgn: string): string;
 
@@ -18,20 +42,30 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_scid5reader_free: (a: number, b: number) => void;
+    readonly __wbg_scidimport_free: (a: number, b: number) => void;
     readonly export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly ironwoodSevenZipExtract: (a: number, b: any, c: any, d: any) => [number, number];
+    readonly ironwoodSevenZipList: (a: number, b: any) => [number, number, number, number];
     readonly prepare_archived_pgn: (a: number, b: number) => [number, number, number, number];
     readonly preview_scoresheet: (a: number, b: number) => [number, number, number, number];
+    readonly scid5reader_decode_game: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+    readonly scid5reader_index_entries: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly scid5reader_new: (a: number, b: number) => [number, number, number];
+    readonly scidimport_game_count: (a: number) => number;
+    readonly scidimport_game_pgn: (a: number, b: number) => [number, number, number, number];
+    readonly scidimport_new: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
     readonly start: () => void;
     readonly validate_scoresheet_pgn: (a: number, b: number) => [number, number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h05b652a48fee2551: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_12: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_13: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_20: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_21: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h0d9cf8010272419a: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba_11: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_8: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_16: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14_19: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__hc86f24272c98cb0b: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

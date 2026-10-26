@@ -10,7 +10,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub const SCHEMA: u32 = 3;
+pub const SCHEMA: u32 = 4;
 pub const MAX_BODY: usize = 16 * 1024 * 1024;
 pub const MAX_BATCH: usize = 1000;
 pub type Result<T> = std::result::Result<T, Error>;
@@ -55,7 +55,13 @@ fn random_id() -> Result<String> {
 pub struct Archive {
     connection: Arc<Mutex<Connection>>,
     slots: Arc<tokio::sync::Semaphore>,
+    foreground: Arc<std::sync::atomic::AtomicUsize>,
 }
+struct ForegroundActivity(Arc<std::sync::atomic::AtomicUsize>);
+impl ForegroundActivity {
+    fn new(count:Arc<std::sync::atomic::AtomicUsize>)->Self{count.fetch_add(1,std::sync::atomic::Ordering::SeqCst);Self(count)}
+}
+impl Drop for ForegroundActivity {fn drop(&mut self){self.0.fetch_sub(1,std::sync::atomic::Ordering::SeqCst);}}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Document {
@@ -161,7 +167,8 @@ impl Document {
         Ok(games.remove(0))
     }
     pub(crate) fn fingerprint(&self) -> Result<String> {
-        let mut value = serde_json::to_value(self)?;
+        let mut normalized=self.clone();crate::archive_binary::normalize(&mut normalized,self.metadata.get("ECO").map(String::as_str).unwrap_or(""));
+        let mut value = serde_json::to_value(normalized)?;
         value.as_object_mut().unwrap().remove("analysis_runs");
         // Transport-local identifiers/timestamps do not define an annotated version.
         if let Some(record) = value["record"].as_object_mut() {
@@ -213,6 +220,8 @@ impl Archive {
         tx.prepare("SELECT game_id,id,revision,created_at,metadata,payload FROM analysis_runs LIMIT 0")?;
         tx.commit()?;
         connection.execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=2000;")?;
+        crate::archive_binary::initialize(&connection).map_err(|e|e.1)?;
+        connection.pragma_update(None,"user_version",SCHEMA)?;
         initialize_statistics(&connection)?;
         crate::explorer::initialize(&connection)?;
         crate::archive_library::initialize(&connection).map_err(|e| e.1)?;
@@ -220,13 +229,16 @@ impl Archive {
         Ok(Self {
             connection: Arc::new(Mutex::new(connection)),
             slots: Arc::new(tokio::sync::Semaphore::new(4)),
+            foreground: Arc::default(),
         })
     }
-    /// CPU validation shares admission control, but never acquires the database mutex.
-    pub(crate) fn idle(&self) -> bool { self.slots.available_permits()==4 && self.connection.try_lock().is_ok() }
+    /// Only client requests affect import admission. Background indexing and imports
+    /// share the bounded work queue without requiring a completely idle database.
+    pub(crate) fn idle(&self) -> bool { self.foreground.load(std::sync::atomic::Ordering::SeqCst)==0 }
     pub async fn prepare<T: Send + 'static>(&self, operation: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
         let permit=self.slots.clone().try_acquire_owned().map_err(|_|Error("busy","Archive is busy; retry shortly"))?;
-        tokio::task::spawn_blocking(move || {let _permit=permit;operation()}).await
+        let activity=ForegroundActivity::new(self.foreground.clone());
+        tokio::task::spawn_blocking(move || {let _permit=permit;let _activity=activity;operation()}).await
             .map_err(|_|Error("archive_failed","Archive preparation failed"))?
     }
     pub async fn run<T: Send + 'static>(
@@ -239,8 +251,10 @@ impl Archive {
             .try_acquire_owned()
             .map_err(|_| Error("busy", "Archive is busy; retry shortly"))?;
         let connection = self.connection.clone();
+        let activity=ForegroundActivity::new(self.foreground.clone());
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
+            let _activity=activity;
             let mut db = connection
                 .lock()
                 .map_err(|_| Error("archive_failed", "Archive lock unavailable"))?;
@@ -257,10 +271,10 @@ impl Archive {
     }
 }
 
-fn read_game(row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
+fn read_game(db:&Connection,row: &rusqlite::Row<'_>) -> rusqlite::Result<Game> {
     let text: String = row.get(4)?;
-    let document = serde_json::from_str(&text).map_err(|e| {
-        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(e))
+    let document = crate::archive_binary::load(db,&row.get::<_,String>(0)?,&text).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(4, rusqlite::types::Type::Text, Box::new(std::io::Error::other(e.1)))
     })?;
     Ok(Game {
         id: row.get(0)?,
@@ -278,7 +292,7 @@ pub fn get_optional(db: &Connection, id: &str) -> Result<Option<Game>> {
         .query_row(
             "SELECT id,revision,created_at,updated_at,document FROM games WHERE id=?1",
             [id],
-            read_game,
+            |row|read_game(db,row),
         )
         .optional()?)
 }
@@ -343,7 +357,7 @@ pub fn list(db: &Connection, filter: Filter) -> Result<Value> {
         return Err(invalid("Invalid search filter or page limit"));
     }
     let limit = if filter.limit == 0 { 50 } else { filter.limit };
-    let mut stmt=db.prepare("SELECT g.id,g.revision,g.created_at,g.updated_at,g.document FROM games g WHERE g.id>?1 AND (?2='' OR instr(lower(json_extract(document,'$.metadata.White')),lower(?2))>0) AND (?3='' OR instr(lower(json_extract(document,'$.metadata.Black')),lower(?3))>0) AND (?4='' OR json_extract(document,'$.metadata.Date')>=?4) AND (?5='' OR json_extract(document,'$.metadata.Date')<=?5) AND (?6='' OR json_extract(document,'$.metadata.Result')=?6) AND (?7='' OR EXISTS(SELECT 1 FROM memberships m WHERE m.game_id=g.id AND m.collection_id=?7)) AND (?8='' OR instr(lower(coalesce(json_extract(document,'$.metadata.Opening'),'')||' '||coalesce(json_extract(document,'$.metadata.ECO'),'')),lower(?8))>0) AND (?9='' OR json_extract(document,'$.metadata.TrainingProfileId')=?9) ORDER BY g.id LIMIT ?10")?;
+    let mut stmt=db.prepare("SELECT g.id,g.revision,g.created_at,g.updated_at,g.document FROM games g WHERE g.id>?1 AND (?2='' OR instr(lower(json_extract(document,'$.metadata.White')),lower(?2))>0) AND (?3='' OR instr(lower(json_extract(document,'$.metadata.Black')),lower(?3))>0) AND (?4='' OR json_extract(document,'$.metadata.Date')>=?4) AND (?5='' OR json_extract(document,'$.metadata.Date')<=?5) AND (?6='' OR json_extract(document,'$.metadata.Result')=?6) AND (?7='' OR EXISTS(SELECT 1 FROM memberships m WHERE m.game_id=g.id AND m.collection_id=?7)) AND (?8='' OR instr(lower(coalesce((SELECT description FROM eco_openings WHERE eco=json_extract(document,'$.metadata.ECO')),'')||' '||coalesce(json_extract(document,'$.metadata.ECO'),'')),lower(?8))>0) AND (?9='' OR json_extract(document,'$.metadata.TrainingProfileId')=?9) ORDER BY g.id LIMIT ?10")?;
     let rows = stmt.query_map(
         params![
             filter.after,
@@ -357,7 +371,7 @@ pub fn list(db: &Connection, filter: Filter) -> Result<Value> {
             filter.profile,
             limit + 1
         ],
-        read_game,
+        |row|read_game(db,row),
     )?;
     let mut games = rows.collect::<std::result::Result<Vec<_>, _>>()?;
     let next = if games.len() > limit as usize {
@@ -371,16 +385,19 @@ pub fn list(db: &Connection, filter: Filter) -> Result<Value> {
     Ok(json!({"games":summaries,"next":next}))
 }
 pub struct PreparedImport { games: Vec<PreparedGame>, discarded: usize }
-struct PreparedGame { id:String,stamp:i64,document:String,fingerprint:String,runs:Vec<crate::analysis_runs::PreparedRun>,card:Value }
+struct PreparedGame { id:String,stamp:i64,document:String,fingerprint:String,runs:Vec<crate::analysis_runs::PreparedRun>,card:Value,moves:Vec<u8>,record:Option<Vec<u8>> }
 pub(crate) fn prepare_parsed(games:Vec<(Document,crate::archive_pgn::Parsed)>) -> Result<PreparedImport> {
     let mut prepared=Vec::with_capacity(games.len());
     for (mut doc,parsed) in games {
         doc.validate_fields()?;
         let runs=crate::analysis_runs::prepare_merge(&std::mem::take(&mut doc.analysis_runs))?;
-        let fingerprint=doc.fingerprint()?;
         let id=random_id()?;let stamp=now();
         let card=crate::archive_library::summary_parsed(&id,1,stamp,&doc,&parsed)?;
-        prepared.push(PreparedGame{id,stamp,card,runs,fingerprint,document:serde_json::to_string(&doc)?});
+        for (key,value) in &parsed.tags{doc.metadata.entry(key.clone()).or_insert_with(||value.clone());}
+        crate::archive_binary::normalize(&mut doc,card["eco"].as_str().unwrap_or(""));
+        let fingerprint=doc.fingerprint()?;
+        let stored=crate::archive_binary::prepare(&doc,&parsed)?;
+        prepared.push(PreparedGame{id,stamp,card,runs,fingerprint,document:stored.json,moves:stored.moves,record:stored.record});
     }
     Ok(PreparedImport{games:prepared,discarded:0})
 }
@@ -441,6 +458,7 @@ pub(crate) fn commit_import_rows(tx:&Connection,prepared:PreparedImport,collecti
             id
         } else {
             tx.execute("INSERT INTO games VALUES(?1,1,?2,?2,?3,?4)",params![game.id,game.stamp,game.document,fingerprint])?;
+            crate::archive_binary::store(tx,&game.id,&game.moves,game.record.as_deref())?;
             crate::archive_library::store_card(&tx,&game.id,1,game.stamp,&game.card)?;
             imported += 1;
             game.id
@@ -463,7 +481,10 @@ pub(crate) fn commit_import_rows(tx:&Connection,prepared:PreparedImport,collecti
     Ok(json!({"imported":imported,"duplicates":duplicates,"discarded":prepared.discarded,"ids":ids}))
 }
 pub fn update(db: &mut Connection, id: &str, revision: u64, mut doc: Document) -> Result<Game> {
-    doc.validate()?;
+    let parsed=doc.validated()?;
+    let card=crate::archive_library::summary_parsed(id,revision+1,now(),&doc,&parsed)?;
+    for (key,value) in &parsed.tags{doc.metadata.entry(key.clone()).or_insert_with(||value.clone());}
+    crate::archive_binary::normalize(&mut doc,card["eco"].as_str().unwrap_or(""));
     let tx = db.transaction()?;
     let current = get_optional(&tx, id)?.ok_or_else(missing)?;
     if current.revision != revision {
@@ -482,10 +503,13 @@ pub fn update(db: &mut Connection, id: &str, revision: u64, mut doc: Document) -
             "An identical annotated version already exists",
         ));
     }
+    let stored=crate::archive_binary::prepare(&doc,&parsed)?;
     tx.execute(
         "UPDATE games SET document=?1,fingerprint=?2,revision=revision+1,updated_at=?3 WHERE id=?4",
-        params![serde_json::to_string(&doc)?, fingerprint, now(), id],
+        params![stored.json, fingerprint, now(), id],
     )?;
+    crate::archive_binary::store(&tx,id,&stored.moves,stored.record.as_deref())?;
+    crate::archive_library::store_card(&tx,id,revision+1,now(),&card)?;
     let updated = get(&tx, id)?;
     tx.commit()?;
     Ok(updated)
@@ -590,7 +614,7 @@ pub fn backup(db: &mut Connection) -> Result<Backup> {
     let tx = db.transaction()?;
     let mut games = tx
         .prepare("SELECT id,revision,created_at,updated_at,document FROM games ORDER BY id")?
-        .query_map([], read_game)?
+        .query_map([], |row|read_game(&tx,row))?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     for game in &mut games {game.document.analysis_runs=crate::analysis_runs::all(&tx,&game.id)?;}
     let collections = collections(&tx)?;
@@ -608,7 +632,7 @@ pub fn backup(db: &mut Connection) -> Result<Backup> {
     })
 }
 pub fn restore(db: &mut Connection, backup: Backup) -> Result<Value> {
-    if backup.format != "ironwood-companion-archive" || !matches!(backup.schema_version,2|3) {
+    if backup.format != "ironwood-companion-archive" || !matches!(backup.schema_version,2|3|4) {
         return Err(Error(
             "unsupported_version",
             "Unsupported archive backup schema",
@@ -640,6 +664,11 @@ pub fn restore(db: &mut Connection, backup: Backup) -> Result<Value> {
     }
     for g in &backup.games {
         let mut document=g.document.clone();let _runs=std::mem::take(&mut document.analysis_runs);
+        let parsed=document.validated()?;
+        let card=crate::archive_library::summary_parsed(&g.id,g.revision,g.updated_at,&document,&parsed)?;
+        for (key,value) in &parsed.tags{document.metadata.entry(key.clone()).or_insert_with(||value.clone());}
+        crate::archive_binary::normalize(&mut document,card["eco"].as_str().unwrap_or(""));
+        let stored=crate::archive_binary::prepare(&document,&parsed)?;
         tx.execute(
             "INSERT INTO games VALUES(?1,?2,?3,?4,?5,?6)",
             params![
@@ -647,10 +676,12 @@ pub fn restore(db: &mut Connection, backup: Backup) -> Result<Value> {
                 g.revision,
                 g.created_at,
                 g.updated_at,
-                serde_json::to_string(&document)?,
-                g.document.fingerprint()?
+                stored.json,
+                document.fingerprint()?
             ],
         )?;
+        crate::archive_binary::store(&tx,&g.id,&stored.moves,stored.record.as_deref())?;
+        crate::archive_library::store_card(&tx,&g.id,g.revision,g.updated_at,&card)?;
     }
     for g in &backup.games {crate::analysis_runs::merge(&tx,&g.id,&g.document.analysis_runs)?;}
     for c in &backup.collections {
@@ -775,7 +806,7 @@ mod tests {
     }
     #[tokio::test]
     async fn preparation_does_not_hold_database_lock() {
-        let archive=Archive{connection:Arc::new(Mutex::new(memory())),slots:Arc::new(tokio::sync::Semaphore::new(4))};
+        let archive=Archive{connection:Arc::new(Mutex::new(memory())),slots:Arc::new(tokio::sync::Semaphore::new(4)),foreground:Arc::default()};
         let worker=archive.clone();
         let (started,wait_started)=tokio::sync::oneshot::channel();
         let (release,wait_release)=std::sync::mpsc::channel();

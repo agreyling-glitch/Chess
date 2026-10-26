@@ -37,4 +37,6 @@ Deleting saved puzzle playback does not reset puzzle progress; deleting a saved 
 
 ## Reporting a problem
 
+{{< companion-help >}}
+
 Include steps to reproduce, expected and actual behavior, browser, relevant settings, and any error text. Avoid sharing authorization tokens or private notes. Optional usage statistics currently measure visits and usage; automatic freeze reporting has not been implemented. See [Optional usage statistics](/help/optional-usage-statistics/).

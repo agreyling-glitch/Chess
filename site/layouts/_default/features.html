@@ -7,6 +7,7 @@
 </section>
 <nav class="features-jump-links" aria-label="Feature groups">
   <a href="#play-your-way">Play &amp; analyze</a>
+  {{ with .Site.GetPage "/help/companion-setup" }}{{ if or (not .Draft) (eq hugo.Environment "companion-preview") }}<a href="#desktop-engines-and-archive">Desktop engines &amp; archive</a>{{ end }}{{ end }}
   <a href="#explore-lichess-player-profiles">Player profiles</a>
   <a href="#train-against-an-adaptive-opponent">Training &amp; puzzles</a>
   <a href="#explore-opening-choices">Study tools</a>

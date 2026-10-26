@@ -47,11 +47,16 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
     const request = {};
     queueMicrotask(() => { request.result = db; request.onsuccess(); }); return request;
   } };
+  window.ironwoodCompanionConnections=()=>[{name:'Win11',endpoint:'http://localhost:8790',connected:true,archive:true}];
   const source = await readFile(new URL('../web/game-storage.js', import.meta.url), 'utf8');
   const { buildGameExport } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
   await window.ironwoodOpenGameLibrary();
+  const locationStyle=window.getComputedStyle(document.querySelector('[aria-label="Game storage location"]'));
+  assert.equal(locationStyle.minHeight,'28px','Saved games must load its flat location style without opening Storage information');
+  assert.equal(locationStyle.backgroundImage,'none');
+
   const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
-  const click = text => { const b = button(text); assert.ok(b, text); b.click(); };
+  const click = text => { if(['Browser','Archive'].includes(text)){const field=document.querySelector('[aria-label="Game storage location"]');field.value=text==='Browser'?'browser':'http://localhost:8790';field.dispatchEvent(new window.Event('change'));return;} const b = button(text); assert.ok(b, text); b.click(); };
   const settle = () => new Promise(resolve => setTimeout(resolve, 15));
   assert.equal(document.querySelectorAll('.game-library-select').length, 10);
   const savedWindow=document.querySelector('#game-library-dialog'), heading=savedWindow.querySelector('.game-library-heading');
@@ -62,11 +67,11 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   heading.dispatchEvent(new window.MouseEvent('pointercancel'));
   heading.dispatchEvent(new window.MouseEvent('pointermove',{clientX:999,clientY:999}));
   assert.equal(savedWindow.style.left,'190px');assert.equal(heading.classList.contains('dragging'),false);
-  const sourceButtons=document.querySelector('.game-library-sources');
-  assert.equal(sourceButtons.hidden,true);
+  const sourceButtons=document.querySelector('[aria-label="Game storage location"]');
+  assert.deepEqual([...sourceButtons.options].map(o=>o.textContent),['Browser']);
   let companion=true;window.ironwoodCompanionFeatureEnabled=()=>companion;
   window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));
-  assert.equal(sourceButtons.hidden,false);
+  assert.deepEqual([...sourceButtons.options].map(o=>o.textContent),['Browser','Win11']);
   let archiveRecords=[], failImport=true, mutateSource=false;
   const archiveStore={endpoint:'http://localhost:8790',check(){},async list(){return structuredClone(archiveRecords);},async importRecords(incoming){if(failImport)throw Error('simulated archive failure');if(mutateSource)records.get(incoming[0].id).updatedAt++;const next=incoming.map(record=>({...structuredClone(record),id:'remote-'+record.id,_archive:{endpoint:this.endpoint,id:'remote-'+record.id,revision:1}}));archiveRecords=[...new Map([...archiveRecords,...next].map(record=>[record.id,record])).values()];return next.map(record=>record.id);},async moveToBrowser(ids){const moved=archiveRecords.filter(record=>ids.includes(record.id));for(const record of moved){const {_archive,...data}=record;records.set(record.id.replace('remote-',''),{...data,id:record.id.replace('remote-','')});}archiveRecords=archiveRecords.filter(record=>!ids.includes(record.id));return {received:moved.length,duplicates:0,ids:moved.map(record=>record.id.replace('remote-',''))};}};
   window.ironwoodCompanionLibrary=async()=>archiveStore;
@@ -86,7 +91,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   click('Archive');await settle();
   assert.equal(document.querySelector('.game-library-browser').hidden,false);
   assert.equal(document.querySelectorAll('.game-library-select').length,3);
-  assert.equal(button('Archive').getAttribute('aria-pressed'),'true');
+  assert.equal(sourceButtons.value,'http://localhost:8790');
   assert.equal(document.querySelectorAll('.game-library-controls').length,1);
   // Archive previews load moves from Companion rather than IndexedDB.
   let archiveReads = 0;
@@ -115,7 +120,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.equal(records.size,12);assert.equal(archiveRecords.length,0);
   click('Browser');await settle();assert.equal(document.querySelectorAll('.game-library-select').length,10);
   click('Archive');await settle();companion=false;window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));await settle();
-  assert.equal(sourceButtons.hidden,true);
+  assert.deepEqual([...sourceButtons.options].map(o=>o.textContent),['Browser']);
   assert.equal(document.querySelectorAll('.game-library-select').length,10);
 
   const chooseSort = value => {
@@ -215,11 +220,14 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   document.getElementById('game-library-dialog').close();
   window.HTMLCanvasElement.prototype.getContext=()=>null;
   let statsCalls=0,offline=false;
+  let storageLocations=[{name:'Win11',endpoint:'http://localhost:8790',credential:'windows-private',connected:true,archive:true},{name:'QNAP',endpoint:'http://192.168.0.2:8790',credential:'nas-private',connected:true,archive:false},{name:'Engine only',endpoint:'http://engines:8790',connected:true,capabilities:{services:{archive:false}}}];
+  window.ironwoodCompanionConnections=()=>storageLocations;
+  const requestedLocations=[];window.ironwoodCompanionLibrary=async options=>{requestedLocations.push(options.endpoint);return options.endpoint==='http://192.168.0.2:8790'?{endpoint:options.endpoint,stats:async()=>({games:2000,index:{indexed:1000,total:2000}})}:archiveStore;};
   archiveStore.stats=async()=>{statsCalls++;if(offline)throw Error('server offline');return {server_version:'0.1.0',schema_version:2,games:42,categories:{mine:30,imported:12},favorites:4,collections:2,database_bytes:4096,wal_bytes:8192,shared_memory_bytes:32768,total_bytes:45056,allocated_bytes:12288,reusable_bytes:4096,index:{indexed:40,total:42,pending:2,failed:0}};};
   await window.ironwoodOpenStorageInfo();await settle();assert.equal(statsCalls,0);assert.ok(!document.querySelector('#storage-management-dialog').textContent.includes('Server archive'));
   companion=true;window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));await settle();assert.equal(statsCalls,0);
   const info=document.querySelector('#storage-management-dialog');
-  assert.ok(info.querySelector('.game-library-title-group .game-library-sources'));
+  assert.ok(info.querySelector('.game-library-title-group .storage-location-field'));assert.equal(info.querySelector('[role=tablist]'),null);
   const infoHeading=info.querySelector('.game-library-heading');
   info.getBoundingClientRect=()=>({left:50,top:60,width:600,height:500});
   infoHeading.dispatchEvent(new window.MouseEvent('pointerdown',{bubbles:true,button:0,clientX:60,clientY:70}));
@@ -227,10 +235,10 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.equal(info.style.left,'150px');assert.equal(info.style.top,'130px');
   infoHeading.dispatchEvent(new window.MouseEvent('pointercancel'));assert.equal(infoHeading.classList.contains('dragging'),false);
   infoHeading.dispatchEvent(new window.MouseEvent('pointermove',{clientX:999,clientY:999}));assert.equal(info.style.left,'150px');
-  const infoTab=label=>[...info.querySelectorAll('[role=tab]')].find(tab=>tab.textContent===label);
-  assert.equal(infoTab('Browser').getAttribute('aria-selected'),'true');
+  const infoLocation=info.querySelector('[aria-label="Storage location"]');const choose=value=>{infoLocation.value=value;infoLocation.dispatchEvent(new window.Event('change'));};
+  assert.equal(infoLocation.value,'browser');assert.deepEqual([...infoLocation.options].map(o=>o.textContent),['Browser','Win11','QNAP']);
   assert.equal(info.querySelector('#storage-info-archive-panel').hidden,true);
-  infoTab('Archive').click();await settle();assert.equal(statsCalls,1);
+  choose('http://localhost:8790');await settle();assert.equal(statsCalls,1);
   assert.equal(info.querySelector('#storage-info-browser-panel').hidden,true);
   assert.equal(info.querySelector('#storage-info-archive-panel').hidden,false);
   const toolbar=info.querySelector('.storage-info-toolbar');
@@ -238,16 +246,25 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.ok(toolbar.compareDocumentPosition(info.querySelector('.storage-info-body'))&window.Node.DOCUMENT_POSITION_FOLLOWING);
   assert.equal(info.querySelector('#storage-info-archive-panel .storage-actions'),null);
 
-  const serverPanel=[...document.querySelectorAll('.storage-info-panel')].find(panel=>panel.querySelector('h3')?.textContent==='Server archive');
+  const serverPanel=[...document.querySelectorAll('.storage-info-panel')].find(panel=>panel.querySelector('h3')?.textContent==='Win11 archive');
   assert.ok(serverPanel.textContent.includes('Saved games42'));assert.ok(serverPanel.textContent.includes('Total archive files44.0 KiB'));
   assert.ok(document.querySelector('#storage-management-dialog').textContent.includes('Game library'));
   offline=true;click('Refresh server');await settle();assert.match(document.querySelector('#storage-management-dialog').textContent,/server offline/);
   assert.ok(document.querySelector('#storage-management-dialog').textContent.includes('Game library'));
-  infoTab('Browser').click();assert.equal(info.querySelector('#storage-info-archive-panel').hidden,true);assert.equal(info.querySelector('#storage-info-browser-panel').hidden,false);assert.equal(info.querySelector('.storage-info-toolbar').hidden,true);
+  choose('browser');assert.equal(info.querySelector('#storage-info-archive-panel').hidden,true);assert.equal(info.querySelector('#storage-info-browser-panel').hidden,false);assert.equal(info.querySelector('.storage-info-toolbar').hidden,true);
   assert.match(info.querySelector('#storage-info-browser-panel').textContent,/Game library.*Browser storage/s);
-  infoTab('Browser').dispatchEvent(new window.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));await settle();assert.equal(infoTab('Archive').getAttribute('aria-selected'),'true');
-  companion=false;window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));await settle();assert.ok(!document.querySelector('#storage-management-dialog').textContent.includes('Server archive'));assert.equal(statsCalls,3);
-  assert.equal(info.querySelector('.game-library-sources').hidden,true);assert.equal(info.querySelector('#storage-info-browser-panel').hidden,false);
+  choose('http://192.168.0.2:8790');await settle();assert.equal(requestedLocations.at(-1),'http://192.168.0.2:8790');assert.match(serverPanel.textContent,/QNAP archive.*Saved games2,000/s);
+  assert.equal(storageLocations[0].archive,true,'viewing NAS storage must not change the default');
+  storageLocations[1].name='NAS4';window.dispatchEvent(new window.Event('ironwood-companion-connections-changed'));await settle();assert.equal(infoLocation.value,'http://192.168.0.2:8790');assert.match(serverPanel.textContent,/NAS4 archive/);
+  const originalStats=archiveStore.stats;let finishOldStats;
+  archiveStore.stats=()=>new Promise(resolve=>finishOldStats=resolve);
+  choose('http://localhost:8790');await settle();choose('http://192.168.0.2:8790');await settle();
+  finishOldStats({games:99999,index:{}});await settle();assert.match(serverPanel.textContent,/NAS4 archive.*Saved games2,000/s);assert.doesNotMatch(serverPanel.textContent,/99,999/);archiveStore.stats=originalStats;
+  storageLocations[1].connected=false;window.dispatchEvent(new window.Event('ironwood-companion-connections-changed'));await settle();assert.equal(infoLocation.value,'browser');assert.ok([...infoLocation.options].find(o=>o.textContent==='NAS4 (Disconnected)').disabled);
+  assert.ok(!info.innerHTML.includes('nas-private'));
+
+  companion=false;window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));await settle();assert.ok(!document.querySelector('#storage-management-dialog').textContent.includes('Server archive'));assert.equal(statsCalls,2);
+  assert.deepEqual([...infoLocation.options].map(o=>o.textContent),['Browser']);assert.equal(info.querySelector('#storage-info-browser-panel').hidden,false);
   document.getElementById('storage-management-dialog').close();
   dom.window.close();
 });

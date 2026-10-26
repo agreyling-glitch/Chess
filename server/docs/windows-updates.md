@@ -130,3 +130,13 @@ in-progress registration. Platform lifecycle checks cover the pending marker and
 custom-config archive snapshot/restore. Production Authenticode installation and
 Cloudflare delivery require the real signed release channel and must be validated
 before enabling it; unsigned local builds cannot substitute for that check.
+
+## Public Windows preparation without paid signing
+
+The owner approved using the existing release-key verification system for public
+Windows packages on 2026-10-25. Executables remain unsigned by a Windows publisher
+certificate. Manifest signatures, pinned public key, package SHA-256, expiry,
+platform/version checks and rollback remain enforced. See the public preparation
+section in `deploy/companion-releases/README.md` for local commands and deployment
+order. The preview gate and public delivery remain disabled until publication.
+The legacy `private-preview-key` format name is retained for signature compatibility.

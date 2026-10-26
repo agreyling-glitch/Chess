@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
+mod scid_import;
+mod sevenz_import;
 mod companion;
 mod board3d;
 mod fics_chat;
@@ -20,6 +22,8 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(start)]
 pub async fn start() -> Result<(), JsValue> {
+    // Import workers use pure decoder exports without creating a board.
+    if web_sys::window().is_none(){return Ok(());}
     // The library window needs pure PGN/export helpers, without a board or engine.
     if web_sys::window().is_some_and(|window| window.location().pathname().ok().as_deref()==Some("/saved-games/")) {
         return Ok(());

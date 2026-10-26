@@ -11,6 +11,11 @@
 !crates/**
 !server/
 !server/**
+!vendor/
+!vendor/**
+!assets/
+!assets/openings/
+!assets/openings/**
 !tests/
 !tests/**
 !scripts/

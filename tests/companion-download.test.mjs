@@ -34,10 +34,10 @@ test('the real pinned public key rejects an unsigned manifest', async()=>{
  await assert.rejects(downloadPrivateCompanion(token,{...options,cryptoApi:webcrypto}),/signature/);
  assert.equal(calls.length,1);
 });
-test('download entry point remains inside the shared Companion flag and uses no persistent token storage',()=>{
+test('download entry point remains in the Companion tab and uses no persistent token storage',()=>{
  const source=readFileSync(new URL('../web/companion-download.js',import.meta.url),'utf8');
  assert.doesNotMatch(source,/localStorage|sessionStorage/);
  const rust=readFileSync(new URL('../src/app.rs',import.meta.url),'utf8');
- const start=rust.indexOf('if companion {',rust.indexOf('about_version_diagnostics'));
+ const start=rust.indexOf('if companion_tab {',rust.indexOf('about_version_diagnostics'));
  assert.ok(start>=0 && rust.indexOf('Download Companion for Windows',start)>start);
 });

@@ -28,6 +28,7 @@ struct Validated {
 }
 #[derive(Clone)]
 pub(crate) struct Registry {
+    pub downloads: crate::engine_downloads::Manager,
     pub engines: Arc<Mutex<Vec<EngineConfig>>>,
     path: Option<PathBuf>,
     jobs: Arc<Mutex<HashMap<String, Value>>>,
@@ -35,6 +36,7 @@ pub(crate) struct Registry {
     browse_root: Option<PathBuf>,
 }
 impl Registry {
+    pub(crate) fn configuration_path(&self)->Option<PathBuf>{self.path.clone()}
     pub fn new(engines: Vec<EngineConfig>, path: Option<PathBuf>) -> Self {
         let browse_root = std::env::var_os("IRONWOOD_ENGINE_DIRECTORY")
             .map(PathBuf::from)
@@ -44,6 +46,7 @@ impl Registry {
                     .map(|p| p.join("engines"))
             });
         Self {
+            downloads: crate::engine_downloads::Manager::new(browse_root.clone()),
             engines: Arc::new(Mutex::new(engines)),
             path,
             jobs: Arc::default(),
@@ -105,7 +108,7 @@ fn permitted(registry: &Registry, path: &Path) -> bool {
     registry
         .browse_root
         .as_ref()
-        .is_some_and(|root| fs::canonicalize(root).is_ok_and(|root| path.starts_with(root)))
+        .is_some_and(|root| fs::canonicalize(root).is_ok_and(|root| path.strip_prefix(root).is_ok_and(|relative| !relative.components().next().is_some_and(|part|part.as_os_str().to_string_lossy().eq_ignore_ascii_case(".downloads")))))
 }
 pub(crate) fn routes() -> Router<Shared> {
     Router::new()
@@ -376,6 +379,22 @@ async fn validate(shared: &Shared, config: &EngineConfig) -> Result<String, &'st
         config.label.clone()
     } else {
         name
+    })
+}
+pub(crate) async fn register_downloaded(shared:&Shared,id:&str,path:PathBuf,label:&str)->Result<String,String>{
+    let _permit=shared.control.registrations.clone().try_acquire_owned().map_err(|_|"Another engine is being validated; resume this download when it finishes.")?;
+    let path=fs::canonicalize(path).map_err(|_|"Installed executable is unavailable")?;
+    if !permitted(&shared.registry,&path){return Err("Installed engine is outside the engine directory".into());}
+    let config=EngineConfig{id:format!("download-{id}"),label:label.into(),args:crate::engine_downloads::installed_args(id,&path),executable:path,options:Default::default()};
+    if let Some(existing)=shared.registry.engines.lock().unwrap().iter().find(|e|same_launch(e,&config.executable,&config.args)).map(|e|e.id.clone()){
+        return shared.registry.downloads.commit_registration(id,||Ok(existing));
+    }
+    let original=read_small(shared.registry.path.as_ref().ok_or("Configuration unavailable")?).map_err(|_|"Could not read engine configuration")?;
+    let name=validate(shared,&config).await.map_err(str::to_owned)?;
+    let mut engine=config;engine.label=name;
+    shared.registry.downloads.commit_registration(id,||{
+        if shared.control.stopping(){return Err("Companion is stopping; resume after restart".into());}
+        let engine_id=engine.id.clone();persist(shared,id,&Validated{engine,original}).map_err(str::to_owned)?;Ok(engine_id)
     })
 }
 async fn save(

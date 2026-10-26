@@ -17,6 +17,7 @@ use std::{
 };
 
 pub mod archive;
+mod archive_binary;
 pub mod analysis_runs;
 mod archive_http;
 mod archive_library;
@@ -25,9 +26,12 @@ pub mod config;
 pub mod engine;
 pub mod explorer;
 pub mod registration;
+mod engine_downloads;
+mod engine_management;
 pub mod updates;
 pub mod import_queue;
 mod import_zip;
+mod import_sevenz;
 mod tablebases;
 pub use config::Config;
 
@@ -179,6 +183,7 @@ pub fn app_with_registration(
         )
         .route("/readyz", get(readiness))
         .route("/api/v1/capabilities", get(capabilities))
+        .route("/api/v1/archive/import-progress", get(folder_import_progress))
         .route("/api/v1/engines", get(engine_list))
         .route("/api/v1/tickets", post(ticket))
         .route("/api/v1/socket", get(socket))
@@ -187,6 +192,8 @@ pub fn app_with_registration(
         .route("/api/v1/updates/check", post(update_check))
         .route("/api/v1/updates/install", post(update_install))
         .merge(registration::routes())
+        .merge(engine_downloads::routes())
+        .merge(engine_management::routes())
         .merge(archive_http::routes())
         .merge(tablebases::routes())
         .layer(axum::extract::DefaultBodyLimit::max(archive::MAX_BODY))
@@ -216,6 +223,7 @@ async fn shutdown(State(shared): State<Shared>) -> Response {
     )
         .into_response()
 }
+async fn folder_import_progress(State(shared):State<Shared>)->Json<import_queue::Progress>{Json(shared.control.imports.progress())}
 async fn update_status(State(shared): State<Shared>) -> Response {
     Json(shared.control.updates.status(&shared.control)).into_response()
 }
@@ -414,6 +422,7 @@ fn request_budget(method: &Method, path: &str) -> RequestBudget {
     } else if (method == Method::GET && path.starts_with("/api/v1/archive/")
         && path != "/api/v1/archive/backup")
         || (method == Method::POST && path == "/api/v1/archive/export")
+        || (method == Method::GET && (path == "/api/v1/engine-download-catalog" || path.starts_with("/api/v1/engine-downloads") || path.starts_with("/api/v1/engine-management/")))
     {
         RequestBudget::ArchiveReads
     } else {
@@ -468,7 +477,9 @@ async fn bounded_request(
                 if bytes.is_empty()
                     || is_archive
                     || matches!(parts.uri.path(), "/api/v1/updates/check" | "/api/v1/updates/install")
-                    || parts.uri.path().starts_with("/api/v1/engine-registrations") =>
+                    || parts.uri.path().starts_with("/api/v1/engine-registrations")
+                    || parts.uri.path().starts_with("/api/v1/engine-downloads")
+                    || parts.uri.path().starts_with("/api/v1/engine-management/") =>
             {
                 next.run(axum::extract::Request::from_parts(
                     parts,
@@ -990,6 +1001,15 @@ mod tests {
             tablebase_directories: vec![],
             automatic_import: true,
         }
+    }
+    #[tokio::test]
+    async fn folder_import_progress_is_authenticated_and_read_only() {
+        for (token,status) in [("wrong".into(),401),("a".repeat(64),200)] {
+            let response=app(config()).unwrap().oneshot(Request::builder().uri("/api/v1/archive/import-progress").header("origin","https://ironwoodchess.com").header("authorization",format!("Bearer {token}")).header(PROTOCOL_HEADER,"1").body(Body::empty()).unwrap()).await.unwrap();
+            assert_eq!(response.status().as_u16(),status);
+            if status==200 {let bytes=axum::body::to_bytes(response.into_body(),4096).await.unwrap();let value:serde_json::Value=serde_json::from_slice(&bytes).unwrap();assert_eq!(value["active"],false);assert_eq!(value["processed"],0);assert!(value["eta_seconds"].is_null());}
+        }
+        assert_eq!(request_budget(&Method::GET,"/api/v1/archive/import-progress"),RequestBudget::ArchiveReads);
     }
     #[tokio::test]
     async fn authentication_origin_and_version() {

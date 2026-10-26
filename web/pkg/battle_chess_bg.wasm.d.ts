@@ -1,20 +1,30 @@
 /* tslint:disable */
 /* eslint-disable */
 export const memory: WebAssembly.Memory;
+export const __wbg_scid5reader_free: (a: number, b: number) => void;
+export const __wbg_scidimport_free: (a: number, b: number) => void;
 export const export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+export const ironwoodSevenZipExtract: (a: number, b: any, c: any, d: any) => [number, number];
+export const ironwoodSevenZipList: (a: number, b: any) => [number, number, number, number];
 export const prepare_archived_pgn: (a: number, b: number) => [number, number, number, number];
 export const preview_scoresheet: (a: number, b: number) => [number, number, number, number];
+export const scid5reader_decode_game: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
+export const scid5reader_index_entries: (a: number, b: number, c: number) => [number, number, number, number];
+export const scid5reader_new: (a: number, b: number) => [number, number, number];
+export const scidimport_game_count: (a: number) => number;
+export const scidimport_game_pgn: (a: number, b: number) => [number, number, number, number];
+export const scidimport_new: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number];
 export const start: () => void;
 export const validate_scoresheet_pgn: (a: number, b: number) => [number, number, number];
 export const wasm_bindgen__convert__closures_____invoke__h05b652a48fee2551: (a: number, b: number, c: any) => [number, number];
 export const wasm_bindgen__convert__closures_____invoke__h19d4157273093e84: (a: number, b: number, c: any) => [number, number];
-export const wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_12: (a: number, b: number, c: any) => [number, number];
-export const wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_13: (a: number, b: number, c: any) => [number, number];
+export const wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_20: (a: number, b: number, c: any) => [number, number];
+export const wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_21: (a: number, b: number, c: any) => [number, number];
 export const wasm_bindgen__convert__closures_____invoke__h0d9cf8010272419a: (a: number, b: number, c: any) => void;
-export const wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba: (a: number, b: number, c: any) => void;
-export const wasm_bindgen__convert__closures_____invoke__h17fad3352b36a9ba_11: (a: number, b: number, c: any) => void;
 export const wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068: (a: number, b: number, c: any) => void;
-export const wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_8: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_16: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14: (a: number, b: number, c: any) => void;
+export const wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14_19: (a: number, b: number, c: any) => void;
 export const wasm_bindgen__convert__closures_____invoke__hc86f24272c98cb0b: (a: number, b: number) => [number, number];
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

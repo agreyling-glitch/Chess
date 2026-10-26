@@ -1,6 +1,7 @@
 import { companionConnection, requireCompanionConnection, manageCompanionConnection, onCompanionConnectionChange } from './companion-connection.js';
 import { CompanionArchiveClient, browserDocuments, transferDocuments } from './companion-archive-client.js';
 import { companionBrowserRecords, receiveCompanionDocuments, gameDetails } from './game-storage.js';
+import {mountCompanionImportProgress} from './companion-import-progress.js';
 let client;
 window.ironwoodCompanionArchiveConfiguration = companionConnection;
 onCompanionConnectionChange(() => { client = undefined; });
@@ -25,6 +26,8 @@ window.ironwoodOpenCompanionArchive = async ({host, onClose, isActive} = {}) => 
   const connection = node('section', '', dialog);
   const connectionSummary = node('p', 'Uses your shared Companion connection.', connection);
   const status = node('p', '', dialog); status.setAttribute('role', 'status');
+  const stopFolderProgress=mountCompanionImportProgress(window,dialog);
+  dialog.addEventListener('close',stopFolderProgress,{once:true});
   const content = node('div', '', dialog); content.hidden = true;
   const tabs = node('div', '', content); tabs.className = 'actions archive-tabs';
   let busy = false, connected = false, cursor = '', next = null, local = [], localPage = 0, groups = [], selected = new Map();
@@ -41,7 +44,7 @@ window.ironwoodOpenCompanionArchive = async ({host, onClose, isActive} = {}) => 
     const capabilities = await candidate.request('capabilities');
     const active = companionConnection();
     if (!dialog.open || active?.endpoint !== shared.endpoint || active?.credential !== shared.credential) return;
-    if (capabilities.protocol_version !== '1' || !capabilities.services?.archive || capabilities.archive_schema_version !== 2) throw new Error('This Companion does not provide a supported archive.');
+    if (capabilities.protocol_version !== '1' || !capabilities.services?.archive || ![2,3,4].includes(capabilities.archive_schema_version)) throw new Error('This Companion does not provide a supported archive.');
     client = candidate; connectionSummary.textContent = `Connected to ${candidate.endpoint}`; connected = true; content.hidden = false; cursor = ''; selected.clear();
     await refreshGroups(); await refreshLocal(); await refreshServer();
     status.textContent = 'Connected. Choose browser games to upload or archive games to copy back.';

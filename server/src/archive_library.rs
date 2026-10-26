@@ -5,6 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 pub fn initialize(db: &Connection) -> Result<()> {
+    crate::archive_binary::initialize(db)?;
     let tx = db.unchecked_transaction()?;
     tx.execute_batch("CREATE TABLE IF NOT EXISTS library_cards(id TEXT PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE,revision INTEGER NOT NULL,updated INTEGER NOT NULL,moves INTEGER NOT NULL,category TEXT NOT NULL,favorite INTEGER NOT NULL,white TEXT NOT NULL,black TEXT NOT NULL,profile TEXT NOT NULL,analysis TEXT NOT NULL,search TEXT NOT NULL,summary TEXT NOT NULL);
     CREATE INDEX IF NOT EXISTS library_recent ON library_cards(updated DESC,id);
@@ -35,8 +36,21 @@ pub fn initialize(db: &Connection) -> Result<()> {
     ] {
         tx.execute_batch(&format!("CREATE INDEX IF NOT EXISTS library_filter_{name} ON library_cards(({expression}),updated DESC,id);"))?;
     }
-    tx.execute_batch(&format!("CREATE INDEX IF NOT EXISTS library_filter_opening ON library_cards(({ECO_VALUE}),({OPENING_VALUE}),updated DESC,id);
+    tx.execute_batch(&format!("CREATE INDEX IF NOT EXISTS library_filter_opening ON library_cards(({ECO_VALUE}),updated DESC,id);
         CREATE INDEX IF NOT EXISTS library_filter_eco_prefix ON library_cards(upper(json_extract(summary,'$.eco')),updated DESC,id);"))?;
+    let labels_repaired:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='library_opening_labels_v2')",[],|r|r.get(0))?;
+    if !labels_repaired {
+        // Repair only derived display cards. Original PGNs, documents, revisions
+        // and the position index remain unchanged; no game reparsing is needed.
+        let pairs=tx.prepare(&format!("SELECT DISTINCT ({ECO_VALUE}),({OPENING_VALUE}) FROM library_cards"))?.query_map([],|r|Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        for (eco,name) in pairs {
+            let (_,label)=crate::opening_classification::consistent_labels(&eco,&name,None);
+            if label!=name {tx.execute(&format!("UPDATE library_cards SET summary=json_set(summary,'$.opening',?3) WHERE ({ECO_VALUE})=?1 AND ({OPENING_VALUE})=?2"),params![eco,name,label])?;}
+        }
+        tx.execute_batch("CREATE TABLE library_opening_labels_v2(id INTEGER PRIMARY KEY); DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;")?;
+    }
+    let normalized:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='library_eco_lookup_v1')",[],|r|r.get(0))?;
+    if !normalized {tx.execute_batch("UPDATE library_cards SET summary=json_remove(summary,'$.opening');DELETE FROM library_query_cache;UPDATE library_cache_state SET revision=revision+1 WHERE id=1;CREATE TABLE library_eco_lookup_v1(id INTEGER PRIMARY KEY);")?;}
     if needs_filter_statistics {
         // With real cardinalities SQLite prefers the selective Player/Date/etc.
         // indexes when a broad category (e.g. Imported Games) is also selected.
@@ -69,14 +83,10 @@ pub(crate) fn summary_parsed(id:&str,revision:u64,updated:i64,document:&Document
             .cloned()
             .unwrap_or_default()
     };
-    let mut eco=tag("ECO");
-    let mut opening=tag("Opening");
-    if (eco.trim().is_empty() || eco=="?" || opening.trim().is_empty() || opening=="?") && tag("FEN").is_empty() && ["","Standard","Chess"].contains(&tag("Variant").as_str()) {
-        if let Some((classified_eco,classified_opening))=crate::opening_classification::classify(&parsed.sans) {
-            if eco.trim().is_empty() || eco=="?" {eco=classified_eco;}
-            if opening.trim().is_empty() || opening=="?" {opening=classified_opening;}
-        }
-    }
+    let eco=tag("ECO");
+    let opening=tag("Opening");
+    let classified=if (matches!(eco.trim(),""|"?"|"-") || matches!(opening.trim(),""|"?"|"-")) && tag("FEN").is_empty() && ["","Standard","Chess"].contains(&tag("Variant").as_str()) {crate::opening_classification::classify(&parsed.sans)}else{None};
+    let (eco,opening)=crate::opening_classification::consistent_labels(&eco,&opening,classified);
     let training = &saved["training"];
     let profile = training["profile_id"].as_str().unwrap_or("");
     let profile_name = training["profile_name"].as_str().unwrap_or("You");
@@ -179,8 +189,9 @@ pub(crate) fn summary_parsed(id:&str,revision:u64,updated:i64,document:&Document
 }
 
 pub(crate) fn store_card(db:&Connection,id:&str,revision:u64,updated:i64,card:&Value)->Result<()> {
+    let mut card=card.clone();card.as_object_mut().unwrap().remove("opening");
     let search=["title","white","black","source","venue","playedAt"].map(|key|card[key].as_str().unwrap_or("")).join(" ").to_lowercase();
-    db.execute("INSERT OR REPLACE INTO library_cards VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",params![id,revision,card["updatedAt"].as_i64().unwrap_or(updated),card["moves"].as_u64().unwrap_or(0),card["category"].as_str(),card["favorite"].as_bool(),card["white"].as_str(),card["black"].as_str(),card["trainingProfileId"].as_str(),card["analysisStatus"].as_str(),search,serde_json::to_string(card)?])?;
+    db.execute("INSERT OR REPLACE INTO library_cards VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",params![id,revision,card["updatedAt"].as_i64().unwrap_or(updated),card["moves"].as_u64().unwrap_or(0),card["category"].as_str(),card["favorite"].as_bool(),card["white"].as_str(),card["black"].as_str(),card["trainingProfileId"].as_str(),card["analysisStatus"].as_str(),search,serde_json::to_string(&card)?])?;
     db.execute("DELETE FROM library_dirty WHERE id=?1",[id])?;
     Ok(())
 }
@@ -194,8 +205,9 @@ pub fn synchronize(db: &mut Connection) -> Result<()> {
             let id: String = row.get(0)?;
             let revision: u64 = row.get(1)?;
             let updated: i64 = row.get(2)?;
-            let doc: Document = serde_json::from_str(&row.get::<_, String>(3)?)?;
-            let card = summary(&id, revision, updated, &doc)?;
+            let doc = crate::archive_binary::load(&tx,&id,&row.get::<_, String>(3)?)?;
+            let mut card = summary(&id, revision, updated, &doc)?;
+            card.as_object_mut().unwrap().remove("opening");
             let search = ["title", "white", "black", "source", "venue", "playedAt"]
                 .map(|key| card[key].as_str().unwrap_or(""))
                 .join(" ")
@@ -231,7 +243,7 @@ pub struct Filter {
 const SOURCE_VALUE: &str = "coalesce(nullif((CASE WHEN trim(coalesce(json_extract(summary,'$.source'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE trim(coalesce(json_extract(summary,'$.source'),'')) END),''),(CASE WHEN trim(coalesce(json_extract(summary,'$.venue'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE trim(coalesce(json_extract(summary,'$.venue'),'')) END))";
 const DATE_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.playedAt'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE replace(trim(coalesce(json_extract(summary,'$.playedAt'),'')),'.','-') END";
 const ECO_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.eco'),'')) IN ('?','-') THEN '' ELSE upper(trim(coalesce(json_extract(summary,'$.eco'),''))) END";
-const OPENING_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.opening'),'')) IN ('?','-') THEN '' ELSE trim(coalesce(json_extract(summary,'$.opening'),'')) END";
+const OPENING_VALUE: &str = "coalesce((SELECT description FROM eco_openings WHERE eco=upper(trim(coalesce(json_extract(summary,'$.eco'),'')))), '')";
 fn prefix_end(prefix:&str)->Option<String> {
     let mut chars:Vec<char>=prefix.chars().collect();
     while let Some(last)=chars.pop() {
@@ -342,12 +354,12 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
             predicates.push(format!("substr(upper(json_extract(summary,'$.eco')),1,length({param}))={param}"));
         }
     }
-    if !opening.is_empty() {predicates.push(format!("instr(lower(json_extract(summary,'$.opening')), {})>0",bind(&opening)));}
+    if !opening.is_empty() {predicates.push(format!("instr(lower(({OPENING_VALUE})), {})>0",bind(&opening)));}
     if !source.is_empty() {predicates.push(format!("({SOURCE_VALUE})={}",bind(if source=="?" {""} else {source})));}
     if !date.is_empty() {predicates.push(format!("({DATE_VALUE})={}",bind(if date=="?" {""} else {&date})));}
     if choice_mode!=0 {
         predicates.push(format!("({ECO_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_eco})));
-        predicates.push(format!("({OPENING_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_name})));
+        if choice_mode==2 || choice_name!="*" {predicates.push(format!("({OPENING_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_name})));}
     }
     let where_sql=if predicates.is_empty() {"1".to_owned()} else {predicates.join(" AND ")};
     let revision: u64 = tx.query_row(
@@ -389,7 +401,9 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
         rusqlite::params_from_iter(&args),
         |r| r.get::<_, String>(0),
     )? {
-        cards.push(serde_json::from_str::<Value>(&row?)?);
+        let mut card=serde_json::from_str::<Value>(&row?)?;
+        if !filter.selection {card["opening"]=tx.query_row("SELECT description FROM eco_openings WHERE eco=?1",[card["eco"].as_str().unwrap_or("")],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default().into();}
+        cards.push(card);
     }
     let mut result = json!({"games":cards,"total":total,"page":page,"revision":revision});
     if !filter.selection && filter.facets_revision != Some(revision) {
@@ -505,7 +519,7 @@ mod tests {
         changed.metadata.insert("ECO".into(),"C99".into());
         changed.metadata.insert("Opening".into(),"Changed opening".into());
         archive::update(&mut db,&id,1,changed).unwrap();
-        assert_eq!(query(&mut db,Filter{source:"new source".into(),date:"2026-10-23".into(),opening_choice:json!(["C99","Changed opening"]).to_string(),..Default::default()}).unwrap()["total"],1);
+        assert_eq!(query(&mut db,Filter{source:"new source".into(),date:"2026-10-23".into(),opening_choice:json!(["C99","*"]).to_string(),..Default::default()}).unwrap()["total"],1);
         assert_eq!(query(&mut db,Filter{source:"test source".into(),..Default::default()}).unwrap()["total"],0);
         assert_eq!(runs,serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap());
         archive::delete(&mut db,&id,2).unwrap();
@@ -628,14 +642,28 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_labels_are_repaired_without_rewriting_saved_games() {
+        let mut db=database();
+        let docs=crate::archive_pgn::documents("[White \"Repair\"]\n[ECO \"A85\"]\n\n1. d4 d5 2. c4 e6 *").unwrap();
+        archive::import(&mut db,docs,None).unwrap();
+        let original:String=db.query_row("SELECT document FROM games",[],|r|r.get(0)).unwrap();
+        db.execute("UPDATE library_cards SET summary=json_set(summary,'$.opening','Queen''s Gambit')",[]).unwrap();
+        db.execute_batch("DROP TABLE library_opening_labels_v2").unwrap();
+        initialize(&db).unwrap();initialize(&db).unwrap();
+        let result=query(&mut db,Filter{opening_choice:json!(["A85","*"]).to_string(),..Default::default()}).unwrap();
+        assert_eq!(result["total"],1);assert!(result["games"][0]["opening"].as_str().unwrap().starts_with("Dutch Defense"));
+        assert_eq!(original,db.query_row::<String,_,_>("SELECT document FROM games",[],|r|r.get(0)).unwrap());
+    }
+    #[test]
     fn combined_opening_choices_match_exact_variations_and_unknowns() {
         let mut db=database();
         let docs=crate::archive_pgn::documents("[White \"Base\"]\n[ECO \"B20\"]\n[Opening \"Sicilian Defense\"]\n\n1. e4 c5 *\n\n[White \"Variation\"]\n[ECO \"B20\"]\n[Opening \"Sicilian Defense: Variation\"]\n\n1. e4 c5 *\n\n[White \"Unknown\"]\n\n*").unwrap();
         archive::import(&mut db,docs,None).unwrap();
-        let all=query(&mut db,Filter::default()).unwrap();assert_eq!(all["openings"].as_array().unwrap().len(),2);
-        let selected=query(&mut db,Filter{opening_choice:serde_json::to_string(&["B20","Sicilian Defense"]).unwrap(),selection:true,..Default::default()}).unwrap();assert_eq!(selected["total"],1);assert_eq!(selected["games"][0]["title"],"Base vs Unknown");
-        let variation=query(&mut db,Filter{opening_choice:serde_json::to_string(&["B20","Sicilian Defense: Variation"]).unwrap(),..Default::default()}).unwrap();assert_eq!(variation["total"],1);assert_eq!(variation["games"][0]["white"],"Variation");
+        let all=query(&mut db,Filter::default()).unwrap();assert_eq!(all["openings"].as_array().unwrap().len(),1);
+        let selected=query(&mut db,Filter{opening_choice:serde_json::to_string(&["B20","Sicilian Defense"]).unwrap(),selection:true,..Default::default()}).unwrap();assert_eq!(selected["total"],2);
+        let variation=query(&mut db,Filter{opening_choice:serde_json::to_string(&["B20","Sicilian Defense: Variation"]).unwrap(),..Default::default()}).unwrap();assert_eq!(variation["total"],0);
         let unknown=query(&mut db,Filter{opening_choice:"?".into(),..Default::default()}).unwrap();assert_eq!(unknown["total"],1);assert_eq!(unknown["games"][0]["white"],"Unknown");
+        let code=query(&mut db,Filter{opening_choice:json!(["B20","*"]).to_string(),selection:true,..Default::default()}).unwrap();assert_eq!(code["total"],2);
         assert!(query(&mut db,Filter{opening_choice:"invalid".into(),..Default::default()}).is_err());
     }
 
@@ -646,7 +674,7 @@ mod tests {
         archive::import(&mut db,docs,None).unwrap();
         let sicilian=query(&mut db,Filter{eco:"b2".into(),opening:"SICILIAN".into(),..Default::default()}).unwrap();
         assert_eq!(sicilian["total"],1);assert_eq!(sicilian["games"][0]["eco"],"B20");
-        let tagged=query(&mut db,Filter{opening:"custom tag".into(),..Default::default()}).unwrap();assert_eq!(tagged["games"][0]["eco"],"A99");
+        let tagged=query(&mut db,Filter{eco:"A99".into(),..Default::default()}).unwrap();assert_eq!(tagged["games"][0]["eco"],"A99");assert_ne!(tagged["games"][0]["opening"],"Custom tag");
         let french=query(&mut db,Filter{opening:"French".into(),selection:true,..Default::default()}).unwrap();assert_eq!(french["total"],1);
         db.execute_batch("UPDATE library_cards SET summary=json_remove(summary,'$.eco','$.opening'); DROP TABLE library_openings_v1;").unwrap();
         initialize(&db).unwrap();

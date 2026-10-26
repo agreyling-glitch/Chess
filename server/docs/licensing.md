@@ -6,6 +6,15 @@ or tablebase files are added by Phase 0.
 
 Direct dependencies:
 
+Private-preview engine download additions (2026-10-25): reqwest 0.13.5 uses
+MIT OR Apache-2.0; zip 9.1.0 uses MIT with only deflate enabled. Native TLS uses
+Windows system facilities and Linux system OpenSSL. The refreshed inventory
+records their transitive licenses. Engine packages are fetched directly from the
+publisher rather than redistributed by Ironwood. Stockfish 19's official package
+includes its embedded NNUE networks and GPLv3 license/source materials; preserve
+the complete package. Standalone weights are not inferred to inherit code licenses
+and need an explicit separate review before catalog inclusion.
+
 | Component | Verified package license | Purpose |
 | --- | --- | --- |
 | Axum 0.8.9 | MIT | HTTP routing, upgrade handling |

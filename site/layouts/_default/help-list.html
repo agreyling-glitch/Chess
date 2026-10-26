@@ -4,6 +4,7 @@
   <h1>Understand your game.</h1>
   <p class="lede">Guides to playing, reviewing, saving, training, and online features. Start with a question or browse the topics below.</p>
   <div class="help-quick-links" aria-label="Start here">
+    {{ with .Site.GetPage "/help/companion-setup" }}{{ if or (not .Draft) (eq hugo.Environment "companion-preview") }}<a href="{{ .RelPermalink }}">Set up Companion</a><a href="/downloads/companion/">Download Companion</a>{{ end }}{{ end }}
     <a href="/help/getting-started/">Getting started</a>
     <a href="/help/expanded-analysis-graph/">Explore the full graph</a>
     <a href="/help/lichess-player-profiles/">Lichess profiles</a>

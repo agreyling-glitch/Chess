@@ -1,4 +1,5 @@
 param([string]$OutputDirectory = "output/companion",
+      [ValidateSet('private-preview','public')][string]$Channel = 'private-preview',
       [string]$UpdateFeed = $env:IRONWOOD_UPDATE_FEED,
       [string]$UpdateCertificate = $env:IRONWOOD_UPDATE_CERTIFICATE,
       [string]$SigningCertificateThumbprint,
@@ -16,6 +17,7 @@ $previousMode = $env:IRONWOOD_UPDATE_SIGNING_MODE
 $stagingRoot = $null
 $preserveStaging = $false
 try {
+    if ($Channel -eq 'public' -and ($UpdateSigningMode -ne 'private-preview-key' -or $UpdateFeed -cne 'https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json')) { throw 'Public release-key packages require the public Windows feed and release-key trust mode.' }
     if ($UpdateSigningMode -eq 'private-preview-key') {
         if (-not $UpdateFeed -or -not $UpdatePublicKey -or $UpdateCertificate -or $SigningCertificateThumbprint) { throw 'Private-preview mode requires Feed and PublicKey only; do not supply a certificate.' }
         . (Join-Path $PSScriptRoot 'companion-release-key.ps1')
@@ -77,9 +79,12 @@ try {
     Copy-Item -LiteralPath "deploy/ironwood-server/start-companion.cmd" -Destination $stage
     $source = Join-Path $stage "source"
     New-Item -ItemType Directory -Path $source | Out-Null
-    foreach ($entry in @("Cargo.lock", "LICENSE", "crates", "server", "deploy")) {
+    foreach ($entry in @("Cargo.lock", "LICENSE", "crates", "server", "deploy", "vendor")) {
         Copy-Item -LiteralPath $entry -Destination $source -Recurse
     }
+    $sourceFixtures = Join-Path $source 'tests/fixtures'
+    New-Item -ItemType Directory -Path $sourceFixtures -Force | Out-Null
+    Copy-Item -LiteralPath 'tests/fixtures/scid' -Destination $sourceFixtures -Recurse
     New-Item -ItemType Directory -Path (Join-Path $source "src"), (Join-Path $source "assets") | Out-Null
     Copy-Item -LiteralPath "src/opening_classification.rs" -Destination (Join-Path $source "src")
     Copy-Item -LiteralPath "assets/openings" -Destination (Join-Path $source "assets") -Recurse
@@ -88,6 +93,7 @@ try {
     @'
 [workspace]
 members = ["crates/ironwood-protocol", "server"]
+exclude = ["vendor/chess-scid-rw", "vendor/sevenz-rust2"]
 resolver = "3"
 [profile.release]
 lto = "thin"
@@ -97,7 +103,7 @@ opt-level = 2
     if ($LASTEXITCODE -ne 0) { throw "Standalone source lockfile resolution failed" }
     # Include exact dependency source and license/NOTICE files for a self-contained
     # corresponding-source build. This also avoids relying on a dirty Git commit.
-    $vendor = Join-Path $source "vendor"
+    $vendor = Join-Path $source "registry-vendor"
     & cargo vendor --locked --versioned-dirs --manifest-path (Join-Path $source "Cargo.toml") $vendor > $null
     if ($LASTEXITCODE -ne 0) { throw "Dependency source vendoring failed" }
     New-Item -ItemType Directory -Path (Join-Path $source ".cargo") | Out-Null
@@ -105,7 +111,7 @@ opt-level = 2
 [source.crates-io]
 replace-with = "vendored-sources"
 [source.vendored-sources]
-directory = "vendor"
+directory = "registry-vendor"
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
 '@ | Set-Content -LiteralPath (Join-Path $source ".cargo/config.toml") -Encoding utf8
@@ -130,9 +136,23 @@ Check for updates is available in the tray and status window. Development builds
 without an embedded signed release channel cannot download or install updates.
 Updates never install automatically: choose Update and restart when engines are idle.
 '@
+    if ($Channel -eq 'public') {
+        $instructions = $instructions.Replace('Ironwood Companion development package','Ironwood Companion for Windows x64') + @'
+
+This portable release has no Windows publisher certificate. Release-key signatures
+verify update authenticity but do not establish Windows publisher trust. Windows
+security policies may warn about or block unsigned executables.
+Updates use a public HTTPS feed and do not require a release-access token.
+The separate Companion connection token still protects access to your games.
+No engines or neural-network models are bundled. Auto-install downloads directly
+from original publishers. To remove the portable program, quit Companion and
+delete its extracted application folder. Your archive and settings remain in the
+data folder. Back up your archive before separately removing that data.
+'@
+    }
     $instructions | Set-Content -LiteralPath (Join-Path $stage "START-HERE.txt") -Encoding utf8
     @{ product = "Ironwood Companion"; version = $package.version; platform = "windows-x64";
-       crt = "static"; protocol_version = "1"; channel = "private-preview"; signed = [bool]$SigningCertificateThumbprint; signing_mode = $UpdateSigningMode } |
+       crt = "static"; protocol_version = "1"; channel = $Channel; manifest_signed = [bool]$UpdateFeed; signed = [bool]$SigningCertificateThumbprint; signing_mode = $UpdateSigningMode } |
        ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stage "release.json") -Encoding utf8
     @{ feed = $UpdateFeed; certificate = $UpdateCertificate; signing_mode = $UpdateSigningMode; public_key = $UpdatePublicKey } | ConvertTo-Json |
        Set-Content -LiteralPath (Join-Path $source 'update-channel.json') -Encoding utf8

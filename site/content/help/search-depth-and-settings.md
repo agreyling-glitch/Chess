@@ -9,6 +9,8 @@ lastmod: 2026-10-21T00:00:00-05:00
 
 ## Open engine settings
 
+{{< companion-help >}}
+
 1. In the app's bottom status bar, click the gray raised **Engine** button beside the engine name and Ready/Analyzing state. You can also use **Game → Engine settings…**.
 2. Select **Play**, **Realtime Analysis**, or **Full game Analysis**. The selected tab has a raised gold finish and dark text.
 3. Adjust the settings, then click **Apply**. **Cancel** discards your changes.

@@ -3,7 +3,8 @@ param([Parameter(Mandatory)][string]$Package,
       [Parameter(Mandatory)][string]$DownloadUrl,
       [string]$CertificateThumbprint,
       [string]$ReleaseKeyFile,
-      [string]$Output = 'output/companion/update-manifest.json')
+      [string]$Output = 'output/companion/update-manifest.json',
+      [ValidateRange(1,365)][int]$ValidityDays = 14)
 $ErrorActionPreference = 'Stop'
 if ($Version -notmatch '^\d+\.\d+\.\d+$' -or ([uri]$DownloadUrl).Scheme -ne 'https') { throw 'Use a numeric release version and an HTTPS download URL.' }
 $cert = $null; $key = $null
@@ -21,7 +22,7 @@ $payload = [ordered]@{
     format = $(if ($privatePreview) { 2 } else { 1 }); product = 'Ironwood Companion'; platform = 'windows-x64'
     protocol = 1; data_schema = 1; version = $Version; url = $DownloadUrl
     sha256 = (Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash.ToLowerInvariant()
-    expires = [DateTimeOffset]::UtcNow.AddDays(14).ToString('o')
+    expires = [DateTimeOffset]::UtcNow.AddDays($ValidityDays).ToString('o')
 }
 if ($privatePreview) { $payload.signing_mode = 'private-preview-key' }
 $payload = $payload | ConvertTo-Json -Compress

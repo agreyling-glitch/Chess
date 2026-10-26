@@ -3,7 +3,9 @@
 The native Rust server foundation, UCI bridge, persistent game archive and archive
 opening explorer and owner-local Syzygy probing are implemented. Tablebase probing
 is opt-in through `tablebase_directories`; see [Phase 5 setup](docs/phase-5-tablebases.md).
-No public release has been published.
+The Windows x64 release is available from
+[the Companion download page](https://ironwoodchess.com/downloads/companion/).
+Linux, macOS and QNAP builds remain developer-supported.
 
 ## Windows quick start
 

@@ -2,6 +2,60 @@ use super::*;
 
 impl ChessApp {
     #[cfg(target_arch = "wasm32")]
+    pub(super) fn import_location_selector(ui: &mut egui::Ui) -> (bool,bool) {
+        let catalog:serde_json::Value=serde_json::from_str(&import_location_catalog()).unwrap_or_default();
+        let mut selected=catalog["selected"].as_str().unwrap_or("browser").to_owned();let previous=selected.clone();
+        ui.add_enabled_ui(catalog["busy"]!=true,|ui|{
+            ui.spacing_mut().interact_size.y=28.0;
+            ui.spacing_mut().button_padding=Vec2::new(6.0,4.0);
+            let menu_style=ui.style().as_ref().clone();
+            let background=ui.painter().add(egui::Shape::Noop);
+            let mut visuals=ui.visuals().widgets.inactive;
+            visuals.bg_fill=Color32::TRANSPARENT;visuals.weak_bg_fill=Color32::TRANSPARENT;visuals.bg_stroke=Stroke::NONE;visuals.expansion=0.0;
+            ui.visuals_mut().widgets.inactive=visuals;ui.visuals_mut().widgets.hovered=visuals;
+            ui.visuals_mut().widgets.active=visuals;ui.visuals_mut().widgets.open=visuals;
+            let response=egui::ComboBox::from_id_salt("import_destination_location")
+                .selected_text(catalog["label"].as_str().unwrap_or("Browser")).width(170.0).truncate()
+                .show_ui(ui,|ui|{ui.set_style(menu_style);if let Some(locations)=catalog["locations"].as_array(){for location in locations {
+                    let value=location["value"].as_str().unwrap_or("browser");let label=location["label"].as_str().unwrap_or("Browser");
+                    ui.add_enabled_ui(location["enabled"]!=false,|ui|{ui.selectable_value(&mut selected,value.to_owned(),label);});
+                }}});
+            ui.painter().set(background,egui::Shape::Vec(vec![
+                egui::Shape::rect_filled(response.response.rect,4,Color32::from_rgb(8,11,15)),
+                egui::Shape::rect_stroke(response.response.rect,4,Stroke::new(1.0,Color32::from_rgb(83,93,97)),egui::StrokeKind::Inside),
+            ]));
+            response.response.on_hover_text("Import destination");
+        });
+        if selected!=previous {set_import_location(&selected);}
+        let current:serde_json::Value=serde_json::from_str(&import_location_catalog()).unwrap_or_default();
+        let archive=current["selected"].as_str().unwrap_or("browser")!="browser";
+        (archive,current["ready"]==true)
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn companion_settings_icon(ui: &mut egui::Ui, enabled: bool, label: &str, icon: u8) -> egui::Response {
+        let response = ui.add_enabled(enabled, egui::Button::new("").min_size(Vec2::splat(36.0)).raised_gray());
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, response.enabled(), label));
+        let center = response.rect.center();
+        let color = if response.enabled() { Color32::from_rgb(226, 231, 235) } else { Color32::from_gray(105) };
+        let stroke = Stroke::new(2.0, color);
+        if icon == 2 {
+            let points: Vec<_> = (0..=24).map(|i| center + Vec2::angled(0.45 + i as f32 / 24.0 * 5.0) * 8.0).collect();
+            let end = *points.last().unwrap();
+            ui.painter().add(egui::Shape::line(points, stroke));
+            ui.painter().add(egui::Shape::convex_polygon(vec![end + Vec2::new(-3.0, -2.0), end + Vec2::new(3.0, -2.0), end + Vec2::new(1.0, 3.0)], color, Stroke::NONE));
+        } else if icon == 1 {
+            for (x, y) in [(-7.0, -4.0), (0.0, 4.0), (7.0, -1.0)] {
+                ui.painter().line_segment([center + Vec2::new(x, -9.0), center + Vec2::new(x, 9.0)], stroke);
+                ui.painter().rect_filled(egui::Rect::from_center_size(center + Vec2::new(x, y), Vec2::new(6.0, 5.0)), 1.0, color);
+            }
+        } else {
+            ui.painter().line_segment([center - Vec2::new(8.0, 0.0), center + Vec2::new(8.0, 0.0)], stroke);
+            ui.painter().line_segment([center - Vec2::new(0.0, 8.0), center + Vec2::new(0.0, 8.0)], stroke);
+        }
+        response.on_hover_text(label)
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub(super) fn analysis_engine_selector(&mut self, ui: &mut egui::Ui) {
         if !crate::companion::enabled() { return; }
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
@@ -74,8 +128,9 @@ impl ChessApp {
                         }
                     });
             });
-            if ui.add_enabled(allowed, egui::Button::new("Add engine").raised_gray()).clicked() { add_companion_engine(); }
-            if ui.add_enabled(!busy, egui::Button::new("Refresh").raised_gray()).clicked() { refresh_companion_engines(); }
+            if Self::companion_settings_icon(ui, allowed, "Add engine", 0).clicked() { add_companion_engine(); }
+            if Self::companion_settings_icon(ui, allowed && !identity.is_empty(), "Manage engines", 1).clicked() { manage_companion_engines(&identity); }
+            if Self::companion_settings_icon(ui, !busy, "Refresh installed engines", 2).clicked() { refresh_companion_engines(); }
         });
         });
         if identity != previous { select_companion_engine(&identity); }

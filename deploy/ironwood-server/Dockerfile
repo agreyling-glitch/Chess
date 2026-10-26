@@ -4,14 +4,19 @@ FROM rust:1.95-bookworm AS build
 ARG CARGO_BUILD_JOBS=2
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 WORKDIR /source
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
 COPY build.rs ./
 COPY src ./src
 COPY crates ./crates
 COPY server ./server
+COPY vendor ./vendor
+COPY assets/openings ./assets/openings
+COPY tests/fixtures ./tests/fixtures
 RUN cargo build --locked --release -p ironwood-server
 
 FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
 RUN groupadd --gid 10001 companion && useradd --uid 10001 --gid 10001 --no-create-home companion
 RUN mkdir /data && chown 10001:10001 /data && chmod 700 /data
 COPY --from=build /source/target/release/ironwood-server /usr/local/bin/ironwood-server
@@ -22,6 +27,9 @@ COPY Cargo.toml Cargo.lock build.rs LICENSE /usr/share/doc/ironwood-companion/so
 COPY server /usr/share/doc/ironwood-companion/source/server
 COPY crates /usr/share/doc/ironwood-companion/source/crates
 COPY src /usr/share/doc/ironwood-companion/source/src
+COPY vendor /usr/share/doc/ironwood-companion/source/vendor
+COPY assets/openings /usr/share/doc/ironwood-companion/source/assets/openings
+COPY tests/fixtures /usr/share/doc/ironwood-companion/source/tests/fixtures
 USER 10001:10001
 EXPOSE 8790
 VOLUME ["/data"]

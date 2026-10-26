@@ -100,7 +100,12 @@ pub fn delete(db: &mut Connection, game: &str, request: Delete) -> Result<Value>
                 for field in ["verification_nodes","verification_time_ms"] { saved[field]=json!(0); }
                 saved["game_analysis_running"]=json!(false);saved["game_analysis_paused"]=json!(false);
                 record.insert("json".into(),json!(serde_json::to_string(&saved)?));
-                tx.execute("UPDATE games SET document=?1,fingerprint=?2,revision=revision+1 WHERE id=?3",params![serde_json::to_string(&original.document)?,original.document.fingerprint()?,game])?;
+                let parsed=crate::archive_pgn::parse(&original.document.pgn)?.remove(0);
+                let eco=original.document.metadata.get("ECO").cloned().unwrap_or_default();
+                crate::archive_binary::normalize(&mut original.document,&eco);
+                let stored=crate::archive_binary::prepare(&original.document,&parsed)?;
+                tx.execute("UPDATE games SET document=?1,fingerprint=?2,revision=revision+1 WHERE id=?3",params![stored.json,original.document.fingerprint()?,game])?;
+                crate::archive_binary::store(&tx,game,&stored.moves,stored.record.as_deref())?;
             }
         }
     }

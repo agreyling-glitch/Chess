@@ -34,7 +34,27 @@ pub fn initialize(db: &Connection) -> rusqlite::Result<()> {
     if version != VERSION {
         db.execute_batch("DELETE FROM explorer_positions;DELETE FROM explorer_games;INSERT OR IGNORE INTO explorer_queue SELECT id FROM games;UPDATE explorer_state SET version=1,generation=generation+1;")?;
     }
+    initialize_progress(db)?;
     Ok(())
+}
+fn initialize_progress(db:&Connection)->rusqlite::Result<()> {
+    let tx=db.unchecked_transaction()?;
+    tx.execute_batch("CREATE TABLE IF NOT EXISTS explorer_progress(id INTEGER PRIMARY KEY CHECK(id=1),total INTEGER NOT NULL,indexed INTEGER NOT NULL,pending INTEGER NOT NULL,unsupported INTEGER NOT NULL,failed INTEGER NOT NULL);")?;
+    let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM explorer_progress WHERE id=1)",[],|r|r.get(0))?;
+    if !exists {
+        tx.execute_batch("UPDATE explorer_games SET status='pending' WHERE NOT EXISTS(SELECT 1 FROM games g WHERE g.id=explorer_games.game_id AND g.revision=explorer_games.revision);
+        INSERT INTO explorer_progress SELECT 1,(SELECT count(*) FROM games),(SELECT count(*) FROM explorer_games WHERE status='ready'),(SELECT count(*) FROM explorer_queue),(SELECT count(*) FROM explorer_games WHERE status='unsupported_variant'),(SELECT count(*) FROM explorer_games WHERE status NOT IN ('ready','pending','unsupported_variant'));")?;
+    }
+    tx.execute_batch("CREATE TRIGGER IF NOT EXISTS explorer_progress_game_insert AFTER INSERT ON games BEGIN UPDATE explorer_progress SET total=total+1 WHERE id=1; END;
+    CREATE TRIGGER IF NOT EXISTS explorer_progress_game_update BEFORE UPDATE ON games BEGIN UPDATE explorer_games SET status='pending' WHERE game_id=OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS explorer_progress_game_delete_before BEFORE DELETE ON games BEGIN UPDATE explorer_games SET status='pending' WHERE game_id=OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS explorer_progress_game_delete AFTER DELETE ON games BEGIN UPDATE explorer_progress SET total=total-1 WHERE id=1; DELETE FROM explorer_games WHERE game_id=OLD.id; DELETE FROM explorer_queue WHERE game_id=OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS explorer_progress_queue_insert AFTER INSERT ON explorer_queue BEGIN UPDATE explorer_progress SET pending=pending+1 WHERE id=1; END;
+    CREATE TRIGGER IF NOT EXISTS explorer_progress_queue_delete AFTER DELETE ON explorer_queue BEGIN UPDATE explorer_progress SET pending=pending-1 WHERE id=1; END;")?;
+    for (name,event,row,sign) in [("insert","AFTER INSERT","NEW",1),("delete","BEFORE DELETE","OLD",-1),("update_before","BEFORE UPDATE","OLD",-1),("update_after","AFTER UPDATE","NEW",1)] {
+        tx.execute_batch(&format!("CREATE TRIGGER IF NOT EXISTS explorer_progress_row_{name} {event} ON explorer_games WHEN {row}.status<>'pending' AND EXISTS(SELECT 1 FROM games g WHERE g.id={row}.game_id AND g.revision={row}.revision) BEGIN UPDATE explorer_progress SET indexed=indexed+({sign})*({row}.status='ready'),unsupported=unsupported+({sign})*({row}.status='unsupported_variant'),failed=failed+({sign})*({row}.status NOT IN ('ready','pending','unsupported_variant')) WHERE id=1; END;"))?;
+    }
+    tx.commit()
 }
 pub fn position_key(position: &Chess) -> String {
     Fen::from_position(position, EnPassantMode::Legal)
@@ -181,6 +201,14 @@ pub fn index(document: &Document) -> Result<Indexed> {
     }
     Ok(indexed)
 }
+fn index_binary(document:&Document,bytes:&[u8])->Result<Indexed>{
+    let mut data=Indexed{tags:document.metadata.clone(),entries:BTreeSet::new(),status:"ready"};
+    if data.tags.get("Variant").is_some_and(|v|!matches!(v.as_str(),"Standard"|"Chess"|"From Position")){data.status="unsupported_variant";return Ok(data);}
+    crate::archive_binary::visit_mainline(bytes,|position,m|{
+        data.entries.insert((position_key(position),String::new(),String::new()));
+        if let Some(m)=m {data.entries.insert((position_key(position),UciMove::from_standard(m).to_string(),San::from_move(position,m).to_string()));let next=position.clone().play(m).expect("packed move validated");data.entries.insert((position_key(&next),String::new(),String::new()));}
+    })?;Ok(data)
+}
 fn name(value: Option<&String>) -> Option<String> {
     value
         .filter(|v| !v.trim().is_empty() && !matches!(v.as_str(), "?" | "-"))
@@ -221,6 +249,7 @@ struct Job {
     revision: u64,
     fingerprint: String,
     document: Document,
+    binary: Option<Vec<u8>>,
 }
 fn next(db: &Connection) -> Result<Option<Job>> {
     let candidate: Option<String> = db
@@ -232,16 +261,19 @@ fn next(db: &Connection) -> Result<Option<Job>> {
         .optional()?;
     candidate
         .map(|id| {
-            let game = archive::get(db, &id)?;
+            let (revision,raw):(u64,String)=db.query_row("SELECT revision,document FROM games WHERE id=?1",[&id],|r|Ok((r.get(0)?,r.get(1)?)))?;
+            let document:Document=serde_json::from_str(&raw)?;
+            let binary=if document.pgn.is_empty(){Some(db.query_row("SELECT moves FROM game_payloads WHERE game_id=?1",[&id],|r|r.get::<_,Vec<u8>>(0))?)}else{None};
             let fingerprint =
                 db.query_row("SELECT fingerprint FROM games WHERE id=?1", [&id], |r| {
                     r.get(0)
                 })?;
             Ok(Job {
                 id,
-                revision: game.revision,
+                revision,
                 fingerprint,
-                document: game.document,
+                document,
+                binary,
             })
         })
         .transpose()
@@ -308,16 +340,17 @@ pub fn spawn(archive: archive::Archive, control: crate::Control) {
                     revision,
                     fingerprint,
                     document,
-                }) = archive.run(|db| next(db)).await?
+                    binary,
+                }) = archive.run_background(|db| next(db)).await?
                 else {
                     return Ok::<_, Error>(false);
                 };
                 // PGN replay is outside the archive connection lock, so reads remain available.
-                let indexed = tokio::task::spawn_blocking(move || index(&document))
+                let indexed = tokio::task::spawn_blocking(move || if let Some(bytes)=binary{index_binary(&document,&bytes)}else{index(&document)})
                     .await
                     .map_err(|_| Error("archive_failed", "Index worker failed"))?;
                 archive
-                    .run(move |db| apply(db, &id, revision, &fingerprint, indexed))
+                    .run_background(move |db| apply(db, &id, revision, &fingerprint, indexed))
                     .await?;
                 Ok(true)
             };
@@ -336,23 +369,9 @@ pub fn status(db: &Connection) -> Result<Value> {
         [],
         |r| r.get(0),
     )?;
-    let total: u64 = db.query_row("SELECT count(*) FROM games", [], |r| r.get(0))?;
-    let pending: u64 = db.query_row("SELECT count(*) FROM explorer_queue", [], |r| r.get(0))?;
-    let mut ready = 0u64;
-    let mut unsupported = 0u64;
-    let mut failed = 0u64;
-    let mut stmt=db.prepare("SELECT i.status,count(*) FROM explorer_games i JOIN games g ON g.id=i.game_id AND g.revision=i.revision GROUP BY i.status")?;
-    for row in stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, u64>(1)?)))? {
-        let (state, count) = row?;
-        match state.as_str() {
-            "ready" => ready = count,
-            "unsupported_variant" => unsupported = count,
-            "pending" => {}
-            _ => failed += count,
-        }
-    }
+    let (total,ready,pending,unsupported,failed):(u64,u64,u64,u64,u64)=db.query_row("SELECT total,indexed,pending,unsupported,failed FROM explorer_progress WHERE id=1",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)))?;
     Ok(
-        json!({"generation":generation,"version":VERSION,"total":total,"indexed":ready,"unsupported_variants":unsupported,"failed":failed,"pending":pending,"complete":pending==0&&failed==0}),
+        json!({"generation":generation,"version":VERSION,"progress_version":1,"total":total,"indexed":ready,"unsupported_variants":unsupported,"failed":failed,"pending":pending,"complete":pending==0&&failed==0}),
     )
 }
 pub fn rebuild(db: &mut Connection) -> Result<Value> {
@@ -500,6 +519,40 @@ mod tests {
         db
     }
     #[test]
+    fn live_progress_counters_match_index_state_through_mutations_and_rollback() {
+        let mut db=database();
+        fn check(db:&Connection){
+            let s=status(db).unwrap();
+            let total:u64=db.query_row("SELECT count(*) FROM games",[],|r|r.get(0)).unwrap();
+            let pending:u64=db.query_row("SELECT count(*) FROM explorer_queue",[],|r|r.get(0)).unwrap();
+            assert_eq!(s["total"],total);assert_eq!(s["pending"],pending);
+            for (key,condition) in [("indexed","i.status='ready'"),("unsupported_variants","i.status='unsupported_variant'"),("failed","i.status NOT IN ('ready','pending','unsupported_variant')")] {
+                let n:u64=db.query_row(&format!("SELECT count(*) FROM explorer_games i JOIN games g ON g.id=i.game_id AND g.revision=i.revision WHERE {condition}"),[],|r|r.get(0)).unwrap();assert_eq!(s[key],n,"{key}");
+            }
+        }
+        let first=add(&mut db,"[White \"First\"]\n\n1. e4 e5 2. Nf3 Nc6 *");
+        let second=add(&mut db,"[White \"Second\"]\n\n1. d4 d5 2. c4 e6 *");check(&db);drain(&mut db);check(&db);
+        db.execute("UPDATE games SET revision=revision+1 WHERE id=?1",[&first]).unwrap();check(&db);assert_eq!(status(&db).unwrap()["indexed"],1);drain(&mut db);check(&db);
+        db.execute_batch("BEGIN").unwrap();db.execute("DELETE FROM games WHERE id=?1",[&first]).unwrap();check(&db);db.execute_batch("ROLLBACK").unwrap();check(&db);
+        db.execute("DELETE FROM games WHERE id=?1",[second]).unwrap();check(&db);
+        rebuild(&mut db).unwrap();check(&db);assert_eq!(status(&db).unwrap()["indexed"],0);drain(&mut db);check(&db);
+        for state in ["failed","unsupported_variant","ready"] {db.execute("UPDATE explorer_games SET status=?1 WHERE game_id=?2",params![state,first]).unwrap();check(&db);}
+        db.execute("UPDATE explorer_games SET revision=revision+1 WHERE game_id=?1",[&first]).unwrap();check(&db);
+        initialize(&db).unwrap();check(&db);drain(&mut db);check(&db);
+    }
+    #[test]
+    fn progress_migration_backfills_legacy_rows_without_touching_game_documents(){
+        let mut db=database();let id=add(&mut db,"[White \"Legacy\"]\n\n1. e4 e5 2. Nf3 Nc6 *");drain(&mut db);
+        let names=db.prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'explorer_progress_%'").unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap();
+        for name in names {db.execute_batch(&format!("DROP TRIGGER {name}")).unwrap();}db.execute_batch("DROP TABLE explorer_progress").unwrap();
+        db.execute("UPDATE games SET revision=revision+1 WHERE id=?1",[&id]).unwrap();
+        let before:String=db.query_row("SELECT document FROM games WHERE id=?1",[&id],|r|r.get(0)).unwrap();
+        initialize(&db).unwrap();assert_eq!(status(&db).unwrap()["indexed"],0);assert_eq!(status(&db).unwrap()["pending"],1);
+        initialize(&db).unwrap();assert_eq!(db.query_row::<String,_,_>("SELECT document FROM games WHERE id=?1",[&id],|r|r.get(0)).unwrap(),before);
+        drain(&mut db);assert_eq!(status(&db).unwrap()["indexed"],1);
+        let plan=db.prepare("EXPLAIN QUERY PLAN SELECT indexed,pending FROM explorer_progress WHERE id=1").unwrap().query_map([],|r|r.get::<_,String>(3)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap().join(" ");assert!(plan.contains("INTEGER PRIMARY KEY"),"{plan}");
+    }
+    #[test]
     fn status_counts_use_covering_indexes_without_reading_documents() {
         let db=database();
         let plan=db.prepare("EXPLAIN QUERY PLAN SELECT i.status,count(*) FROM explorer_games i JOIN games g ON g.id=i.game_id AND g.revision=i.revision GROUP BY i.status").unwrap()
@@ -520,9 +573,11 @@ mod tests {
             revision,
             fingerprint,
             document,
+            binary,
         }) = next(db).unwrap()
         {
-            apply(db, &id, revision, &fingerprint, index(&document)).unwrap();
+            let result=if let Some(bytes)=binary{index_binary(&document,&bytes)}else{index(&document)};
+            apply(db, &id, revision, &fingerprint, result).unwrap();
         }
     }
     fn ask(db: &mut Connection, fen: &str) -> Value {
