@@ -4,7 +4,7 @@ description: "Set up Stockfish for play, realtime analysis, and full-game analys
 category: "terms"
 keywords: [engine settings, depth, nodes, nps, threads, hash, quality, quick, standard, deep, custom, performance, verification]
 weight: 60
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Open engine settings
@@ -112,3 +112,9 @@ Select a settings tab, click **Reset this context**, then **Apply**.
 ## Full-game progress
 
 **Analyze full game with Stockfish 19** uses a raised gold button and a beveled progress bar. The balance bar holds its displayed value while full-game analysis runs and resumes realtime updates afterward. This reduces animation work; it does not change the engine’s analysis budget or establish a measured speed increase.
+
+## Faster engine selection
+
+Selecting a Companion engine immediately shows your choice and a preparation message when discovery is needed. Returning to an engine already discovered during this browser session reuses its cached capabilities, skipping the temporary discovery launch. Engine settings remain disabled while a new choice is being prepared; a failure is shown without applying that engine's settings.
+
+**Refresh installed engines** clears cached capabilities and checks installations again. Connection or credential changes also clear them. Opening Engine settings does not itself repeat discovery. The first discovery, and the actual engine launch when starting play or analysis, may still take time; large networks can take longer. Caching does not keep multiple engines running.

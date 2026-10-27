@@ -4,12 +4,12 @@ description: "Read exact endgame outcomes, understand DTZ and DTM, and explore b
 category: "analysis"
 keywords: [Syzygy, tablebases, endgame, seven pieces, DTZ, DTM, half-moves, cursed win, blessed loss, 50-move rule, continuation, hover, arrow, exploration tree]
 weight: 76
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Look up an endgame
 
-Open a completed game and select an endgame position in **Game Moves**. In **Analysis**, below the evaluation graph, select **Tablebases**, then **Look up this position**. You can also import a setup position for study. The Tablebases tab is unavailable during an active online game.
+Open a completed game and select an endgame position in **Game Moves**. Choose **Explore → Endgames**, then **Look up this position**. You can also import a setup position for study. The Tablebases tab is unavailable during an active online game.
 
 Ironwood supports standard positions with **seven pieces or fewer, counting both kings**, and **no castling rights**. A king, rook, and pawn against a king and rook is a five-piece position. Pawns count as pieces for coverage. Positions outside this range show **Outside tablebase coverage**.
 

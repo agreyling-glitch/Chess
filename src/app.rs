@@ -5776,7 +5776,7 @@ impl ChessApp {
             ui.visuals().text_color(),
         );
         if !manual.is_empty() {
-            ui.painter().text(
+            ui.painter().with_clip_rect(rect).text(
                 egui::pos2(san_x, rect.bottom() - 4.0), Align2::CENTER_BOTTOM,
                 &manual, FontId::proportional(12.0), Color32::from_rgb(211, 173, 98),
             );
@@ -5818,6 +5818,10 @@ impl ChessApp {
         let response = if drawing_count > 0 {
             response.on_hover_text(format!("Your drawings: {drawing_count} board annotation{}", if drawing_count == 1 { "" } else { "s" }))
         } else { response };
+        let manual_descriptions = self.move_annotations.get(position_index).into_iter().flatten()
+            .map(|nag| crate::nags::label(*nag)).collect::<Vec<_>>().join("\n");
+        let response = if manual_descriptions.is_empty() { response }
+            else { response.on_hover_text(manual_descriptions) };
         if !self.show_move_hover_text {
             return response;
         }
@@ -6753,7 +6757,7 @@ impl ChessApp {
                 && let Some(to) = self.board_mark_square(pos, rect)
             {
                 let square_tool = self.board_mark_mode
-                    && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_window_open"))).unwrap_or(false)
+                    && Self::drawings_tab_active(ui.ctx())
                     && !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_tool_arrow"))).unwrap_or(false)
                     && !ui.input(|i| i.modifiers.alt);
                 marks.push(BoardMark { style: if ui.input(|i| i.modifiers.alt) { String::new() } else if square_tool { Self::drawing_shape_style(ui.ctx()) } else { Self::drawing_arrow_style(ui.ctx()) }, color, from: from.to_string(), to: if square_tool { from } else { to }.to_string() });
@@ -6860,7 +6864,7 @@ impl ChessApp {
         if released && let Some((start_index, from, color)) = self.board_mark_drag.take()
             && ui.rect_contains_pointer(rect) && start_index == index && let Some(pos) = pos && let Some(to) = self.board_mark_square(pos, rect)
         {
-            let tool_active = !modifiers.alt && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_window_open"))).unwrap_or(false);
+            let tool_active = !modifiers.alt && Self::drawings_tab_active(ui.ctx());
             let arrow = ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("draw_tool_arrow"))).unwrap_or(false);
             if !tool_active || !arrow || from != to {
                 let to = if tool_active && !arrow { from } else { to };
@@ -6870,12 +6874,24 @@ impl ChessApp {
         if self.board_mark_drag.is_some() { ui.ctx().request_repaint(); }
     }
 
-    fn annotation_symbol(nag: u8) -> &'static str {
-        match nag {
-            1 => "!", 2 => "?", 3 => "!!", 4 => "??", 5 => "!?", 6 => "?!",
-            10 => "=", 13 => "∞", 14 => "+=", 15 => "=+", 16 => "+/-", 17 => "-/+",
-            18 => "+−", 19 => "−+", _ => "",
+    fn annotation_symbol(nag: u8) -> String {
+        crate::nags::symbol(nag)
+    }
+
+    fn toggle_manual_nag(&mut self, index: usize, nag: u8) {
+        if index >= self.review_positions.len() || (index == 0 && (1..=9).contains(&nag)) { return; }
+        self.move_annotations.resize(self.review_positions.len(), Vec::new());
+        let values = &mut self.move_annotations[index];
+        if values.contains(&nag) {
+            values.retain(|value| *value != nag);
+        } else {
+            // Replace only mutually exclusive move/overall evaluation choices.
+            // Other imported positional and extension annotations stay intact.
+            values.retain(|value| !((1..=9).contains(&nag) && (1..=9).contains(value)
+                || (10..=21).contains(&nag) && (10..=21).contains(value)));
+            values.push(nag);
         }
+        self.save_manual_annotations();
     }
 
     fn pgn_nags(annotations: Option<&Vec<u8>>) -> String {
@@ -6883,8 +6899,23 @@ impl ChessApp {
     }
 
     fn annotation_menu(&mut self, ui: &mut egui::Ui, index: usize) {
+        self.chess_symbols_ui(ui, index, true);
+    }
+
+    fn chess_symbols_ui(&mut self, ui: &mut egui::Ui, index: usize, close_menu: bool) {
         if index >= self.review_positions.len() { return; }
         ui.label(RichText::new("Your annotations · separate from Stockfish").weak());
+        if !close_menu {
+            let selected = self.move_annotations.get(index).cloned().unwrap_or_default();
+            ui.label(RichText::new("Applied to this position").strong());
+            if selected.is_empty() { ui.weak("No chess symbols applied."); }
+            for nag in selected {
+                if ui.selectable_label(true, crate::nags::label(nag))
+                    .on_hover_text(format!("${nag} · Click to remove")).clicked() {
+                    self.toggle_manual_nag(index, nag);
+                }
+            }
+        }
         for (heading, choices) in [
             ("Move quality", vec![(1, "! Good move"), (3, "!! Brilliant move"), (5, "!? Interesting move"),
                 (6, "?! Dubious move"), (2, "? Mistake"), (4, "?? Blunder")]),
@@ -6899,20 +6930,45 @@ impl ChessApp {
                 if index == 0 && nag <= 6 { continue; }
                 let selected = self.move_annotations.get(index).is_some_and(|values| values.contains(&nag));
                 if ui.selectable_label(selected, label).clicked() {
-                    self.move_annotations.resize(self.review_positions.len(), Vec::new());
-                    let values = &mut self.move_annotations[index];
-                    values.retain(|value| if nag <= 6 { *value > 6 } else { !matches!(*value, 10 | 13..=19) });
-                    if !selected { values.push(nag); }
-                    self.save_manual_annotations();
-                    ui.close();
+                    self.toggle_manual_nag(index, nag);
+                    if close_menu { ui.close(); }
                 }
             }
+        }
+        if !close_menu {
+            ui.separator();
+            egui::CollapsingHeader::new("More symbols").id_salt("more_chess_symbols")
+                .show(ui, |ui| {
+                    let search_id = egui::Id::new("chess_symbols_search");
+                    let mut query = ui.ctx().data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
+                    ui.add(egui::TextEdit::singleline(&mut query)
+                        .hint_text("Search descriptions or codes, e.g. initiative, Black, $37")
+                        .desired_width(f32::INFINITY));
+                    ui.ctx().data_mut(|d| d.insert_temp(search_id, query.clone()));
+                    ui.weak("Standard meanings: $0–$139. Other codes retain their number without assuming a program-specific meaning.");
+                    let matches: Vec<u8> = (0..=255).filter(|nag| {
+                        !(index == 0 && (1..=9).contains(nag)) && crate::nags::matches(*nag, &query)
+                    }).collect();
+                    if matches.is_empty() { ui.label("No matching symbols."); }
+                    egui::ScrollArea::vertical().id_salt("more_chess_symbols_results")
+                        .max_height(320.0).auto_shrink([false, true]).show_gold(ui, |ui| {
+                            for nag in matches {
+                                let selected = self.move_annotations.get(index).is_some_and(|values| values.contains(&nag));
+                                let description = crate::nags::description(nag)
+                                    .unwrap_or_else(|| "Unassigned or program-specific meaning".into());
+                                if ui.selectable_label(selected, format!("${nag} · {description}"))
+                                    .on_hover_text("Click to apply or remove this annotation").clicked() {
+                                    self.toggle_manual_nag(index, nag);
+                                }
+                            }
+                        });
+                });
         }
         ui.separator();
         if ui.add_enabled(self.move_annotations.get(index).is_some_and(|values| !values.is_empty()), egui::Button::new("Clear annotation")).clicked() {
             self.move_annotations[index].clear();
             self.save_manual_annotations();
-            ui.close();
+            if close_menu { ui.close(); }
         }
     }
 
@@ -6927,7 +6983,13 @@ impl ChessApp {
         self.move_notes.get(index).map(String::as_str).unwrap_or("")
     }
 
-    fn edit_note(&mut self, index: usize) {
+    fn edit_note(&mut self, index: usize, ctx: &egui::Context) {
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 6usize);
+            d.insert_temp(egui::Id::new("annotations_tab"), 1usize);
+        });
+        self.board_mark_mode = false;
+        self.board_mark_drag = None;
         self.note_editor_text = self.note_at(index).to_owned();
         self.note_editor_index = Some(index);
     }
@@ -6947,78 +7009,6 @@ impl ChessApp {
             observed.move_notes = self.move_notes.clone();
         }
         self.save_game();
-    }
-
-    fn move_note_dialog(&mut self, ctx: &egui::Context) {
-        let Some(index) = self.note_editor_index else {
-            return;
-        };
-        if index >= self.review_positions.len() {
-            self.note_editor_index = None;
-            return;
-        }
-        let mut close = false;
-        let mut save = false;
-        let mut delete = false;
-        let response = egui::Modal::new(egui::Id::new("move_note_editor"))
-            .frame(Self::dialog_frame())
-            .show(ctx, |ui| {
-                ui.set_width((ctx.content_rect().width() - 64.0).clamp(240.0, 560.0));
-                close = Self::dialog_header(ui, if self.note_at(index).is_empty() { "Add note" } else { "Edit note" });
-                ui.label(RichText::new(self.notes_title(index).trim_start_matches("Notes: ")).size(13.0).color(Color32::from_rgb(175,182,191)));
-                ui.add_space(12.0);
-                Self::notes_section(ui, |ui| {
-                ui.label(RichText::new("YOUR NOTE").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
-                egui::ScrollArea::vertical()
-                    .max_height((ctx.content_rect().height() - 250.0).clamp(80.0, 300.0))
-                    .show_gold(ui, |ui| {
-                        ui.add(
-                            egui::TextEdit::multiline(&mut self.note_editor_text)
-                                .desired_width(f32::INFINITY)
-                                .desired_rows(8)
-                                .frame(egui::Frame::NONE)
-                                .font(FontId::proportional(17.0))
-                                .hint_text("What did you notice about this position?"),
-                        );
-                    });
-                });
-                ui.add_space(14.0);
-                ui.horizontal(|ui| {
-                    delete = ui
-                        .add_enabled(
-                            !self.note_at(index).is_empty(),
-                            egui::Button::new("Delete note").min_size(Vec2::new(110.0, 40.0)),
-                        )
-                        .clicked();
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        save = ui
-                            .add_sized(
-                                [110.0, 40.0],
-                                egui::Button::new(
-                                    RichText::new("Save note")
-                                        .size(17.0)
-                                        .strong()
-                                        .color(Color32::from_rgb(25, 29, 35)),
-                                )
-                                .fill(Color32::from_rgb(211, 173, 98)).raised_gold(),
-                            )
-                            .clicked();
-                    });
-                });
-            });
-        if save || delete {
-            self.set_move_note(
-                index,
-                if delete {
-                    String::new()
-                } else {
-                    self.note_editor_text.clone()
-                },
-            );
-        }
-        if close || save || delete || response.should_close() {
-            self.note_editor_index = None;
-        }
     }
 
     fn graph_position_label(&self, index: usize, with_move: bool) -> String {
@@ -7504,10 +7494,19 @@ impl ChessApp {
         }
     }
 
+    fn selected_analysis_engine_label(&self) -> &str {
+        self.analysis_run.as_ref()
+            .and_then(|run| run["engine_name"].as_str())
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| self.analysis_config.label())
+    }
+
     fn expanded_analysis_graph(&mut self, ctx: &egui::Context) {
         if !self.expanded_graph_open {
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        self.receive_pending_archive_analysis();
         self.expanded_graph_hover_index = None;
         let mut close = false;
         let response = egui::Modal::new(egui::Id::new("expanded_analysis_graph"))
@@ -7537,7 +7536,9 @@ impl ChessApp {
                     ui.label(RichText::new(format!("{}  vs  {}",self.review_white_player,self.review_black_player)).size(20.0));
                     let completed = self.game_analysis.iter().filter(|value| value.is_some()).count();
                     ui.label(format!("{} · {completed}/{} positions analyzed · White perspective · Nonlinear pawn scale; mates reach the edges",
-                        self.analysis_config.label(), self.review_positions.len()));
+                        self.selected_analysis_engine_label(), self.review_positions.len()));
+                    #[cfg(target_arch = "wasm32")]
+                    self.expanded_saved_analysis_buttons(ui);
                     ui.add_space(10.0);
                     if let Some(index) = self.analysis_graph(ui, true) { self.review_to(index); }
                 ui.add_space(16.0);
@@ -7616,7 +7617,7 @@ impl ChessApp {
                     ui.set_min_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Your note").size(20.0).strong());
-                        if ui.button(if self.note_at(index).is_empty() { "Add note…" } else { "Edit note…" }).clicked() { self.edit_note(index); }
+                        if ui.button(if self.note_at(index).is_empty() { "Add note…" } else { "Edit note…" }).clicked() { self.edit_note(index, ui.ctx()); }
                     });
                     ui.label(RichText::new(if self.note_at(index).is_empty() { "No note for this position." } else { self.note_at(index) }).size(18.0));
                     });
@@ -8016,8 +8017,8 @@ impl ChessApp {
     }
 
     fn open_engine_settings(&mut self) {
-        #[cfg(target_arch = "wasm32")]
-        if crate::companion::enabled() { refresh_companion_engines(); }
+        // The selector lazily discovers engines once per connection. Explicit
+        // Refresh checks installations again and invalidates cached capabilities.
         self.strength_draft = self.engine_config.clone();
         self.analysis_draft = self.analysis_config.clone();
         self.full_game_analysis_draft = self.engine_full_game_preferences.get(&Self::verification_engine_key(&self.analysis_config)).cloned().unwrap_or_else(|| {
@@ -9102,7 +9103,7 @@ impl ChessApp {
             let note = self.note_at(index);
             let marks = self.board_marks.get(index).map(Vec::as_slice).unwrap_or_default();
             let symbols = self.move_annotations.get(index).into_iter().flatten()
-                .map(|nag| Self::annotation_symbol(*nag)).collect::<Vec<_>>().join(" ");
+                .map(|nag| crate::nags::label(*nag)).collect::<Vec<_>>().join(" ");
             if note.is_empty() && marks.is_empty() && symbols.is_empty() { continue; }
             let diagram = if marks.iter().any(BoardMark::valid) {
                 let mut diagram = Self::report_board(*board, None, None, "", 20_000 + index);
@@ -11063,9 +11064,7 @@ impl ChessApp {
         true
     }
     #[cfg(target_arch = "wasm32")]
-    fn archive_analysis_runs_ui(&mut self,ui:&mut egui::Ui){
-        let state=serde_json::from_str::<serde_json::Value>(&archive_analysis_runs()).unwrap_or_default();
-        if state["available"]!=true{self.analysis_print_tray_ui(ui);return;}
+    fn receive_pending_archive_analysis(&mut self) {
         let pending=take_archive_run();
         if !pending.is_empty(){
             if let Ok(snapshot)=serde_json::from_str::<ArchiveAnalysisSnapshot>(&pending){
@@ -11073,6 +11072,12 @@ impl ChessApp {
                 else{self.engine_status="Saved analysis does not match this game's positions".into();}
             }
         }
+    }
+    #[cfg(target_arch = "wasm32")]
+    fn archive_analysis_runs_ui(&mut self,ui:&mut egui::Ui){
+        let state=serde_json::from_str::<serde_json::Value>(&archive_analysis_runs()).unwrap_or_default();
+        if state["available"]!=true{self.analysis_print_tray_ui(ui);return;}
+        self.receive_pending_archive_analysis();
         let current=self.analysis_run.as_ref().and_then(|run|run["id"].as_str()).unwrap_or("").to_owned();
         let runs=state["runs"].as_array().cloned().unwrap_or_default();
         let selected=runs.iter().find(|run|run["id"]==current).and_then(|run|run["label"].as_str()).unwrap_or("Current analysis");
@@ -11080,6 +11085,14 @@ impl ChessApp {
             ui.painter().layout_no_wrap(label.to_owned(),egui::TextStyle::Button.resolve(ui.style()),ui.visuals().text_color()).size().x+32.0
         ).fold(160.0_f32,f32::max).min((ui.ctx().content_rect().width()-24.0).max(120.0));
         let mut chosen=current.clone();
+        let can_switch = !self.game_analysis_running && state["busy"] != true;
+        if let Some(index) = Self::saved_analysis_number_shortcut(ui.ctx(), runs.len(),
+            can_switch && !self.expanded_graph_open && ui.is_enabled() && !self.new_game_dialog_open && !self.pgn_dialog_open
+                && !self.strength_dialog_open && !self.background_dialog_open && !self.about_dialog_open)
+        {
+            if let Some(id) = runs[index]["id"].as_str() { chosen = id.to_owned(); }
+        }
+        ui.vertical(|ui| {
         ui.scope(|ui| {
         Self::quiet_analysis_controls(ui);
         let tray=Frame::new().fill(Color32::from_rgb(13,17,22))
@@ -11120,6 +11133,7 @@ impl ChessApp {
         });
         });
         Self::paint_sunken_border(ui,tray.response.rect);
+        if let Some(id) = Self::saved_analysis_number_buttons(ui, &runs, &current, can_switch) { chosen = id; }
         if chosen!=current{self.save_game();select_archive_run(&chosen);}
         });
         if state["browser"]==true {
@@ -11127,7 +11141,85 @@ impl ChessApp {
                 ui.colored_label(Color32::from_rgb(232,112,112),error);
             }
         }
+        });
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+    }
+
+    fn saved_analysis_run_tooltip(run: &serde_json::Value, number: usize) -> String {
+        let metadata = run.get("metadata").unwrap_or(run);
+        let engine = metadata["engine_name"].as_str().filter(|name| !name.trim().is_empty())
+            .unwrap_or("Engine not recorded");
+        let budget = metadata["settings_label"].as_str().filter(|label| !label.trim().is_empty())
+            .unwrap_or("Original analysis settings unavailable");
+        let mut lines = vec![format!("Analysis {number}"), format!("Engine: {engine}"),
+            format!("Analysis budget: {budget}")];
+        if let Some(verification) = metadata["verification"].as_bool() {
+            lines.push(format!("Critical-move verification: {}", if verification { "Included" } else { "Not included" }));
+        }
+        if let Some(options) = metadata["engine_options"].as_object() {
+            for (name, value) in options {
+                let value = value.as_str().map(str::to_owned).unwrap_or_else(|| value.to_string());
+                lines.push(format!("{name}: {value}"));
+            }
+        }
+        if let Some(label) = run["label"].as_str() { lines.push(label.to_owned()); }
+        if number <= 9 { lines.push(format!("Press {number} to select")); }
+        lines.join("\n")
+    }
+
+    fn saved_analysis_number_buttons(ui: &mut egui::Ui, runs: &[serde_json::Value], current: &str, enabled: bool) -> Option<String> {
+        let mut chosen = None;
+        if runs.len() > 1 {
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                for (index, run) in runs.iter().enumerate() {
+                    let Some(id) = run["id"].as_str() else { continue; };
+                    let number = index + 1;
+                    let active = id == current;
+                    let response = ui.add_enabled(enabled,
+                        egui::Button::new(RichText::new(number.to_string()).strong().color(Color32::from_gray(25)))
+                            .min_size(Vec2::new(34.0, 28.0)).selected(active).raised_gray());
+                    if active {
+                        ui.painter().rect_stroke(response.rect, 6,
+                            Stroke::new(2.0, Color32::from_gray(235)), egui::StrokeKind::Inside);
+                    }
+                    let tip = Self::saved_analysis_run_tooltip(run, number);
+                    if response.on_hover_text(&tip).on_disabled_hover_text(&tip).clicked() { chosen = Some(id.to_owned()); }
+                }
+            });
+        }
+        chosen
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn expanded_saved_analysis_buttons(&mut self, ui: &mut egui::Ui) {
+        let state = serde_json::from_str::<serde_json::Value>(&archive_analysis_runs()).unwrap_or_default();
+        if state["available"] != true { return; }
+        let runs = state["runs"].as_array().cloned().unwrap_or_default();
+        let current = self.analysis_run.as_ref().and_then(|run| run["id"].as_str()).unwrap_or("").to_owned();
+        let enabled = !self.game_analysis_running && state["busy"] != true;
+        let mut chosen = Self::saved_analysis_number_buttons(ui, &runs, &current, enabled);
+        if let Some(index) = Self::saved_analysis_number_shortcut(ui.ctx(), runs.len(), enabled) {
+            chosen = runs[index]["id"].as_str().map(str::to_owned);
+        }
+        if let Some(id) = chosen.filter(|id| id != &current) {
+            self.save_game();
+            select_archive_run(&id);
+        }
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+    }
+
+    fn saved_analysis_number_shortcut(ctx: &egui::Context, count: usize, enabled: bool) -> Option<usize> {
+        if !enabled || count < 2 || ctx.egui_wants_keyboard_input() || egui::Popup::is_any_open(ctx) {
+            return None;
+        }
+        let keys = [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3,
+            egui::Key::Num4, egui::Key::Num5, egui::Key::Num6,
+            egui::Key::Num7, egui::Key::Num8, egui::Key::Num9];
+        ctx.input_mut(|input| {
+            if !input.modifiers.is_none() { return None; }
+            keys.iter().take(count).position(|key| input.consume_key(egui::Modifiers::NONE, *key))
+        })
     }
 
     fn quiet_analysis_controls(ui: &mut egui::Ui) {
@@ -11843,6 +11935,39 @@ impl ChessApp {
         }
     }
 
+    fn position_play_engine_choices(&self, companion_enabled: bool, catalog: &serde_json::Value) -> Vec<(String, EngineConfig)> {
+        let mut builtin = self.engine_config.clone();
+        builtin.opponent = OpponentEngine::Stockfish;
+        builtin.companion_identity.clear();
+        builtin.companion_name.clear();
+        builtin.companion_options.clear();
+        if let Some(options) = self.engine_uci_preferences.get("builtin:stockfish") {
+            builtin.uci_options = options.clone();
+        }
+        let mut choices = vec![("Stockfish 19 (browser)".into(), builtin)];
+        if !companion_enabled { return choices; }
+        let mut seen = std::collections::BTreeSet::new();
+        for entry in catalog["engines"].as_array().into_iter().flatten() {
+            let (Some(identity), Some(label)) = (entry["identity"].as_str(), entry["label"].as_str()) else { continue; };
+            if identity.is_empty() || !seen.insert(identity.to_owned()) { continue; }
+            let mut config = self.engine_config.clone();
+            config.opponent = OpponentEngine::Companion;
+            config.companion_identity = identity.into();
+            config.companion_name = entry["engine_label"].as_str().unwrap_or(label).into();
+            config.companion_options = serde_json::from_value(entry["options"].clone()).unwrap_or_default();
+            for saved in [&self.analysis_config, &self.engine_config] {
+                if saved.opponent == OpponentEngine::Companion && saved.companion_identity == identity {
+                    config.companion_options = saved.companion_options.clone();
+                }
+            }
+            if let Some(options) = self.engine_uci_preferences.get(&Self::verification_engine_key(&config)) {
+                config.companion_options = options.clone();
+            }
+            choices.push((format!("{label} (Companion)"), config));
+        }
+        choices
+    }
+
     fn play_from_current_position(&mut self) {
         self.local_game_actions_suspended = false;
         if self.training_live() { return; }
@@ -11881,6 +12006,8 @@ impl ChessApp {
         }
         let engine_should_move =
             self.engine_enabled && self.board.side_to_move() != self.player_side.color();
+        #[cfg(target_arch = "wasm32")]
+        self.ensure_engine_provider(self.engine_config.clone());
         #[cfg(target_arch = "wasm32")]
         if let Some(engine) = &self.engine {
             engine.command("stop");
@@ -11932,7 +12059,8 @@ impl ChessApp {
         if self.tactical_knight_selection(ctx, square) { return true; }
         let active = self.review_index.is_some() && !self.training_live() && self.prediction_index == 0
             && !(self.fics_active && !self.fics_game_finished)
-            && ctx.data_mut(|data| data.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) == Some(2);
+            && ctx.data(|data| data.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) == Some(3)
+            && ctx.data_mut(|data| data.get_persisted::<usize>(egui::Id::new("position_details_tab"))) == Some(2);
         if active {
             if self.board.piece_on(square).is_some() {
                 crate::mobility::request_selection(ctx, square, ctx.input(|input| input.modifiers.shift));
@@ -13777,9 +13905,9 @@ impl ChessApp {
         player_height + observe_height + actions_height
     }
 
-    fn game_sidebar_width(available: Vec2, chrome: f32, balance: f32, perspective: bool) -> f32 {
+    fn game_sidebar_width(available: Vec2, chrome: f32, balance: f32) -> f32 {
         let board_height = (available.y - chrome).max(180.0);
-        let board_width = board_height * if perspective { 1.4 } else { 1.0 };
+        let board_width = board_height;
         (available.x - board_width - balance - 16.0).clamp(300.0, (available.x - 240.0).max(300.0))
     }
 
@@ -13817,11 +13945,6 @@ impl ChessApp {
                 .clicked() && !open_3d_companion() {
                 ui.ctx().request_repaint();
             }
-            if !self.focus_mode {
-                self.tactical_toggle_ui(ui);
-                self.notes_toggle_ui(ui);
-                self.draw_toggle_ui(ui);
-            }
             if self.board_3d_rendering() && self.board_3d_view_rotated()
                 && Self::glossy_board_button(ui, "↺", false, true)
                     .on_hover_text("Reset 3D view (or double right-click the board)")
@@ -13845,12 +13968,18 @@ impl ChessApp {
         } else { false };
         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("live_piece_appearance"),self.piece_appearance));
         let available = ui.available_size();
-        // The caller centers and justifies its single board child. Keep the
-        // status inside that child's normal layout so it cannot consume the board.
-        let artwork_status_height = if show_artwork_status {
-            ui.text_style_height(&egui::TextStyle::Small) * 3.0
-                + ui.spacing().interact_size.y + ui.spacing().item_spacing.y * 2.0
-        } else { 0.0 };
+        // Loading feedback overlays the board instead of changing its footprint.
+        if show_artwork_status {
+            egui::Area::new(egui::Id::new("live_board_artwork_status"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(ui.next_widget_position() + Vec2::new(12.0, 72.0))
+                .show(ui.ctx(), |ui| {
+                    Frame::popup(ui.style()).show(ui, |ui| {
+                        ui.set_width(320.0);
+                        crate::board3d::assets::status_ui(ui, self.board_3d_theme);
+                    });
+                });
+        }
         let show_players =
             !self.review_positions.is_empty() || (self.fics_active && self.fics_playing);
         let mut capture_positions = if self.review_positions.is_empty() {
@@ -13906,15 +14035,11 @@ impl ChessApp {
         let board_available_width = (available.x - balance_width).max(180.0);
         let board_size = board_available_width
             .min(
-                (available.y - artwork_status_height - self.live_board_vertical_chrome(ui.spacing().item_spacing.y, available.x, allow_moves))
+                (available.y - self.live_board_vertical_chrome(ui.spacing().item_spacing.y, available.x, allow_moves))
                     .max(180.0),
             )
             .max(180.0);
-        let board_width = if self.board_3d_rendering() {
-            (board_size * 1.4).min(board_available_width)
-        } else {
-            board_size
-        };
+        let board_width = board_size;
         let frame_width = if self.show_board_frame && !self.board_3d_rendering() {
             (board_size * 0.035).clamp(14.0, 26.0) as i8
         } else {
@@ -13970,17 +14095,10 @@ impl ChessApp {
         ui.allocate_ui_with_layout(
             Vec2::new(
                 board_width + balance_width,
-                board_size + artwork_status_height + player_area_height + observe_tabs_height + online_actions_height,
+                board_size + player_area_height + observe_tabs_height + online_actions_height,
             ),
             Layout::top_down(Align::Min),
             |ui| {
-                if show_artwork_status {
-                    let row_height = artwork_status_height - ui.spacing().item_spacing.y;
-                    ui.allocate_ui_with_layout(Vec2::new(board_width, row_height), Layout::top_down(Align::Min), |ui| {
-                        ui.set_min_height(row_height);
-                        crate::board3d::assets::status_ui(ui, self.board_3d_theme);
-                    });
-                }
                 if observe_tabs_height > 0.0 {
                     let mut selected = None;
                     let mut closed = None;
@@ -15896,7 +16014,7 @@ impl ChessApp {
     }
 
     fn move_context_response(&mut self, response: &egui::Response, index: usize) {
-        if response.double_clicked() { self.edit_note(index); }
+        if response.double_clicked() { self.edit_note(index, &response.ctx); }
         let selected = self.review_index.unwrap_or(self.review_moves.len()) == index;
         let keyboard_open = selected
             && self.move_context_shortcut_requested(&response.ctx)
@@ -15943,11 +16061,11 @@ impl ChessApp {
             })
             .clicked()
         {
-            self.edit_note(index);
+            self.edit_note(index, ui.ctx());
             ui.close();
         }
         if ui.button("Starting position note…").clicked() {
-            self.edit_note(0);
+            self.edit_note(0, ui.ctx());
             ui.close();
         }
         ui.separator();
@@ -15966,16 +16084,35 @@ impl ChessApp {
         ui.add_enabled_ui(playable, |ui| {
             ui.menu_button("Play from this position", |ui| {
                 Self::set_menu_item_font(ui);
-                for opponent in [OpponentEngine::Stockfish, OpponentEngine::Companion] {
-                    if opponent == OpponentEngine::Companion && (!crate::companion::enabled() || self.analysis_config.companion_name.is_empty()) { continue; }
-                    if ui.button(opponent.label()).clicked() {
+                #[cfg(target_arch = "wasm32")]
+                let catalog = if crate::companion::enabled() {
+                    serde_json::from_str(&companion_engine_catalog()).unwrap_or_default()
+                } else { serde_json::Value::Null };
+                #[cfg(not(target_arch = "wasm32"))]
+                let catalog = serde_json::Value::Null;
+                for (label, config) in self.position_play_engine_choices(crate::companion::enabled(), &catalog) {
+                    if ui.button(label).clicked() {
                         self.review_index = Some(index);
-                        self.engine_config.opponent = opponent;
-                        self.engine_config.companion_name = self.analysis_config.companion_name.clone();
+                        self.engine_config = config;
                         self.engine_enabled = true;
                         self.play_from_current_position();
                         ui.close();
                     }
+                }
+                #[cfg(target_arch = "wasm32")]
+                if crate::companion::enabled() {
+                    ui.separator();
+                    if ui.add_enabled(catalog["busy"] != true, egui::Button::new("Refresh Companion engines")).clicked() {
+                        refresh_companion_engines();
+                    }
+                    if catalog["engines"].as_array().is_none_or(Vec::is_empty) {
+                        ui.label("No Companion engines discovered.");
+                    }
+                    if ui.button("Companion connection…").clicked() {
+                        manage_companion_connection();
+                        ui.close();
+                    }
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
                 }
             });
         });
@@ -16757,15 +16894,39 @@ mod tests {
     }
     #[test]
     fn sidebar_resizing_prioritizes_height_fitted_board() {
-        let width = ChessApp::game_sidebar_width(egui::vec2(1600.0, 1160.0), 144.0, 44.0, false);
+        let width = ChessApp::game_sidebar_width(egui::vec2(1600.0, 1160.0), 144.0, 44.0);
         assert_eq!(width, 524.0);
         // Horizontal growth goes to the right panel; vertical growth goes to the board.
-        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1800.0, 1160.0), 144.0, 44.0, false), width + 200.0);
-        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 1260.0), 144.0, 44.0, false), width - 100.0);
-        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(3000.0, 800.0), 144.0, 44.0, false), 2284.0);
-        assert!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 800.0), 144.0, 44.0, false) > width);
-        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(900.0, 1160.0), 144.0, 44.0, false), 300.0);
-        assert!(ChessApp::game_sidebar_width(egui::vec2(2000.0, 1000.0), 144.0, 44.0, true) < ChessApp::game_sidebar_width(egui::vec2(2000.0, 1000.0), 144.0, 44.0, false));
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1800.0, 1160.0), 144.0, 44.0), width + 200.0);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 1260.0), 144.0, 44.0), width - 100.0);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(3000.0, 800.0), 144.0, 44.0), 2284.0);
+        assert!(ChessApp::game_sidebar_width(egui::vec2(1600.0, 800.0), 144.0, 44.0) > width);
+        assert_eq!(ChessApp::game_sidebar_width(egui::vec2(900.0, 1160.0), 144.0, 44.0), 300.0);
+    }
+
+    #[test]
+    fn switching_board_dimension_preserves_live_board_footprint() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        let mut sizes = Vec::new();
+        for three_d in [false, true, false] {
+            app.board_3d_active = three_d;
+            if three_d { assert!(app.board_3d_rendering()); }
+            let _ = crate::app::run_test_ui(&context.egui_ctx, egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1600.0, 1000.0))),
+                ..Default::default()
+            }, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(
+                        egui::Rect::from_min_size(ui.cursor().min, Vec2::new(1100.0, 900.0)),
+                    ));
+                    app.board_ui_with_moves(&mut child, true);
+                    sizes.push(child.min_rect().size());
+                });
+            });
+        }
+        assert_eq!(sizes[0], sizes[1]);
+        assert_eq!(sizes[0], sizes[2]);
     }
     #[test]
     fn archive_run_selection_restores_results_without_changing_engine_or_annotations(){
@@ -16777,6 +16938,81 @@ mod tests {
         assert_eq!(app.game_analysis[0].as_ref().unwrap().eval_cp,Some(82));assert_eq!(app.move_notes,vec!["Keep my annotation"]);assert_eq!(serde_json::to_value(&app.analysis_config).unwrap(),engine);
         let mut bad=payload;bad["verification_targets"]=serde_json::json!([999]);
         assert!(!app.restore_archive_analysis_snapshot(serde_json::from_value(bad).unwrap()));assert_eq!(app.game_analysis[0].as_ref().unwrap().eval_cp,Some(82));
+    }
+
+    #[test]
+    fn expanded_graph_engine_label_follows_selected_saved_run() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        let config = serde_json::to_value(&app.analysis_config).unwrap();
+        let fallback = app.analysis_config.label().to_owned();
+        assert_eq!(app.selected_analysis_engine_label(), fallback);
+        for name in ["Lc0", "Maia3 79M (GPU)", "Stockfish 19"] {
+            let snapshot = serde_json::json!({
+                "analysis_run": {"id":name, "engine_name":name,
+                    "position_fens":app.review_positions.iter().map(ToString::to_string).collect::<Vec<_>>()},
+                "game_analysis":vec![serde_json::Value::Null; app.review_positions.len()]
+            });
+            assert!(app.restore_archive_analysis_snapshot(serde_json::from_value(snapshot).unwrap()));
+            assert_eq!(app.selected_analysis_engine_label(), name);
+            assert_eq!(serde_json::to_value(&app.analysis_config).unwrap(), config);
+        }
+        for metadata in [serde_json::json!({}), serde_json::json!({"engine_name":"  "})] {
+            app.analysis_run = Some(metadata);
+            assert_eq!(app.selected_analysis_engine_label(), fallback);
+        }
+    }
+
+    #[test]
+    fn saved_analysis_number_keys_respect_typing_busy_state_and_run_count() {
+        for (key, count, enabled, typing, modifiers, expected) in [
+            (egui::Key::Num1, 2, true, false, egui::Modifiers::NONE, Some(0)),
+            (egui::Key::Num2, 2, true, false, egui::Modifiers::NONE, Some(1)),
+            (egui::Key::Num9, 12, true, false, egui::Modifiers::NONE, Some(8)),
+            (egui::Key::Num3, 2, true, false, egui::Modifiers::NONE, None),
+            (egui::Key::Num0, 12, true, false, egui::Modifiers::NONE, None),
+            (egui::Key::Num1, 2, false, false, egui::Modifiers::NONE, None),
+            (egui::Key::Num1, 2, true, true, egui::Modifiers::NONE, None),
+            (egui::Key::Num1, 2, true, false, egui::Modifiers::CTRL, None),
+        ] {
+            let ctx = egui::Context::default();
+            let mut selected = None;
+            let mut text = String::new();
+            let _ = crate::app::run_test_ui(&ctx, egui::RawInput {
+                events: vec![egui::Event::ModifiersChanged(modifiers), egui::Event::Key { key, physical_key: None,
+                    pressed: true, repeat: false, modifiers }],
+                ..Default::default()
+            }, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    if typing { ui.text_edit_singleline(&mut text).request_focus(); }
+                    selected = ChessApp::saved_analysis_number_shortcut(ui.ctx(), count, enabled);
+                    if selected.is_some() {
+                        assert_eq!(ChessApp::saved_analysis_number_shortcut(ui.ctx(), count, enabled), None);
+                    }
+                });
+            });
+            assert_eq!(selected, expected, "{key:?}, typing={typing}, enabled={enabled}");
+        }
+    }
+
+    #[test]
+    fn saved_analysis_button_tooltip_uses_each_runs_recorded_settings() {
+        let run = serde_json::json!({"id":"saved-maia", "label":"Maia saved yesterday", "metadata": {
+            "engine_name":"Maia3", "settings_label":"3 seconds per position", "verification":true,
+            "engine_options":{"Threads":"4", "Hash":128, "WeightsFile":"maia-network"}
+        }});
+        let tip = ChessApp::saved_analysis_run_tooltip(&run, 2);
+        for expected in ["Engine: Maia3", "Analysis budget: 3 seconds per position",
+            "Critical-move verification: Included", "Threads: 4", "Hash: 128", "WeightsFile: maia-network", "Press 2 to select"] {
+            assert!(tip.contains(expected), "Missing {expected}: {tip}");
+        }
+        let legacy = ChessApp::saved_analysis_run_tooltip(&serde_json::json!({"label":"Old analysis"}), 10);
+        assert!(legacy.contains("Engine not recorded"));
+        assert!(legacy.contains("Original analysis settings unavailable"));
+        assert!(!legacy.contains("Press 10"));
+        let flat = ChessApp::saved_analysis_run_tooltip(&serde_json::json!({"engine_name":"Lc0", "settings_label":"1000 nodes per position"}), 1);
+        assert!(flat.contains("Engine: Lc0"));
+        assert!(flat.contains("1000 nodes per position"));
     }
 
     #[test]
@@ -17671,7 +17907,7 @@ mod tests {
         app.board = Board::default();
         app.engine_enabled = false;
         app.review_index = None;
-        ctx.data_mut(|data| data.insert_temp(egui::Id::new("tactical_enabled"), true));
+        ctx.data_mut(|data| data.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize));
         assert!(app.tactical_piece_active(&ctx));
         let frame = |app: &mut ChessApp, pos: egui::Pos2, button: Option<bool>| {
             let mut input = egui::RawInput::default();
@@ -18161,7 +18397,7 @@ mod tests {
                 app.review_positions.clear();
                 let palette = app.current_board_palette();
                 with_test_status(app.board_3d_theme, state, || {
-                    let output = crate::app::run_test_ui(&ctx, egui::RawInput {
+                    let render = |app: &mut ChessApp| crate::app::run_test_ui(&ctx, egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                         ..Default::default()
                     }, |ctx| {
@@ -18171,6 +18407,9 @@ mod tests {
                             ui.centered_and_justified(|ui| app.board_ui(ui));
                         });
                     });
+                    // Areas measure their contents before becoming visible.
+                    let _ = render(&mut app);
+                    let output = render(&mut app);
                     let squares: Vec<_> = output.shapes.iter().filter_map(|clipped| {
                         let egui::Shape::Rect(shape) = &clipped.shape else { return None; };
                         (shape.fill == palette[0] || shape.fill == palette[1])
@@ -18186,7 +18425,8 @@ mod tests {
                     let expected_status = if state == LoadState::Failed { "3D artwork unavailable" } else { "Loading 3D artwork" };
                     assert!(output.shapes.iter().any(|clipped| matches!(&clipped.shape,
                         egui::Shape::Text(text) if text.galley.job.text.contains(expected_status)
-                            && text.pos.y < board_rect.top())));
+                            && clipped.clip_rect.contains(text.pos)
+                            && egui::Rect::from_min_size(egui::Pos2::ZERO, size).contains(text.pos))));
                     let e2 = board_rect.left_top() + ChessApp::square_screen_offset(Square::E2, app.flipped, board_rect.width() / 8.0);
                     assert_eq!(app.board_mark_square(e2, board_rect), Some(Square::E2));
                     assert!(app.board_3d_active, "fallback must preserve the 3D preference");
@@ -18541,6 +18781,43 @@ mod tests {
     }
 
     #[test]
+    fn position_play_choices_include_each_provider_and_keep_engine_options() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.engine_config.opponent = super::OpponentEngine::Companion;
+        app.engine_config.companion_identity = "local/maia".into();
+        app.engine_config.companion_options.insert("Elo".into(), "564".into());
+        app.engine_uci_preferences.insert("companion:remote/lc0".into(),
+            [("WeightsFile".into(), "saved-network".into())].into());
+        let catalog = serde_json::json!({"engines":[
+            {"identity":"local/maia","engine_label":"Maia3","label":"Maia3 — Local"},
+            {"identity":"remote/lc0","engine_label":"Lc0","label":"Lc0 — Remote"},
+            {"identity":"remote/lc0","label":"Duplicate"},
+            {"identity":"","label":"Invalid"}
+        ]});
+        assert_eq!(app.position_play_engine_choices(false, &catalog).len(), 1);
+        let choices = app.position_play_engine_choices(true, &catalog);
+        assert_eq!(choices.len(), 3);
+        assert_eq!(choices[0].1.opponent, super::OpponentEngine::Stockfish);
+        assert!(choices[0].1.companion_identity.is_empty());
+        assert!(choices[0].1.companion_options.is_empty());
+        assert_eq!(choices[1].1.companion_options["Elo"], "564");
+        assert_eq!(choices[2].1.companion_options["WeightsFile"], "saved-network");
+        assert_eq!(choices[2].1.companion_name, "Lc0");
+        app.load_pgn("1. e4 e5 2. Nf3 Nc6 *");
+        let branch = app.review_positions[3];
+        app.review_index = Some(3);
+        app.engine_config = choices[2].1.clone();
+        app.engine_enabled = true;
+        app.play_from_current_position();
+        assert_eq!(app.board, branch);
+        assert_eq!(app.review_moves.len(), 3);
+        assert!(app.review_index.is_none());
+        assert_eq!(app.engine_config.companion_identity, "remote/lc0");
+        assert_eq!(app.engine_config.companion_options["WeightsFile"], "saved-network");
+    }
+
+    #[test]
     fn board_drawings_toggle_roundtrip_and_follow_retained_positions() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
@@ -18636,6 +18913,35 @@ mod tests {
         app.play_from_current_position();
         app.reset_for_side(super::PlayerSide::White);
         assert!(app.move_annotations.is_empty());
+    }
+
+    #[test]
+    fn every_valid_nag_survives_storage_exports_and_common_edits() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        let codes = (0..=255).map(|nag| format!("${nag}")).collect::<Vec<_>>().join(" ");
+        app.load_pgn(&format!("1. e4 {codes} $256 $999 e5 *"));
+        let expected: Vec<u8> = (0..=255).collect();
+        assert_eq!(app.move_annotations[1], expected);
+        for nag in &expected { assert!(!ChessApp::annotation_symbol(*nag).is_empty()); }
+        let saved = serde_json::to_string(&app.persisted_game()).unwrap();
+        let restored: super::PersistedGame = serde_json::from_str(&saved).unwrap();
+        assert_eq!(restored.move_annotations[1], expected);
+        for pgn in [app.annotated_pgn(), ChessApp::export_saved_game(&saved, "annotated").unwrap()] {
+            let (positions, _) = ChessApp::parse_pgn_mainline(&pgn).unwrap();
+            assert_eq!(ChessApp::parse_pgn_nags(&pgn, &positions)[1], expected);
+        }
+        let mut imported = ChessApp::new(&context);
+        assert!(imported.load_analysis_json(&ChessApp::export_saved_game(&saved, "json").unwrap()));
+        assert_eq!(imported.move_annotations[1], expected);
+        app.move_annotations[1] = vec![37, 139, 146, 255];
+        app.toggle_manual_nag(1, 1);
+        app.toggle_manual_nag(1, 3);
+        app.toggle_manual_nag(1, 14);
+        assert_eq!(app.move_annotations[1], vec![37, 139, 146, 255, 3, 14]);
+        app.toggle_manual_nag(1, 255);
+        assert!(!app.move_annotations[1].contains(&255));
+        assert!(app.move_annotations[1].contains(&146));
     }
 
     #[test]
@@ -20162,7 +20468,8 @@ impl eframe::App for ChessApp {
                 self.start_analysis();
             }
         }
-        if self.fics_active && !self.fics_playing && !ctx.egui_wants_keyboard_input() {
+        if self.fics_active && !self.fics_playing && !ctx.egui_wants_keyboard_input()
+            && ctx.data(|data| data.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) != Some(2) {
             let keys = [
                 egui::Key::Num1,
                 egui::Key::Num2,
@@ -20632,7 +20939,7 @@ impl eframe::App for ChessApp {
         let available = root_ui.available_size();
         let chrome = self.live_board_vertical_chrome(root_ui.spacing().item_spacing.y, available.x, true);
         let balance = if !self.focus_mode && !self.training_live() && (!self.fics_active || self.fics_game_finished) { 44.0 } else { 0.0 };
-        let sidebar_width = Self::game_sidebar_width(available, chrome, balance, self.board_3d_rendering());
+        let sidebar_width = Self::game_sidebar_width(available, chrome, balance);
         // Recompute the split every frame so browser resizing keeps the board fitted to height.
         let panel = egui::Panel::right("game_sidebar_height_fit_panel")
             .exact_size(sidebar_width)
@@ -20640,18 +20947,60 @@ impl eframe::App for ChessApp {
         panel
             .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
             .show(root_ui, |ui| {
+                let content_width = if selected_tab == 0 {
+                    // Keep the move list beside the height-fitted board without
+                    // stretching its columns across unused widescreen space.
+                    let move_width = self.review_moves.iter().map(|san| {
+                        ui.painter().layout_no_wrap(
+                            self.display_san(san), FontId::proportional(17.0),
+                            ui.visuals().text_color(),
+                        ).size().x / 0.40
+                    }).fold(150.0_f32, f32::max);
+                    let content_width = 38.0 + 2.0 * move_width
+                        + 3.0 * ui.spacing().item_spacing.x + 32.0;
+                    content_width.min(ui.available_width())
+                } else { ui.available_width() };
+                let mut content_rect = ui.available_rect_before_wrap();
+                content_rect.set_width(content_width);
+                let mut content_ui = ui.new_child(egui::UiBuilder::new().max_rect(content_rect));
+                let ui = &mut content_ui;
                 ui.horizontal(|ui| {
                     ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(15.0));
                     ui.spacing_mut().button_padding = Vec2::new(9.0, 5.0);
-                    for (index, label) in ["Moves", "Prediction", "Analysis"].iter().enumerate() {
+                    for (index, label) in ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations"].iter().enumerate() {
                         if Self::sidebar_tab_button(ui, label, selected_tab == index).clicked() {
-                            if index!=selected_tab { self.finish_saved_line_preview(); }
+                            if index!=selected_tab {
+                                self.finish_saved_line_preview();
+                                if index == 6 || selected_tab == 6 {
+                                    self.board_mark_mode = index == 6 && ui.ctx().data(|d| d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0) == 0;
+                                    self.board_mark_drag = None;
+                                    self.selected = None;
+                                    self.legal_targets.clear();
+                                }
+                            }
                             selected_tab = index;
                             ui.ctx().data_mut(|data| data.insert_temp(tab_id, selected_tab));
                         }
                     }
                 });
                 ui.separator();
+                if selected_tab != 0 {
+                    let index = self.review_index.unwrap_or(self.review_moves.len());
+                    let move_text = index.checked_sub(1)
+                        .and_then(|ply| self.review_moves.get(ply))
+                        .map(String::as_str).unwrap_or("Starting position");
+                    ui.label(RichText::new(format!(
+                        "Position {index} of {} ({move_text})", self.review_moves.len(),
+                    )).size(14.0).color(Color32::from_rgb(218, 225, 235)));
+                }
+                if selected_tab == 6 {
+                    self.annotations_panel(ui);
+                    return;
+                }
+                if selected_tab == 5 {
+                    self.tactical_panel(ui);
+                    return;
+                }
                 if selected_tab == 1 {
                     if self.fics_active && !self.fics_game_finished {
                         ui.label("Finish the game to unlock prediction.");
@@ -20664,29 +21013,27 @@ impl eframe::App for ChessApp {
                 }
                 let show_moves = selected_tab == 0;
                 let show_analysis = selected_tab == 2;
+                let show_position = selected_tab == 3;
+                let show_explore = selected_tab == 4;
                 if show_analysis && self.lichess.active && !self.fics_game_finished && self.lichess.game["id"].as_str().is_some() {
                     self.lichess_chat_panel(ui);
                     return;
                 }
-                if show_analysis && (self.training_live() || (self.fics_active && !self.fics_game_finished)) {
-                    ui.heading("Analysis");
-                    ui.label("Finish the game to unlock analysis.");
+                if (show_analysis || show_position || show_explore) && (self.training_live() || (self.fics_active && !self.fics_game_finished)) {
+                    ui.heading(if show_position { "Position" } else if show_explore { "Explore" } else { "Analysis" });
+                    ui.label(if show_position { "Finish the game to unlock position tools." } else if show_explore { "Finish the game to unlock exploration tools." } else { "Finish the game to unlock analysis." });
                     return;
                 }
                 let panel_bottom = ui.max_rect().bottom();
                 egui::ScrollArea::new([false, show_moves])
-                    .id_salt(if show_moves { "game_moves_scroll" } else { "game_analysis_scroll" })
+                    .id_salt(if show_moves { "game_moves_scroll" } else if show_position { "game_position_scroll" } else if show_explore { "game_explore_scroll" } else { "game_analysis_scroll" })
                     .max_height(ui.available_height().max(0.0))
                     .auto_shrink([false, false])
                     .show_gold(ui, |ui| {
-                {
+                if !show_analysis {
                     ui.add_space(8.0);
-                    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),if show_analysis {40.0}else{24.0}),Layout::left_to_right(Align::Center),|ui| {
-                        ui.label(RichText::new(if show_moves { "Game Moves" } else { "Saved Analysis" }).size(19.0).strong());
-                        #[cfg(target_arch = "wasm32")]
-                        if show_analysis { self.archive_analysis_runs_ui(ui); }
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if show_analysis { self.analysis_print_tray_ui(ui); }
+                    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),24.0),Layout::left_to_right(Align::Center),|ui| {
+                        ui.label(RichText::new(if show_moves { "Game Moves" } else if show_position { "Position" } else { "Explore" }).size(19.0).strong());
                     });
                     ui.separator();
                 }
@@ -20856,6 +21203,7 @@ impl eframe::App for ChessApp {
                         self.review_to(destination);
                     }
                     }
+                    if show_analysis || show_position || show_explore {
                     if show_analysis {
                     let completed = self
                         .game_analysis
@@ -20940,6 +21288,14 @@ impl eframe::App for ChessApp {
                     });
                     ui.add_space(5.0);
                     });
+                    ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),40.0),Layout::left_to_right(Align::Center),|ui| {
+                        ui.label(RichText::new("Saved Analysis").size(19.0).strong());
+                        #[cfg(target_arch = "wasm32")]
+                        self.archive_analysis_runs_ui(ui);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        self.analysis_print_tray_ui(ui);
+                    });
+                    ui.separator();
                     if let Some((fraction, progress_text)) = &progress {
                         Self::full_analysis_progress(ui, *fraction, progress_text);
                     }
@@ -20952,6 +21308,7 @@ impl eframe::App for ChessApp {
                         self.review_to(destination);
                     }
                     ui.add_space(8.0);
+                    }
                     let details_min_height = (ui.clip_rect().bottom() - ui.cursor().top() - 26.0).max(0.0);
                     let mut details_grain=None;
                     let details_frame = Frame::new()
@@ -20963,20 +21320,28 @@ impl eframe::App for ChessApp {
                     ui.set_min_width(ui.available_width());
                     ui.set_min_height(details_min_height);
                     details_grain=Some(ui.painter().add(egui::Shape::Noop));
-                    let tab_id = egui::Id::new("analysis_details_tab");
-                    let mut detail_tab = ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(0));
-                    let tabs_background = ui.painter().add(egui::Shape::Noop);
-                    let tabs = ui.horizontal_wrapped(|ui| {
-                        ui.selectable_value(&mut detail_tab, 0, "Summary");
-                        ui.selectable_value(&mut detail_tab, 1, "Pawn Structure");
-                        ui.selectable_value(&mut detail_tab, 2, "Piece Mobility");
-                        ui.selectable_value(&mut detail_tab, 3, "King Safety");
-                        ui.selectable_value(&mut detail_tab, 4, "Opening Explorer");
-                        ui.selectable_value(&mut detail_tab, 5, "Tablebases");
-                    });
-                    ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
-                    ui.data_mut(|data| data.insert_persisted(tab_id, detail_tab));
-                    if detail_tab!=0 { self.finish_saved_line_preview(); }
+                    let tab_id = egui::Id::new(if show_explore { "explore_details_tab" } else { "position_details_tab" });
+                    let mut detail_tab = if show_position {
+                        ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(1)).clamp(1, 3)
+                    } else if show_explore {
+                        ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(4)).clamp(4, 5)
+                    } else { 0 };
+                    if show_position || show_explore {
+                        let tabs_background = ui.painter().add(egui::Shape::Noop);
+                        let tabs = ui.horizontal_wrapped(|ui| {
+                            if show_position {
+                            ui.selectable_value(&mut detail_tab, 1, "Pawn Structure");
+                            ui.selectable_value(&mut detail_tab, 2, "Piece Mobility");
+                            ui.selectable_value(&mut detail_tab, 3, "King Safety");
+                            } else {
+                            ui.selectable_value(&mut detail_tab, 4, "Openings");
+                            ui.selectable_value(&mut detail_tab, 5, "Endgames");
+                            }
+                        });
+                        ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
+                        ui.data_mut(|data| data.insert_persisted(tab_id, detail_tab));
+                        self.finish_saved_line_preview();
+                    }
                     ui.separator();
                     // Keep controls, graph and tabs fixed above the scrolling details.
                     egui::ScrollArea::both()
@@ -21706,8 +22071,8 @@ impl eframe::App for ChessApp {
                         ui.label(format!("{} half-moves played", self.history.len()));
                         ui.label(RichText::new("Saved locally").small().weak());
                     }
-                } else if self.review_positions.is_empty() && show_analysis {
-                    ui.label(RichText::new("Play or import a game to analyze it.").weak());
+                } else if self.review_positions.is_empty() && (show_analysis || show_position || show_explore) {
+                    ui.label(RichText::new(if show_position || show_explore { "Play or import a game to explore its positions." } else { "Play or import a game to analyze it." }).weak());
                 }
                     });
 
@@ -21933,10 +22298,6 @@ impl eframe::App for ChessApp {
         self.background_dialog(ctx);
         self.board_theme_dialog(ctx);
         self.theme_adjustments_dialog(ctx);
-        self.draw_window(ctx);
-        self.notes_window(ctx);
-        self.move_note_dialog(ctx);
-        self.tactical_window(ctx);
 
         if self.print_confirm_open {
             let mut open = true;

@@ -14,11 +14,11 @@ impl ChessApp {
         text
     }
     pub(super) fn tactical_piece_active(&self, ctx: &egui::Context) -> bool {
-        self.tactical_available() && ctx.data(|d| d.get_temp::<bool>(egui::Id::new("tactical_enabled")).unwrap_or(false))
+        self.tactical_available() && ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) == Some(5)
     }
     pub(super) fn tactical_knight_active(&self, ctx: &egui::Context) -> bool {
         self.tactical_available() && ctx.data(|d|
-            d.get_temp::<bool>(egui::Id::new("tactical_enabled")).unwrap_or(false)
+            d.get_temp::<usize>(egui::Id::new("game_sidebar_tab")) == Some(5)
                 && d.get_temp::<bool>(egui::Id::new("tactical_knight_reach")).unwrap_or(false))
     }
     pub(super) fn tactical_knight_selection(&self, ctx: &egui::Context, square: Square) -> bool {
@@ -91,59 +91,22 @@ impl ChessApp {
         ctx.data_mut(|d| d.insert_temp(id, (self.board, threats.clone())));
         threats
     }
-    pub(super) fn tactical_toggle_ui(&self, ui: &mut egui::Ui) {
-        let id = egui::Id::new("tactical_enabled");
-        let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let response = Self::glossy_board_button(ui, "", open, self.tactical_available())
-            .on_hover_text(if open { "Close Tactical Map" } else { "Open Tactical Map" })
-            .on_disabled_hover_text("Tactical Map is available when reviewing or analyzing a position.");
-        let center = response.rect.center();
-        let stroke = ui.style().interact(&response).fg_stroke;
-        ui.painter().circle_stroke(center, 7.0, stroke);
-        ui.painter().circle_stroke(center, 3.8, stroke);
-        ui.painter().circle_filled(center, 1.4, stroke.color);
-        if response.clicked() {
-            open = !open;
-            ui.ctx().data_mut(|d| d.insert_temp(id, open));
+    pub(super) fn tactical_panel(&self, ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Tactical Map").size(19.0).strong());
+        ui.separator();
+        if !self.tactical_available() {
+            ui.label("Tactical Map is unavailable during active training, online play, prediction, or a best-move exercise.");
+            return;
         }
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, self.tactical_available(), open, "Tactical Map"));
-    }
-
-    pub(super) fn tactical_window(&self, ctx: &egui::Context) {
-        if !self.tactical_available() { return; }
-        let id = egui::Id::new("tactical_enabled");
-        let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        if !open { return; }
-        let width = (ctx.content_rect().width() - 32.0).clamp(360.0, 420.0);
-        let frame = Frame::window(&ctx.style_of(ctx.theme()))
-            .fill(Color32::from_rgb(24, 28, 33))
-            .inner_margin(Margin::same(14))
-            .corner_radius(CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)));
-        egui::Window::new(RichText::new("Tactical Map").size(18.0).strong().color(Color32::from_rgb(211, 173, 98)))
-            .id(egui::Id::new("tactical_window"))
-            .frame(frame)
-            .default_pos(egui::pos2(48.0, 100.0))
-            .default_width(width)
-            .default_height(600.0)
-            .min_width(360.0)
-            .min_height(240.0)
-            .resizable(true)
-            .collapsible(false)
-            .title_bar(false)
-            .show(ctx, |ui| {
-                let grain=ui.painter().add(egui::Shape::Noop);
-                if Self::dialog_header(ui, "Tactical Map") { open = false; }
-                ui.add_space(6.0);
-                egui::ScrollArea::vertical().id_salt("tactical_window_content")
-                    .max_height(ui.available_height().max(0.0))
-                    .auto_shrink([false, false]).show_gold(ui, |ui| self.tactical_map_contents(ui));
-                let paper=Self::paper_grain_texture(ui.ctx());
-                let surface=ui.min_rect().expand(6.0);
-                ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
-                    egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
-            });
-        ctx.data_mut(|d| d.insert_temp(id, open));
+        let content_height = (ui.available_height() - 24.0).max(0.0);
+        Self::tactical_sunken_section(ui, |ui| {
+            ui.set_min_height(content_height);
+            egui::ScrollArea::vertical().id_salt("tactical_panel_content")
+                .max_height(content_height)
+                .auto_shrink([false, false])
+                .show_gold(ui, |ui| self.tactical_map_contents(ui));
+        });
     }
 
     fn tactical_legend_badge(ui: &mut egui::Ui, label: &str, color: Color32) {
@@ -168,10 +131,16 @@ impl ChessApp {
         let muted = Color32::from_rgb(160, 173, 190);
         ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
         let tab_id = egui::Id::new("tactical_map_tab");
-        let current_tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
-        let tab = Self::engine_settings_tabs(ui, &["Insights", "Activity", "Patterns"], current_tab);
+        let mut tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
+        let tabs_background = ui.painter().add(egui::Shape::Noop);
+        let tabs = ui.horizontal_wrapped(|ui| {
+            for (index, label) in ["Insights", "Activity", "Patterns"].iter().enumerate() {
+                ui.selectable_value(&mut tab, index, *label);
+            }
+        });
+        ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
         ui.ctx().data_mut(|d| d.insert_temp(tab_id, tab));
-        ui.add_space(6.0);
+        ui.separator();
         let mut filters = ui.ctx().data(|d| d.get_temp::<[bool; 3]>(egui::Id::new("tactical_filters"))).unwrap_or([true; 3]);
         if tab == 0 {
         let layout_id = egui::Id::new("tactical_insights_list_layout").with(ui.available_width().to_bits());
@@ -521,7 +490,7 @@ impl ChessApp {
     }
 
     pub(super) fn paint_tactical_map(&self, ui: &mut egui::Ui, rect: egui::Rect) {
-        if !self.tactical_available() || !ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_enabled"))).unwrap_or(false) { return; }
+        if !self.tactical_piece_active(ui.ctx()) { return; }
         if ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("tactical_knight_reach"))).unwrap_or(false)
             && let Some(source) = ui.ctx().data(|d| d.get_temp::<Square>(egui::Id::new("tactical_knight_source"))) {
             let is_3d = self.board_3d_rendering();
@@ -789,7 +758,7 @@ mod tests {
         let mut app = ChessApp::new(&context);
         app.board_3d_active = true;
         ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("tactical_enabled"), true);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize);
             d.insert_temp(egui::Id::new("tactical_attack_defense"), true);
         });
         let board = app.board;
@@ -821,7 +790,7 @@ mod tests {
         app.board_3d_active = true;
         app.review_index = Some(0);
         ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("tactical_enabled"), true);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize);
             d.insert_temp(egui::Id::new("tactical_knight_reach"), true);
             d.insert_temp(egui::Id::new("tactical_knight_source"), Square::G1);
         });
@@ -857,9 +826,9 @@ mod tests {
             app.engine_enabled = true;
             app.player_side = PlayerSide::White;
             context.egui_ctx.data_mut(|d| {
-                d.insert_temp(egui::Id::new("tactical_enabled"), true);
+                d.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize);
                 d.insert_temp(egui::Id::new("tactical_knight_reach"), true);
-                d.insert_persisted(egui::Id::new("analysis_details_tab"), 2usize);
+                d.insert_persisted(egui::Id::new("position_details_tab"), 2usize);
             });
             let piece = app.board.piece_on(source);
             assert!(!app.select_mobility_piece(&context.egui_ctx, source));
@@ -881,7 +850,7 @@ mod tests {
         let mut app = ChessApp::new(&context);
         app.review_index = Some(0);
         context.egui_ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("tactical_enabled"), true);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize);
             d.insert_temp(egui::Id::new("tactical_knight_reach"), true);
         });
         for square in [Square::G1, Square::B8] {
@@ -903,7 +872,7 @@ mod tests {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
         app.review_index = Some(0);
-        context.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::new("tactical_enabled"), true));
+        context.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 5usize));
         for square in [Square::E2, Square::D8, Square::E1] {
             assert!(app.tactical_knight_selection(&context.egui_ctx, square));
             assert_eq!(context.egui_ctx.data(|d| d.get_temp::<(Board, Square)>(egui::Id::new("tactical_activity_piece"))), Some((app.board, square)));

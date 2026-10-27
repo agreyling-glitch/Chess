@@ -5,12 +5,16 @@ import { CompanionEngineAdapter } from './companion-engine-adapter.js';
 
 let change = '', allowed = window.ironwoodCompanionAllowed ?? true;
 let state = {engines:[], busy:false, status:''}, revision = 0, connection, catalogRequested = false;
+// Session-only capabilities. Connections and explicit refreshes invalidate them;
+// credentials and capabilities are never persisted by this cache.
+const capabilityCache = new Map();
 const enabled = () => window.ironwoodCompanionFeatureEnabled?.() !== false;
 const sameConnection = shared => {
   return companionEngineConnections().some(current => current.endpoint === shared.endpoint && current.credential === shared.credential);
 };
 onCompanionConnectionsChange(() => {
   revision++; connection?.close(); connection = null;
+  capabilityCache.clear();
   change = '';
   catalogRequested = false;
   state = {engines:[], busy:false, status:'Connection changed. Refresh the engine list.'};
@@ -24,6 +28,7 @@ window.ironwoodCompanionEngineCatalog = () => {
 
 window.ironwoodRefreshCompanionEngines = async () => {
   if (!enabled() || state.busy) return;
+  capabilityCache.clear();
   catalogRequested = true;
   const providers = companionEngineConnections(), turn = ++revision;
   if (!providers.length) { state = {engines:[],busy:false,status:'Connect using Game → Companion connection… and enable an engine provider.'}; return; }
@@ -49,21 +54,28 @@ window.ironwoodSelectCompanionEngine = async identity => {
   const engine = state.engines.find(engine => engine.identity === identity);
   const shared = companionEngineConnections().find(item => item.endpoint === engine?.provider_endpoint);
   if (!shared || !engine) { state.status = 'Refresh the engine list and select an engine.'; return; }
+  const cached = capabilityCache.get(identity);
+  if (cached) {
+    change = JSON.stringify({provider:'companion',name:cached.name,identity,options:{},uci_options:cached.options});
+    state = {...state,pending_identity:null,status:''};
+    return;
+  }
   const turn = ++revision;
-  state = {...state,busy:true,status:'Checking engine…'};
+  state = {...state,busy:true,pending_identity:identity,status:`Preparing ${engine.engine_label}…`};
   const adapter = new CompanionEngineAdapter(() => {}, () => {});
   connection = adapter;
   try {
     const details = await adapter.connect({...shared,engineId:engine.id});
     await adapter.release();
     if (turn !== revision || !enabled() || !allowed || !sameConnection(shared)) return;
+    capabilityCache.set(identity, structuredClone({name:details.name,options:details.options}));
     change = JSON.stringify({provider:'companion',name:details.name,identity,options:{},uci_options:details.options});
     state.status = '';
   } catch (error) { if (turn === revision) state.status = error.message; }
   finally {
     adapter.close();
     if (connection === adapter) connection = null;
-    if (turn === revision) state.busy = false;
+    if (turn === revision) { state.busy = false; state.pending_identity = null; }
   }
 };
 window.ironwoodAddCompanionEngine = async () => {

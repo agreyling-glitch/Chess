@@ -124,7 +124,8 @@ fn chesscodex_url(eco: &str) -> Option<String> {
     .then(|| format!("https://chesscodex.org/eco/{eco}"))
 }
 pub fn preview(ctx: &egui::Context, root: Board) -> Option<Board> {
-    if ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) != Some(4)
+    if ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) != Some(4)
+        || ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("explore_details_tab"))) != Some(4)
     {
         return None;
     }
@@ -623,7 +624,8 @@ mod tests {
         let mv = MoveGen::new_legal(&root).next().unwrap();
         let child = root.make_move_new(mv);
         ctx.data_mut(|d| {
-            d.insert_persisted(egui::Id::new("analysis_details_tab"), 4usize);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 4usize);
+            d.insert_persisted(egui::Id::new("explore_details_tab"), 4usize);
             d.insert_temp(
                 id(),
                 State {
@@ -634,8 +636,11 @@ mod tests {
             );
         });
         assert_eq!(preview(&ctx, root), Some(child));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 3usize));
+        assert_eq!(preview(&ctx, root), None);
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 4usize));
         assert_eq!(preview(&ctx, child), None);
-        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("analysis_details_tab"), 0usize));
+        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("explore_details_tab"), 0usize));
         assert_eq!(preview(&ctx, root), None);
         assert_eq!(root, Board::default());
     }

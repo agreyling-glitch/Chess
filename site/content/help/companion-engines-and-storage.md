@@ -5,6 +5,7 @@ category: "using-ironwood"
 keywords: [Companion, archive, engine, auto-install, manual, Import folder, ZIP, 7z, progress, backup]
 weight: 62
 draft: false
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Install an engine
@@ -42,3 +43,9 @@ The queue reports when it is waiting, retrying, stopped, complete, or needs atte
 Browser backups and Companion archives are separate. Check the selected location before exporting or deleting games. Export games you need in PGN for interchange. For a complete Companion data-folder backup, quit Companion before copying the data folder so the archive is not changing during the copy. Keep engine models and configuration with the backup if you need a complete recovery.
 
 See [Companion troubleshooting](/help/companion-troubleshooting/) for connection and import errors.
+
+## Switch engines
+
+Use the engine list in **Game → Engine settings…**, or the selector beside Analyze, to choose a Companion engine. Your choice appears immediately while its capabilities are prepared. Returning to a previously discovered engine in the same browser session skips the discovery probe. Refreshing installed engines, or changing connections or credentials, clears that cache. First-time discovery and starting the actual engine can still take time.
+
+To compare results already saved for a game, use [Saved Analysis](/help/saved-analysis/) instead of changing the engine for the next run.

@@ -61,9 +61,11 @@ impl ChessApp {
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
         let busy = catalog["busy"] == true;
         let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
-        let mut identity = if self.analysis_config.opponent == OpponentEngine::Companion {
-            self.analysis_config.companion_identity.clone()
-        } else { String::new() };
+        let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
+            if self.analysis_config.opponent == OpponentEngine::Companion {
+                self.analysis_config.companion_identity.clone()
+            } else { String::new() }
+        });
         let previous = identity.clone();
         ui.add_enabled_ui(allowed, |ui| {
             let menu_style=ui.style().as_ref().clone();
@@ -95,6 +97,8 @@ impl ChessApp {
             self.poll_companion_provider();
         }
         if Self::analysis_refresh_button(ui,!busy,"Refresh installed engines").on_disabled_hover_text("Checking engines…").clicked() { refresh_companion_engines(); }
+        if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) { ui.label(status); }
+        if busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)); }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -102,9 +106,11 @@ impl ChessApp {
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
         let busy = catalog["busy"].as_bool().unwrap_or(false);
         let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
-        let mut identity = if self.analysis_config.opponent == OpponentEngine::Companion {
-            self.analysis_config.companion_identity.clone()
-        } else { String::new() };
+        let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
+            if self.analysis_config.opponent == OpponentEngine::Companion {
+                self.analysis_config.companion_identity.clone()
+            } else { String::new() }
+        });
         let previous = identity.clone();
         ui.scope(|ui| {
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
@@ -133,8 +139,15 @@ impl ChessApp {
             if Self::companion_settings_icon(ui, !busy, "Refresh installed engines", 2).clicked() { refresh_companion_engines(); }
         });
         });
-        if identity != previous { select_companion_engine(&identity); }
+        if identity != previous {
+            select_companion_engine(&identity);
+            self.poll_companion_provider();
+            ui.ctx().request_repaint();
+        }
         if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) { ui.label(status); }
+        if busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)); }
+        // Until preparation succeeds, the drafts still belong to the previous engine.
+        if catalog["pending_identity"].is_string() { ui.disable(); }
         ui.add_space(8.0);
     }
 

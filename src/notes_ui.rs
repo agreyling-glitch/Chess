@@ -1,29 +1,35 @@
 use super::*;
 
 impl ChessApp {
-    pub(super) fn notes_toggle_ui(&self, ui: &mut egui::Ui) {
-        let id = egui::Id::new("notes_window_open");
-        let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let response = Self::glossy_board_button(ui, "", open, true)
-            .on_hover_text(if open { "Close Notes" } else { "Open Notes" });
-        let center = response.rect.center();
-        let paper = egui::Rect::from_center_size(center, Vec2::new(11.0, 14.0));
-        let stroke = ui.style().interact(&response).fg_stroke;
-        ui.painter().rect_stroke(paper, 1.5, stroke, egui::StrokeKind::Inside);
-        for offset in [-3.5, 0.0, 3.5] {
-            ui.painter().line_segment([center + Vec2::new(-3.0, offset), center + Vec2::new(3.0, offset)], stroke);
-        }
-        if response.clicked() {
-            open = !open;
-            ui.ctx().data_mut(|d| d.insert_temp(id, open));
-        }
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, "Notes"));
-    }
-
     fn notes_tabs_ui(&mut self, ui: &mut egui::Ui) {
+        if let Some(index) = self.note_editor_index {
+            if index >= self.review_positions.len() { self.note_editor_index = None; }
+            else {
+                ui.label(RichText::new(self.notes_title(index)).strong());
+                ui.add(egui::TextEdit::multiline(&mut self.note_editor_text)
+                    .desired_width(f32::INFINITY).desired_rows(8)
+                    .font(FontId::proportional(17.0))
+                    .hint_text("What did you notice about this position?"));
+                ui.horizontal_wrapped(|ui| {
+                    if ui.button("Save note").clicked() {
+                        self.set_move_note(index, self.note_editor_text.clone());
+                        self.note_editor_index = None;
+                    }
+                    if ui.button("Cancel").clicked() { self.note_editor_index = None; }
+                    if ui.add_enabled(!self.note_at(index).is_empty(), egui::Button::new("Delete note")).clicked() {
+                        self.set_move_note(index, String::new());
+                        self.note_editor_index = None;
+                    }
+                });
+                return;
+            }
+        }
         let tab_id = egui::Id::new("notes_start_tab");
         let mut start = ui.ctx().data(|d| d.get_temp::<bool>(tab_id)).unwrap_or(false);
-        start = Self::engine_settings_tabs(ui, &["Position note", "Starting note"], usize::from(start)) == 1;
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut start, false, "Position note");
+            ui.selectable_value(&mut start, true, "Starting note");
+        });
         ui.ctx().data_mut(|d| d.insert_temp(tab_id, start));
         ui.add_space(8.0);
         let Some(position) = self.review_index.or_else(|| self.review_positions.len().checked_sub(1)) else {
@@ -32,7 +38,7 @@ impl ChessApp {
         };
         let index = if start { 0 } else { position };
         if !start && let Some(values) = self.move_annotations.get(index).filter(|values| !values.is_empty()) {
-            ui.label(values.iter().map(|nag| Self::annotation_symbol(*nag)).collect::<Vec<_>>().join(" "));
+            ui.label(values.iter().map(|nag| crate::nags::label(*nag)).collect::<Vec<_>>().join(" "));
         }
         let empty = self.note_at(index).is_empty();
         let text = if empty { "No note for this position.".to_owned() } else { self.note_at(index).to_owned() };
@@ -51,7 +57,7 @@ impl ChessApp {
         edit |= ui.add(egui::Button::new(RichText::new(if empty { "Add note" } else { "Edit note" })
             .color(Color32::from_rgb(25,29,35))).raised_gold()).clicked();
         });
-        if edit { self.edit_note(index); }
+        if edit { self.edit_note(index, ui.ctx()); }
         ui.add_space(8.0);
         Self::notes_section(ui, |ui| self.all_notes_list(ui));
     }
@@ -85,7 +91,7 @@ impl ChessApp {
                             ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("notes_start_tab"), *index == 0));
                             if *index != 0 { self.review_to(*index); }
                         }
-                        if response.double_clicked() { self.edit_note(*index); }
+                        if response.double_clicked() { self.edit_note(*index, ui.ctx()); }
                     }
                 });
             });
@@ -111,47 +117,44 @@ impl ChessApp {
         section.inner
     }
 
-    pub(super) fn notes_header(ui: &mut egui::Ui, title: &str) -> bool {
-        let close = Self::dialog_header(ui, "Notes");
-        if title != "Notes" {
-            ui.label(RichText::new(title.trim_start_matches("Notes: ")).size(13.0)
-                .color(Color32::from_rgb(175,182,191)));
-            ui.add_space(6.0);
-        }
-        close
-    }
-
-    pub(super) fn notes_window(&mut self, ctx: &egui::Context) {
-        let id = egui::Id::new("notes_window_open");
-        let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        if !open { return; }
-        let frame = Frame::window(&ctx.style_of(ctx.theme()))
-            .fill(Color32::from_rgb(23,28,33))
-            .inner_margin(Margin::same(14))
-            .corner_radius(CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(211,173,98)));
-        let start_tab = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("notes_start_tab"))).unwrap_or(false);
-        let title = self.review_index.or_else(|| self.review_positions.len().checked_sub(1))
-            .map(|index| if start_tab { 0 } else { index })
-            .map(|index| self.notes_title(index)).unwrap_or_else(|| "Notes".to_owned());
-        let mut close = false;
-        egui::Window::new(&title)
-            .id(egui::Id::new("notes_window"))
-            .open(&mut open).frame(frame)
-            .default_pos(egui::pos2(80.0, 160.0))
-            .default_width((ctx.content_rect().width() - 32.0).clamp(280.0, 420.0))
-            .min_width(280.0).resizable(true).collapsible(false).title_bar(false)
-            .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
-                let grain=ui.painter().add(egui::Shape::Noop);
-                close = Self::notes_header(ui, &title);
-                self.notes_tabs_ui(ui);
-                let paper=Self::paper_grain_texture(ui.ctx());
-                let surface=ui.min_rect().expand(6.0);
-                ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
-                    egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
+    pub(super) fn annotations_panel(&mut self, ui: &mut egui::Ui) {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Annotations").size(19.0).strong());
+        ui.separator();
+        let content_height = (ui.available_height() - 24.0).max(0.0);
+        Self::notes_section(ui, |ui| {
+            ui.set_min_height(content_height);
+            let tab_id = egui::Id::new("annotations_tab");
+            let mut tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
+            let previous = tab;
+            let background = ui.painter().add(egui::Shape::Noop);
+            let tabs = ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(&mut tab, 0, "Drawings");
+                ui.selectable_value(&mut tab, 1, "Notes");
+                ui.selectable_value(&mut tab, 2, "Chess Symbols");
             });
-        if close { open = false; }
-        ctx.data_mut(|d| d.insert_temp(id, open));
+            ui.painter().set(background, Self::glass_surface(tabs.response.rect.expand(2.0)));
+            ui.ctx().data_mut(|d| d.insert_temp(tab_id, tab));
+            if tab != previous {
+                self.board_mark_mode = tab == 0;
+                self.board_mark_drag = None;
+                self.selected = None;
+                self.legal_targets.clear();
+            }
+            ui.separator();
+            egui::ScrollArea::vertical().id_salt(("annotations_content", tab))
+                .max_height(ui.available_height().max(0.0))
+                .auto_shrink([false, false]).show_gold(ui, |ui| {
+                    if tab == 0 { self.drawings_contents(ui); }
+                    else if tab == 1 { self.notes_tabs_ui(ui); }
+                    else {
+                        if let Some(index) = self.review_index.or_else(|| self.review_positions.len().checked_sub(1)) {
+                            self.chess_symbols_ui(ui, index, false);
+                        } else {
+                            ui.label("Play or open a game to add chess symbols.");
+                        }
+                    }
+                });
+        });
     }
 }

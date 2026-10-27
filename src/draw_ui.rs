@@ -236,51 +236,18 @@ impl ChessApp {
         if let Some(index) = delete_index { self.delete_drawing(position, index); }
     }
 
-    pub(super) fn draw_toggle_ui(&mut self, ui: &mut egui::Ui) {
-        let id = egui::Id::new("draw_window_open");
-        let mut open = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let response = Self::glossy_board_button(ui, "", open, true)
-            .on_hover_text(if open { "Close drawing tools" } else { "Draw on board" });
-        let center = response.rect.center();
-        let stroke = ui.style().interact(&response).fg_stroke;
-        let a = center + Vec2::new(-5.0, 5.0);
-        let b = center + Vec2::new(5.0, -5.0);
-        let side = Vec2::new(1.5, 1.5);
-        ui.painter().add(egui::Shape::closed_line(vec![a, b - side, b + side, a + side * 2.0], stroke));
-        ui.painter().line_segment([center + Vec2::new(-6.0, 7.0), center + Vec2::new(6.0, 7.0)], stroke);
-        if response.clicked() {
-            open = !open;
-            self.board_mark_mode = open;
-            self.board_mark_drag = None;
-            self.selected = None;
-            self.legal_targets.clear();
-            ui.ctx().data_mut(|d| d.insert_temp(id, open));
-        }
-        response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, "Draw on board"));
+    pub(super) fn drawings_tab_active(ctx: &egui::Context) -> bool {
+        ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) == Some(6)
+            && ctx.data(|d| d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0) == 0
     }
 
-    pub(super) fn draw_window(&mut self, ctx: &egui::Context) {
-        let id = egui::Id::new("draw_window_open");
-        let mut open = ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        if !open { return; }
+    pub(super) fn drawings_contents(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
         let position = self.review_index.unwrap_or(self.review_moves.len());
         if !ctx.egui_wants_keyboard_input() && ctx.input_mut(|input| input.consume_key(egui::Modifiers::CTRL, egui::Key::Z)) {
             self.undo_drawing(position);
         }
-        let frame = Frame::window(&ctx.style_of(ctx.theme()))
-            .fill(Color32::from_rgb(23,28,33))
-            .inner_margin(Margin::same(14)).corner_radius(CornerRadius::same(12))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(211,173,98)));
-        let mut close = false;
-        egui::Window::new("Draw on board").id(egui::Id::new("draw_window_tall"))
-            .open(&mut open).frame(frame).default_pos(egui::pos2(112.0, 220.0))
-            .default_width(320.0).default_height(540.0)
-            .min_width(320.0).max_width(320.0).min_height(120.0)
-            .vscroll(true).resizable([false, true]).collapsible(false).title_bar(false)
-            .show(ctx, |ui| {
-                let grain_background = ui.painter().add(egui::Shape::Noop);
-                ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
-                close = Self::dialog_header(ui, "Draw on board");
+        ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
                 ui.horizontal(|ui| {
                     let (switch_rect, switch) = ui.allocate_exact_size(Vec2::new(38.0, 22.0), Sense::click());
                     if switch.clicked() {
@@ -318,7 +285,7 @@ impl ChessApp {
                 let mut ghost = ctx.data(|d| d.get_temp::<String>(ghost_id)).unwrap_or_default();
                 let tool_id = egui::Id::new("draw_tool_arrow");
                 let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
-                let mut shape_style = Self::drawing_shape_style(ctx);
+                let mut shape_style = Self::drawing_shape_style(&ctx);
                 let control_size = Vec2::new((ui.available_width() - 24.0 - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
                 Self::drawing_sunken_section(ui, |ui| {
                 ui.set_min_width(ui.available_width());
@@ -345,7 +312,7 @@ impl ChessApp {
                     }
                 });
                 ctx.data_mut(|d| d.insert_temp(egui::Id::new("drawing_shape_style"), shape_style));
-                let mut style = Self::drawing_arrow_style(ctx);
+                let mut style = Self::drawing_arrow_style(&ctx);
                 ui.horizontal(|ui| {
                     for (value, label) in [("", "Solid"), ("dashed", "Dashed"), ("curve-left", "Curve left"), ("curve-right", "Curve right"), ("knight", "Knight move (L-shaped)"), ("knight-dashed", "Dashed knight move")] {
                         let response = ui.add_sized(control_size, egui::Button::new("").selected(ghost.is_empty() && arrow && style == value)).on_hover_text(label);
@@ -379,16 +346,6 @@ impl ChessApp {
                     ui.set_min_width(ui.available_width());
                     self.drawn_shapes_list(ui);
                 });
-                let paper = Self::paper_grain_texture(ctx);
-                let surface = ui.min_rect().expand(6.0);
-                ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
-                    egui::Rect::from_min_max(egui::Pos2::ZERO,
-                        egui::pos2(surface.width() / 256.0, surface.height() / 256.0)),
-                    Color32::WHITE));
-            });
-        if close { open = false; }
-        if !open { self.board_mark_mode = false; self.board_mark_drag = None; }
-        ctx.data_mut(|d| d.insert_temp(id, open));
     }
 }
 
@@ -498,7 +455,7 @@ mod tests {
         app.review_to(0);
         app.board_mark_mode = true;
         ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("draw_window_open"), true);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 6usize);
             d.insert_temp(egui::Id::new("draw_tool_arrow"), true);
             d.insert_temp(egui::Id::new("drawing_arrow_style"), "curve-left".to_owned());
         });
@@ -533,7 +490,7 @@ mod tests {
         app.review_to(0);
         app.board_mark_mode = true;
         ctx.data_mut(|d| {
-            d.insert_temp(egui::Id::new("draw_window_open"), true);
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 6usize);
             d.insert_temp(egui::Id::new("draw_tool_arrow"), true);
             d.insert_temp(egui::Id::new("drawing_arrow_style"), "".to_owned());
         });
@@ -638,7 +595,7 @@ mod tests {
         app.load_pgn("1. e4 *"); app.review_to(0);
         let original = app.board;
         app.board_mark_mode = true;
-        context.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::new("draw_window_open"), true));
+        context.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 6usize));
         let rect = egui::Rect::from_min_size(egui::pos2(10.0, 10.0), Vec2::splat(400.0));
         for arrow in [false, true] {
             context.egui_ctx.data_mut(|d| d.insert_temp(egui::Id::new("draw_tool_arrow"), arrow));

@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Open a game
@@ -17,13 +17,19 @@ For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game →
 
 ## Find your way around
 
-The live board stays on the left. On the right, choose one of three tabs:
+The live board stays on the left. Choose a tab on the right:
 
-- **Moves:** the **Game Moves** table, with notation, evaluations, annotations and playback controls.
-- **Prediction:** **Engine Prediction**, with the current position's evaluation and expected continuation.
-- **Analysis:** the full-game graph, summary, positional insights, Opening Explorer and Tablebases.
+- **Moves:** Game Moves, notation, evaluations, annotations, and playback.
+- **Prediction:** the current engine evaluation and expected continuation.
+- **Analysis:** full-game engine analysis, saved runs, the graph, and the review summary.
+- **Position:** Pawn Structure, Piece Mobility, and King Safety.
+- **Explore:** **Openings** for Opening Explorer and **Endgames** for Tablebases.
+- **Tactical:** Tactical Map, with **Insights**, **Activity**, and **Patterns**.
+- **Annotations:** **Drawings**, **Notes**, and **Chess Symbols**.
 
-Switch tabs to review the same game from different views. Drag the divider between the board and the right panel to adjust their widths.
+Every tab after Moves shows the selected position and move, for example **Position 9 of 44 (Qe3)**. Gray subtabs inside sunken panels keep related tools together. The Moves panel fits its contents; the board fits the available space as you resize the browser. Switching between 2D and 3D preserves the live board's size. Some study tools are unavailable during active online play or training.
+
+Select a move in Moves, then switch tabs to inspect that position. [Compare saved analyses](/help/saved-analysis/), [inspect positions](/help/positional-insights/), or [add annotations](/help/taking-notes/).
 
 ## Run game analysis
 

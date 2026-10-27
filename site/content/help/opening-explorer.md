@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 title: "Opening Explorer"
 description: "Explore common opening moves and game results without changing your game."
 category: "using-ironwood"
@@ -15,7 +15,7 @@ Opening Explorer uses your existing Ironwood Lichess sign-in session. Sign in th
 
 Opening Explorer is available for local review while your account is connected. Engine assistance and exploration are unavailable while an online game is engaged; finish the game or put a correspondence game aside before reviewing another game.
 
-Open a game and select **Analysis → Opening Explorer** below the evaluation graph. Choose **Masters**, **Lichess games**, **My games**, or **Player**. Lichess games can be filtered by speed and rating group. **My games** uses your signed-in username; **Player** lets you enter another Lichess username and click **Apply filters**. Personal and player results can be filtered by the player’s color, speed, and an inclusive month range (`YYYY-MM`). Leave either month blank for an open boundary. Click **Apply filters** after editing a username or dates; color and speed apply immediately. **Reset** clears date and speed filters and selects White. An internet connection is required; statistics come from Lichess's public Opening Explorer service.
+Open a game and select **Explore → Openings**. Choose **Masters**, **Lichess games**, **My games**, or **Player**. Lichess games can be filtered by speed and rating group. **My games** uses your signed-in username; **Player** lets you enter another Lichess username and click **Apply filters**. Personal and player results can be filtered by the player’s color, speed, and an inclusive month range (`YYYY-MM`). Leave either month blank for an open boundary. Click **Apply filters** after editing a username or dates; color and speed apply immediately. **Reset** clears date and speed filters and selects White. An internet connection is required; statistics come from Lichess's public Opening Explorer service.
 
 The table shows up to twelve common moves, game counts, and result bars: light for White wins, gray for draws, and dark for Black wins. Hover over a bar for counts and percentages. Results describe game outcomes, not engine evaluations or the best move.
 

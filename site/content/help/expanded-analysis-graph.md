@@ -4,7 +4,7 @@ description: "Navigate the full graph, read capture markers, and inspect positio
 category: "analysis"
 keywords: [expand, graph, captures, Merida, wheel, arrows, drawings, notes, preview]
 weight: 21
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Open the full graph
@@ -41,3 +41,9 @@ The preview follows the position being inspected. It has a sunken frame and coor
 Best-move arrows follow the main board's rules and the **Show best-move arrows** preference: for an inaccuracy, mistake, or blunder, the arrow indicates the engine's preferred alternative to the played move when available. It illustrates the earlier decision on the displayed board; it is not necessarily a legal next move from the position after that decision.
 
 The preview displays annotations; use [Draw on board](/help/drawing-on-the-board/) on the main board to create or edit them. **Your note** below the details shows the selected position's writing. Choose **Add note…** or **Edit note…** to change it.
+
+## Switch saved analyses without closing the graph
+
+When the game has multiple saved analysis runs, numbered gray buttons appear beneath the engine and analyzed-position heading. Click a number or press **1–9** to select the corresponding run. The graph, highlighted button, and engine heading follow that saved run, and the main Saved Analysis dropdown stays synchronized. Hover a number to see that run's recorded engine, analysis budget, verification status, and engine options. Buttons beyond 9 remain clickable.
+
+Switching is disabled during full-game analysis or while a run is loading. Number shortcuts do not select runs while you are typing. Choosing a saved run does not change the engine configured for the next analysis. [Saved analysis guide](/help/saved-analysis/).

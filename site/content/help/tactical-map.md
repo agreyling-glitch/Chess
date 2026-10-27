@@ -2,7 +2,7 @@
 title: "Tactical Map"
 description: "Explore patterns, opponent threats, move changes, positional activity, knight routes, and pin-aware safety."
 category: "analysis"
-lastmod: 2026-10-14T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 keywords: [attack vs defense, defenders, legal recaptures, pins, knight reach, destination safety, positional activity, opponent threats, what changed, tactical map]
 weight: 18
 ---
@@ -11,9 +11,9 @@ Tactical Map helps you inspect the displayed position without running engine ana
 
 ## Open and arrange the map
 
-Click the **bullseye icon** immediately to the left of **2D/3D** above the board. Notes and Draw on board have separate icons to its left. Drag or resize the floating window to arrange your workspace. Click the bullseye again or its close button to hide the map and overlays.
+Choose **Tactical**, immediately to the right of **Explore**. Tactical Map is part of the sidebar, with its contents inside a sunken section. Its board-toolbar shortcut and floating window have been removed. Switching away from Tactical hides its temporary overlays and returns board inspection to the selected tool.
 
-The map has three tabs: **Insights** for Attack vs Defense, Opponent threats, and What changed; **Activity** for positional activity and Knight reach; and **Patterns** for Danger, Pins, and Forks. Each group sits in a sunken section. Resize the window vertically to give the threat and change lists more room. The lists share available height; a shorter list leaves spare room for the longer one, and excess entries scroll.
+Use the gray **Insights**, **Activity**, and **Patterns** subtabs. Insights contains Attack vs Defense, Opponent threats, and What changed; Activity contains positional activity and Knight reach; Patterns contains Danger, Pins, and Forks. Threat and change lists share the available height and scroll when needed.
 
 ## Attack vs Defense
 

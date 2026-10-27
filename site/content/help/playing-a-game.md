@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-17T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -26,7 +26,7 @@ For an online game, choose the Online option, then **Lichess** or **FICS**. See 
 
 ## Focus on the board
 
-Click the four-corner **Focus on board** icon immediately to the right of **Flip board** in the board toolbar. Focus mode hides the main menus, move list, analysis panels, status bar, observation tabs and floating windows. The board expands into the available space while player names, clocks, results, captured pieces, coordinates, and the board-view, flip, and focus controls remain visible. The drawing, Notes, and Tactical Map toolbar icons are hidden. This works in both 2D and 3D; moves, clocks, online connections, and engine play continue normally. Real-time position analysis pauses during focus mode and resumes after you leave if it was active or requested by a position change. Full-game analysis continues.
+Click the four-corner **Focus on board** icon immediately to the right of **Flip board** in the board toolbar. Focus mode hides the main menus, move list, analysis panels, status bar, observation tabs and floating windows. The board expands into the available space while player names, clocks, results, captured pieces, coordinates, and the board-view, flip, and focus controls remain visible. The study sidebar, including Tactical and Annotations, is hidden. This works in both 2D and 3D; moves, clocks, online connections, and engine play continue normally. Real-time position analysis pauses during focus mode and resumes after you leave if it was active or requested by a position change. Full-game analysis continues.
 
 Press **Shift+Enter** to toggle focus mode when you are not editing a text field. Click the icon again or press **Escape** to restore the workspace. Opening the theme chooser exits focus mode to show that tool. Game-action buttons remain beneath an active board in Focus mode. Focus mode is temporary and is not saved with your games.
 

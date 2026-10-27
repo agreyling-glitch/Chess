@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 title: "Keyboard move input"
 description: "Type chess moves with a translucent input overlay, and navigate game positions with arrow keys."
 category: "using-ironwood"
@@ -53,3 +53,7 @@ Voice move entry is not currently built into Ironwood.
 ## Mouse-wheel move navigation
 
 Over the main board, scroll down to advance and up to go back. When inspecting an engine prediction, the wheel follows that line; selecting a Game Moves entry returns to game history. The expanded game graph also supports wheel navigation. On a 3D board, hold the right mouse button while scrolling to zoom instead. Active training and online play restrict history navigation.
+
+## Switch saved analysis runs
+
+In **Analysis** or the **expanded game graph**, press **1–9** to select the matching numbered saved-analysis button. The numbers follow the dropdown's order, and selection stays synchronized between views. Buttons beyond 9 are available by clicking. Shortcuts pause while you type or while analysis/loading prevents switching. In Analysis, these keys select saved analysis runs instead of observed FICS games. [Compare analyses](/help/saved-analysis/).

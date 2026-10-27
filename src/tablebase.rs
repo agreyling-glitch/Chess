@@ -331,7 +331,8 @@ fn result_color(label: &str) -> Color32 {
     }
 }
 pub fn preview(ctx: &egui::Context, root: Board) -> Option<Board> {
-    if ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) != Some(5)
+    if ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) != Some(4)
+        || ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("explore_details_tab"))) != Some(5)
     {
         return None;
     }
@@ -345,7 +346,8 @@ pub fn preview(ctx: &egui::Context, root: Board) -> Option<Board> {
         .and_then(|s| s.path.last().copied())
 }
 pub fn hover_arrow(ctx: &egui::Context, board: Board) -> Option<chess::ChessMove> {
-    if ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("analysis_details_tab"))) != Some(5) {
+    if ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) != Some(4)
+        || ctx.data_mut(|d| d.get_persisted::<usize>(egui::Id::new("explore_details_tab"))) != Some(5) {
         return None;
     }
     ctx.data_mut(|d| d.get_temp::<State>(id()))
@@ -711,8 +713,14 @@ mod tests {
         let mut state = State { hovered_move: Some((board, mv)), ..Default::default() };
         ctx.data_mut(|d| d.insert_temp(id(), state.clone()));
         assert_eq!(hover_arrow(&ctx, board), None);
-        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("analysis_details_tab"), 5usize));
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("game_sidebar_tab"), 4usize);
+            d.insert_persisted(egui::Id::new("explore_details_tab"), 5usize);
+        });
         assert_eq!(hover_arrow(&ctx, board), Some(mv));
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 3usize));
+        assert_eq!(hover_arrow(&ctx, board), None);
+        ctx.data_mut(|d| d.insert_temp(egui::Id::new("game_sidebar_tab"), 4usize));
         assert_eq!(hover_arrow(&ctx, board.make_move_new(mv)), None);
         state.select_node(None);
         ctx.data_mut(|d| d.insert_temp(id(), state));

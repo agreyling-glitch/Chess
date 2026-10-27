@@ -2,24 +2,24 @@
 title: "Drawing arrows and highlighting squares"
 description: "Draw arrows, square highlights, crosses, and ghost pieces; edit drawings, switch styles, and undo changes."
 category: "using-ironwood"
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 keywords: [ghost pieces, knight arrows, filled square, cross, black, white, arrows, highlights, squares, circles, drawing, draw on board, colors, dashed, dotted, curved, undo, Ctrl+Z, Alt, cal, csl, board annotations]
 weight: 17
 ---
 
 Use board drawings to show plans, threats, routes, and important squares without moving pieces. Drawings belong to the displayed position and work on both the 2D and 3D boards. You can combine them with [written notes and annotation symbols](/help/taking-notes/).
 
-## Open the drawing window
+## Open the drawing tools
 
-Click the **pencil icon** above the board, immediately to the left of the Notes icon, to open the **Draw on board** window. Click it again, or the window’s close button, to close it. Drawing tools live in this window rather than in Game Moves or Notes.
+Choose **Annotations → Drawings**. The tools sit beside the live board in a sunken panel; they no longer use a board-toolbar icon or a floating window. Gray **Drawings**, **Notes**, and **Chess Symbols** subtabs share the Annotations workspace.
 
-Opening the window enables drawing. The slide control below its title turns drawing on or off; hover it to see **Drawing Enabled** or **Drawing disabled**. Turn it off to play moves while keeping the tools visible. Closing the window also disables drawing and cancels an unfinished drag.
+Entering Drawings enables drawing. Use the slide switch above the colors to turn drawing on or off. Turn it off to play moves while keeping the tools visible. Leaving Drawings disables drawing and cancels an unfinished drag.
 
-Drag the **Draw on board** title to reposition the whole window. Its width is fixed to fit the controls; resize it vertically to give the drawing list more room. The window opens tall enough to show the drawing controls on a typical desktop display. Sunken sections group colors and shapes, ghost pieces, and saved drawings. The gold-bordered close button matches the other tool windows. Colors, shapes, arrows, and ghost-piece buttons use matching sizes and aligned columns. Smaller windows and long drawing lists may still scroll. Hover a choice to see its name.
+Sunken sections group colors and shapes, ghost pieces, and the drawing list. Long lists scroll. Hover a choice to see its name.
 
 ## Choose a color and shape
 
-![Draw on board window with six colors, square and arrow styles, and ghost-piece selectors.](/gallery/draw-on-board.png)
+The color and shape controls use matching sizes and aligned columns.
 
 Select a **Green**, **Red**, **Yellow**, **Blue**, **Black**, or **White** color swatch. Then choose a shape or arrow:
 
@@ -56,17 +56,17 @@ Expand **Drawings (count)** below the pickers to see the drawings for the displa
 
 Each entry shows its shape or arrow type. Use its color picker to change the color. Arrows have **Start** and **End** square selectors; single-square shapes and ghost pieces have one **Square** selector. Changes update the board and save immediately. An arrow needs two different endpoints, and another drawing cannot already occupy the same square or directed route.
 
-Use **Delete** on an entry to remove only that drawing. Repeat an identical drawing to remove it from the board, or draw over the same square or arrow route with a different color or style to replace it. **Clear** in the window header removes every drawing for the displayed position.
+Use **Delete** on an entry to remove only that drawing. Repeat an identical drawing to remove it from the board, or draw over the same square or arrow route with a different color or style to replace it. **Clear** above the color controls removes every drawing for the displayed position.
 
 ## Undo drawing changes
 
-Click the **undo icon** beside Clear, or press **Ctrl+Z** while the drawing window is open, to undo the last drawing change for the displayed position. Undo covers additions, replacements, color and square edits, individual deletions, and Clear. The restored drawings save immediately.
+Click the **undo icon** beside Clear, or press **Ctrl+Z** while Annotations → Drawings is selected, to undo the last drawing change for the displayed position. Undo covers additions, replacements, color and square edits, individual deletions, and Clear. The restored drawings save immediately.
 
 Each position has its own undo steps. Undo history is temporary, retains up to 128 changes across the game, and resets when a game is loaded or its move history is replaced or shortened. It is not included in saved files. When a text field is active, Ctrl+Z keeps its normal text-editing behavior.
 
 ## Alt shortcuts
 
-You can draw temporarily without opening the window or enabling drawing mode:
+You can draw temporarily without opening Drawings or enabling drawing mode:
 
 | Shortcut | Color |
 | --- | --- |
@@ -97,11 +97,11 @@ Right-click the desired move in **Game Moves** and choose **Copy Annotated Board
 ## If drawing does not work
 
 - Check the header’s slide control: drawing must be enabled to use the graphical tools.
-- Use the pencil window if your browser or operating system intercepts an Alt shortcut.
+- Use Annotations → Drawings if your browser or operating system intercepts an Alt shortcut.
 - Return to a game position if you are stepping through a predicted engine line.
 - Select the intended move before drawing: each position has its own markings.
 - Keep holding left-click when tapping right-click to switch arrow style.
-- Turn drawing off or close the window when you want to play moves.
+- Turn drawing off or leave Drawings when you want to play moves.
 
 See [Board and view settings](/help/board-and-view/) for display controls, or [Saving and sharing analysis](/help/saving-and-sharing/) for export formats.
 

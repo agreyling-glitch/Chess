@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-26T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -13,15 +13,17 @@ Start a game as White or Black, or let Ironwood choose a side at random. When yo
 
 ## Keep the board beside your study tools
 
-The live board stays on the left, with **Moves**, **Prediction**, and **Analysis** tabs on the right. Use the larger Game Moves table to browse annotated moves, open Engine Prediction for the current evaluation and expected continuation, or switch to full-game review without moving the board. The panels adjust automatically as you resize the browser: the live board grows to fit the available height, and the right panel fills the remaining width. The tabs match the main menu’s raised gold-accented controls. [Workspace guide](/help/getting-started/#find-your-way-around).
+The live board stays on the left, with **Moves · Prediction · Analysis · Position · Explore · Tactical · Annotations** on the right. Analysis contains engine results; Position contains pawn structure, piece mobility, and king safety. Explore groups **Openings** and **Endgames**. Tactical provides **Insights**, **Activity**, and **Patterns**. Annotations keeps **Drawings**, **Notes**, and **Chess Symbols** together in sunken panels with gray subtabs.
+
+Every tab after Moves identifies the selected position and move. The Game Moves panel fits its contents, while the board follows the available space when the browser is resized. Switching between 2D and 3D keeps the same live-board size. [Workspace guide](/help/getting-started/#find-your-way-around).
 
 ## Analyze without limits
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, move quality, accuracy, and the turning point of a game. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
 
-Saved analyses remain separate runs, so you can compare results without replacing earlier work. Replay the engine continuation directly in Move Analysis with a mini player and a rounded outline around the current move. **Try the best move** appears when the engine recommends a different move.
+Saved analyses remain separate runs. Below the Analyze controls, select a run from **Saved Analysis** or click its numbered gray button. Press **1–9** to select the corresponding run in Analysis or the expanded graph. The dropdown, highlighted button, and expanded graph engine name follow the selected run. Hover a numbered button for its recorded engine, budget, verification status, and engine options. [Compare saved analyses](/help/saved-analysis/). Replay the engine continuation directly in Move Analysis with a mini player and a rounded outline around the current move. **Try the best move** appears when the engine recommends a different move.
 
-For full-game analysis, choose a **node budget** or **1–60 seconds per position**. Node mode keeps Quick, Standard, Deep and Custom quality choices. Turn **Verify critical moves after analysis** on or off; after the first pass, **Verify critical moves** lets you request the deeper check manually. The analysis button names Stockfish, and the bottom-bar **Engine** button opens its settings. [Analysis budgets and settings](/help/search-depth-and-settings/).
+For full-game analysis, choose a **node budget** or **1–60 seconds per position**. Node mode keeps Quick, Standard, Deep and Custom quality choices. Turn **Verify critical moves after analysis** on or off; after the first pass, **Verify critical moves** lets you request the deeper check manually. Choose the engine beside the Analyze controls; the bottom-bar **Engine** button opens its settings. [Analysis budgets and settings](/help/search-depth-and-settings/).
 
 {{< companion-features >}}
 
@@ -67,11 +69,11 @@ Puzzle attempts with played moves appear under **Puzzles** in Saved Games, using
 
 Opening Explorer uses your existing Lichess sign-in session in Ironwood. Sign in through the bottom Lichess button; no separate API token is needed. Signing out clears access and cached results.
 
-Explore common continuations in **Analysis → Opening Explorer**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Choose **My games** or **Player** for personal opening history, filter by player color, speed, and month range, see the player’s wins, draws, and losses at the displayed position, and import matching recent completed games for local analysis. Lichess indexes player games on demand; Ironwood shows indexing progress and lets you refresh the statistics afterward. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
+Explore common continuations in **Explore → Openings**, with Masters or Lichess game statistics, speed and rating filters, and White/draw/Black result bars. Choose **My games** or **Player** for personal opening history, filter by player color, speed, and month range, see the player’s wins, draws, and losses at the displayed position, and import matching recent completed games for local analysis. Lichess indexes player games on demand; Ironwood shows indexing progress and lets you refresh the statistics afterward. Preview moves on the main board without changing your game, then return with **Back to game**. Requires an internet connection and supports standard chess. [Opening Explorer](/help/opening-explorer/).
 
 ## Explore endgames with Syzygy
 
-Open **Analysis → Tablebases** to look up standard endgames with seven pieces or fewer, including both kings, and no castling rights. Results come from Lichess's tablebase service and require internet access, but no sign-in or local tablebase download. Read win, draw, and loss outcomes, including draws under the 50-move rule, alongside per-move **DTZ** and **DTM** badges when available.
+Open **Explore → Endgames** to look up standard endgames with seven pieces or fewer, including both kings, and no castling rights. Results come from Lichess's tablebase service and require internet access, but no sign-in or local tablebase download. Read win, draw, and loss outcomes, including draws under the 50-move rule, alongside per-move **DTZ** and **DTM** badges when available.
 
 Hover a continuation to show its arrow on the live board; click to explore the resulting position and replies. An exploration tree keeps alternate branches available as you compare them. Back, Reset preview, and Clear give you control over the study without changing recorded game moves. Move labels follow your Letters or Figurines preference. Inspect the root's 50-move clock, refresh cached results, or open the selected position on Lichess. [Syzygy endgame tablebases](/help/syzygy-tablebases/) explains the outcomes, distance counts, and preview controls.
 
@@ -89,7 +91,7 @@ Open **King Safety** for compact White and Black assessments with explanations o
 
 ## Explore tactics and positional plans
 
-Open **Tactical Map** from the bullseye beside **2D/3D** to explore the position directly on the board. Drag or resize its floating window to arrange your workspace. Its tools work without an engine analysis run:
+Open **Tactical** to explore the position directly on the board, with gray Insights, Activity, and Patterns subtabs inside a sunken panel. Its tools work without an engine analysis run:
 
 - **Opponent threats:** inspect candidate checks, captures, and forks for the other side if the position stays unchanged. Click a row to trace the move in pink and its checking or fork attacks in gold. Candidates update with the position; resolve check before exploring a hypothetical opponent turn.
 - **What changed?:** step through a game to see opened attack lines in blue, lost defenders with gold dashed lines from their previous squares, and new attacks in red. Explanations connect each change to the affected pieces.
@@ -103,21 +105,19 @@ Geometric counts include pinned pieces; legal recapture counts check the positio
 
 ## Take notes and annotate positions
 
-Record your plans, questions, and lessons with a personal note on any move or the starting position, without running analysis. Open the translucent **Notes** window from the document icon above the board. The **Note** tab follows the displayed position; **Start** shows the starting note while you keep the board on the current move. The title identifies the move in notation and plain language, such as **Notes: Nxb5 (Knight to B5)**.
+Open **Annotations → Notes** to record a plan, question, or lesson for the selected move or starting position. Add and edit notes inside the panel with **Save note**, **Cancel**, and **Delete note**. Double-clicking a move in Game Moves, or choosing Add note from its right-click menu, opens the same editor. **All notes** browses the game's written annotations.
 
-Double-click the note text to edit, or double-click **No note for this position.** to add a note. You can also double-click a move in **Game Moves** to open its note editor directly. Expand **All notes** to browse every note in the game; click an entry to view it or double-click to edit. Drag the window by its title and resize it to suit your workspace. Notes also appear beside analysis details in the expanded graph and in printed reports. Game Moves marks written notes in gold and drawings in blue; moves with both show both indicators. Hover a move to see its note and drawing count.
-
-Add your own move-quality symbols—`!`, `!!`, `!?`, `?!`, `?`, or `??`—and position assessments from **Add annotation…** in the move's right-click menu. Choose one symbol from each group, change the selection, or clear it. Your gold symbols stay separate from Stockfish's assessments, so you can explain your own reasoning in a note. See [Taking notes and adding annotations](/help/taking-notes/) for instructions.
+Use **Annotations → Chess Symbols** for common move-quality and position assessments. Expand **More symbols** to search descriptions or numeric codes. All valid PGN NAG values ($0–$255) are preserved in annotated interchange; the original standard set has descriptions, and other codes keep a numeric fallback rather than an assumed program-specific meaning. The right-click annotation menu keeps common choices close at hand. Symbols remain your assessment, separate from engine classifications. [Notes and symbols](/help/taking-notes/).
 
 ## Illustrate plans on the board
 
-Open **Draw on board** with the pencil icon above the board, to the left of Notes. Its translucent floating window opens tall enough for the controls on a typical desktop screen, with matching button sizes and aligned columns. Choose **green, red, yellow, blue, black, or white**. Mark squares with solid or dotted outlines, circles, translucent filled squares, or crosses. Filled squares keep pieces visible; crosses can mark targets or squares to avoid.
+Open **Annotations → Drawings** to use the drawing tools beside the board. The drawing switch enables or disables board input; leaving Drawings turns drawing input off. Choose **green, red, yellow, blue, black, or white**. Mark squares with solid or dotted outlines, circles, translucent filled squares, or crosses. Filled squares keep pieces visible; crosses can mark targets or squares to avoid.
 
 Draw solid, dashed, or curved arrows, or choose an **L-shaped knight arrow** with a solid or dashed line. Knight arrows follow the longer leg first and keep their bend aligned with the board in 3D. While holding left-click to draw, tap right-click to switch solid/dashed straight or knight arrows, or reverse a curve’s direction.
 
 Add **ghost pieces** to illustrate possible placements without changing the real position or engine analysis. Choose a White or Black piece symbol, then click a square to place a translucent ghost in the selected color. Repeat the same piece and color on that square to remove it. Ghosts work in both board views; in 3D they remain flat symbols over the square.
 
-Expand **Drawings** to edit a drawing’s color and squares or delete it. **Clear**, the undo icon, and **Ctrl+Z** cover additions, replacements, edits, deletions, and clearing. Each position keeps its own drawings. The window’s slide control enables or disables drawing; closing it returns to playing moves. Alt-click and Alt-drag shortcuts remain available. [Drawing arrows and highlighting squares](/help/drawing-on-the-board/).
+Expand **Drawings** to edit a drawing’s color and squares or delete it. **Clear**, the undo icon, and **Ctrl+Z** cover additions, replacements, edits, deletions, and clearing. Each position keeps its own drawings. The panel’s slide control enables or disables drawing; leaving Drawings turns drawing input off. Alt-click and Alt-drag shortcuts remain available. [Drawing arrows and highlighting squares](/help/drawing-on-the-board/).
 
 Notes, manual symbols, and drawings stay attached to saved games and are preserved in annotated PGN and Analysis JSON. Ironwood’s PGN extensions preserve shape and arrow styles and colored ghost pieces; other chess programs may simplify styles or ignore ghosts. **Copy Annotated Board to Clipboard** captures the selected position’s drawings and any displayed Stockfish recommendation arrow in the active 2D or 3D view. Printed analysis also includes personal annotations. Plain PGN omits them.
 
@@ -257,7 +257,7 @@ A resizable **New Game** window separates Play Mode, Engine Settings, Game Setti
 
 Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Fine linen adds depth to the main move list, Engine Prediction score and continuation sections, and the Saved Games controls. Paper grain appears around training profiles, engine settings, Tactical Map, Notes, Saved Games, and larger playback. Profile graphs and expanded prediction boards have their own sunken textured surfaces. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
 
-Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. The Moves, Prediction and Analysis tab row stays above the right panel’s scrolling content.
+Tactical Map separates **Insights**, **Activity**, and **Patterns** into tabs. Threat and change lists resize with the available height. Pawn Structure, Piece Mobility, King Safety, Opening Explorer, and Tablebases use matching recessed panels. The workspace tab row stays above the right panel’s scrolling content. Tactical and Annotations use the same gray subtabs and sunken panels as Explore.
 
 Lichess account sign-in can remain available alongside FICS without replacing the current board. Opening Explorer uses that account session; tablebases require no sign-in. One game controls the board at a time, and study tools remain unavailable during live online play and training.
 

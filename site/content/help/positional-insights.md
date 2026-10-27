@@ -4,12 +4,12 @@ description: "Explore the positional insight tabs, compare pieces, and follow ch
 category: "analysis"
 keywords: [pawn, structure, chains, isolated, passed, mobility, piece, compare, shift, king, safety, shelter, pressure, timeline]
 weight: 75
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 ---
 
 ## Open the positional insight tabs
 
-Open a played or imported game and choose the **Analysis** tab. Below the evaluation graph, select **Summary**, **Pawn Structure**, **Piece Mobility**, or **King Safety**. The three positional views work directly from the game positions; they do not require a completed Stockfish analysis. They follow the selected move as you navigate the game.
+Open a played or imported game and choose **Position**, then select **Pawn Structure**, **Piece Mobility**, or **King Safety**. The engine summary and evaluation graph remain in **Analysis**. The three positional views work directly from the game positions; they do not require a completed Stockfish analysis. They follow the selected move as you navigate the game.
 
 Drag the left edge of the right panel to give these views more horizontal room. Scroll the panel to reach the lower content. The structure and safety evolution tables show ten rows at a time, with additional entries scrollable.
 
@@ -59,7 +59,7 @@ King Safety is a structural guide, independent of Stockfish’s evaluation. Pres
 
 ## Expand the graph or print a report
 
-**Expand**, inside the graph’s upper-right corner, opens the full-screen evaluation view. The positional insight tabs remain in the main analysis panel. **Print analysis**, beside the **Saved Analysis** heading, opens the report prompt once at least one position has engine analysis; pause or stop a running analysis first. Choose **Save as PDF** in the browser’s Print dialog to save the report.
+**Expand**, inside the graph’s upper-right corner, opens the full-screen evaluation view. The positional insight tabs remain under **Position** in the main workspace. **Print analysis**, beside the **Saved Analysis** heading, opens the report prompt once at least one position has engine analysis; pause or stop a running analysis first. Choose **Save as PDF** in the browser’s Print dialog to save the report.
 
 See the [Analysis gallery](/gallery/#analysis) for screenshots of all three positional views.
 

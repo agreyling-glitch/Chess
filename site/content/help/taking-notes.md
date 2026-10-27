@@ -1,99 +1,60 @@
 ---
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 title: "Taking notes and adding annotations"
-description: "Add Starting notes, record thoughts on individual moves, and use annotation symbols to review and share your games."
+description: "Use Annotations for drawings, written notes, and searchable chess symbols beside the board."
 category: "using-ironwood"
-keywords: [notes, notetaking, note-taking, starting note, move note, comments, annotation, symbols, NAG, study]
+keywords: [Annotations, Drawings, Notes, Chess Symbols, starting note, move note, comments, NAG, More symbols]
 weight: 16
 ---
 
-Notes help you remember what you were thinking, explain a plan, and record lessons for your next game. You can attach a **Starting position note** to the initial board or a **move note** to the position after a particular move. You do not need to run Stockfish to write either kind.
+## Open Annotations
 
-## Add a note to a move
+Choose **Annotations**, to the right of **Tactical**, then **Drawings**, **Notes**, or **Chess Symbols**. Gray subtabs and sunken sections keep these tools beside the board. Notes and drawing tools no longer open from toolbar icons or floating windows. The position label above the panel identifies the selected move.
 
-Double-click a move in **Game Moves** to open its note editor directly, whether or not it already has a note. To use the floating Notes window instead:
+Your writing, symbols, and drawings are independent of engine results. You can use them without running analysis.
 
-1. Select the move in **Game Moves** to display its position on the board.
-2. Click the **Notes icon** to the left of the Tactical Map bullseye above the board, select the **Position note** tab, then choose **Add note** or double-click **No note for this position.** in the floating **Notes** window. You can also right-click the move and choose **Add note…**.
-3. Write your thoughts, then choose **Save note**.
+## Add or edit a move note
 
-For example, a note after `Nf3` could say: “Develop the knight before moving the queen. Next, prepare castling.” The note belongs to that displayed position, so include the move or plan you mean when describing an earlier decision.
+1. Select the move in **Moves**.
+2. Choose **Annotations → Notes → Position note**.
+3. Choose **Add note** or **Edit note**, or double-click the note text.
+4. Write in the editor inside Notes and choose **Save note**. **Cancel** leaves the saved note unchanged; **Delete note** removes it.
 
-The Notes window follows the board as you step through the game. Drag it to reposition it, resize it, or close it with its close button or the Notes icon. Long notes scroll within the panel. Moves with notes have a small gold note marker; drawings have a separate blue drawing icon, and moves with both show both indicators; selecting the move displays its note. Double-click the note text to edit it. Use **Add note** or **Edit note** below the text; double-clicking the text still works.
+Double-clicking a move in Game Moves, or right-clicking it and choosing **Add note…** or **Edit note…**, opens the same editor under Annotations. Its heading identifies the move and its plain-language description. Long text scrolls within the panel.
 
-The Notes window shows the move and a plain-language description below its draggable title. The editor is titled **Add note** or **Edit note**, with the position underneath. Both use gold borders and sunken content sections.
+For example, after `Nf3`: “Develop the knight before moving the queen. Next, prepare castling.” The note belongs to that displayed position.
 
-## Browse all notes
+## Starting notes and all notes
 
-Expand **All notes (count)** below the note text to browse every nonempty note in the game, including the Starting note. Each entry shows its position and note text. Click a move-note entry to display that move on the board and read its note; double-click an entry to edit it.
+Choose **Starting note** to read or edit the introduction while the board stays on its current move. A starting note can describe an opening plan, puzzle instructions, or a custom starting position imported from FEN. The right-click **Starting position note…** command opens its editor too.
 
-Clicking the **Starting note** entry selects the Start tab without moving the board away from the current move. The list scrolls when there are many notes. Empty positions do not appear in this list; double-click their moves in Game Moves or the empty-note prompt to add a note.
+Expand **All notes (count)** to browse every nonempty note, including the starting note. Click a move-note entry to display that move; double-click to edit. Selecting the starting-note entry keeps the board on its current move. Moves with writing have a gold note marker; drawings have a separate blue marker. Hover a move to see its note and drawing count.
 
-## Add a Starting note
+## Add Chess Symbols
 
-Open the **Notes** window and select the **Starting note** tab. Double-click the note text, or **No note for this position.** if it is empty, write the introduction, and choose **Save note**. The board stays on the selected move. You can also right-click a move and choose **Starting position note…**.
+Choose **Annotations → Chess Symbols** to apply move-quality symbols such as `!`, `!!`, `!?`, `?!`, `?`, and `??`, or position assessments such as `=`, `∞`, `+=`, and `-/+`. The right-click **Add annotation…** menu keeps these common choices available too.
 
-A Starting note is useful for an opening plan, a puzzle's instructions, or context about a custom starting board. It describes the game's initial position, which may be a position imported from FEN rather than the usual chess setup.
+A new move-quality choice replaces the previous move-quality choice. A new overall position assessment replaces the previous overall assessment. Selecting the same choice again removes it. Advanced positional and unfamiliar imported annotations are preserved when you change a common symbol. The initial position supports position annotations; move-quality choices require a played move.
 
-Use the first-position navigation button to return to that board and read the full note in **Notes**. The **Starting note** tab lets you read the starting note while the board stays on a later move.
+**Applied to this position** lists the current annotations with descriptions. Click an entry to remove that annotation, or use **Clear annotation** to remove all manual symbols from that position.
 
-## Edit or remove a note
+Expand **More symbols** and search by description, side, or code: try `initiative`, `Black`, or `$37`. Ironwood preserves every valid NAG code from `$0` to `$255`. Descriptions cover the original standard set through `$139`; other codes keep a numeric fallback because their meanings can vary between programs. `$0` is a placeholder. Unfamiliar codes remain visible rather than disappearing.
 
-Select the **Position note** or **Starting note** tab and double-click the note text. Choose **Save note** to keep your changes or **Delete note** to remove the note. Closing the editor without saving leaves the saved note unchanged.
+Compact symbols or `$number` codes appear beneath move notation; hover for descriptions. Notes and printed reports also show descriptions. These are your assessments, separate from [engine move-quality marks](/help/move-symbols/).
 
-Notes stay separate from engine analysis. Running or rerunning Stockfish does not replace your writing. If you use **Play from this position**, notes and annotations on the retained part of the game remain; those on discarded later moves are removed.
+## Draw on the board
 
-## Find your notes later
+Choose **Annotations → Drawings** for colors, square outlines, circles, filled squares, crosses, arrows, and ghost pieces. Entering Drawings enables drawing; the slide switch turns drawing input on or off. Leaving Drawings disables drawing and cancels an unfinished drag. Alt-click and Alt-drag remain available for quick annotations. [Drawing guide](/help/drawing-on-the-board/).
 
-- **Main board:** the floating Notes window shows the displayed position's note in either workspace layout.
-- **Expanded analysis graph:** select a position to read its note alongside the analysis details. The framed mini board also displays that position’s saved drawings; see [Expanded game analysis graph](/help/expanded-analysis-graph/).
-- **Saved Games:** games with a Starting note show a two-line preview. Click the note preview to open the game at its starting position.
-- **Larger saved-game board preview:** click the small board to enlarge it and read the full Starting note beneath it. The preview initially shows the final position; its move controls and autoplay let you browse the game. The Starting note still describes the initial position.
-
-Move notes become visible when you open the game and select their moves. The Saved Games note preview shows the Starting note.
-
-## Add annotation symbols
-
-Right-click a move and choose **Add annotation…**. Select a symbol from either group:
-
-| Move quality | Meaning |
-| --- | --- |
-| `!` | Good move |
-| `!!` | Brilliant move |
-| `!?` | Interesting move |
-| `?!` | Dubious move |
-| `?` | Mistake |
-| `??` | Blunder |
-
-| Position assessment | Meaning |
-| --- | --- |
-| `=` | Equal position |
-| `∞` | Unclear position |
-| `+=` / `=+` | Slight advantage for White / Black |
-| `+/-` / `-/+` | Clear advantage for White / Black |
-| `+−` / `−+` | Decisive advantage for White / Black |
-
-You can choose **one symbol from each group** for a move. Selecting another symbol in the same group replaces the previous selection; selecting the current symbol again removes it. **Clear annotation** removes the position's manual annotations. The starting position supports position assessments, since no move has been played there yet.
-
-Your symbols appear in gold beneath the move text and in the Notes window’s Note tab. They express **your assessment**, independently of [Stockfish's move-quality marks](/help/move-symbols/). A note can explain why you chose a symbol.
-
-The text forms above keep the symbols readable with Ironwood's fonts. Annotated PGN stores their standard numeric annotation glyphs (**NAGs**), so the receiving program may display a different-looking equivalent symbol.
-
-## Draw arrows and highlight squares
-
-Click the **pencil icon** to the left of Notes above the board to open the separate **Draw on board** window. Choose colored square outlines, circles, filled squares, crosses, ghost pieces, or arrows to illustrate the displayed position. Keyboard users can also use Alt-click or Alt-drag. Tactical Map’s Attack vs Defense bubbles are automatic, temporary counts rather than personal drawings. Drawings stay attached to their positions and are preserved in saved games, annotated PGN, and Analysis JSON.
-
-See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/) for shape and arrow styles, right-click switching while dragging, editing individual drawings, undo, and shortcuts.
+Tactical Map overlays are temporary inspection aids, not saved personal drawings. Open **Tactical** to use them.
 
 ## Save and share
 
-Notes and manual annotations stay with saved games on this device. To share or back them up:
+Notes, symbols, and drawings stay attached to their positions in saved games. Rerunning analysis does not replace them. **Play from this position** retains annotations on the part of the game you keep and removes those on discarded later moves.
 
-- **Annotated PGN** includes notes, manual annotations, and supported engine analysis. Ironwood can restore its own exported notes and standard main-line NAGs when importing the file.
-- **Analysis JSON** preserves notes and manual annotations alongside Ironwood's analysis data.
-- **Plain PGN** contains the game record without your notes, manual symbols, or engine analysis.
-- **Printed analysis reports** include your written notes, manual annotation symbols, and board drawings in **Your notes and drawings**. Positions with drawings include board diagrams, even when the engine has not marked them as critical.
+- **Annotated PGN** preserves notes and NAGs, with comment extensions for drawings. Other programs may simplify unsupported drawing styles or ignore ghost pieces.
+- **Analysis JSON** preserves personal annotations alongside Ironwood's analysis data.
+- **Plain PGN** omits personal annotations.
+- **Copy Annotated Board to Clipboard** includes the selected position's drawings and any displayed engine recommendation arrow.
 
-Check your notes before sharing an annotated file or report, since your writing is included. Notes in another program's ordinary PGN comments are not automatically converted into Ironwood move notes.
-
-See [Saved games and backups](/help/saved-games-and-backups/) for local storage and full backups, or [Saving and sharing analysis](/help/saving-and-sharing/) for export formats.
+Notes also appear in the expanded graph and printed analysis reports. Saved Games previews show the starting note; open the game to inspect move notes. [Saving and sharing](/help/saving-and-sharing/).

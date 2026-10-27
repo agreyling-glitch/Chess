@@ -75,6 +75,8 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     const before=calls.length;assert.equal(await addCompanionEngine(),false);assert.equal(calls.length,before);
     window.ironwoodCompanionFeatureEnabled=()=>true;
     const adding=addCompanionEngine();await new Promise(resolve=>setImmediate(resolve));
+    document.querySelector('#companion-add-engine [data-tab="manual"]').click();
+    await new Promise(resolve=>setImmediate(resolve));
     const addForm=document.querySelector('#companion-add-engine form');
     assert.equal(addForm.querySelector('[type=submit]').disabled,true);
     assert.equal(addForm.elements.executable.readOnly,true);
@@ -87,7 +89,7 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));
     assert.equal(addForm.elements.executable.value,'/data/engines/lc0/fixture');
     assert.equal(addForm.elements.label.value,'Original UI fixture');
-    assert.match(document.querySelector('#companion-add-engine [role=status]').textContent,/UCI validation passed/);
+    assert.match(document.querySelector('#companion-add-engine [data-manual] [role=status]').textContent,/UCI validation passed/);
     assert.equal(addForm.querySelector('[type=submit]').disabled,false);
     assert.equal(document.querySelector('[data-command]'),null);
     assert.ok(!calls.some(call=>call.address.endsWith('/save')),'validation does not save');
@@ -104,6 +106,8 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     assert.deepEqual(JSON.parse(calls.find(call=>call.address.endsWith('/save')).init.body),{label:'My engine'});
 
     const cancelled=addCompanionEngine();await new Promise(resolve=>setImmediate(resolve));
+    document.querySelector('#companion-add-engine [data-tab="manual"]').click();
+    await new Promise(resolve=>setImmediate(resolve));
     const cancelledForm=document.querySelector('#companion-add-engine form');
     cancelledForm.querySelector('.engine-folder-tree [data-branches] summary').click();await new Promise(resolve=>setImmediate(resolve));
     cancelledForm.querySelector('.engine-file-list button').click();await new Promise(resolve=>setImmediate(resolve));await new Promise(resolve=>setImmediate(resolve));

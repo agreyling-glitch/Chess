@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-27T00:00:00-05:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -47,23 +47,22 @@ Under **Appearance**, adjust **Image opacity**, **Background gradient**, and **3
 
 Changes apply immediately; choose **Done** to close the window. Returning users keep their saved background choices.
 
-## Floating board tools
+## Study and annotation tools
 
-Above the board, the tools appear in this order: **Draw on board** (pencil), **Notes** (document), **Tactical Map** (bullseye), then **2D/3D**. Click a tool icon to open or close its translucent floating window. Drag a window to reposition it; its controls no longer take up space in Game Moves.
+Choose **Tactical** for Tactical Map, or **Annotations** for **Drawings**, **Notes**, and **Chess Symbols**. These tools now live beside the board in sunken panels with gray subtabs. Their old toolbar icons and floating windows have been removed.
 
-- **Draw on board:** add colored square outlines, circles, filled squares, crosses, ghost pieces, and solid, dashed, curved, or L-shaped knight arrows. Edit or delete individual drawings in its collapsible list; use Undo or Ctrl+Z to restore drawing changes. This window resizes vertically and keeps a fixed width. Opening it enables drawing; its slide control or closing the window returns to playing moves. See [Drawing arrows and highlighting squares](/help/drawing-on-the-board/).
-- **Notes:** read or edit the current position’s note in the Note tab, or the starting note in Start. Double-click note text or a move in Game Moves to edit; expand All notes to browse the game’s notes. See [Taking notes and adding annotations](/help/taking-notes/).
-- **Tactical Map:** explore **Opponent threats** and **What changed?**, or click any piece on the main board for its **Positional activity** rating and reasons. In 2D, **Knight reach · two hops** previews either side's knights, supports click-to-lock routes, and shows pin-aware **Destination safety**. **Attack vs Defense** shows red geometric attacker counts and green **geometric defenders / legal recapturers** bubbles; a dash means no legal enemy capture to recapture. The **Danger**, **Pins**, and **Forks** filters sit directly above the cards in **Patterns**. See [Tactical Map](/help/tactical-map/) for instructions, color legends, and analysis limits.
-
-Notes and Tactical Map windows can be resized. Personal drawings, written notes, and automatic tactical findings have separate controls and work with either board view.
+- **Drawings:** colors, shapes, arrows, and ghost pieces. Entering Drawings enables drawing; use its switch to turn drawing off, or leave the subtab. Undo and Ctrl+Z restore drawing changes. [Drawing guide](/help/drawing-on-the-board/).
+- **Notes:** read and edit the selected position's writing or starting note. The editor stays in the panel; All notes browses the game's notes. [Notes guide](/help/taking-notes/).
+- **Chess Symbols:** apply common annotations or search More symbols by description or numeric code. The right-click menu still offers common choices. [Symbol guide](/help/move-symbols/).
+- **Tactical:** inspect temporary attacker/defender counts, threats, position changes, piece activity, Knight reach, and tactical patterns in either board view. Switching away hides these overlays. [Tactical Map guide](/help/tactical-map/).
 
 ## Type a move
 
 Start typing during your turn to open the translucent move-entry overlay. Enter plays the move, Backspace edits, and Escape cancels. Lowercase piece letters work, including `nc3`. See [Keyboard move input](/help/keyboard-input/) for notation examples and navigation shortcuts.
 
-## Resize the analysis panel
+## Board and panel sizing
 
-Drag the left edge of the right panel to widen it; the panel can use up to roughly two thirds of the window width on a large screen. Scroll down to inspect lower content. Under **Analysis**, use **Summary**, **Pawn Structure**, **Piece Mobility**, and **King Safety** to switch between review and positional insights. See [Positional insights](/help/positional-insights/) for details.
+The live board fits the available space as you resize the browser. Switching between 2D and 3D preserves its dimensions. The Moves panel fits its contents. Use **Position** for Pawn Structure, Piece Mobility, and King Safety; **Explore** for Openings and Endgames; **Analysis** for engine results. Each study tab identifies the selected position and move. Long panels scroll. [Workspace guide](/help/getting-started/#find-your-way-around).
 
 ## Window styling
 

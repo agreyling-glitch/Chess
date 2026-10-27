@@ -15,6 +15,7 @@ mod opening_classification;
 mod tablebase;
 mod training;
 mod tactical;
+mod nags;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
