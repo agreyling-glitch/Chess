@@ -140,7 +140,6 @@ export class CompanionEngineAdapter {
       const [fen, moves = ''] = text.replace(/^fen /, '').split(' moves ');
       this.position = { fen, moves: moves.trim() ? moves.trim().split(/\s+/) : [] };
     } else if (line.startsWith('go ')) {
-      if (this.active) throw new Error('Previous search has not drained');
       const words = line.split(/\s+/).slice(1);
       let limit;
       if (words[0] === 'infinite') limit = { kind: 'infinite' };
@@ -159,8 +158,15 @@ export class CompanionEngineAdapter {
         if (option && name in options) options[name] = String(Math.max(option.min ?? 1, Math.min(Number(options[name]), option.max ?? Number(options[name]))));
       }
       Object.assign(options, this.overrides);
+      const signature = JSON.stringify({ ...this.position, chess960: Boolean(this.chess960), options, limit });
+      if (this.active) {
+        // Repeated readiness notifications can request the same live turn twice.
+        // Keep the first search and its result rather than disconnecting it.
+        if (!this.active.suppressed && !this.newGame && this.active.signature === signature) return;
+        throw new Error('Previous search has not drained');
+      }
       const search_id = `search-${++this.counter}`, position_id = `position-${this.counter}`;
-      this.active = { search_id, position_id, suppressed: false };
+      this.active = { search_id, position_id, suppressed: false, signature };
       this.send({ type: 'search', session_id: this.session, search_id, position_id, ...this.position,
         chess960: Boolean(this.chess960), new_game: Boolean(this.newGame), options, limit });
       this.newGame = false;

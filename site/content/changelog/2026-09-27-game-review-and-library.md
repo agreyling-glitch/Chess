@@ -17,6 +17,6 @@ version: "2026.09.27"
 ## Improved
 
 - A dark board frame with gold coordinates and piece shadows are enabled by default.
-- The fixed-size New Game window separates **You vs Engine** from **Play Both Sides**. Engine settings use larger traditional tabs for play, realtime analysis, and full-game analysis controls.
+- The fixed-size New Game window separates **vs AI Engine** from **Play Both Sides**. Engine settings use larger traditional tabs for play, realtime analysis, and full-game analysis controls.
 - **Print analysis report** is emphasized at the bottom of Game Analysis; its preview prompt has larger text and a single prominent action. The Game menu now says **Import…**.
 - Notes and partial analysis remain attached to their games while switching among observed games.

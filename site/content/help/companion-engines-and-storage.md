@@ -10,7 +10,7 @@ lastmod: 2026-10-27T00:00:00-05:00
 
 ## Install an engine
 
-Connect Companion using the [Windows setup guide](/help/companion-setup/). Open **Game → Engine settings…** and choose the **+** button next to the engine list.
+Connect Companion using the [Windows setup guide](/help/companion-setup/). Open **Settings → Engine settings…** and choose the **+** button next to the engine list.
 
 **Auto-install** shows packages supported by the selected Companion. Choose a package to download and install. Companion downloads directly from the original publisher, checks the package, and registers the engine. Downloads can continue after closing the window. Engines and any models are stored on the Companion computer.
 
@@ -26,7 +26,7 @@ Renaming an engine changes its display label and keeps its registration identity
 
 ## Import into an archive
 
-Open **Game → Import…** and choose the named Companion in the location list. Choose a supported file with **Browse…**, drag it onto the app, or paste PGN. Review the selection and destination before importing. Choose **Browser** instead if the collection should stay in this browser.
+Open **Game History → Import…** and choose the named Companion in the location list. Choose a supported file with **Browse…**, drag it onto the app, or paste PGN. Review the selection and destination before importing. Choose **Browser** instead if the collection should stay in this browser.
 
 For Scid databases, clearing **Through game** returns the range to the database's last game. Use the full matching set of Scid files, or a supported archive containing that set. Scid import reads the source without changing it.
 
@@ -46,6 +46,11 @@ See [Companion troubleshooting](/help/companion-troubleshooting/) for connection
 
 ## Switch engines
 
-Use the engine list in **Game → Engine settings…**, or the selector beside Analyze, to choose a Companion engine. Your choice appears immediately while its capabilities are prepared. Returning to a previously discovered engine in the same browser session skips the discovery probe. Refreshing installed engines, or changing connections or credentials, clears that cache. First-time discovery and starting the actual engine can still take time.
+Use the engine list in **Settings → Engine settings…**, or the selector beside Analyze, to choose a Companion engine. Your choice appears immediately while its capabilities are prepared. Returning to a previously discovered engine in the same browser session skips the discovery probe. Refreshing installed engines, or changing connections or credentials, clears that cache. First-time discovery and starting the actual engine can still take time.
 
 To compare results already saved for a game, use [Saved Analysis](/help/saved-analysis/) instead of changing the engine for the next run.
+
+
+## Unified game management
+
+The old **Your game archive** window has been retired. Use **Game History → Saved games…** for collections, browsing, metadata, copies, moves, exports and deletion. Choose Browser or a named Companion there. Use **Game History → Backup and Restore…** for backups, **Settings → Companion connection…** for connections, and the Import Games window for folder-import progress.

@@ -272,7 +272,9 @@ canvas { display:block; }
 
 /* Same five directional bevel edges as the Training profiles window. */
 #game-library-dialog:is(dialog),
-#storage-management-dialog.storage-information:is(dialog) {
+#storage-management-dialog.storage-information:is(dialog),
+#storage-management-dialog.metadata-editor:is(dialog),
+#history-backup:is(dialog) {
   border-radius:12px; border-color:#f0d9a8 #43301b #43301b #f0d9a8;
   box-shadow:inset 1px 1px 0 #d2af6f,inset -1px -1px 0 #251d15,
     inset 2px 2px 0 #9d855c,inset -2px -2px 0 #0f1215,
@@ -430,3 +432,55 @@ canvas { display:block; }
 }
 
 #game-library-dialog .game-library-filters > label { display:inline-flex; align-items:center; }
+
+/* Metadata editor: matching raised gold frame and a heavy-grain outer surface. */
+#storage-management-dialog.metadata-editor:is(dialog),
+#history-backup:is(dialog) {
+  width:min(640px,calc(100vw - 28px));padding:24px;background-color:#171a1e;
+  background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.32%22%2F%3E%3C%2Fsvg%3E");background-repeat:repeat;background-size:256px 256px;
+}
+#storage-management-dialog.metadata-editor .game-library-heading h2 {color:#edcf91;margin:0;font-size:22px;}
+#storage-management-dialog.metadata-editor .game-library-heading {margin-bottom:18px;}
+#storage-management-dialog.metadata-editor .game-library-heading button {
+  width:34px;height:34px;padding:0;border:1px solid;border-color:#ecd29a #49351f #332617 #aa8954;
+  border-radius:6px;background:linear-gradient(#3b4145,#20272c);color:#edcf91;
+  box-shadow:inset 1px 1px #ffffff20,inset -1px -1px #000a,1px 2px 3px #0008;
+}
+#storage-management-dialog.metadata-editor .metadata-fields {
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px 18px;
+  padding:20px;margin-top:18px;border:1px solid;border-color:#030609 #59616a #59616a #030609;
+  border-radius:6px;background-color:#10151b;background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.12%22%2F%3E%3C%2Fsvg%3E");background-repeat:repeat;background-size:256px 256px;
+  box-shadow:inset 2px 3px 7px #000c,inset -1px -1px #ffffff0a,0 1px 0 #ffffff14;
+}
+#storage-management-dialog.metadata-editor .metadata-fields label {min-width:0;color:#d9caa9;font-size:13px;font-weight:600;}
+#storage-management-dialog.metadata-editor .metadata-fields :is(input,select) {box-shadow:inset 1px 2px 4px #0008;min-height:36px;}
+#storage-management-dialog.metadata-editor .metadata-fields :disabled {opacity:.65;}
+#storage-management-dialog.metadata-editor .storage-actions button {
+  border-color:#77828a #171d22 #11171c #6b7781;background:linear-gradient(#45505a,#283139);
+  box-shadow:inset 1px 1px #ffffff20,inset -1px -1px #0008,1px 2px 3px #0008;
+}
+#storage-management-dialog.metadata-editor .storage-actions button[type=submit] {
+  color:#241d11;border-color:#ffedbc #745326 #67471b #e4be74;
+  background:linear-gradient(#f1d492,#c09a4e 50%,#a77e32 52%,#d9b05c);font-weight:600;
+}
+
+/* Backup and Restore uses the same textured frame as the metadata editor. */
+#history-backup:is(dialog) {box-sizing:border-box;max-height:calc(100dvh - 32px);overflow:auto;color:#ecebe4;font:14px/1.45 Inter,system-ui,sans-serif;border-width:1px;border-style:solid;}
+#history-backup::backdrop {background:#000b;}
+#history-backup h2 {margin:0 0 18px;color:#edcf91;font-size:22px;}
+#history-backup .history-backup-fields {
+  padding:20px;margin-top:18px;border:1px solid;border-color:#030609 #59616a #59616a #030609;
+  border-radius:6px;background-color:#10151b;background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22256%22%20height%3D%22256%22%3E%3Cfilter%20id%3D%22grain%22%3E%3CfeTurbulence%20type%3D%22fractalNoise%22%20baseFrequency%3D%220.78%200.48%22%20numOctaves%3D%223%22%20seed%3D%2217%22%20stitchTiles%3D%22stitch%22%2F%3E%3CfeColorMatrix%20type%3D%22saturate%22%20values%3D%220%22%2F%3E%3C%2Ffilter%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20filter%3D%22url%28%23grain%29%22%20opacity%3D%220.12%22%2F%3E%3C%2Fsvg%3E");background-repeat:repeat;background-size:256px 256px;
+  box-shadow:inset 2px 3px 7px #000c,inset -1px -1px #ffffff0a,0 1px 0 #ffffff14;
+}
+#history-backup label {display:block;min-width:0;color:#d9caa9;font-weight:600;}
+#history-backup select {display:block;box-sizing:border-box;width:100%;min-height:40px;margin:8px 0 18px;padding:9px 10px;border:1px solid #756443;border-radius:5px;background:#202930;color:#ecebe4;color-scheme:dark;font:inherit;box-shadow:inset 1px 2px 4px #0009;}
+#history-backup p {overflow-wrap:anywhere;}
+#history-backup [role=status]:empty {display:none;}
+#history-backup button {padding:10px 16px;border:1px solid;border-color:#77828a #171d22 #11171c #6b7781;border-radius:6px;background:linear-gradient(#45505a,#283139);color:#ecebe4;font:inherit;cursor:pointer;box-shadow:inset 1px 1px #ffffff20,inset -1px -1px #0008,1px 2px 3px #0008;}
+#history-backup button.primary {color:#241d11;border-color:#ffedbc #745326 #67471b #e4be74;background:linear-gradient(#f1d492,#c09a4e 50%,#a77e32 52%,#d9b05c);font-weight:600;}
+#history-backup button:disabled {opacity:.5;cursor:default;}
+#history-backup :is(button,select):focus-visible {outline:2px solid #edcf91;outline-offset:3px;}
+#history-backup .history-backup-actions {display:flex;flex-wrap:wrap;gap:12px;justify-content:flex-end;margin-top:24px;}
+@media(max-width:480px) {#history-backup:is(dialog){padding:18px;}#history-backup .history-backup-fields{padding:14px;}#history-backup .history-backup-actions button{flex:1;}}
+#history-backup [hidden] {display:none;}

@@ -53,6 +53,8 @@ test('settings engine selector validates selections and discards results after d
     assert.equal(dom.window.document.querySelector('dialog'),null);
     await window.ironwoodSelectCompanionEngine('');
     assert.equal(JSON.parse(window.ironwoodCompanionPollChange()).provider,'builtin');
+    // Refresh invalidates the capability cache so this selection opens a session.
+    await window.ironwoodRefreshCompanionEngines();
     CompanionEngineAdapter.prototype.connect = () => new Promise(resolve => {finish = resolve;});
     const pending = window.ironwoodSelectCompanionEngine(catalog.engines[0].identity);
     disconnectCompanion();

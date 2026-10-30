@@ -141,3 +141,22 @@ test('selection falls back once for older servers and ignores cancelled replies'
  assert.equal((await store.selection({})).length,1);await store.selection({});assert.deepEqual(limits,['1000','100','100']);
  let active=true;const cancelled=library(async()=>{active=false;return {total:1,games:[{id:'a',revision:1}]};});await assert.rejects(cancelled.selection({},()=>active),/cancelled/);
 });
+
+
+test('metadata-only archive edits preserve PGN, analysis and optimistic revision',async()=>{
+ const original=document('metadata');original.metadata.Custom='retain';let request;
+ const store=library(async(path,body)=>{request={path,body};return {id:'metadata',revision:9,document:body.document};});
+ const record=store.record({id:'metadata',revision:8,document:original});
+ const updated=await store.write({...record,metadata:{...record.metadata,White:'Corrected player',Site:'New venue'}});
+ assert.equal(request.path,'archive/games/metadata/update');assert.equal(request.body.revision,8);
+ assert.equal(request.body.document.pgn,original.pgn);assert.equal(request.body.document.record.json,original.record.json);
+ assert.equal(request.body.document.metadata.White,'Corrected player');assert.equal(request.body.document.metadata.Custom,'retain');
+ assert.equal(updated.metadata.Site,'New venue');assert.equal(updated._archive.revision,9);
+});
+
+
+test('destination collection is included in archive imports and browser copies do not delete sources',async()=>{
+ let imported;const store=library(async(path,body)=>{if(path==='archive/import'){imported=body;return {ids:['copied']};}if(path.endsWith('/delete'))throw Error('Copy must not delete');if(path.endsWith('/analysis-runs'))return {runs:[]};return {id:'one',revision:3,document:document('one')};},async(docs,options)=>{assert.equal(options.collection,'browser-collection');return {received:1,duplicates:0,ids:['browser-copy']};});
+ await store.importRecords([document('one').record],'archive-collection');assert.equal(imported.collection,'archive-collection');
+ assert.equal((await store.copyToBrowser(['one'],'browser-collection')).received,1);
+});

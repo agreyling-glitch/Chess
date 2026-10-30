@@ -69,7 +69,7 @@ export class ArchiveLibrary {
   }
   record(game) {
     const record=game.document.record ? structuredClone(game.document.record) : {id:game.id,json:this.prepare(game.document.pgn),category:'imported',favorite:false,updatedAt:game.updated_at};
-    return {...record,...(game.document.analysis_runs?.length?{archiveAnalysisRuns:game.document.analysis_runs}:{}),id:game.id,_archive:{endpoint:this.endpoint,id:game.id,revision:game.revision,document:game.document}};
+    return {...record,metadata:structuredClone(game.document.metadata || {}),...(game.document.analysis_runs?.length?{archiveAnalysisRuns:game.document.analysis_runs}:{}),id:game.id,_archive:{endpoint:this.endpoint,id:game.id,revision:game.revision,document:game.document}};
   }
   async list(isActive=()=>true,onProgress=()=>{}) {
     const records=[], seen=new Set();let after='';
@@ -156,6 +156,7 @@ export class ArchiveLibrary {
     const {_archive,id,...content}=record;
     if(!_archive || _archive.endpoint!==this.endpoint)throw Error('Archive game identity is missing. Refresh and try again.');
     const document=structuredClone(_archive.document);
+    if(record.metadata)document.metadata=structuredClone(record.metadata);
     document.record={...content,id:document.record?.id || id};
     if(document.record.json!==_archive.document.record?.json){const regenerated=browserDocuments([document.record],this.exporter,this.details)[0];document.pgn=regenerated.pgn;document.metadata={...document.metadata,...regenerated.metadata};}
     const updated=await this.request(`archive/games/${id}/update`,{revision:_archive.revision,document});
@@ -164,12 +165,12 @@ export class ArchiveLibrary {
   async remove(records) {
     for(const record of records)await this.request(`archive/games/${record.id}/delete`,{revision:record._archive.revision,...(record._archive.analysis_runs?{analysis_runs:record._archive.analysis_runs}:{})});
   }
-  async importRecords(records) {
+  async importRecords(records,collection=null) {
     const ids=[];
     let batch=[],size=0;
     const commit=async()=>{
       if(!batch.length)return;
-      const result=await this.request('archive/import',{documents:batch});
+      const result=await this.request('archive/import',{documents:batch,...(collection?{collection}:{})});
       if(result.ids?.length!==batch.length)throw Error('Archive did not confirm every destination game. Browser originals were kept.');
       ids.push(...result.ids);batch=[];size=0;
     };
@@ -238,12 +239,15 @@ export class ArchiveLibrary {
     }
     await commit();
   }
-  async moveToBrowser(ids) {
+  async transferToBrowser(ids,collection=null,move=false) {
     const records=[];for(const id of ids){const record=await this.read(id);const result=await this.request(`archive/games/${id}/analysis-runs`);if(result.runs?.length){record._archive.document.analysis_runs=[];for(const run of result.runs)record._archive.document.analysis_runs.push(await this.request(`archive/games/${id}/analysis-runs/${run.id}`));}if(Array.isArray(result.runs))record._archive.analysis_runs=(record._archive.document.analysis_runs||[]).map(run=>[run.id,run.revision]);records.push(record);}
     // Browser commits (including exact duplicates) must succeed before any source deletion.
-    const received=await this.receive(records.map(record=>record._archive.document),{returnIds:true});
+    const received=await this.receive(records.map(record=>record._archive.document),{returnIds:true,...(collection?{collection}:{})});
     if(received.received+received.duplicates!==records.length)throw Error('Browser did not confirm every destination game. Archive originals were kept.');
-    await this.remove(records);return received;
+    if(move)await this.remove(records);return received;
+  }
+  async copyToBrowser(ids,collection=null){return this.transferToBrowser(ids,collection,false);}
+  async moveToBrowser(ids,collection=null){return this.transferToBrowser(ids,collection,true);
   }
 }
 if(typeof window!=='undefined')window.ironwoodCompanionLibrary=async(options={})=>{

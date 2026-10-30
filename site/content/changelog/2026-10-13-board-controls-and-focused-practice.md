@@ -11,7 +11,7 @@ description: "Drag moves, wheel navigation, capture feedback, 3D tactical overla
 - Drag pieces to legal destinations in 2D and 3D, with translucent previews using the current 3D model and camera. Illegal drops, drops outside the board, and Escape cancel the drag; promotions keep the piece chooser.
 - Scroll down over either board to advance through moves and up to go backward. Select an Engine prediction move to navigate that line, then a Game Moves entry to return to game history. Active training and online play disable wheel navigation.
 - Hold the right mouse button while scrolling to zoom in 3D. Shift while right-dragging locks rotation and changes tilt; Shift plus right-button scrolling still zooms.
-- Added saved **Capture dissolve** and **Highlight king in check** preferences under **View → Move feedback**. Capture effects run during live captures only; capture and live-move animations respect system reduced-motion settings.
+- Added saved **Capture dissolve** and **Highlight king in check** preferences under **Settings → Move feedback**. Capture effects run during live captures only; capture and live-move animations respect system reduced-motion settings.
 - Kept active-game controls beneath the board in Focus mode. Training resignation requires confirmation and records a loss. Local two-player draw offers can be accepted or declined, with agreed results saved. Engine opponents do not negotiate draw offers.
 
 ## Tactical Map and practice

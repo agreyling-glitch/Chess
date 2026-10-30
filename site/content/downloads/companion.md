@@ -9,9 +9,13 @@ draft: false
 
 1. **Download and extract.** Save the Windows ZIP and choose **Extract All**. Put the extracted folder somewhere permanent, such as Documents. Keep the `current` folder and its supporting files together.
 2. **Start Companion.** Open `current`, then run **ironwood-companion.exe**. The status window should say **Ready**. No Rust, Node, Python, or Visual Studio installation is required for Companion itself.
-3. **Connect Ironwood.** In Companion, choose **Show token…**. In Ironwood, open **Help → Companion connections…**. Give it a name, enter `http://127.0.0.1:8790` and the connection token, then choose **Connect / Save**.
+3. **Connect Ironwood.** In Companion, choose **Show token…**. In Ironwood, open **Settings → Companion connection…**. Give it a name, enter `http://127.0.0.1:8790` and the connection token, then choose **Connect / Save**.
 
 Keep Companion running while using its engines or archive. [Follow the complete setup guide](/help/companion-setup/).
+
+**Included in Companion 0.1.8:** choose **Start Companion when I sign in**
+in the status window’s Settings row to enable or disable Windows sign-in startup.
+[Read how sign-in startup works](/help/companion-setup/#start-automatically-when-you-sign-in).
 
 ## What you can use it for
 
@@ -30,6 +34,8 @@ The executable does **not** have a Windows publisher signature. Windows may disp
 ## Games, settings, and updates
 
 Games, engines, and settings live separately from the extracted application folder, normally in `%LOCALAPPDATA%\Ironwood\Companion`. The **Archive**, **Engines**, **Import**, and **Reports** links in the status window open the relevant folders.
+
+**Updating from 0.1.4 or 0.1.7:** download and extract the 0.1.8 ZIP, quit Companion from its tray, and replace the application files in the same folder. Preserve your data directory. Those older versions have a restart-path bug in automatic updating; if an attempt fails, rollback retains the previous version. Do not keep retrying that automatic update. After this one-time manual update, 0.1.8 uses the corrected updater.
 
 Use **Check for updates…** in Companion. When a verified compatible update is available, **Update and restart** becomes available. Updates are checked against Ironwood's release key and package checksum. A failed or unavailable update check does not mean your installation is current.
 
@@ -79,7 +85,7 @@ On Windows, in PowerShell:
 
 The example initializes a private `companion-data` directory containing configuration, the archive, and an `owner-token` file. For ongoing use, choose a permanent, private data directory outside the checkout. Keep the server running; stop it with Ctrl+C.
 
-Read `owner-token` privately. In Ironwood, open **Help → Companion connections…** and use that value as the connection token. Use `http://127.0.0.1:8790` when the browser is on the same computer. Connection tokens and allowed website origins remain required. Another computer needs an explicitly configured remote setup; changing the connection name does not make the server reachable.
+Read `owner-token` privately. In Ironwood, open **Settings → Companion connection…** and use that value as the connection token. Use `http://127.0.0.1:8790` when the browser is on the same computer. Connection tokens and allowed website origins remain required. Another computer needs an explicitly configured remote setup; changing the connection name does not make the server reachable.
 
 For the Windows desktop development package, run `scripts/package-companion.ps1` from the repository root in PowerShell. It builds into `output/companion/current`. Stop a running copy before replacing it and preserve its configured data directory.
 
@@ -94,3 +100,6 @@ Companion is licensed under **GPL-3.0-or-later**. Retain license and dependency 
 ## Need a hand?
 
 Start with [connection and startup troubleshooting](/help/companion-troubleshooting/). Never include your connection token, owner-token file, or private configuration in a screenshot or support report.
+
+
+**Companion 0.1.8** includes a configurable server-side backup folder, SQLite backup/restore for large archives, and collection filtering in Saved Games. See [backup and restore help](/help/saved-games-and-backups/).

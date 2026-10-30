@@ -57,7 +57,14 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
 
   const button = text => [...document.querySelectorAll('button')].find(b => b.textContent === text);
   const click = text => { if(['Browser','Archive'].includes(text)){const field=document.querySelector('[aria-label="Game storage location"]');field.value=text==='Browser'?'browser':'http://localhost:8790';field.dispatchEvent(new window.Event('change'));return;} const b = button(text); assert.ok(b, text); b.click(); };
-  const settle = () => new Promise(resolve => setTimeout(resolve, 15));
+  const settle = async () => {
+    await new Promise(resolve => setTimeout(resolve, 15));
+    const prompt=document.querySelector('#storage-management-dialog');
+    if(prompt?.querySelector('h2')?.textContent.startsWith('Destination collection')) {
+      prompt.querySelector('form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));
+      await new Promise(resolve => setTimeout(resolve, 15));
+    }
+  };
   assert.equal(document.querySelectorAll('.game-library-select').length, 10);
   const savedWindow=document.querySelector('#game-library-dialog'), heading=savedWindow.querySelector('.game-library-heading');
   savedWindow.getBoundingClientRect=()=>({left:50,top:60,width:600,height:500});

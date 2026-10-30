@@ -4,7 +4,7 @@ description: "Read Stockfish's suggestion and the sample continuation without tr
 category: "analysis"
 keywords: [best move, engine line, PV, principal variation, variation, multipv]
 weight: 50
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-28T00:00:00-05:00
 ---
 
 ## Best move
@@ -16,6 +16,39 @@ The **best move** is Stockfish's current top choice in a position. It is the mov
 An **engine line** is a sequence of moves Stockfish expects if both sides continue with strong play. Engine programs call this the **principal variation**, or **PV**. Read it as “one likely strong continuation,” not as a prediction that a human opponent will play those exact moves.
 
 For example, `1. e4 e5 2. Nf3` means White moves a pawn to e4, Black responds by moving a pawn to e5, and White moves a knight to f3. The letters name pieces and board squares. Clicking through the line on the board is often easier than reading the notation alone.
+
+## Compare the played move with the best line
+
+After full-game analysis, select a move and look at **Move Analysis** in the
+Analysis Summary. The header shows its move-quality badge and CPL lost when a
+numerical loss is available. A bar marks **Equal** at zero and shows the change
+between **Before** and **After**. **Swing** is the absolute difference in pawns;
+all scores use White's perspective. Mate scores remain labeled as mate results
+instead of being converted into a numerical swing.
+
+The played-line heading names the player who made the selected move, alongside
+**ENGINE PREFERRED**. Its border, heading, and first-move highlight match the move's
+quality: gold for Best, green for Good, yellow for Inaccuracy, orange for Mistake,
+and red for Blunder. The engine-preferred line uses green. The engine line stays readable during
+playback. In a narrow panel, the two lines stack vertically and complete move
+chips wrap onto the next row. Its **best-line estimate** is the stored engine search score for that
+continuation, not a new search after its first move. A short description identifies
+confirmed move details such as a capture or check; it does not infer an unverified
+tactical plan.
+
+Compact **first / previous / Play / next / last** controls sit inside the
+**ENGINE PREFERRED** card, below its line and evaluation. They replay the saved engine line without changing the played game or
+saved analysis. Right-click **Play** to choose the speed. **Return to game
+moves** appears beneath these controls only while a saved engine-line preview is active.
+Click it to stop playback and restore the game position you were reviewing.
+Scrolling over the board or Game Moves also leaves this preview and steps through
+the played game. Scroll down for the next move, or up for the previous move.
+The Game Moves scrollbar remains available to browse the list.
+
+Use the review filter to step through **Mistakes & blunders**, **Blunders only**,
+or **All critical moves** (including inaccuracies). The Previous and Next buttons
+skip moves outside that selection and stop at its ends. **Try the best move**
+opens the existing best-move exercise when the engine recommends an alternative.
 
 ## Multiple lines
 

@@ -9,7 +9,7 @@ weight: 13
 
 ## Choose a theme
 
-Open **View → Board → Theme…** to browse the **2D Pieces** and **3D Boards** tabs. The chooser always opens on **2D Pieces**, so browsing flat-board themes does not load 3D previews. Select **3D Boards** to load those previews. Switching tabs leaves your current board unchanged. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
+Open **Settings → Board → Theme…** to browse the **2D Pieces** and **3D Boards** tabs. The chooser always opens on **2D Pieces**, so browsing flat-board themes does not load 3D previews. Select **3D Boards** to load those previews. Switching tabs leaves your current board unchanged. Click a preview to apply a theme; double-click to apply it and close the chooser. Choosing a card also switches to its 2D or 3D board view.
 
 The flat-board themes are System (Unicode), Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. Several themes include coordinated square, frame, and coordinate colors:
 
@@ -57,7 +57,7 @@ Rotation, reset, and zoom change only your view. Normal scrolling changes the di
 
 Choose **Hybrid Marble** in the **2D Pieces** tab for a flat, square board with shaded pieces rendered from a more top-down 3D view. The pieces rise above their square centers. Board clicks, move arrows, drawings, and [tablebase previews](/help/syzygy-tablebases/) work as they do on the other flat boards. Hybrid Marble uses fixed piece images; use a full 3D theme when you want to rotate or zoom the camera.
 
-Open the Hybrid Marble card's **Adjust** button, or **View → Board → Theme adjustments…**, to customize it:
+Open the Hybrid Marble card's **Adjust** button, or **Settings → Board → Theme adjustments…**, to customize it:
 
 | Setting | Choices and behavior |
 | --- | --- |
@@ -72,7 +72,7 @@ The usual flat-board size, side-color, gradient, outline, and shadow controls al
 
 ## Adjust one theme
 
-Click a theme card’s **Adjust** button to select it and open its adjustments. You can also use **View → Board → Theme adjustments…** for the current theme. Changes appear immediately and save separately for each theme on this device. Switching themes restores that theme’s settings. **Reset this theme** restores only the selected theme’s defaults.
+Click a theme card’s **Adjust** button to select it and open its adjustments. You can also use **Settings → Board → Theme adjustments…** for the current theme. Changes appear immediately and save separately for each theme on this device. Switching themes restores that theme’s settings. **Reset this theme** restores only the selected theme’s defaults.
 
 ## 2D adjustments
 

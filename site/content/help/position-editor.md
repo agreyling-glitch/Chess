@@ -13,7 +13,7 @@ To bring in a puzzle from a different website, follow [Import a chess puzzle fro
 
 ## Open it
 
-Choose **Tools → Position Editor** to begin with the current board. If you are creating a new local game, choose **Game → New Game → Local → Starting position: Custom FEN → Edit board / Import screenshot**. This route returns the edited FEN to the New Game dialog.
+Choose **Tools → Position Editor** to begin with the current board. If you are creating a new local game, choose **Play → New Play → Local → Starting position: Custom FEN → Edit board / Import screenshot**. This route returns the edited FEN to the New Game dialog.
 
 ## Arrange pieces
 

@@ -1,13 +1,13 @@
 ---
-title: "Training vs AI"
-description: "Build a training profile, play both colors, and follow your progress against Stockfish."
+title: "Train against AI"
+description: "Choose a training engine, build a profile, play both colors, and follow your progress."
 category: "using-ironwood"
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-30T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
 
-Choose **Game → New game → Training vs AI**, enter a profile name, choose **Starting target Elo** from 1320–3190, and select **Create profile**. The default is 1320. Start the game to play White against Stockfish at your chosen target. Games use the standard starting position with unlimited thinking time for you. Stockfish gets up to one second of search time per move. Unfinished training games from earlier versions also become untimed when reopened.
+Choose **Training → Train against AI…** and select Built-in Stockfish or a supported installed Companion engine. Each profile retains its engine and options. For Stockfish, enter a profile name, choose **Starting target Elo** from 1320–3190, and select **Create profile**. The default is 1320. Start the game to play White against Stockfish at your chosen target. Games use the standard starting position with unlimited thinking time for you. Stockfish gets up to one second of search time per move. Unfinished training games from earlier versions also become untimed when reopened.
 
 Each profile starts with separate White and Black ratings at its chosen starting target. After a completed game, the next game uses the other color. A color's next opponent target follows its rating. **Overall** progress is the lower of the two ratings, so advancing requires results with both colors.
 
@@ -21,7 +21,7 @@ To resign, choose **Resign…** beneath the board, then confirm **Resign game**.
 
 ## Your profile and progress
 
-Open **Game → Training profiles…** or **Profile & progress** in Game Moves. Choose a profile to see:
+Open **Training → Train against AI…** or **Profile & progress** in Game Moves. Choose a profile to see:
 
 - White, Black, and overall rating histories.
 - Win/draw/loss totals for each color and rating changes over its last ten games.
@@ -51,7 +51,7 @@ When **Your next practice focus** recommends a phase, choose **Puzzle difficulty
 
 **Saved Games → Training** keeps training games separate from My Games, Imported Games, and Observed games. Filter the Training section by profile to replay games, add notes, and run analysis. Each game records the profile, color, opponent target, and rating change.
 
-Profiles and their completed-result histories are included in **Storage → Backup all data**. Restoring a backup merges profile results by their unique game IDs to avoid counting a result twice. Deleting a game from Saved Games removes its replay record; its completed rating result and aggregate analysis remain in the profile history. **Reset all local data** removes profiles too.
+Profiles and their completed-result histories are included in **Game History → Backup and Restore**. Restoring a backup merges profile results by their unique game IDs to avoid counting a result twice. Deleting a game from Saved Games removes its replay record; its completed rating result and aggregate analysis remain in the profile history. **Reset all local data** removes profiles too.
 
 Profiles are stored in this browser on this device. Make a backup before clearing browser data or moving devices. Native development previews keep profiles in memory for the current session.
 

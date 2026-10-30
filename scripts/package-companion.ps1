@@ -123,6 +123,9 @@ Use ironwood-server.exe for command-line/headless operation (--tray is optional)
 The tray offers status, Open Ironwood, folders, Copy token and a masked Show token
 window. Click Reveal explicitly to see the credential; closing masks it again.
 Quit Companion from the tray to stop the server and its engine sessions.
+In the status window, Settings > Start Companion when I sign in adds or removes
+your Windows Startup shortcut. No administrator permission is needed. Keep the
+application folder in a stable location, and turn this off before deleting it.
 On Windows the default data
 directory is %LOCALAPPDATA%\Ironwood\Companion. Use --help for commands.
 Read docs/phase-1-operations.md for credentials, rotation and shutdown.

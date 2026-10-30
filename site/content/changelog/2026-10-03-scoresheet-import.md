@@ -8,7 +8,7 @@ version: "2026.10.03"
 
 ## Added
 
-- **Enter scoresheet** in **Game → Import**, with four panels for the board preview, validated move list, reference photo, and White/Black move entry.
+- **Enter scoresheet** in **Game History → Import**, with four panels for the board preview, validated move list, reference photo, and White/Black move entry.
 - Local photo selection, paste, and drop, with zoom and drag controls for reading handwriting.
 - Live validation that distinguishes incomplete, illegal, and missing moves. Correcting an earlier entry rechecks later moves without deleting them.
 - Automatic local saving of moves, game details, and the photo. Drafts restore after refreshing or reopening the app; **Discard draft** clears them after confirmation.

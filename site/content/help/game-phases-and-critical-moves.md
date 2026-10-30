@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-10-28T00:00:00-05:00
 title: "Game phases and critical moves"
 description: "How Ironwood groups moves and chooses moments for a closer look."
 category: "analysis"
@@ -33,7 +33,16 @@ For example, if each player has one rook, one bishop, and one knight, the total 
 
 The classification uses the board **before each move**. A capture that reduces the total to 26 or below therefore changes the phase for the following move. Material is checked again for each move; a promotion can raise the total back above the threshold.
 
-These are approximate study categories, shared by the expanded graph, phase summaries, and printed reports. They may differ from how a player describes the position. The phase summary shows accuracy and average CPL for moves in each group; use those numbers to help choose what to study.
+These are approximate study categories, shared by the expanded graph, phase summaries, and printed reports. They may differ from how a player describes the position.
+
+In **Analysis Summary**, the accuracy and average CPL comparison charts show
+**Overall**, **Opening**, **Middlegame**, and **Endgame** groups. Each group places
+White's gold bar beside Black's sage green bar, with values and per-player phase
+move counts. Higher accuracy and lower average CPL are better. A faint gold
+background marks the current phase; click a player's phase bar to jump to that
+player's first move in it. A phase the game never entered is marked **Not reached**.
+See [Accuracy and CPL](/help/accuracy-and-cpl/#compare-the-players) for reading the
+charts, missing values, and the two different scales.
 
 ## Phases on the expanded graph
 

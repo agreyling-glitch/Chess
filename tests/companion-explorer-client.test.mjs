@@ -19,5 +19,5 @@ test('generation changes reset matching pages, partial results refresh and disco
   const explorer=new ArchiveExplorer(()=>connection,{clock:()=>time,createClient:()=>({request:async path=>{paths.push(path);return {generation,indexing,moves:[],next:'second-page',recentGames:[]};}})});
   explorer.poll('fen');await flush();assert.equal(JSON.parse(explorer.poll('fen')).indexing,true);explorer.page(true);explorer.poll('fen');await flush();assert.ok(paths.at(-1).includes('game_after=second-page'));
   generation=2;indexing=false;time=1000;explorer.poll('fen');await flush();assert.equal(explorer.cursor,'');assert.equal(explorer.data,null);explorer.poll('fen');await flush();assert.equal(JSON.parse(explorer.poll('fen')).generation,2);
-  connection=null;assert.match(JSON.parse(explorer.poll('fen')).error,/Connect through Storage/);
+  connection=null;assert.match(JSON.parse(explorer.poll('fen')).error,/Connect through Settings/);
 });

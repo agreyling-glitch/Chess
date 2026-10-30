@@ -272,7 +272,12 @@ test('finger captures the requested player response across chunks and stops at t
   const archive = archiveEvents.find(event => event.type === 'archived_game');
   assert.ok(archive.pgn.includes('[White "GriffySr"]'));
   assert.ok(archive.pgn.includes('[Black "Alice"]'));
-  assert.ok(archive.pgn.includes('1. e4 e5 2. Nf3 Nc6 1/2-1/2'));
+  assert.ok(archive.pgn.replace(/\s*\{[^}]*\}/g,'').includes('1. e4 e5 2. Nf3 Nc6 1/2-1/2'));
+  assert.ok(archive.pgn.includes('[TimeControl "120+12"]'));
+  assert.ok(archive.pgn.includes('e4 { [%emt 0:00:01.000] [%clk 0:02:11.000] }'));
+  assert.ok(archive.pgn.includes('e5 { [%emt 0:00:02.000] [%clk 0:02:10.000] }'));
+  assert.ok(archive.pgn.includes('Nf3 { [%emt 0:00:01.000] [%clk 0:02:22.000] }'));
+  assert.ok(archive.pgn.includes('Nc6 { [%emt 0:00:01.000] [%clk 0:02:21.000] }'));
   assert.equal(archive.preview, false);
   window.ironwoodFicsSendCommand('ironwood:preview GriffySr 23');
   assert.equal(JSON.parse(connection.sent.at(-1)).value, 'smoves GriffySr 23');
@@ -280,4 +285,7 @@ test('finger captures the requested player response across chunks and stops at t
   const previewEvents = [];
   for (let json; (json = window.ironwoodFicsPoll());) previewEvents.push(JSON.parse(json));
   assert.ok(previewEvents.some(event => event.type === 'archived_game' && event.preview === true));
+  const preview=previewEvents.find(event=>event.type==='archived_game');
+  assert.ok(preview.pgn.includes('[%emt 0:00:01.000]'));
+  assert.ok(!preview.pgn.includes('[%clk'),'A new history request cannot reuse the previous time control');
 });

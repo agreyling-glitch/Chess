@@ -1,0 +1,24 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+test('Browser collections create, group games, filter, rename and delete without changing original games',async()=>{
+ const dom=new JSDOM('<body></body>',{url:'http://collections.test/play/'});const {window}=dom;
+ Object.assign(globalThis,{window,document:window.document,localStorage:window.localStorage});
+ window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new window.Event('close'));};
+ window.ironwoodCompanionFeatureEnabled=()=>false;
+ const records=new Map(['a','b'].map(id=>[id,{id,json:JSON.stringify({board:'8/8/8/8/8/8/8/K6k w - - 0 1',history:[],live_moves:['e4'],review_pgn:`[White "${id}"]\n[Black "Other"]\n\n1. e4 *`}),category:'imported',updatedAt:1}]));const original=records.get('a').json;
+ const db={transaction(_name,mode){const tx={objectStore(){return {get(id){const request={};queueMicrotask(()=>{request.result=structuredClone(records.get(id));request.onsuccess();});return request;},getAll(){const request={};queueMicrotask(()=>{request.result=[...records.values()].map(record=>structuredClone(record));request.onsuccess();});return request;},put(record){records.set(record.id,structuredClone(record));},openCursor(){const request={},values=[...records.values()];let index=0;const next=()=>queueMicrotask(()=>{request.result=index<values.length?{value:structuredClone(values[index++]),continue:next}:null;request.onsuccess();});next();return request;}};}};if(mode==='readwrite')setTimeout(()=>tx.oncomplete?.(),0);return tx;}};
+ globalThis.indexedDB=window.indexedDB={open(){const request={};queueMicrotask(()=>{request.result=db;request.onsuccess();});return request;}};
+ const source=await readFile(new URL('../web/game-storage.js',import.meta.url),'utf8');const module=await import(`data:text/javascript,${encodeURIComponent(source)}`);
+ await window.ironwoodOpenGameLibrary();const settle=()=>new Promise(resolve=>setTimeout(resolve,35));
+ const button=text=>[...document.querySelectorAll('button')].find(button=>button.textContent===text&&!button.disabled);
+ const submit=async(value)=>{const dialog=document.querySelector('#storage-management-dialog');if(value!==undefined)dialog.querySelector('input').value=value;dialog.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await settle();};
+ button('New collection').click();await settle();await submit('Openings');let groups=module.browserCollections();assert.equal(groups[0].name,'Openings');const id=groups[0].id;
+ const entry=document.querySelector('.game-library-entry')||document.querySelector('.game-library-list').firstElementChild;const checkbox=entry.querySelector('input[type=checkbox]');checkbox.checked=true;checkbox.dispatchEvent(new window.Event('change'));await settle();
+ button('Add to collection').click();await settle();await submit();assert.deepEqual(records.get('a').collectionIds,[id]);assert.equal(records.get('a').json,original);
+ let filter=document.querySelector('#game-library-dialog [aria-label="Collection"]');filter.value=id;filter.dispatchEvent(new window.Event('change'));await settle();assert.equal(document.querySelectorAll('.game-library-title').length,1);
+ button('Rename collection').click();await settle();await submit();await submit('Study');assert.equal(module.browserCollections()[0].name,'Study');
+ button('Delete collection').click();await settle();await submit();await submit();assert.deepEqual(module.browserCollections(),[]);assert.equal(records.size,2);assert.equal(records.get('a').json,original);assert.deepEqual(records.get('a').collectionIds,[]);
+ document.querySelector('#game-library-dialog').close();dom.window.close();
+});

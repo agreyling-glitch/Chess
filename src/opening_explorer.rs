@@ -24,7 +24,7 @@ extern "C" {
     fn signed_in() -> bool;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodArchiveExplorer)]
     fn archive_lookup(fen: &str) -> String;
-    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenCompanionArchive)]
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodManageCompanionConnection)]
     fn archive_connect();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenArchiveExplorerFilters)]
     fn archive_filters();
@@ -112,6 +112,16 @@ struct Game {
 struct Player {
     name: String,
 }
+// Navigation is shared; GPU resources stay in their owning context.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn copy_view_state(from: &egui::Context, to: &egui::Context) {
+    let state = from.data(|data| data.get_temp::<State>(id()));
+    to.data_mut(|data| {
+        data.remove::<State>(id());
+        if let Some(state) = state { data.insert_temp(id(), state); }
+    });
+}
+
 fn id() -> egui::Id {
     egui::Id::new("opening_explorer_state")
 }

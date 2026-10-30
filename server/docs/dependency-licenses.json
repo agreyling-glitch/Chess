@@ -608,7 +608,7 @@
   },
   {
     "name": "ironwood-server",
-    "version": "0.1.4",
+    "version": "0.1.8",
     "license": "GPL-3.0-or-later",
     "repository": null,
     "targets": [

@@ -660,3 +660,31 @@ test('Browse .7z uses the same File bridge as drop, bypasses the text-size cap a
  assert.deepEqual(await choose(),{text:'1. e4 e5 *'});assert.equal(calls,1);
  target.ironwoodOpenSevenZipFile=async()=>{throw Error('Damaged archive');};assert.match((await choose()).error,/Damaged archive/);dom.window.close();
 });
+
+
+test('3D board reconnects after OAuth severs opener and the main page reloads', () => {
+  const channels = new Set();
+  class Channel {
+    constructor(name) { this.name = name; channels.add(this); }
+    postMessage(data) { for (const peer of channels) if (peer !== this && peer.name === this.name) peer.onmessage?.({ data }); }
+    close() { channels.delete(this); }
+  }
+  const data = new Map();
+  const storage = { getItem: key => data.get(key), setItem: (key, value) => data.set(key, value) };
+  const main = environment(), view = environment('http://localhost/play/?view=3d-companion&boardChannel=test-tab');
+  const prepare = env => Object.assign(env.target, { BroadcastChannel: Channel, sessionStorage: storage, crypto: { randomUUID: () => 'test-tab' } });
+  prepare(main); prepare(view);
+  install3dCompanion(main.target); install3dCompanion(view.target);
+  main.target.ironwoodPublish3dPosition('before sign-in');
+  assert.equal(view.target.ironwoodRead3dPosition(), 'before sign-in');
+  [...channels][0].close();
+  const returned = environment(); prepare(returned); install3dCompanion(returned.target);
+  returned.target.ironwoodPublish3dPosition('after sign-in');
+  assert.equal(view.target.ironwoodRead3dPosition(), 'after sign-in');
+  const other = environment();
+  Object.assign(other.target, { BroadcastChannel: Channel, sessionStorage: { getItem: () => 'other-tab' } });
+  install3dCompanion(other.target); other.target.ironwoodPublish3dPosition('unrelated board');
+  assert.equal(view.target.ironwoodRead3dPosition(), 'after sign-in');
+  for (const env of [main, view, returned, other]) env.dom.window.close();
+  for (const channel of channels) channel.close();
+});

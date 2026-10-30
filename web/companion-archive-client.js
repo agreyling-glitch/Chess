@@ -51,7 +51,8 @@ export function browserDocuments(records, exporter, details) {
       const match = game.review_pgn?.match(new RegExp(`\\[${name}\\s+"((?:[^"\\\\]|\\\\.)*)"\\]`));
       if (match) metadata[name] = match[1];
     }
-    const {archiveAnalysisRuns,...original}=record;
+    Object.assign(metadata,record.metadata || {});
+    const {archiveAnalysisRuns,collectionIds,...original}=record;
     return { format: 'ironwood-companion-game', version: 1, record: structuredClone(original), pgn: exporter(record.json, 'annotated'), metadata,...(archiveAnalysisRuns?.length?{analysis_runs:archiveAnalysisRuns}:{}) };
   });
 }

@@ -102,6 +102,44 @@ impl ChessApp {
     }
 
     #[cfg(target_arch = "wasm32")]
+    pub(super) fn new_game_engine_selector(&mut self, ui: &mut egui::Ui, width: f32) {
+        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let busy = catalog["busy"] == true;
+        let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
+            if self.new_game_opponent == OpponentEngine::Companion { self.engine_config.companion_identity.clone() } else { String::new() }
+        });
+        let previous = identity.clone();
+        ui.vertical(|ui| {
+            ui.set_width(width);
+            ui.horizontal(|ui| {
+            ui.add_enabled_ui(!busy && !self.engine_settings_locked(), |ui| {
+                egui::ComboBox::from_id_salt("new_game_engine")
+                    .width((width - 46.0).max(90.0)).truncate()
+                    .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.engine_config.label()))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
+                        if let Some(engines) = catalog["engines"].as_array() {
+                            for engine in engines {
+                                if let (Some(id),Some(label)) = (engine["identity"].as_str(),engine["label"].as_str()) {
+                                    ui.selectable_value(&mut identity,id.to_owned(),label);
+                                }
+                            }
+                        }
+                    });
+            });
+            if Self::companion_settings_icon(ui, !busy, "Refresh installed engines", 2).clicked() { refresh_companion_engines(); }
+            });
+            if let Some(status) = catalog["status"].as_str().filter(|status| !status.is_empty()) { ui.add(egui::Label::new(status).wrap()); }
+        });
+        if identity != previous {
+            select_companion_engine(&identity);
+            self.poll_companion_provider();
+            ui.ctx().request_repaint();
+        }
+        if busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)); }
+    }
+
+    #[cfg(target_arch = "wasm32")]
     pub(super) fn companion_engine_selector(&mut self, ui: &mut egui::Ui) {
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
         let busy = catalog["busy"].as_bool().unwrap_or(false);

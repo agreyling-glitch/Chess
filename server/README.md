@@ -1,5 +1,9 @@
 # Ironwood Companion
 
+Current version: **0.1.8**. Includes optional Windows sign-in startup, server-side
+archive backups, and unified collection filtering. The public Windows release is **0.1.8**,
+with release-key-verified updates.
+
 The native Rust server foundation, UCI bridge, persistent game archive and archive
 opening explorer and owner-local Syzygy probing are implemented. Tablebase probing
 is opt-in through `tablebase_directories`; see [Phase 5 setup](docs/phase-5-tablebases.md).
@@ -12,6 +16,12 @@ Linux, macOS and QNAP builds remain developer-supported.
 Unzip the portable package and run `start-companion.cmd` or `ironwood-companion.exe`
 for the Windows tray. The status window can be closed while Companion keeps running;
 use the gold pawn tray icon for status, folder shortcuts, token controls, or Quit.
+In the status window's **Settings** row, enable **Start Companion when I sign in**
+to add a shortcut to your Windows Startup folder. Clear it to remove the shortcut.
+This applies to your Windows account, needs no administrator permission, and starts
+after sign-in. It preserves the current data directory and configuration path.
+Keep the application folder in a stable location; if you move it, clear and enable
+the option from its new location. Clear the option before deleting the portable app.
 The token starts masked and is displayed only after Reveal; closing its window
 removes the displayed value. Copy token uses the Windows clipboard, whose history
 and synchronization tools may retain copied values.
@@ -128,3 +138,27 @@ Real Syzygy comparison instructions and recorded Windows development evidence:
 
 Portable-package results and Linux Docker/clean-Windows runners:
 [Phase 6 platform validation](docs/phase-6-platform-validation.md).
+
+
+## Server-side archive backups (0.1.6+)
+
+Set **Backup folder** in Companion's Windows status window and choose **Save folder**.
+You can also configure the selected server using **Settings → Companion connection → Backup folder…** or **Game History → Backup and Restore… → Configure backup folder…**.
+The absolute path belongs to the Companion machine, not the browser. A NAS share or mounted volume must be readable and writable by the account running Companion. The default is `backups` beside the archive database. JSON configuration uses `backup_directory` (relative paths resolve beside config.json).
+
+Game History's Backup and Restore window creates SQLite snapshots directly in that folder. Restores select an existing snapshot from the same folder; to restore on another machine, copy the snapshot into that Companion's configured backup folder first. Archives of millions of games never pass through browser memory. Snapshots include games, original data, analyses, collections and indexes, but not owner tokens, engine executables, or machine configuration. Browser backups retain their separate JSON format.
+
+One backup or restore runs at a time. The archive is reserved while copying or validating, and folder imports wait; engines keep running. Jobs continue if the browser window closes. The window polls progress and reports completion or failure. Snapshots are integrity-checked before publication; incomplete files are not offered for restore. Restore validates the snapshot, requires the current archive to have no games or collections, and uses SQLite's transactional backup API. Backup files are never silently replaced. There is no automatic retention/deletion policy.
+
+API (owner token, exact Origin and protocol header required):
+- `GET /api/v1/archive/backups/settings`: configured folder.
+- `POST /api/v1/archive/backups/settings` with `{"folder":"absolute server path"}`: persist folder.
+- `GET /api/v1/archive/backups`: available `.sqlite3` files and current job/progress.
+- `POST /api/v1/archive/backups` with `{"action":"backup"}` or `{"action":"restore","file":"listed backup filename"}`: start a background job.
+
+
+## Collections in Saved Games (0.1.8+)
+
+Saved Games manages collections for Browser and each selected Companion: create, rename, delete (keeping games), filter, and add/remove games. Games can belong to multiple collections. Browser backups preserve the local collection registry and membership; Companion SQLite snapshots already include collections and memberships. Copy/move dialogs choose a destination collection, and moves remove source games only after destination storage and membership have succeeded.
+
+Companion 0.1.8 adds the indexed `collection` filter to archive/library queries and invalidates cached counts after membership changes. Older Companions must be updated for filtering in the unified library. Collection CRUD continues to use revision-checked archive/collections endpoints. The old archive window no longer exposes collection management.

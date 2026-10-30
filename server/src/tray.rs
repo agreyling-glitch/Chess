@@ -12,11 +12,16 @@ use windows_sys::Win32::{
     Foundation::*,
     Graphics::{Dwm::DwmSetWindowAttribute, Gdi::*},
     System::{DataExchange::*, LibraryLoader::GetModuleHandleW, Memory::*},
-    UI::{Controls::*, Input::KeyboardAndMouse::{EnableWindow,GetCapture,SetCapture,ReleaseCapture,SetFocus}, Shell::*, WindowsAndMessaging::*},
+    UI::{Controls::*, Input::KeyboardAndMouse::{EnableWindow,GetCapture,SetCapture,ReleaseCapture,SetFocus,GetFocus}, Shell::*, WindowsAndMessaging::*},
 };
 
 #[path = "companion_console.rs"]
 mod console;
+#[path = "companion_startup.rs"]
+mod startup;
+const START_AT_SIGN_IN: usize = 28;
+const BACKUP_FOLDER:usize=29;
+const SAVE_BACKUP_FOLDER:usize=30;
 const COPY_ADDRESS: usize = 27;
 const CALLBACK: u32 = WM_APP + 1;
 const STATUS: usize = 10;
@@ -283,6 +288,20 @@ impl State {
     }
     fn action(&mut self, command: usize) {
         match command {
+            SAVE_BACKUP_FOLDER => {
+                let mut value=vec![0u16;4097];
+                let length=unsafe{GetWindowTextW(GetDlgItem(self.status_window,BACKUP_FOLDER as i32),value.as_mut_ptr(),value.len() as i32)};
+                match self.control.configure_backup_folder(&String::from_utf16_lossy(&value[..length as usize]),&self.configuration_path){
+                    Ok(folder)=>{unsafe{SetWindowTextW(GetDlgItem(self.status_window,BACKUP_FOLDER as i32),wide(&friendly_path(&folder)).as_ptr());}notice("Backup folder saved. Backups and restores use this folder on this Companion.");}
+                    Err(error)=>notice(error.1),
+                }
+            }
+            START_AT_SIGN_IN => {
+                let result = startup::enabled().and_then(|enabled|
+                    startup::set_enabled(!enabled, &self.directory, &self.configuration_path));
+                if let Err(message) = result { notice(&message); }
+                unsafe { console::refresh_startup(self.status_window); }
+            }
             CHECK_UPDATE => {
                 if let Err(message) = self.control.updates.check() {
                     self.update_message = message.into();
@@ -363,6 +382,9 @@ impl State {
     }
     fn refresh_status(&mut self,activate:bool) {
         if !activate && (self.status_window.is_null() || unsafe {IsWindowVisible(self.status_window)==0 || IsIconic(self.status_window)!=0}) {return;}
+                unsafe { let edit=GetDlgItem(self.status_window,BACKUP_FOLDER as i32);
+                    if !edit.is_null() && GetFocus()!=edit {if let Some(folder)=self.control.backups.folder(){SetWindowTextW(edit,wide(&friendly_path(&folder)).as_ptr());}}
+                }
                 let count = std::fs::read(&self.configuration_path)
                     .ok()
                     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
@@ -661,7 +683,7 @@ fn control(
             WS_CHILD
                 | WS_VISIBLE
                 | WS_TABSTOP
-                | if class == "BUTTON" {
+                | if class == "BUTTON" && style & 0xf != BS_AUTOCHECKBOX as u32 {
                     (style & !0xf) | BS_OWNERDRAW as u32
                 } else {
                     style
@@ -820,7 +842,7 @@ unsafe extern "system" fn window_proc(
     match message {
         WM_SIZE => unsafe {if console::is_console(window){console::layout(window);RedrawWindow(window,std::ptr::null(),null_mut(),RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN);return 0;} DefWindowProcW(window,message,wparam,lparam)},
         WM_GETMINMAXINFO => unsafe {if console::is_console(window){let info=&mut *(lparam as *mut MINMAXINFO);info.ptMinTrackSize=POINT{x:940,y:760};return 0;} DefWindowProcW(window,message,wparam,lparam)},
-        WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT => unsafe {
+        WM_CTLCOLORSTATIC | WM_CTLCOLOREDIT | WM_CTLCOLORBTN => unsafe {
             if console::is_console(window){return console::control_color(wparam as HDC,lparam as HWND); }
             SetTextColor(wparam as HDC, GOLD);
             SetBkColor(wparam as HDC, INSET);

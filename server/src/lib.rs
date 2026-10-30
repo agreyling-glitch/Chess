@@ -20,6 +20,7 @@ pub mod archive;
 mod archive_binary;
 pub mod analysis_runs;
 mod archive_http;
+mod archive_backups;
 mod archive_library;
 mod archive_pgn;
 pub mod config;
@@ -56,6 +57,8 @@ struct Shared {
 pub struct Control {
     pub updates: updates::Manager,
     pub imports: import_queue::Manager,
+    pub backups: archive_backups::Manager,
+    configuration_lock: Arc<Mutex<Vec<config::EngineConfig>>>,
     engine_work: Arc<EngineWork>,
     engines: Arc<tokio::sync::Semaphore>,
     max_engines: usize,
@@ -80,12 +83,13 @@ impl EngineActivity {
 impl Drop for EngineActivity {fn drop(&mut self){self.set(false);}}
 
 impl Control {
+    pub fn configure_backup_folder(&self,value:&str,path:&std::path::Path)->Result<std::path::PathBuf,archive::Error>{self.backups.configure(value,path,&self.configuration_lock)}
     fn engine_activity(&self)->EngineActivity{EngineActivity{work:self.engine_work.clone(),busy:false}}
     pub(crate) fn engine_idle(&self)->bool{self.engine_work.count.load(std::sync::atomic::Ordering::SeqCst)==0&&self.engine_work.last.lock().unwrap().elapsed()>=Duration::from_secs(2)}
     /// Hold every engine slot and the registration slot until shutdown starts.
     /// This closes the idle-check/new-engine race without interrupting a session.
     pub fn reserve_update(&self) -> Option<(tokio::sync::OwnedSemaphorePermit, tokio::sync::OwnedSemaphorePermit, tokio::sync::OwnedSemaphorePermit)> {
-        if self.stopping() { return None; }
+        if self.stopping() || self.backups.busy() { return None; }
         let engines = self.engines.clone().try_acquire_many_owned(self.max_engines as u32).ok()?;
         let registration = self.registrations.clone().try_acquire_owned().ok()?;
         let imports=self.imports.reserve()?;
@@ -105,6 +109,7 @@ impl Control {
     }
     pub async fn drained(&self) {
         self.imports.drained().await;
+        self.backups.drained().await;
         let _permit = self
             .sockets
             .clone()
@@ -145,9 +150,12 @@ pub fn app_with_registration(
     ));
     let tablebases = tablebases::Service::new(config.tablebase_directories.clone());
     let engines = Arc::new(tokio::sync::Semaphore::new(config.engine_limits.max_processes));
+    let registry=registration::Registry::new(config.engines.clone(),path);
     let control = Control {
+        configuration_lock:registry.engines.clone(),
         updates: updates::Manager::default(),
         imports: import_queue::Manager::default(),
+        backups: archive_backups::Manager::new(config.backup_directory.clone().or_else(|| config.archive.as_ref().and_then(|p| p.parent()).map(|p| p.join("backups")))),
         engine_work: Arc::default(),
         engines: engines.clone(), max_engines: config.engine_limits.max_processes,
         registrations: Arc::new(tokio::sync::Semaphore::new(1)),
@@ -158,7 +166,7 @@ pub fn app_with_registration(
         background: Arc::new(tokio::sync::Semaphore::new(1)),
     };
     let shared = Shared {
-        registry: registration::Registry::new(config.engines.clone(), path),
+        registry,
         tablebases,
         archive: config
             .archive
@@ -181,6 +189,7 @@ pub fn app_with_registration(
             "/healthz",
             get(|| async { Json(serde_json::json!({"status":"ok"})) }),
         )
+        .merge(archive_backups::routes())
         .route("/readyz", get(readiness))
         .route("/api/v1/capabilities", get(capabilities))
         .route("/api/v1/archive/import-progress", get(folder_import_progress))
@@ -999,6 +1008,7 @@ mod tests {
             engine_limits: config::EngineLimits::default(),
             archive: None,
             tablebase_directories: vec![],
+            backup_directory: None,
             automatic_import: true,
         }
     }
@@ -1082,6 +1092,8 @@ mod tests {
             tickets: Arc::default(),
             sockets: sockets.clone(),
             control: Control {
+                backups: archive_backups::Manager::new(None),
+                configuration_lock:Arc::default(),
                 updates: updates::Manager::default(),
                 imports: import_queue::Manager::default(),
                 engine_work: Arc::default(),

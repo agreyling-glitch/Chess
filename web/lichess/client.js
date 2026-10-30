@@ -342,7 +342,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       await ratingHistory(refresh, username, target);
       if (!current()) return;
       try {
-        const games = await api(`/api/games/user/${encodeURIComponent(username)}?max=12&opening=true&lastFen=true&moves=true&pgnInJson=true&ongoing=false`, null, 'GET', 'application/x-ndjson');
+        const games = await api(`/api/games/user/${encodeURIComponent(username)}?max=12&opening=true&lastFen=true&moves=true&pgnInJson=true&clocks=true&ongoing=false`, null, 'GET', 'application/x-ndjson');
         if (!current()) return;
         target.recentGames = games;
       } catch (err) { if (current()) target.profileError = `Recent games: ${err.message}`; }
@@ -389,7 +389,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
         (data.stat[key]?.results || []).slice(0, 5).map(result => result.gameId)))].filter(id => /^[a-zA-Z0-9]{8}$/.test(id));
       if (ids.length) {
         // The /api route supports browser requests and returns all notable games at once.
-        const games = await api('/api/games/export/_ids?moves=true&pgnInJson=true&opening=true',
+        const games = await api('/api/games/export/_ids?moves=true&pgnInJson=true&opening=true&clocks=true',
           ids.join(','), 'POST', 'application/x-ndjson', ids.length);
         if (!current()) return;
         for (const game of games) {

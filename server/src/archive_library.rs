@@ -224,6 +224,7 @@ pub fn synchronize(db: &mut Connection) -> Result<()> {
 #[serde(default, deny_unknown_fields)]
 pub struct Filter {
     pub category: String,
+    pub collection: String,
     pub player: String,
     pub profile: String,
     pub search: String,
@@ -256,6 +257,7 @@ fn prefix_end(prefix:&str)->Option<String> {
 pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     if [
         &filter.category,
+        &filter.collection,
         &filter.player,
         &filter.profile,
         &filter.search,
@@ -336,6 +338,7 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
     if filter.special == "short-games" { predicates.push("moves < 4".to_owned()); }
     if category=="favorites" {predicates.push("favorite=1".to_owned());}
     else if !category.is_empty() {predicates.push(format!("category={}",bind(category)));}
+    if !filter.collection.is_empty() {predicates.push(format!("id IN(SELECT game_id FROM memberships WHERE collection_id={})",bind(&filter.collection)));}
     if !player.is_empty() {
         let param=bind(player);
         let mut clause=format!("white={param} OR black={param}");
@@ -368,7 +371,7 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
         |r| r.get(0),
     )?;
     let count_key = serde_json::to_string(&json!([
-        "total-source-date-v2", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice,filter.special
+        "total-source-date-v2", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice,filter.special,filter.collection
     ]))?;
     let total = cached(&tx, &count_key, || {
         Ok(json!(tx.query_row(
@@ -490,6 +493,17 @@ mod tests {
         crate::analysis_runs::initialize(&db).unwrap();
         initialize(&db).unwrap();
         db
+    }
+    #[test]
+    fn collection_filter_selection_and_cache_follow_membership_without_deleting_games(){
+      let mut db=database();let first=archive::import(&mut db,vec![document(1),document(2)],None).unwrap();
+      let ids=first["ids"].as_array().unwrap().iter().map(|id|id.as_str().unwrap().to_owned()).collect::<Vec<_>>();
+      let created=archive::collection_edit(&mut db,None,0,"create","Study",&[]).unwrap();let id=created["id"].as_str().unwrap().to_owned();
+      let filter=||Filter{collection:id.clone(),..Default::default()};assert_eq!(query(&mut db,filter()).unwrap()["total"],0);
+      let revision=archive::collections(&db).unwrap()[0].revision;archive::collection_edit(&mut db,Some(&id),revision,"add","",&ids[..1]).unwrap();
+      assert_eq!(query(&mut db,filter()).unwrap()["total"],1);assert_eq!(query(&mut db,Filter{selection:true,..filter()}).unwrap()["games"].as_array().unwrap().len(),1);
+      let revision=archive::collections(&db).unwrap()[0].revision;archive::collection_edit(&mut db,Some(&id),revision,"remove","",&ids[..1]).unwrap();assert_eq!(query(&mut db,filter()).unwrap()["total"],0);
+      let revision=archive::collections(&db).unwrap()[0].revision;archive::collection_edit(&mut db,Some(&id),revision,"delete","",&[]).unwrap();assert_eq!(query(&mut db,Filter::default()).unwrap()["total"],2);
     }
     #[test]
     fn filter_index_migration_is_idempotent_and_preserves_annotations_and_runs() {

@@ -1,8 +1,9 @@
 ---
 title: "Set up Companion for Windows"
 description: "Install Companion, connect your browser, and understand where your games are saved."
+lastmod: 2026-10-28T00:00:00-05:00
 category: "settings"
-keywords: [Companion, Windows, install, download, setup, token, connect, address, multiple companions]
+keywords: [Companion, Windows, install, download, setup, token, connect, address, multiple companions, startup, sign in, 0.1.5]
 weight: 61
 draft: false
 ---
@@ -12,6 +13,26 @@ draft: false
 Use the [official Companion download page](/downloads/companion/) for the Windows package, requirements, and publisher-signature information. Extract the complete ZIP into a permanent folder. Open `current` and run **ironwood-companion.exe**. Look for **Ready** in the status window.
 
 The tray icon keeps Companion available after closing its status window. Use **Quit** from the tray menu to stop it completely. The browser cannot use Companion while it is stopped.
+
+## Start automatically when you sign in
+
+**Companion 0.1.5 and later** adds **Settings → Start Companion when I sign in**
+in its status window. The current public Windows release is **0.1.8**.
+
+Check the box to create a shortcut in your Windows account's Startup folder.
+Clear it to remove the shortcut. No administrator permission is needed. Companion
+starts after you sign in following a reboot, using the same data directory and
+configuration. It does not start before Windows sign-in.
+
+This is optional and applies only to your Windows account. Closing the status
+window still leaves Companion running in the tray. Choosing **Quit** stops it
+for this session; clear the checkbox if you also want to stop future automatic
+starts. If changing the shortcut fails, Companion shows an error and restores
+the checkbox to the actual shortcut state.
+
+Keep the extracted application folder in a permanent location. If you move it,
+clear and enable the option from the new location to update the shortcut. Clear
+the option before deleting the portable application.
 
 ## Connect the browser
 
@@ -39,3 +60,14 @@ The address is where Companion runs. An allowed origin is the website permitted 
 ## Next steps
 
 Read [Engines and storage with Companion](/help/companion-engines-and-storage/) to add an engine or import a collection. For connection failures, see [Companion troubleshooting](/help/companion-troubleshooting/).
+
+
+## Backup folder
+
+Companion 0.1.6 and later add a **Backup folder** setting in the Windows status window. Enter an absolute path and choose **Save folder**. You can also edit it through **Settings → Companion connection… → Backup folder…** for a connected server. Use a path on the machine running Companion, including an accessible NAS share or mounted volume. The account running Companion needs permission to read and write there.
+
+Use **Game History → Backup and Restore…** to select a named Companion and create or restore a database snapshot in its backup folder. This keeps large archives out of browser memory. See [Saved games and backups](/help/saved-games-and-backups/). These tools are included in public Windows release 0.1.8.
+
+## Update older installations
+
+Version 0.1.8 corrects the Windows updater’s restart filename. If you have 0.1.4 or 0.1.7, perform one manual update using the [current ZIP](/downloads/companion/): quit the tray application, replace its application files in the same folder, and keep the configured data directory. Automatic attempts from those older versions roll back because their existing helper cannot complete restart. After the manual update, future checks use the corrected updater.

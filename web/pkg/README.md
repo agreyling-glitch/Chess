@@ -54,7 +54,7 @@ adds no third-party code or asset license to Ironwood's distribution.
 
 ## Import from Lichess
 
-In the browser app, choose **Game → Import…** and enter a Lichess username
+In the browser app, choose **Game History → Import…** and enter a Lichess username
 or an `https://lichess.org/…` game link, then click **Fetch games**. Username
 imports fetch the latest 20 completed games without requiring login. Click
 **Continue** to choose games in the existing batch importer, which skips
@@ -68,7 +68,7 @@ games cannot be imported. No additional libraries or Lichess assets are bundled.
 
 ## Play on Lichess
 
-Choose **Game → New game → Online → Lichess**, or open **Lichess-Online → Lichess
+Choose **Play → Online via Lichess**, or open **Lichess-Online → Lichess
 lobby and game controls…**. Sign in on Lichess to grant the Board API and
 challenge and follow permissions. Ironwood uses OAuth with PKCE; it never asks for your
 Lichess password. The token stays in session storage, separate from saved games
@@ -233,7 +233,7 @@ reduce uploads at the cost of more draw calls, especially with outlines enabled.
 
 ## Play online through FICS
 
-Open `/play/`, choose **New game → Online**, and use the FICS lobby window to seek
+Open `/play/`, choose **Play → Online via FICS**, and use the FICS lobby window to seek
 an unrated game, join a listed game, or challenge a FICS handle. Ironwood connects
 as a guest by default. The lobby also lets you sign in to an existing FICS account
 or open the [official FICS registration page](https://www.freechess.org/Register/).
@@ -273,7 +273,7 @@ worker active, a complete online visit caches its files for offline revisits.
 After an app update or browser cache clearing, visit it online again.
 
 The optional built-in background image is also excluded from installation
-downloads. Selecting or restoring **Default** in **View → Background…** loads
+downloads. Selecting or restoring **Default** in **Settings → Background…** loads
 the image and uses the normal runtime cache for offline reuse. It may need an
 online load again after an app update or browser cache clearing. Uploaded
 backgrounds remain in their separate IndexedDB library.
@@ -344,7 +344,7 @@ Open **Lichess-Online → Player profile…**, then expand **Following** to sear
 
 Player profiles support multiple independent windows for comparison. Use **Load in new window** with the desired username, or open **Lichess-Online → Player profile…** again. Each window keeps its own player, graph filters, size, and position, with a fluorescent green border. Record counters wrap as complete blocks on narrow windows. Follow status stays synchronized across open profiles.
 
-Profile biography and website links open in new tabs. The FIDE rating opens the linked FIDE player profile when Lichess provides an ID, or the FIDE ratings directory otherwise. Click a recent-game mini board to use the Saved Games move viewer directly from memory, with step controls and autoplay. **Review on Ironwood** closes profile overlays and opens a temporary analysis session without adding the game to Saved Games; **Game → Save current game** explicitly saves the full reviewed game, even from its starting position. Starting or importing a normal game resumes normal saving. Active online play and training must finish first.
+Profile biography and website links open in new tabs. The FIDE rating opens the linked FIDE player profile when Lichess provides an ID, or the FIDE ratings directory otherwise. Click a recent-game mini board to use the Saved Games move viewer directly from memory, with step controls and autoplay. **Review on Ironwood** closes profile overlays and opens a temporary analysis session without adding the game to Saved Games; **Play → Save current game** explicitly saves the full reviewed game, even from its starting position. Starting or importing a normal game resumes normal saving. Active online play and training must finish first.
 
 ### Expanded engine prediction windows
 
@@ -362,8 +362,16 @@ The expanded evaluation graph supports hover/click inspection, Previous/Next, a 
 
 ### Workspace and documentation
 
-Fine linen and procedural paper grain distinguish recessed study surfaces without adding third-party artwork. Engine predictions use plain table headings and a centered gray Expand button; snapshot boards have frames and coordinates. New Game groups setup by mode and supports vertical resizing without growing horizontally when Training vs AI is selected. Saved Games controls, Notes, Draw on board, Tactical Map, engine settings, and training profiles use the shared visual treatment.
+Fine linen and procedural paper grain distinguish recessed study surfaces without adding third-party artwork. Engine predictions use plain table headings and a centered gray Expand button; snapshot boards have frames and coordinates. Play opens local setup or online lobbies directly. Training → Train against AI opens training profiles separately. Local setup uses a 3D gold frame and a full-width sunken settings section with an installed-engine dropdown and refresh icon. Saved Games controls, Notes, Draw on board, Tactical Map, engine settings, and training profiles use the shared visual treatment.
 
 Puzzles now synchronize with the **main board**, using its appearance. Played attempts are saved in the Puzzles library category separately from device-wide progress. Save a temporary profile review explicitly before switching to a puzzle; reopen saved games from the library afterward.
 
 The Help center supports article-text search with multiple terms, topic filters, quick links, and per-article contents. Dedicated guides cover player profiles, expanded graphs, and recovery. Features includes navigation across the current workflows. Optional analytics still excludes automatic freeze reporting; discussing a watchdog did not enable one.
+
+### Current menus and library tools
+
+Play opens vs AI Engine, Online via Lichess, Online via FICS, and Self-play. Online choices open their lobby directly; opening the signed-out Lichess lobby does not start OAuth. Training contains Train against AI and Lichess Puzzles. Game History contains Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. Settings starts with Engine settings and Companion connection. The former Storage menu and Your game archive window are retired.
+
+The AI setup dropdown lists Built-in Stockfish and installed engines from named Companions. A refresh icon reloads the catalog. Live play prevents duplicate search requests while a search is active. Game Moves shows elapsed times in its Time column and available remaining clocks on hover; wheel navigation keeps visible rows stationary. PGN timing preservation also applies to Lichess reviews and FICS history when their clock data is available.
+
+Saved Games manages Browser and Companion collections, metadata, and copies/moves with destination collection choices. A game in multiple collections remains one stored record. Browser backups preserve collections; Companion database snapshots run in the selected server’s configurable backup folder. The gallery includes updated analysis charts, move times, library, online, training, and puzzle-progress screenshots.

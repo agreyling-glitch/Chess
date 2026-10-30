@@ -1,6 +1,6 @@
 # Installing Ironwood Companion on QNAP Container Station
 
-Internal private preview instructions, updated October 25, 2026.
+Developer-supported QNAP instructions, updated October 30, 2026.
 
 Run Ironwood Companion on the QNAP NAS and connect to it from Ironwood on your
 Windows computer. This setup uses the NAS address `192.168.0.2`, Container Station 3,
@@ -371,3 +371,23 @@ the generic error alone does not identify its SQLite cause.
 For a failed ZIP import, keep the original ZIP and its report. After correcting
 the configuration, copy the ZIP back into the top-level Import folder to retry.
 The queue's internal working folder is named `.processing` (with a leading dot).
+
+
+## Upgrade an existing installation to 0.1.6
+
+Use the prepared **upgrade** runner rather than creating another application:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File C:\Users\Dad\git\Chess\scripts\upgrade-companion-qnap.ps1 -NasHost 192.168.0.2 -Username admin
+```
+
+It uses `output/companion-qnap/ironwood-companion-qnap-0.1.6-build.tar.gz` and verifies the source checksum after upload. Enter the NAS password only in the SCP and SSH prompts. Progress and the final status are saved locally in `output/companion-qnap/upgrade-session.log` and `upgrade-status.json`.
+
+The runner identifies the existing `ironwood-companion` application and records its actual configuration and mounts. It builds a versioned `ironwood-companion:qnap-0.1.6` image while the existing service stays running, tests Linux backup code, and checks health and token persistence using disposable storage. It then checks available recovery space, stops only Companion, and writes a private compressed recovery copy of all `/data` content, including nested Import/Reports mounts. This recovery copy contains the owner token: keep its private NAS directory protected and do not share it.
+
+Only the application's image field is changed. All existing volumes, bind mounts, settings and ports are retained. After recreation, the runner checks health, exact mount identity, and unchanged config/token checksums. The previous image and recovery files remain on the NAS. It does not remove volumes or automatically prune old images. If the application uses an unsupported compose layout, it stops rather than guessing. If verification fails after recreation, leave the volumes and recovery copy intact and review the reported error before starting or restoring anything.
+
+0.1.6 adds server-side SQLite backups for large archives. Reconnect the QNAP in Ironwood and open **Game History → Backup and Restore…**. Its default backup folder is inside `/data`, so it uses the existing persistent data volume. Folder settings must name a path **inside the container**. To use a different NAS shared folder, first add a writable bind mount for that folder and grant access to UID/GID 10001; preserve every existing mount. Do not use an unmounted host `/share/...` path as the container's backup setting.
+
+
+If a source kit has already been uploaded, the runner accepts `-ResumeRemoteDirectory /share/Public/ironwood-companion-upgrade-<recorded identifier>`. It uploads a small corrected script bundle and uses a short SSH command, avoiding long encoded command lines. Enter the SCP and SSH passwords locally. The NAS job is detached from the SSH transport, keeps a private `upgrade-run.log`, and writes an `upgrade-result` exit code. A running-job lock prevents a duplicate upgrade; reconnecting attaches to its existing log. Do not manually start a second recreation while a job is active. Local streamed output is in `output/companion-qnap/upgrade-remote.log`.

@@ -137,6 +137,8 @@ function Test-Ready([string]$Executable, [string]$Address, $Process) {
     return $false
 }
 function Start-Companion([string]$Folder, $Request, [string]$Pending) {
+    # Accept only the two authenticated package entry points, never a path/object.
+    if ($Request.executable -isnot [string] -or $Request.executable -notin @('ironwood-server.exe','ironwood-companion.exe')) { throw 'Invalid Companion restart executable' }
     # Original arguments are stored as data, never evaluated as shell code.
     $arguments = @($Request.args)
     if ($Pending) { $arguments += @('--update-pending', $Pending) }

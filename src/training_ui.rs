@@ -447,7 +447,7 @@ impl ChessApp {
         self.reset_for_side(side);
         self.review_positions = vec![self.board];
         self.local_clock = None;
-        let opponent = session.opponent_label();
+        let opponent = session.engine.label().to_owned();
         self.review_white_player = if side == PlayerSide::White {
             session.profile_name.clone()
         } else {
@@ -1067,7 +1067,7 @@ impl ChessApp {
         let mut detached = false;
         let maximize_id = egui::Id::new("training_profiles_maximized");
         let mut maximized = ctx.data(|data| data.get_temp::<bool>(maximize_id).unwrap_or(false));
-        let mut window = egui::Window::new("Training profiles").id(egui::Id::new(("training_profiles", maximized)))
+        let mut window = egui::Window::new("Train against AI").id(egui::Id::new(("training_profiles", maximized)))
             .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(!maximized).movable(!maximized)
             .default_pos(egui::pos2(48.0,48.0))
             .default_size(Vec2::new(780.0, (ctx.content_rect().height()-96.0).clamp(240.0,800.0)))
@@ -1089,7 +1089,7 @@ impl ChessApp {
             ui.spacing_mut().item_spacing.y = 8.0;
             ui.horizontal(|ui| {
                 ui.add_sized([(ui.available_width()-122.0).max(80.0),28.0],
-                    egui::Label::new(RichText::new("Training profiles").size(21.0).strong()).selectable(false).truncate());
+                    egui::Label::new(RichText::new("Train against AI").size(21.0).strong()).selectable(false).truncate());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close Training Profiles").clicked() { close=true; }
                     if !Self::is_training_companion() && Self::glossy_board_button(ui, if maximized { "❐" } else { "□" }, false, true)
@@ -1162,7 +1162,7 @@ impl ChessApp {
                     ui.label(format!("{} · {} · {} vs {} · {} to {} ({:+})", r.session.completed_at.as_deref().unwrap_or("").get(..10).unwrap_or(""), r.session.side.label(), r.result, r.session.opponent_label(), r.session.rating_before, r.session.rating_after.unwrap_or(r.session.rating_before), r.session.rating_after.unwrap_or(r.session.rating_before)-r.session.rating_before));
                 }
                 ui.add_space(16.0);
-                ui.label("Open Saved Games > Training to replay games, add notes, and analyze mistakes. Profiles and progress are included in Storage > Backup all data.");
+                ui.label("Open Saved Games > Training to replay games, add notes, and analyze mistakes. Profiles and progress are included in Game History > Backup and Restore.");
                 });
             });
             let paper=Self::paper_grain_texture(ui.ctx());
@@ -1343,7 +1343,7 @@ mod tests {
         // Historical timed training results remain supported.
         app.local_clock = Some(LocalClock {
             white: 600.0, black: 0.0, increment: 5.0,
-            flagged_white: Some(false), updated_at: ChessApp::animation_time(),
+            flagged_white: Some(false), turn_elapsed: 0.0, updated_at: ChessApp::animation_time(),
         });
         app.settle_training();
         assert_eq!(app.training_profiles.selected().unwrap().results.len(), 2);

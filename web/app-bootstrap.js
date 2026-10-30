@@ -1,10 +1,12 @@
 import { installCompanionFeature } from './companion-feature.js';
+import { installSidebarPopout } from './sidebar-popout.js';
 // Keep optional tools off the board's startup path. wasm-bindgen calls these
 // window functions synchronously, including polls before a tool has loaded.
 export function installDeferredTools(target, loadModule, asset = path => path) {
   install3dCompanion(target);
   installImportFilePicker(target);
   installCompanionFeature(target);
+  installSidebarPopout(target);
   let folderProgressLoading=false;
   target.ironwoodCompanionImportProgress=()=>{
     if(!target.ironwoodCompanionFeatureEnabled())return '';
@@ -53,6 +55,7 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     };
     return { load, action };
   };
+  tool('/history-backup.js', 'Backup and Restore').action('ironwoodOpenHistoryBackup');
   const fics = tool('/fics/bridge.js', 'FICS');
   const companionEngines = tool('/companion-engines.js', 'Companion engines');
   for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine', 'ironwoodManageCompanionEngines']) companionEngines.action(method);
@@ -68,8 +71,6 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     }
     return '{"engines":[],"busy":true,"status":"Loading engines…"}';
   };
-  tool('/companion-archive.js', 'Companion archive').action('ironwoodOpenCompanionArchive');
-  target.ironwoodCompanionArchiveConfiguration = () => null;
   const archiveLibrary = tool('/companion-library.js', 'Archive storage');
   const deferredLibrary = async options => {
     if (!target.ironwoodCompanionFeatureEnabled()) throw new Error('Companion testing is disabled.');
@@ -386,18 +387,47 @@ export function install3dCompanion(target) {
     if (!ficsChild) target.alert('Allow pop-ups for Ironwood to open the FICS console.');
     return !!ficsChild;
   };
-  target.ironwoodPublish3dPosition = value => { if (!companion) state = value; };
+  // OAuth navigation can sever window.opener. Keep a tab-specific, same-origin
+  // board channel alive across the main page's reload; no credentials travel here.
+  let boardChannel, boardChannelId, remoteBoard = '';
+  try {
+    if (target.BroadcastChannel && target.sessionStorage) {
+      boardChannelId = companion
+        ? new URL(target.location.href).searchParams.get('boardChannel')
+        : target.sessionStorage.getItem('ironwood.3d.channel');
+      if (!companion && !boardChannelId) {
+        boardChannelId = target.crypto.randomUUID();
+        target.sessionStorage.setItem('ironwood.3d.channel', boardChannelId);
+      }
+      if (boardChannelId && (!companion || view === '3d-companion')) {
+        boardChannel = new target.BroadcastChannel(`ironwood-3d-${boardChannelId}`);
+        boardChannel.onmessage = ({ data }) => {
+          if (companion && data?.type === 'position' && typeof data.value === 'string') remoteBoard = data.value;
+          if (!companion && data?.type === 'request') boardChannel.postMessage({ type: 'position', value: state });
+        };
+        if (companion) boardChannel.postMessage({ type: 'request' });
+        target.addEventListener?.('pagehide', () => boardChannel.close(), { once: true });
+      }
+    }
+  } catch { /* Direct opener access remains available if browser storage is disabled. */ }
+  target.ironwoodPublish3dPosition = value => {
+    if (!companion) {
+      state = value;
+      boardChannel?.postMessage({ type: 'position', value });
+    }
+  };
   target.ironwoodRead3dPosition = () => {
     if (!companion) return state;
     try {
       return target.opener && !target.opener.closed
-        ? target.opener.ironwoodRead3dPosition() : '';
-    } catch { return ''; }
+        ? target.opener.ironwoodRead3dPosition() : remoteBoard;
+    } catch { return remoteBoard; }
   };
   target.ironwoodOpen3dCompanion = () => {
     if (child && !child.closed) { child.focus(); return true; }
     const url = new URL(target.location.href);
     url.search = '?view=3d-companion';
+    if (boardChannelId) url.searchParams.set('boardChannel', boardChannelId);
     url.hash = '';
     child = target.open(url.href, '_blank', 'popup,width=1000,height=900,resizable=yes,scrollbars=no');
     if (!child) {
@@ -495,6 +525,9 @@ export async function startChessApp({
     target.ironwoodPrepareArchivedPgn = app.prepare_archived_pgn;
     target.ironwoodValidateScoresheet = app.validate_scoresheet_pgn;
     target.ironwoodPreviewScoresheet = app.preview_scoresheet;
+    target.ironwoodBeginStudyPanel = app.begin_study_panel;
+    target.ironwoodRenderStudyPanel = app.render_study_panel;
+    target.ironwoodDockStudyPanel = app.dock_study_panel;
     target.ironwoodCreateScidImport = (...parts) => new app.ScidImport(...parts);
     target.ironwoodCreateScid5Reader = names => new app.Scid5Reader(names);
     loading?.remove();

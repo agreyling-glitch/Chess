@@ -1,6 +1,7 @@
 ---
 title: "Move labels"
 description: "Understand Best, Good, Inaccuracy, Mistake, and Blunder in Ironwood."
+lastmod: 2026-10-28T00:00:00-05:00
 category: "analysis"
 keywords: [best, good, inaccuracy, mistake, blunder, quality, threshold, classification]
 weight: 30
@@ -21,3 +22,23 @@ Ironwood converts evaluations into an estimate of winning chances before setting
 If the played move matches Stockfish's recommended move, Ironwood marks its quality loss as zero. Forced mate situations receive special treatment: finding or escaping mate is rewarded, while allowing or missing a forced mate is heavily penalized. Results may change after deeper verification.
 
 Use a label as a pointer to a position worth studying. Look at the board and the [engine line](/help/engine-line/) before deciding why the move mattered.
+
+## Compare move quality by player
+
+Expand **Move quality** in **Analysis Summary** after full-game analysis. Each
+player has a stacked horizontal bar showing the share of their classified moves
+in each category. The legend uses Ironwood's category colors: gold for Best,
+green for Good, yellow for Inaccuracy, orange for Mistake, and red for Blunder.
+
+The total beside the player's name counts classified moves. Segment widths show
+proportions, so each player's bar fills the same width even if their move totals
+differ. Counts appear inside segments when there is room; the breakdown below
+always lists every category, including zeros. Hover over a segment for its count
+and percentage. Click a segment or a nonzero count below it to jump to that
+player's next matching move.
+
+**Forced mate missed** and **Forced mate allowed** cards show totals across both
+players. Finding or escaping a forced mate also gets a card when present. Click
+a nonzero card to jump to the next matching move. These events are already
+included in the move-quality classifications; do not add the cards to the bar
+totals as extra moves.

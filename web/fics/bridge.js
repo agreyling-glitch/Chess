@@ -1,4 +1,4 @@
-import { parseStyle12, parseFicsChunk, parseFicsMoveRow, parseFicsRating } from './protocol.js';
+import { parseStyle12, parseFicsChunk, parseFicsMoveRow, parseFicsTimedMoveRow, parseFicsTimeControl, ficsHistoryPgn, parseFicsRating } from './protocol.js';
 
 let socket = null;
 let buffer = '';
@@ -100,13 +100,14 @@ function handleLine(line) {
     const header = text.match(/^\s*([A-Za-z]+)(?:\([^)]*\))*\s+\([^)]*\)\s+vs\.\s+([A-Za-z]+)(?:\([^)]*\))*\s+\(/i);
     if (header) { archiveRequest.white = header[1]; archiveRequest.black = header[2]; }
     if (archiveRequest.white) {
-      const moves = parseFicsMoveRow(text);
-      if (moves) archiveRequest.moves.push(...moves);
+      const control=parseFicsTimeControl(text);
+      if(control)archiveRequest.timeControl=control;
+      const row=parseFicsTimedMoveRow(text);
+      if(row)archiveRequest.moves.push(...row.moves);
       const result = text.match(/^\s*\{[^}]*\}\s+(1-0|0-1|1\/2-1\/2|\*)\s*$/);
       if (result) {
         const request = archiveRequest; archiveRequest = null;
-        const notation = request.moves.map((move, index) => `${index % 2 === 0 ? `${index / 2 + 1}. ` : ''}${move}`).join(' ');
-        emit({type:'archived_game',preview:request.preview,pgn:`[Event "FICS history game"]\n[Site "freechess.org"]\n[White "${request.white}"]\n[Black "${request.black}"]\n[Result "${result[1]}"]\n\n${notation} ${result[1]}`});
+        emit({type:'archived_game',preview:request.preview,pgn:ficsHistoryPgn(request,result[1])});
       }
     } else if (/no such|not.*registered|not found|no.*game|private|not available/i.test(text)) {
       emit({type:'archive_error',message:text}); archiveRequest = null;
@@ -186,6 +187,7 @@ function handleLine(line) {
       white: board.white, black: board.black, side, observing,
       last_move: lastCoordinateMove(board.lastMove),
       last_san: board.lastSan,
+      elapsed_time: fields[28],
       move_number: board.moveNumber,
       white_time: board.whiteTime, black_time: board.blackTime });
     return;
@@ -296,7 +298,7 @@ window.ironwoodFicsSendCommand = command => {
       archiveRequest = null;
       fingerRequest = { target: finger[2], kind: finger[1].toLowerCase() === 'history' ? 'player_history' : 'finger', lines: [], reading: false };
     }
-    if (/^smoves [A-Za-z]{3,17} \d+$/.test(command)) archiveRequest = {white:'',black:'',moves:[],preview:!!preview};
+    if (/^smoves [A-Za-z]{3,17} \d+$/.test(command)) archiveRequest = {white:'',black:'',moves:[],timeControl:null,preview:!!preview};
     const observe = command.match(/^observe\s+(.+)$/i);
     if (observe && observedGames.size >= 10 && !observedGames.has(Number(observe[1]))) {
       emit({ type: 'line', message: 'Ironwood can observe at most 10 games.' });

@@ -11,7 +11,7 @@ This performance pass reduces the work Ironwood does before the board appears an
 
 The web app's Wood and shared Marble/Glass models and textures now live outside its WebAssembly package. The existing CC0 files total 5.79 MB. Another 1.67 MB of Marble, Wood, and Glass piece images for Hybrid Marble also loads separately. These are source asset sizes, not measured savings in compressed downloads.
 
-Open **View → Board → Theme…** and the chooser starts on **2D**. Browsing flat-board themes does not load 3D previews; selecting **3D** loads those previews. Switching tabs leaves the current board unchanged until you choose a theme.
+Open **Settings → Board → Theme…** and the chooser starts on **2D**. Browsing flat-board themes does not load 3D previews; selecting **3D** loads those previews. Switching tabs leaves the current board unchanged until you choose a theme.
 
 Downloads have a usable fallback. Hybrid piece images temporarily use Merida, while a 3D board keeps the selected 2D board available until its artwork is ready. Failed downloads offer **Retry**. Complete theme downloads are cached separately from app updates and can be reused offline while the browser retains them. Installing the app alone does not download every theme.
 

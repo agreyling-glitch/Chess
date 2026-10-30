@@ -221,6 +221,7 @@ impl ChessApp {
                 let _ = self.sync_puzzle_position(session);
                 state.synced_board = Some(session.board);
                 if let Some(solved) = result { state.record(solved); }
+
             }
         }
         self.selected = None;
@@ -313,7 +314,7 @@ impl ChessApp {
                 ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Puzzles").size(19.0).strong());
+                    ui.label(RichText::new("Lichess Puzzles").size(19.0).strong());
                     ui.label("(");
                     if ui.link("by Lichess").on_hover_text("Open Lichess puzzle data and licensing in a new tab").clicked() {
                         ui.ctx().open_url(egui::OpenUrl::new_tab("https://database.lichess.org/#puzzles"));
@@ -437,20 +438,9 @@ impl ChessApp {
                     });
                     Self::paint_sunken_border(ui, card.response.rect);
                 } else if state.tab == 2 {
-                    ui.label("Missed or assisted puzzles saved on this device. A clean retry removes them from this list.");
-                    let mut retry = None;
-                    egui::ScrollArea::vertical().id_salt("puzzle_mistakes").max_height(120.0).show(ui, |ui| {
-                        for record in state.history.iter().rev().filter(|r| !r.solved) {
-                            if ui.add_enabled(!state.loading, egui::Button::new(
-                                RichText::new(format!("Retry {} · {}", record.data.puzzle.id, record.data.puzzle.rating))
-                                    .strong().color(Color32::from_rgb(30, 26, 20)))
-                                .fill(Color32::from_rgb(211, 173, 98))
-                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
-                                .corner_radius(6.0).min_size(Vec2::new(150.0, 40.0)).raised_gold()).clicked() { retry = Some(record.data.clone()); }
-                        }
-                        if !state.history.iter().any(|r| !r.solved) { ui.label("No missed puzzles saved yet."); }
-                    });
-                    if let Some(data) = retry { match Session::new(data) { Ok(session) => state.session = Some(session), Err(error) => state.error = error } }
+                    let count = state.history.iter().filter(|r| !r.solved).count();
+                    ui.heading(format!("Review mistakes · {count}"));
+                    ui.label("Retry missed or assisted puzzles. A clean solve clears a puzzle from this list.");
                 } else {
                     let solved = state.history.iter().filter(|r| r.solved).count();
                     ui.heading("Your progress");
@@ -539,7 +529,7 @@ impl ChessApp {
                         if session.done { ui.label(format!("Rating {} · {}", session.data.puzzle.rating, session.data.puzzle.themes.join(", "))); }
                     });
                     ui.label(&session.message);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         if !session.done {
                             if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Hint").strong().color(Color32::from_rgb(30, 26, 20)))
                                 .fill(Color32::from_rgb(211, 173, 98))
@@ -556,6 +546,46 @@ impl ChessApp {
                     });
                 }
                 if let Some(solved) = result { state.record(solved); }
+                if state.tab == 2 {
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.strong("Choose a puzzle to retry");
+                    let mut retry = None;
+                    // Use the panel's full-height scroll area, rather than trapping the
+                    // review queue in a second, fixed-height scrolling viewport.
+                    for record in state.history.iter().rev().filter(|r| !r.solved) {
+                        let active = state.session.as_ref()
+                            .is_some_and(|session| session.data.puzzle.id == record.data.puzzle.id);
+                        let gold = Color32::from_rgb(211, 173, 98);
+                        Frame::new().fill(Color32::from_rgb(27, 33, 41))
+                            .stroke(Stroke::new(1.0, if active { gold } else { Color32::from_rgb(49, 59, 71) }))
+                            .corner_radius(8.0).inner_margin(12.0).show(ui, |ui| {
+                                ui.set_min_width(ui.available_width());
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.strong(format!("Puzzle {}", record.data.puzzle.id));
+                                    ui.colored_label(gold, format!("Rating {}", record.data.puzzle.rating));
+                                    if active { ui.small("On the board"); }
+                                });
+                                ui.add(egui::Label::new(record.data.puzzle.themes.join(" · ")).wrap());
+                                if ui.add_enabled(!state.loading, egui::Button::new(
+                                    RichText::new("Retry puzzle").strong().color(Color32::from_rgb(30, 26, 20)))
+                                    .fill(gold).corner_radius(6.0)
+                                    .min_size(Vec2::new(130.0, 36.0)).raised_gold()).clicked() {
+                                    retry = Some(record.data.clone());
+                                }
+                            });
+                    }
+                    if !state.history.iter().any(|r| !r.solved) {
+                        ui.colored_label(Color32::from_rgb(136, 205, 158), "All caught up!");
+                        ui.label("Missed puzzles and puzzles solved with help will appear here.");
+                    }
+                    if let Some(data) = retry {
+                        match Session::new(data) {
+                            Ok(session) => state.session = Some(session),
+                            Err(error) => state.error = error,
+                        }
+                    }
+                }
                 });
                 Self::paint_sunken_border(ui, body.response.rect);
             });

@@ -198,6 +198,23 @@ try{
     $short=(Request $server 'archive/import' @{pgn='1. e4 e5 *'}).value;
     Require ($short.discarded -eq 1 -and $short.imported -eq 0) 'Short-game discard policy failed';
     $checks.Add('binary-archive-pgn-export-round-trip-duplicates-short-policy');
+    $group=(Request $server 'archive/collections' @{action='create';name='Release validation'}).value;
+    Require ($group.id.Length -gt 0) 'Collection creation failed';
+    Require ((Request $server 'archive/import' @{pgn=$exported;collection=$group.id}).value.duplicates -eq 1) 'Collection membership duplicated a game';
+    $filter='archive/library?collection='+[uri]::EscapeDataString($group.id);
+    Require ((Request $server $filter).value.total -eq 1) 'Collection library filter failed';
+    $backupFolder=Join-Path $data 'Backups with spaces';
+    $savedBackup=Request $server 'archive/backups/settings' @{folder=$backupFolder};
+    Require ($savedBackup.status -eq 200) 'Backup folder save failed';
+    $backupFolder=$savedBackup.value.folder;
+    Require ((Request $server 'archive/backups' @{action='backup'}).status -eq 200) 'Server backup did not start';
+    $deadline=[DateTime]::UtcNow.AddSeconds(30);
+    do {$backup=(Request $server 'archive/backups').value;if($backup.job.state -ne 'running'){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $deadline);
+    Require ($backup.job.state -eq 'complete') 'Server backup did not complete';
+    $backupName=$backup.job.file;
+    Require ([IO.File]::Exists([IO.Path]::Combine($backupFolder,$backupName))) 'Server backup file missing';
+    $checks.Add('collection-membership-indexed-filter-and-server-backup');
+
 
     $deadline=[DateTime]::UtcNow.AddSeconds(10);
     do{
@@ -285,6 +302,20 @@ try{
     Stop-Companion $server;
     $server=Start-Companion;
     Require ((Request $server ('archive/games/'+$id)).status -eq 200) 'Persistence failed';
+    Require ((Request $server 'archive/backups/settings').value.folder -eq $backupFolder) 'Backup folder did not persist';
+    Stop-Companion $server;
+    $restoredConfig=Get-Content -LiteralPath $configFile -Raw|ConvertFrom-Json;
+    $restoredConfig.archive=Join-Path $data 'restored.sqlite3';
+    [IO.File]::WriteAllText($configFile,($restoredConfig|ConvertTo-Json -Depth 30),(New-Object Text.UTF8Encoding($false)));
+    $server=Start-Companion;
+    Require ((Request $server 'archive/backups' @{action='restore';file=$backupName}).status -eq 200) 'Server restore did not start';
+    $deadline=[DateTime]::UtcNow.AddSeconds(30);
+    do {$restore=(Request $server 'archive/backups').value;if($restore.job.state -ne 'running'){break};Start-Sleep -Milliseconds 100}while([DateTime]::UtcNow -lt $deadline);
+    Require ($restore.job.state -eq 'complete') 'Server restore did not complete';
+    Require ((Request $server ('archive/games/'+$id)).status -eq 200) 'Restore lost the game';
+    Require ((Request $server $filter).value.total -eq 1) 'Restore lost collection membership';
+    Require ((Request $server 'archive/collections').value[0].name -eq 'Release validation') 'Restore lost collection metadata';
+    $checks.Add('server-restore-games-collections-and-persisted-folder');
     Stop-Companion $server
     $old=$token;
     Native @('rotate-token','--data-dir',$data)|Out-Null;

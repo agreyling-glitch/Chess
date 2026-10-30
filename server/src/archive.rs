@@ -470,6 +470,7 @@ pub(crate) fn commit_import_rows(tx:&Connection,prepared:PreparedImport,collecti
                 params![c, game_id],
             )?;
             if changed > 0 {
+                tx.execute_batch("DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;")?;
                 tx.execute(
                     "UPDATE collections SET revision=revision+1 WHERE id=?1",
                     [c],
@@ -607,6 +608,7 @@ pub fn collection_edit(
         }
         _ => return Err(invalid("Invalid collection action")),
     }
+    tx.execute_batch("DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;")?;
     tx.commit()?;
     Ok(json!({"id":collection_id,"collections":collections(db)?}))
 }

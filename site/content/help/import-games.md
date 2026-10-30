@@ -7,7 +7,7 @@ keywords: [import, tabs, PGN, ZIP, Scid, si4, si5, database, compressed, drag an
 weight: 12
 ---
 
-Open **Game → Import…** to choose among four tabs. Drag the title or outer background to move the window; drag an edge or corner to resize it. The tab row wraps on narrow windows, and panel contents scroll vertically when needed. The gold-bordered window has a heavy paper-grain outer background and recessed content sections. Close it with **×** or Escape.
+Open **Game History → Import…** to choose among four tabs. Drag the title or outer background to move the window; drag an edge or corner to resize it. The tab row wraps on narrow windows, and panel contents scroll vertically when needed. The gold-bordered window has a heavy paper-grain outer background and recessed content sections. Close it with **×** or Escape.
 
 ## Paste a game or collection
 
@@ -49,7 +49,7 @@ Choose **Import to Browser** to save the range directly; the default range cover
 
 Resize the window vertically for a larger paste area. The middle sunken section expands with it; Clear and Continue remain directly below on the outer background.
 
-For a collection, select games to keep and click **Import selected**. Drag the review window’s title to move it or its edges to resize it. Use the player filter and **Select matching** to select matching games. A progress bar shows the number processed and percentage for a large import. The result lists games saved, already saved and failed; if importing stops early, it also shows games not attempted. Games already in your library are skipped. Find saved imports under **Game → Saved games → Imported Games**.
+For a collection, select games to keep and click **Import selected**. Drag the review window’s title to move it or its edges to resize it. Use the player filter and **Select matching** to select matching games. A progress bar shows the number processed and percentage for a large import. The result lists games saved, already saved and failed; if importing stops early, it also shows games not attempted. Games already in your library are skipped. Find saved imports under **Game History → Saved games → Imported Games**.
 
 ## Lichess
 

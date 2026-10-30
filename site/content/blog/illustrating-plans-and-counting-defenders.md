@@ -39,6 +39,6 @@ This gives your review room for plans that were sound, alternatives you consider
 
 ## Arrange the space around your study
 
-**View → Background…** now opens a dedicated settings window. Choose Gradient Only, the built-in Ironwood knight image, or one of your uploads. Image opacity, gradient strength, and the 3D backdrop have separate controls; uploads stay on this device. First launch uses Gradient Only with a 17% gradient and a transparent 3D backdrop. Returning users keep their saved choices.
+**Settings → Background…** now opens a dedicated settings window. Choose Gradient Only, the built-in Ironwood knight image, or one of your uploads. Image opacity, gradient strength, and the 3D backdrop have separate controls; uploads stay on this device. First launch uses Gradient Only with a 17% gradient and a transparent 3D backdrop. Returning users keep their saved choices.
 
 The workspace also has a thinner balance bar, matching black move and prediction tables, more compact pawn-structure and king-safety panels, and clearer analysis controls. The expanded analysis view uses translucent panels with a more opaque lower details area. [Features](/features/) provides the updated overview, and the [changelog](/changelog/2026-10-10-drawings-backgrounds-and-tactical-counts/) lists the changes.

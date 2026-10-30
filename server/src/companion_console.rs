@@ -48,6 +48,13 @@ pub unsafe fn create(window:HWND)->(HWND,HWND,HWND){unsafe{
     label(window,DATA_PATH,"",13,false,false);
     label(window,IMPORT_STATUS,"",13,false,false);
     label(window,UPDATE_STATUS,"",13,false,false);
+    let startup=control(window,"BUTTON","Start Companion when I sign in",BS_AUTOCHECKBOX as u32,0,0,1,1,START_AT_SIGN_IN);
+    SendMessageW(startup,WM_SETFONT,font(14,false,false) as usize,0);
+    let backup=control(window,"EDIT","",ES_AUTOHSCROLL as u32|WS_BORDER,0,0,1,1,BACKUP_FOLDER);
+    SendMessageW(backup,WM_SETFONT,font(14,false,false) as usize,0);
+    let save=control(window,"BUTTON","Save folder",BS_PUSHBUTTON as u32,0,0,1,1,SAVE_BACKUP_FOLDER);
+    SendMessageW(save,WM_SETFONT,font(14,false,false) as usize,0);
+    refresh_startup(window);
     for (id,text) in [(OVERVIEW,"▦  Overview"),(ENGINES,"Engines"),(ARCHIVE,"Archive"),(IMPORTS,"Import"),(REPORTS,"Reports"),(SHOW,"Show token…"),(CHECK_UPDATE,"Check for updates…"),(INSTALL_UPDATE,"Update and restart"),(OPEN,"Open Ironwood"),(COPY_ADDRESS,"Copy address"),(STATUS,"Refresh"),(CLOSE_STATUS,"Close")]{
         let child=control(window,"BUTTON",text,BS_PUSHBUTTON as u32,0,0,1,1,id);
         SendMessageW(child,WM_SETFONT,font(if id==OPEN{16}else{14},id==OPEN||id==OVERVIEW,false) as usize,0);
@@ -77,13 +84,24 @@ pub unsafe fn layout(window:HWND){unsafe{
     place(window,DATA_PATH,x+160,293,w-179,43);
     place(window,IMPORT_STATUS,x+160,352,w-179,60);
     place(window,UPDATE_STATUS,x+160,423,w-179,49);
-    place(window,ACTIVITY,x+15,519,w-46,r.bottom-607);
-    place(window,111,x+w-26,519,12,r.bottom-607);
+    place(window,START_AT_SIGN_IN,x+160,480,w-179,32);
+    place(window,BACKUP_FOLDER,x+160,522,w-289,30);
+    place(window,SAVE_BACKUP_FOLDER,x+w-115,522,105,30);
+    place(window,ACTIVITY,x+15,604,w-46,r.bottom-692);
+    place(window,111,x+w-26,604,12,r.bottom-692);
     place(window,STATUS,x,r.bottom-65,100,42);place(window,CLOSE_STATUS,x+w-104,r.bottom-65,104,42);
     layout_status_scroll(GetDlgItem(window,ACTIVITY as i32),GetDlgItem(window,111));
 }}
 unsafe fn set(window:HWND,id:usize,text:&str){unsafe{SetWindowTextW(GetDlgItem(window,id as i32),wide(text).as_ptr());}}
+pub unsafe fn refresh_startup(window:HWND){unsafe{
+    let checkbox=GetDlgItem(window,START_AT_SIGN_IN as i32);
+    match startup::enabled(){
+        Ok(enabled)=>{EnableWindow(checkbox,1);SendMessageW(checkbox,BM_SETCHECK,if enabled{BST_CHECKED}else{BST_UNCHECKED} as usize,0);}
+        Err(_)=>{EnableWindow(checkbox,0);}
+    }
+}}
 pub unsafe fn update(window:HWND,text:&str)->String {unsafe{
+    refresh_startup(window);
     let field=|key:&str|text.lines().find_map(|line|line.strip_prefix(key)).unwrap_or("").trim();
     let status=text.lines().next().unwrap_or("Ready");
     set(window,READY,&format!("●  {status}  ·  Version {}",env!("CARGO_PKG_VERSION")));
@@ -114,18 +132,18 @@ pub unsafe fn paint(window:HWND,dc:HDC,r:&RECT){unsafe{
     text(dc,"Connected clients",RECT{left:x+12,top:202,right:center-200,bottom:230},13,MUTED,true);
     text(dc,"Companion",RECT{left:center-140,top:144,right:center+140,bottom:163},13,TEXT,true);
     text(dc,"Registered engines",RECT{left:center+200,top:190,right:right-12,bottom:215},13,MUTED,true);
-    panel(dc,RECT{left:x,top:283,right,bottom:480},PANEL,BORDER);
-    for (value,y) in [("Data folder",293),("Automatic imports",352),("Updates",423)]{text(dc,value,RECT{left:x+16,top:y,right:x+155,bottom:y+25},13,MUTED,false);}
-    for y in [343,414]{FillRect(dc,&RECT{left:x+1,top:y,right:right-1,bottom:y+1},brush(BORDER));}
+    panel(dc,RECT{left:x,top:283,right,bottom:565},PANEL,BORDER);
+    for (value,y) in [("Data folder",293),("Automatic imports",352),("Updates",423),("Settings",483),("Backup folder",524)]{text(dc,value,RECT{left:x+16,top:y,right:x+155,bottom:y+25},13,MUTED,false);}
+    for y in [343,414,476]{FillRect(dc,&RECT{left:x+1,top:y,right:right-1,bottom:y+1},brush(BORDER));}
     text(dc,"FOLDERS",RECT{left:24,top:80,right:200,bottom:104},12,MUTED,false);
     text(dc,"TOOLS",RECT{left:24,top:308,right:200,bottom:336},12,MUTED,false);
-    text(dc,"ACTIVITY",RECT{left:x,top:488,right,bottom:513},12,MUTED,false);
-    panel(dc,RECT{left:x,top:514,right,bottom:r.bottom-80},0x000e0a07,BORDER);
+    text(dc,"ACTIVITY",RECT{left:x,top:573,right,bottom:598},12,MUTED,false);
+    panel(dc,RECT{left:x,top:599,right,bottom:r.bottom-80},0x000e0a07,BORDER);
     let _=window;
 }}
 pub unsafe fn control_color(dc:HDC,child:HWND)->LRESULT {unsafe{
     let id=GetDlgCtrlID(child) as usize;
-    let bg=if id==ACTIVITY{0x000e0a07}else if matches!(id,CLIENTS|ADDRESS|ENGINE_COUNT|SESSIONS|DATA_PATH|IMPORT_STATUS|UPDATE_STATUS){PANEL}else{BG};
+    let bg=if id==ACTIVITY{0x000e0a07}else if matches!(id,CLIENTS|ADDRESS|ENGINE_COUNT|SESSIONS|DATA_PATH|IMPORT_STATUS|UPDATE_STATUS|START_AT_SIGN_IN){PANEL}else{BG};
     SetTextColor(dc,if id==READY{0x00b0e07f}else if id==ADDRESS{ACCENT}else{TEXT});SetBkColor(dc,bg);
     brush(bg) as LRESULT
 }}
@@ -156,12 +174,13 @@ mod tests {
     let window=CreateWindowExW(0,class.as_ptr(),wide("Console layout test").as_ptr(),WS_OVERLAPPEDWINDOW,0,0,1040,820,null_mut(),null_mut(),instance,std::ptr::null());
     assert!(!window.is_null());let (edit,rail,_)=create(window);
     assert!(is_console(window));
+    assert_eq!(GetWindowLongPtrW(GetDlgItem(window,START_AT_SIGN_IN as i32),GWL_STYLE) as u32&0xf,BS_AUTOCHECKBOX as u32);
     let activity=update(window,"Ready\r\nVersion 0.1.3\r\nAddress: 127.0.0.1:8790\r\nConnected clients: 2\r\nEngine sessions: 1\r\nRegistered engines: 6\r\n\r\nData: C:\\Test\\Companion\r\nAutomatic imports: Importing games\r\nRead 128 · Saved 128\r\n\r\nNo update channel");
     assert!(activity.contains("Read 128"));assert!(activity.contains("No update channel"));
     let mut text_buffer=[0u16;100];GetWindowTextW(GetDlgItem(window,CLIENTS as i32),text_buffer.as_mut_ptr(),100);assert_eq!(text_buffer[0],b'2' as u16);
     for (width,height) in [(940,760),(1200,900)]{
       MoveWindow(window,0,0,width,height,0);layout(window);let mut client=RECT::default();GetClientRect(window,&mut client);
-      for id in [OPEN,CLOSE_STATUS,COPY_ADDRESS,DATA_PATH,UPDATE_STATUS,ACTIVITY]{
+      for id in [OPEN,CLOSE_STATUS,COPY_ADDRESS,DATA_PATH,UPDATE_STATUS,START_AT_SIGN_IN,ACTIVITY]{
         let mut rect=RECT::default();GetWindowRect(GetDlgItem(window,id as i32),&mut rect);let mut point=POINT{x:rect.right,y:rect.bottom};ScreenToClient(window,&mut point);
         assert!(point.x<=client.right&&point.y<=client.bottom,"Control {id} outside {width}x{height}");
       }

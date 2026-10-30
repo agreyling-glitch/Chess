@@ -1,26 +1,20 @@
 # Companion public Help and download pages
 
-Published with owner authorization October 26, 2026.
+## 0.1.8 public release — October 30, 2026
 
-- https://ironwoodchess.com/downloads/companion/
-- https://ironwoodchess.com/help/companion-setup/
-- https://ironwoodchess.com/help/companion-engines-and-storage/
-- https://ironwoodchess.com/help/companion-troubleshooting/
-- https://ironwoodchess.com/features/#desktop-engines-and-archive
+Windows x64 Companion 0.1.8 includes optional sign-in startup, configurable server-side backup folders, authenticated SQLite snapshot backup/restore, and indexed collection filtering for the unified Saved Games window. Metadata editing, Browser/Companion copies and moves, and collection management are available from Saved Games. The former Your game archive window is retired.
 
-All four pages are non-draft and indexable. Normal site builds include them. The
-Help index, relevant existing articles, Features navigation, site header/footer
-and homepage link to Companion. Application Help exposes setup and connections;
-the About checkbox was removed. Old preview preferences do not hide public setup.
+Publish a new immutable 0.1.8 ZIP with the existing release key and public Windows update feed. Retain every previously published versioned ZIP. The download metadata must match the exact validated package and signed feed. Public setup remains discoverable, and owner tokens, exact-origin checks and update-signature verification remain mandatory. Windows x64 is the only public download; other platforms remain developer-supported.
 
-`site/data/companion.toml` records version 0.1.4, the immutable public Windows ZIP
-URL, the clean-tested checksum and `available = true`. There is no release-access
-token requirement for public downloads. Owner connection tokens and update
-signature verification remain mandatory.
+The release workflow packages matching source and license notices, validates the exact ZIP in isolated and clean Windows environments, checks upgrade/recovery, publishes the ZIP before the signed manifest, then verifies anonymous delivery and protected private channels. See `windows-public-release-0.1.8.md` for the completed validation record. Historical 0.1.4 evidence remains in `windows-public-release-0.1.4.md`.
 
-The public Windows build is x64 only. Keep Linux/macOS/QNAP developer-only.
-Update the data file together with a newly validated immutable release; do not
-replace a versioned ZIP. Production builds must continue to exclude future drafts.
+Pages updated with the release:
 
-The loopback preview server on port 8791 is optional and is not the public site.
-See `windows-public-release-0.1.4.md` for deployment and verification evidence.
+- `/downloads/companion/`
+- `/help/companion-setup/`
+- `/help/companion-engines-and-storage/`
+- `/help/companion-troubleshooting/`
+- `/help/saved-games-and-backups/`
+- `/features/`
+
+`site/data/companion.toml` supplies the exact versioned package URL and SHA-256. Do not substitute a development ZIP or change a published ZIP to refresh its documentation.

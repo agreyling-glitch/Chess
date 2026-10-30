@@ -21,6 +21,10 @@ export class ScidImport {
     constructor(si4: Uint8Array, sn4: Uint8Array, sg4: Uint8Array);
 }
 
+export function begin_study_panel(): void;
+
+export function dock_study_panel(): void;
+
 export function export_saved_game(json: string, format: string): string;
 
 export function ironwoodSevenZipExtract(size: number, read: Function, write: Function, progress: Function): void;
@@ -30,6 +34,8 @@ export function ironwoodSevenZipList(size: number, read: Function): string;
 export function prepare_archived_pgn(pgn: string): string;
 
 export function preview_scoresheet(entries: string): string;
+
+export function render_study_panel(input: string): any;
 
 export function start(): Promise<void>;
 
@@ -44,11 +50,14 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_scid5reader_free: (a: number, b: number) => void;
     readonly __wbg_scidimport_free: (a: number, b: number) => void;
+    readonly begin_study_panel: () => void;
+    readonly dock_study_panel: () => void;
     readonly export_saved_game: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly ironwoodSevenZipExtract: (a: number, b: any, c: any, d: any) => [number, number];
     readonly ironwoodSevenZipList: (a: number, b: any) => [number, number, number, number];
     readonly prepare_archived_pgn: (a: number, b: number) => [number, number, number, number];
     readonly preview_scoresheet: (a: number, b: number) => [number, number, number, number];
+    readonly render_study_panel: (a: number, b: number) => [number, number, number];
     readonly scid5reader_decode_game: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly scid5reader_index_entries: (a: number, b: number, c: number) => [number, number, number, number];
     readonly scid5reader_new: (a: number, b: number) => [number, number, number];
@@ -59,13 +68,13 @@ export interface InitOutput {
     readonly validate_scoresheet_pgn: (a: number, b: number) => [number, number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h05b652a48fee2551: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_20: (a: number, b: number, c: any) => [number, number];
-    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_21: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_23: (a: number, b: number, c: any) => [number, number];
+    readonly wasm_bindgen__convert__closures_____invoke__h19d4157273093e84_24: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h0d9cf8010272419a: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_16: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_19: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14: (a: number, b: number, c: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14_19: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14_22: (a: number, b: number, c: any) => void;
     readonly wasm_bindgen__convert__closures_____invoke__hc86f24272c98cb0b: (a: number, b: number) => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;

@@ -11,7 +11,7 @@ function fixture() {
     delay: (_ms, signal) => new Promise(resolve => { retries.push(resolve); signal.addEventListener('abort', resolve, { once: true }); }),
     fetch: async (url, options) => {
       const path = new URL(url).pathname;
-      calls.push({ path, options });
+      calls.push({ path, url, options });
       if (replies.has(path)) return replies.get(path)(options);
       if (path === '/api/account') return json({ id: 'alice', username: 'Alice' });
       if (path === '/api/account/playing') return json({ nowPlaying: [] });
@@ -340,6 +340,8 @@ test('player profile loads public data, lowercase history and bounded NDJSON gam
   assert.equal(state.recentGames.length,12); assert.equal(state.profileLoading,false);
   const call=f.calls.at(-1);
   assert.equal(call.options.headers.Accept,'application/x-ndjson');
+  assert.equal(new URL(call.url).searchParams.get('clocks'),'true');
+  assert.equal(new URL(call.url).searchParams.get('pgnInJson'),'true');
   const count=f.calls.length; await f.client.playerProfile(false,'cutemouse83'); assert.equal(f.calls.length,count);
 });
 
@@ -472,6 +474,7 @@ test('performance batch-exports notable games once without authorization and cac
   assert.equal(entry.loading,false);assert.equal(entry.error,'');assert.equal(entry.data.rank,10);
   assert.equal(Object.keys(entry.games).length,2);assert.match(entry.games.best1234.pgn,/Nf3/);
   assert.equal(f.calls.filter(c=>c.path==='/api/games/export/_ids').length,1);
+  assert.equal(new URL(f.calls.find(c=>c.path==='/api/games/export/_ids').url).searchParams.get('clocks'),'true');
   assert.ok(!f.calls.some(c=>c.path.startsWith('/game/export/')));
   const count=f.calls.length;await f.client.performance('Bob','blitz','perf');assert.equal(f.calls.length,count);
   await f.client.performance('Bob','rapid','perf');

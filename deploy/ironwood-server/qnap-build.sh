@@ -12,7 +12,7 @@ docker info >/dev/null
 printf '\nNAS resources (building may take several minutes):\n'
 df -h .
 free -m || true
-image=ironwood-companion:qnap-preview
+image=${IRONWOOD_QNAP_IMAGE:-ironwood-companion:qnap-preview}
 run="ironwood-qnap-check-$(date +%s)-$$"
 volume="$run-data"
 cleanup() {
@@ -26,6 +26,11 @@ echo 'Building Linux x64 Companion. Detailed output is in build.log.'
 if ! docker build --platform linux/amd64 --build-arg CARGO_BUILD_JOBS=2 -t "$image" -f deploy/ironwood-server/Dockerfile . >build.log 2>&1; then
   tail -n 60 build.log; exit 1
 fi
+echo 'Testing the Linux archive backup implementation in the matching build image...'
+docker build --platform linux/amd64 --target build --build-arg CARGO_BUILD_JOBS=2 -t "$image-builder" -f deploy/ironwood-server/Dockerfile . >>build.log 2>&1
+docker run --rm --network none "$image-builder" cargo test --locked --offline --release -p ironwood-server archive_backups --lib >>build.log 2>&1
+docker run --rm --network none "$image-builder" cargo test --locked --offline --release -p ironwood-server archive_library --lib >>build.log 2>&1
+
 docker volume create "$volume" >/dev/null
 docker run -d --name "$run" --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 512m -v "$volume:/data" "$image" >/dev/null
 healthy() {
@@ -46,5 +51,5 @@ echo 'Container health and restart persistence passed. Exporting image...'
 docker save "$image" | gzip >ironwood-companion-qnap-linux-amd64.tar.gz
 sha256sum ironwood-companion-qnap-linux-amd64.tar.gz >ironwood-companion-qnap-linux-amd64.tar.gz.sha256
 echo 'Ready: ironwood-companion-qnap-linux-amd64.tar.gz'
-echo 'The image is already on this NAS: ironwood-companion:qnap-preview.'
+echo "The image is already on this NAS: $image."
 echo 'Use Applications > Create with compose.qnap.yaml. The exported archive is a backup image.'

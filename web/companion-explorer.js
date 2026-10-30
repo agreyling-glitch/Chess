@@ -23,7 +23,7 @@ export class ArchiveExplorer {
   poll(fen) {
     let client;
     try { client = this.configure(); } catch (error) { return JSON.stringify({error:error.message}); }
-    if (!client) return JSON.stringify({error:'Connect through Storage → Companion archive or Game → Companion engines to explore your archived games.'});
+    if (!client) return JSON.stringify({error:'Connect through Settings → Companion connection to explore your archived games.'});
     if (this.fen !== fen) { this.fen = fen; this.cursor = ''; this.invalidate(); }
     if (!this.pending && this.clock() >= this.refreshAt) {
       const epoch = this.epoch, query = new URLSearchParams({...this.filters, fen, variant:'standard', game_after:this.cursor, game_limit:'10'});
@@ -79,7 +79,7 @@ export function installArchiveExplorer(target) {
     reset.onclick=()=>{explorer.setFilters({});dialog.close();};close.onclick=()=>dialog.close();
     rebuild.onclick=async()=>{rebuild.disabled=true;try{const client=explorer.configure();if(!client)throw new Error('Connect to Companion archive first.');const progress=await client.request('archive/explorer/rebuild',{});explorer.cursor='';explorer.invalidate();status.textContent=`Rebuild queued: ${progress.pending} games. Archived games are preserved and remain available.`;}catch(error){status.textContent=error.message;}finally{rebuild.disabled=false;}};
     dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
-    try{const client=explorer.configure();if(!client)throw new Error('Connect through Storage → Companion archive or Game → Companion engines first.');const [groups,progress]=await Promise.all([client.request('archive/collections'),client.request('archive/explorer/status')]);if(!dialog.isConnected)return;for(const group of groups){const option=element('option',group.name,collection);option.value=group.id;}collection.value=explorer.filters.collection||'';status.textContent=`${progress.indexed}/${progress.total} games indexed · ${progress.pending} pending · ${progress.unsupported_variants} other variants · ${progress.failed} failed. Generation ${progress.generation}.`;}catch(error){status.textContent=error.message;}
+    try{const client=explorer.configure();if(!client)throw new Error('Connect through Settings → Companion connection first.');const [groups,progress]=await Promise.all([client.request('archive/collections'),client.request('archive/explorer/status')]);if(!dialog.isConnected)return;for(const group of groups){const option=element('option',group.name,collection);option.value=group.id;}collection.value=explorer.filters.collection||'';status.textContent=`${progress.indexed}/${progress.total} games indexed · ${progress.pending} pending · ${progress.unsupported_variants} other variants · ${progress.failed} failed. Generation ${progress.generation}.`;}catch(error){status.textContent=error.message;}
   };
   return explorer;
 }

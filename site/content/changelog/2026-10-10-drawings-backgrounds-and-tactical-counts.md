@@ -14,7 +14,7 @@ description: "Ghost pieces, new drawing shapes, Attack vs Defense bubbles, print
 - **Translucent filled squares** and **crosses**, plus solid and dashed **L-shaped knight arrows**. Knight arrows follow the longer leg first and use board-aligned bends in 3D. Right-click while dragging toggles solid/dashed knight arrows.
 - A blue **drawing indicator** in Game Moves, including drawing-only moves and positions with ghost pieces. Moves with notes and drawings show both indicators; hovering shows the drawing count.
 - **Your notes and drawings** in printed analysis, including written notes, manual symbols, and diagrams for positions with drawings. Starting-position annotations and noncritical positions are included.
-- **View → Background…** opens a modal with Gradient Only, Default, and Uploaded Image choices, a switchable uploaded-image library, and separate image opacity, gradient, and 3D backdrop sliders. PNG, JPEG, and WebP uploads are stored on this device.
+- **Settings → Background…** opens a modal with Gradient Only, Default, and Uploaded Image choices, a switchable uploaded-image library, and separate image opacity, gradient, and 3D backdrop sliders. PNG, JPEG, and WebP uploads are stored on this device.
 - Built-in Ironwood background artwork with the circular emblem removed, derived from the owner-supplied knight image.
 
 ## Changed and fixed

@@ -25,7 +25,7 @@ Before release, the production upgrade is tested as a complete sequence: preserv
 
 ## Backups remain understandable
 
-The Storage menu exports a versioned JSON document containing complete game records, analysis, favorites, and global display preferences. JSON is intentionally the first backup format: it is inspectable, straightforward to validate, and does not require a proprietary archive reader.
+Game History → Backup and Restore exports a versioned JSON document containing complete game records, analysis, favorites, and global display preferences. JSON is intentionally the first backup format: it is inspectable, straightforward to validate, and does not require a proprietary archive reader.
 
 Restore validates the document before changing storage and offers two explicit choices. **Merge** keeps the existing library and adds the backup. **Replace existing** clears the game library first. Clearing saved games and resetting all local data are also separate operations, because deleting a library should not accidentally remove preferences or the large offline engine.
 

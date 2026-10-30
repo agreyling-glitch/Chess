@@ -12,10 +12,10 @@ export function folderImportView(value){
   return {filename:value.filename||'',phase,message:value.message||'Waiting for files in Companion’s Import folder',counts:`Read ${number(processed)}${Number.isFinite(total)?` of ${number(total)}`:''} · Saved ${number(s.imported)} · Duplicates ${number(s.duplicates)} · Short ${number(s.discarded)} · Deleted ${number(s.deleted)} · Failed ${number(s.failed)}`,timing:`${speed} · ${eta}`,fraction:Number.isFinite(total)&&total>0?Math.min(1,processed/total):null,active:!!value.active};
 }
 
-export function installCompanionImportProgress(target){
+export function installCompanionImportProgress(target,connectionProvider=companionConnection){
   let cached=null,key=null,client=null,pending=null,last=0,revision=0;
   target.ironwoodCompanionImportProgress=()=>{
-    const connection=target.ironwoodCompanionFeatureEnabled?.()===true?companionConnection():null;
+    const connection=target.ironwoodCompanionFeatureEnabled?.()===true?connectionProvider():null;
     if(!connection){revision++;cached=null;key=null;client=null;return '';}
     const next=connection.endpoint+'\n'+connection.credential;
     if(next!==key){key=next;revision++;cached=null;last=0;client=new CompanionArchiveClient(connection.endpoint,connection.credential);}

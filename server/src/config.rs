@@ -93,6 +93,8 @@ pub struct Config {
     pub archive: Option<PathBuf>,
     #[serde(default)]
     pub tablebase_directories: Vec<PathBuf>,
+    #[serde(default)]
+    pub backup_directory: Option<PathBuf>,
     #[serde(default = "automatic_import_default", skip_serializing_if = "automatic_import_enabled")]
     pub automatic_import: bool,
     #[serde(skip)]
@@ -123,6 +125,7 @@ impl Config {
             engine_limits: EngineLimits::default(),
             archive: default_archive(),
             tablebase_directories: vec![],
+            backup_directory: None,
             automatic_import: true,
             token: String::new(),
         }
@@ -142,6 +145,11 @@ impl Config {
             }
             if archive.is_symlink() {
                 return Err("Archive database cannot be a symlink".into());
+            }
+        }
+        if let Some(directory) = &mut config.backup_directory {
+            if directory.is_relative() {
+                *directory = fs::canonicalize(path.parent().unwrap_or(Path::new(".")))?.join(&directory);
             }
         }
         for directory in &mut config.tablebase_directories {

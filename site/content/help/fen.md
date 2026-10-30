@@ -23,7 +23,7 @@ The six space-separated parts mean:
 5. **Halfmove clock.** The number of half-moves since the last pawn move or capture; it matters for the fifty-move draw rule.
 6. **Fullmove number.** The current move number, beginning at 1 and increasing after Black moves.
 
-You do **not** need to write FEN by hand. In Ironwood, use **Tools → Position Editor** to arrange the board and copy its FEN. To play from it, choose **Game → New Game → Local → Starting position: Custom FEN**, paste the complete FEN, and check that Ironwood says the position is valid. You can also use **Edit board / Import screenshot** from that dialog. See [Using the Position Editor](/help/position-editor/) for a walkthrough.
+You do **not** need to write FEN by hand. In Ironwood, use **Tools → Position Editor** to arrange the board and copy its FEN. To play from it, choose **Play → New Play → Local → Starting position: Custom FEN**, paste the complete FEN, and check that Ironwood says the position is valid. You can also use **Edit board / Import screenshot** from that dialog. See [Using the Position Editor](/help/position-editor/) for a walkthrough.
 
 Be careful with the non-board fields: a picture alone cannot tell whose turn it is or whether castling and en passant are still legal.
 

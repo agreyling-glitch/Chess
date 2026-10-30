@@ -53,7 +53,9 @@ test('a valid callback exchanges the one-use code, strips it from history, and r
   assert.equal(f.calls[0].options.body.get('code_verifier'), saved.verifier);
   assert.equal(f.calls[0].options.body.get('redirect_uri'), saved.redirect);
   assert.equal(f.calls[0].options.cache, 'no-store');
-  assert.ok(!JSON.stringify(f.events()).includes('private-token'));
+  const events = f.events();
+  assert.ok(events.some(event => event.type === 'openLobby'));
+  assert.ok(!JSON.stringify(events).includes('private-token'));
   await f.window.ironwoodLichessSignOut();
   assert.equal(f.data.has('ironwood.lichess.token'), false);
   assert.equal(f.calls.at(-1).options.method, 'DELETE');
@@ -74,4 +76,14 @@ test('denied sign-in removes callback credentials and leaves no session token', 
     'ironwood.lichess.pkce': JSON.stringify({ verifier: 'v'.repeat(43), state: 'correct', created: Date.now() }) });
   assert.equal(f.calls.length, 0); assert.equal(f.replaced(), '/play/');
   assert.match(f.events().find(e => e.type === 'error').message, /canceled or denied/);
+});
+
+
+test('ordinary saved-session reconnect leaves the lobby closed', async t => {
+  const f = await setup('https://ironwoodchess.com/play/', { 'ironwood.lichess.token': 'saved-token' });
+  t.after(() => f.window.ironwoodLichessDisconnect());
+  await tick();
+  const events = f.events();
+  assert.ok(events.some(event => event.type === 'lobby' && event.connected));
+  assert.ok(!events.some(event => event.type === 'openLobby'));
 });

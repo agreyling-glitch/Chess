@@ -4,10 +4,11 @@ import { createClient, HOST, SCOPES, CLIENT_ID } from './client.js';
 const TOKEN_KEY = 'ironwood.lichess.token';
 const PKCE_KEY = 'ironwood.lichess.pkce';
 const events = [];
-const client = createClient({ emit: event => {
+const emit = event => {
   events.push(JSON.stringify(event));
   if (events.length > 250) events.splice(0, events.length - 250);
-}, invalidToken: () => sessionStorage.removeItem(TOKEN_KEY) });
+};
+const client = createClient({ emit, invalidToken: () => sessionStorage.removeItem(TOKEN_KEY) });
 const run = operation => Promise.resolve().then(operation).catch(client.reportError);
 const base64url = bytes => btoa(String.fromCharCode(...bytes)).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 const random = () => base64url(crypto.getRandomValues(new Uint8Array(32)));
@@ -26,6 +27,9 @@ async function initialize() {
   const url = new URL(location.href);
   const code = url.searchParams.get('code'), oauthError = url.searchParams.get('error');
   if (code || oauthError) {
+    // The redirect creates a new app instance; restore the sign-in destination
+    // explicitly rather than relying on the old in-memory lobby window.
+    emit({ type: 'openLobby' });
     const raw = sessionStorage.getItem(PKCE_KEY);
     sessionStorage.removeItem(PKCE_KEY);
     // Strip authorization codes before the app, history, or diagnostics can retain them.

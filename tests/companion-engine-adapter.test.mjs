@@ -98,3 +98,18 @@ test('Maia Elo overrides reach each play search without browser Stockfish streng
   assert.deepEqual(sent[0].options,{MultiPV:'1',Elo:'900',SelfElo:'900',OppoElo:'900'});
   adapter.close();
 });
+
+test('duplicate live turn requests retain one search and deliver its move once', async()=>{
+  const {adapter,sent,lines,errors}=fixture();
+  await adapter.command('position startpos moves e2e4 e7e5 g1f3');
+  await adapter.command('go wtime 295000 btime 289000 winc 0 binc 0');
+  await adapter.command('go wtime 295000 btime 289000 winc 0 binc 0');
+  assert.equal(sent.length,1);
+  assert.deepEqual(errors,[]);
+  adapter.message({type:'bestmove',session_id:'session',search_id:'search-1',position_id:'position-1',bestmove:'b8c6'});
+  assert.deepEqual(lines,['bestmove b8c6']);
+  await adapter.command('position startpos moves e2e4 e7e5 g1f3 b8c6 f1b5');
+  await adapter.command('go wtime 290000 btime 280000 winc 0 binc 0');
+  assert.equal(sent.length,2);
+  adapter.close();
+});

@@ -48,7 +48,7 @@ The right-hand controls offer:
 - **Open game on Lichess:** open the original game in a new browser tab.
 - **Review on Ironwood:** load the complete game on the main board for analysis and annotations. Finish active training or online play first.
 
-Full-board profile reviews are temporary. To keep one, choose **Game → Save current game**. This saves the complete game even if the board is currently at the starting position. Games without any moves are not added to the library.
+Full-board profile reviews are temporary. To keep one, choose **Play → Save current game**. This saves the complete game even if the board is currently at the starting position. Games without any moves are not added to the library.
 
 ## Following players
 

@@ -31,6 +31,16 @@ fn private_release_access(feed: &str) -> bool {
 mod tests {
     use super::trust_policy;
     #[test]
+    fn update_restart_executable_is_a_json_string_not_a_windows_os_string() {
+        for name in ["ironwood-server.exe", "ironwood-companion.exe"] {
+            let path = std::path::Path::new("C:/Program Files/Ironwood").join(name);
+            let request = serde_json::json!({"executable": super::executable_name(&path).unwrap()});
+            let roundtrip: serde_json::Value = serde_json::from_str(&request.to_string()).unwrap();
+            assert_eq!(roundtrip["executable"].as_str(), Some(name));
+        }
+        assert!(super::executable_name(std::path::Path::new("unexpected.exe")).is_err());
+    }
+    #[test]
     fn public_feed_does_not_use_private_release_credentials() {
         assert!(!super::private_release_access("https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json"));
         assert!(super::private_release_access("https://companion-releases.ironwoodchess.com/private-preview/windows-x64/manifest.json"));
@@ -68,6 +78,11 @@ pub fn configured() -> bool {
 pub struct Candidate {
     pub directory: PathBuf,
     pub version: String,
+}
+fn executable_name(path: &Path) -> Result<&str, Error> {
+    path.file_name().and_then(|name| name.to_str())
+        .filter(|name| matches!(*name, "ironwood-server.exe" | "ironwood-companion.exe"))
+        .ok_or_else(|| "Unsupported Companion executable name".into())
 }
 fn shell_path(path: &Path) -> String {
     let value = path.to_string_lossy();
@@ -168,7 +183,7 @@ pub fn install(
         "certificate": if signing_mode == "authenticode" { pin } else { "" },
         "trust_mode": signing_mode,
         "public_key": if signing_mode == "private-preview-key" { pin } else { "" },
-        "executable": exe.file_name().ok_or("Missing executable name")?,
+        "executable": executable_name(&exe)?,
     });
     std::fs::write(
         candidate.directory.join("request.json"),

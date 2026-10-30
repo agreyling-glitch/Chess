@@ -9,7 +9,7 @@ across container replacement. No cloud storage or automatic synchronization is u
 
 ## Browser workflow
 
-Open **Storage → Companion archive…**, enter the Companion address and owner
+Open **Settings → Companion connection…**, enter the Companion address and owner
 credential, and connect. Credentials remain in memory and are not included in
 games, exports or backups. The panel can also reuse an engine connection's
 in-memory credential for the same address. Reload requires entering it again.

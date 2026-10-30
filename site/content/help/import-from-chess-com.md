@@ -7,7 +7,7 @@ weight: 19
 lastmod: 2026-10-21T00:00:00-05:00
 ---
 
-Open **Game → Import…** and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
+Open **Game History → Import…** and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
 
 Before fetching, choose **Games** (20, 50, 100, or 200) and **Time control** (All, Bullet, Blitz, Rapid, or Daily). Optionally enter **From** and **Through** dates in `YYYY-MM-DD` format. Dates use UTC and the full Through date is included. Leave either date blank for an open range. **Reset filters** restores 20 games, all time controls, and no dates.
 

@@ -7,7 +7,7 @@ or any external database. No opening books or third-party datasets are bundled.
 ## Use
 
 1. Start the rebuilt Companion. Existing archives are indexed in the background.
-2. Connect through **Storage → Companion archive…**, then close the archive panel.
+2. Connect through **Settings → Companion connection…**, then close the archive panel.
    The explorer can also reuse an existing Companion engine connection in memory.
 3. Open **Opening Explorer** in the board's analysis details and choose **Archive**.
 4. Use **Archive filters…** to select a collection, player/color, inclusive dates,

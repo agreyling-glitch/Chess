@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, cpSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, relative } from 'node:path';
 import { buildPieceThemes } from './build-piece-themes.mjs';
@@ -42,6 +42,7 @@ const newestChangelog = readdirSync(changelogSource)
     }
     return { date, slug };
   })
+  .filter(entry => existsSync(join(target, 'changelog', entry.slug, 'index.html')))
   .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
 if (!newestChangelog) throw new Error('A changelog entry is required for the home-page update date');
 const updatedIso = newestChangelog.date.slice(0, 10);

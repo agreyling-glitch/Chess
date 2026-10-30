@@ -1,10 +1,42 @@
 ---
 title: "Accuracy and CPL"
-description: "Two different ways Ironwood summarizes how closely a player followed strong moves."
+description: "Read the side-by-side accuracy and average centipawn loss charts for both players and each game phase."
+lastmod: 2026-10-28T00:00:00-05:00
 category: "terms"
-keywords: [CPL, ACPL, average centipawn loss, accuracy, percentage, pawn, loss]
+keywords: [CPL, ACPL, average centipawn loss, accuracy, percentage, pawn, loss, comparison, charts, gold, sage]
 weight: 40
 ---
+
+## Compare the players
+
+After full-game analysis finishes, open **Analysis → Analysis Summary**. Two
+comparison charts replace the separate player summary cards:
+
+- **Accuracy (higher is better):** compare the players' percentages on a 0–100 scale.
+- **Average centipawn loss (lower is better):** compare how much evaluation each
+  player gave up per move. This chart adjusts its scale to fit the game's results.
+
+Each chart groups the results into **Overall**, **Opening**, **Middlegame**, and
+**Endgame**, with the players' bars side by side. **Gold represents White** and
+**sage green represents Black**. The legend includes both names, and numerical
+values appear above the bars. Both players share the same scale within each
+chart; the accuracy and CPL charts use different units and scales.
+
+Phase labels show moves per player: **10 moves each** means ten by White and ten
+by Black. When the counts differ, **W** and **B** identify each player's count.
+Hover over a bar for the player, phase, value, and move count. Click a phase bar
+to jump to that player's first move in the phase. The current phase has a faint
+gold background; the Overall group covers the whole analyzed game.
+
+A dash means no result is available, rather than zero. **Not reached** means the
+game never entered that phase. Mate-score moves do not contribute to average
+CPL, so its evaluated-move coverage can differ from accuracy. Selecting another
+[saved analysis run](/help/saved-analysis/) updates the comparison to that run.
+
+Use the charts to choose positions to study, then inspect the moves themselves.
+The [phase guide](/help/game-phases-and-critical-moves/) explains how the groups
+are defined. Wait for any critical-move verification to finish before treating
+the results as final.
 
 ## What does CPL mean?
 

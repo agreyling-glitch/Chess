@@ -26,4 +26,22 @@ For a game that begins from a custom position, PGN can include `SetUp` and `FEN`
 
 For completed Lichess games, Ironwood can fetch the PGN for you. See [Import games from Lichess](/help/import-from-lichess/).
 
-Open **Game → Import…** to paste a game or collection, fetch games from Lichess or Chess.com, or choose **Scoresheet → Enter scoresheet** to enter and validate moves beside a reference photo. See [Import games](/help/import-games/) for all four tabs and [Import a game from a scoresheet](/help/import-a-scoresheet/) for manual entry.
+Open **Game History → Import…** to paste a game or collection, fetch games from Lichess or Chess.com, or choose **Scoresheet → Enter scoresheet** to enter and validate moves beside a reference photo. See [Import games](/help/import-games/) for all four tabs and [Import a game from a scoresheet](/help/import-a-scoresheet/) for manual entry.
+
+## Time spent and time remaining
+
+Ironwood records move times for new games and includes them in both plain and annotated PGN exports, including copied moves. Each move can carry two comments:
+
+```text
+1. e4 { [%emt 0:00:08.250] [%clk 0:04:53.750] }
+```
+
+The **Game Moves** table has a **Time** column after the White and Black moves. It shows time spent in seconds, with White above Black and a matching color marker beside each value. Hover over either time to see its full time spent and remaining clock. A dash means the time was not recorded; a missing move leaves its line blank. The column is available in both the main window and the detached Study panel.
+
+**`%emt`** is the time spent on that move. **`%clk`** is that player's time remaining after the move, including any increment. Values use hours, minutes, and seconds; newly recorded local timings include milliseconds. Untimed games record time spent without a remaining clock.
+
+Imported mainline `%emt` and `%clk` comments retain their values and precision when you save, copy, or export the game. Timing also travels with saved games, backups, and analysis JSON. Missing elapsed times in Lichess PGNs are calculated from consecutive clocks for the same player and the recorded increment. Explicit `%emt` values are preserved. Missing clocks, an unknown increment, or an unexplained clock increase leave the time unknown.
+
+For online games, Ironwood records timings supplied by the server. FICS supplies the previous move's elapsed time and remaining clock. Lichess elapsed time is derived only when consecutive clock updates and the increment are available. Earlier moves missed during a late join or reconnect keep unknown timings unless they are supplied by an imported PGN. Games saved before timing recording was added cannot recover unrecorded move times.
+
+FICS **history Review** also preserves the elapsed time shown beside each move in the server’s move list. When the history header provides the initial time and increment, Ironwood reconstructs each player’s remaining clock as previous time minus time spent plus increment. Missing move times break that player’s remaining-clock calculation; elapsed times supplied later are still shown. If the header is missing or the game is untimed, only the supplied elapsed times are displayed. Reopen a history Review after updating to retrieve these timings.

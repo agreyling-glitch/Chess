@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {connectCompanion, disconnectCompanion, manageCompanionConnection} from '../web/companion-connection.js';
+import {connectCompanion, disconnectCompanion, manageCompanionConnection,companionConnection} from '../web/companion-connection.js';
 test('engine and tablebase dialogs reuse the connection without rendering token fields', async () => {
   const {JSDOM} = await import('jsdom');
   const dom = new JSDOM('<body></body>', {url:'http://localhost:8788'});
@@ -37,7 +37,6 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     assert.equal(await forgetting,null);
     await connectCompanion('http://localhost:8790','ui-token');
     await import('../web/companion-engines.js');
-    await import('../web/companion-archive.js');
     await import('../web/tablebase.js?shared-ui');
     disconnectCompanion();
     await window.ironwoodRefreshCompanionEngines();
@@ -48,14 +47,7 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     await window.ironwoodRefreshCompanionEngines();
     assert.equal(document.querySelectorAll('input[type=password]').length,0);
     assert.deepEqual(JSON.parse(window.ironwoodCompanionEngineCatalog()).engines,[]);
-    assert.equal(window.ironwoodCompanionArchiveConfiguration().credential,'ui-token');
-    const archiveHost=document.createElement('div');document.body.append(archiveHost);
-    let returned=false;
-    dom.window.HTMLDialogElement.prototype.show=function(){this.open=true;};
-    await window.ironwoodOpenCompanionArchive({host:archiveHost,onClose:()=>{returned=true;},isActive:()=>true});
-    const embedded=archiveHost.querySelector('#companion-archive');
-    assert.ok(embedded?.open);assert.equal(embedded.querySelector('h2'),null);
-    embedded.close();assert.equal(returned,true);assert.equal(archiveHost.children.length,0);archiveHost.remove();
+    assert.equal(companionConnection().credential,'ui-token');
 
     window.ironwoodTablebase('',false,false,true);
     await new Promise(resolve=>setImmediate(resolve));

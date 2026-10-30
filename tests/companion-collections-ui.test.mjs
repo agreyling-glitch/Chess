@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+test('Saved Games collections target the selected named Companion and send collection filters',async()=>{
+ const dom=new JSDOM('<body></body>',{url:'http://named-collections.test/'});const {window}=dom;
+ Object.assign(globalThis,{window,document:window.document,localStorage:window.localStorage});
+ window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};window.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new window.Event('close'));};
+ globalThis.indexedDB=window.indexedDB={open(){const request={};queueMicrotask(()=>{request.result={transaction(){return {objectStore(){return {openCursor(){const cursor={};queueMicrotask(()=>{cursor.result=null;cursor.onsuccess();});return cursor;}};}};}};request.onsuccess();});return request;}};
+ window.ironwoodCompanionFeatureEnabled=()=>true;window.ironwoodCompanionConnections=()=>[{endpoint:'http://office:8790',name:'Office',connected:true,archive:true},{endpoint:'http://nas:8790',name:'QNAP',connected:true}];
+ const groups=[{id:'study',name:'Study',revision:1}],calls=[];
+ const provider={endpoint:'http://nas:8790',check(){},async request(path,body){calls.push({path,body});if(body?.action==='create')groups.push({id:'new',name:body.name,revision:1});return structuredClone(groups);},async page(query){calls.push({query});return {games:[],total:0,page:0,counts:{all:0},players:[],profiles:[],sources:[],dates:[],openings:[]};}};
+ window.ironwoodCompanionLibrary=async options=>{assert.equal(options.endpoint,'http://nas:8790');return provider;};
+ const source=await readFile(new URL('../web/game-storage.js',import.meta.url),'utf8');await import(`data:text/javascript,${encodeURIComponent(source)}`);await window.ironwoodOpenGameLibrary();
+ const settle=()=>new Promise(resolve=>setTimeout(resolve,230));const location=document.querySelector('[aria-label="Game storage location"]');location.value='http://nas:8790';location.dispatchEvent(new window.Event('change'));await settle();
+ let collection=document.querySelector('#game-library-dialog [aria-label="Collection"]');assert.ok([...collection.options].some(option=>option.textContent==='Study'));
+ collection.value='study';collection.dispatchEvent(new window.Event('change'));await settle();assert.ok(calls.some(call=>call.query?.collection==='study'));
+ [...document.querySelectorAll('button')].find(button=>button.textContent==='New collection').click();await settle();const dialog=document.querySelector('#storage-management-dialog');dialog.querySelector('input').value='Endgames';dialog.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await settle();
+ assert.ok(calls.some(call=>call.path==='archive/collections'&&call.body?.name==='Endgames'));
+ collection=document.querySelector('#game-library-dialog [aria-label="Collection"]');assert.ok([...collection.options].some(option=>option.textContent==='Endgames'));
+ document.querySelector('#game-library-dialog').close();dom.window.close();
+});

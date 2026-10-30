@@ -27,7 +27,7 @@ test('lc0 profiles preserve node difficulty, merge levels once, and export separ
   const bundle=buildTrainingProfileExport(first,[],['p']);
   assert.deepEqual(validateTrainingProfileImport(bundle).trainingProfiles,first);
   const details=gameDetails(JSON.stringify({player_side:'White',training:first.profiles[0].results[0].session}));
-  assert.match(details.black,/Lc0 · Level 3 · 16 nodes/);
+  assert.equal(details.black,'Lc0');assert.equal(details.trainingOpponentLevel,3);assert.equal(details.trainingNodeBudget,16);
   assert.equal(details.trainingEngineKind,'lc0');
   const wrong=lc0('wrong');wrong.profiles[0].results[0].session.node_budget=999;
   assert.throws(()=>validateTrainingProfiles(wrong),/Invalid training result/);
@@ -39,7 +39,7 @@ test('training games use profile names, color ratings, and a separate category',
   const details = gameDetails(json);
   assert.equal(details.category,'training');
   assert.equal(details.white,'Player <One>');
-  assert.equal(details.black,'Stockfish 1320 Elo');
+  assert.equal(details.black,'Stockfish');
   assert.equal(details.trainingProfileId,'p');
   assert.equal(details.ratingAfter,1336);
   assert.ok(gameMatchesCategory(details,'training'));
@@ -47,7 +47,7 @@ test('training games use profile names, color ratings, and a separate category',
   assert.ok(gameMatchesCategory({...details,favorite:true},'favorites'));
   const black = gameDetails(JSON.stringify({ board:'start', player_side:'Black', training:session('b','Black') }));
   assert.equal(black.black,'Player <One>');
-  assert.equal(black.white,'Stockfish 1320 Elo');
+  assert.equal(black.white,'Stockfish');
 });
 
 test('backups preserve training category and profile ledger; old backups remain supported', () => {
@@ -88,7 +88,7 @@ test('saved training games display the renamed profile by stable ID', () => {
     const details = gameDetails(json);
     assert.equal(details.trainingProfileName, 'New name');
     assert.equal(details.black, 'New name');
-    assert.equal(details.title, 'Stockfish 1320 Elo vs New name');
+    assert.equal(details.title, 'Stockfish vs New name');
     assert.equal(details.trainingProfileId, 'p');
     globalThis.localStorage = { getItem: () => { throw new Error('unavailable'); } };
     assert.equal(gameDetails(json).black, 'Player <One>');
@@ -153,7 +153,7 @@ test('Maia3 profile backups preserve low Elo, color progress, engine options and
   const merged=mergeTrainingProfiles(a,b);assert.deepEqual(merged.profiles[0].results.map(e=>e.session.rating_after),[816,784,832]);
   assert.equal(mergeTrainingProfiles(merged,b).profiles[0].results.length,3);
   const game=gameDetails(JSON.stringify({board:'start',player_side:'White',training:a.profiles[0].results[0].session}));
-  assert.equal(game.black,'Maia3 79M (GPU) 800 Elo');assert.equal(game.trainingEngineKind,'maia3');
+  assert.equal(game.black,'Maia3 79M (GPU)');assert.equal(game.trainingOpponentElo,800);assert.equal(game.trainingEngineKind,'maia3');
   assert.equal(game.category,'training');
   const zero={selected_id:'p',profiles:[{...a.profiles[0],starting_elo:0,results:[]}]};assert.equal(mergeTrainingProfiles(zero,zero).profiles[0].starting_elo,0);
   const wrong=structuredClone(a);wrong.profiles[0].results[0].session.opponent_elo=5001;assert.throws(()=>validateTrainingProfiles(wrong),/Invalid training result/);

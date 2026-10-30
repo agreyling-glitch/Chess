@@ -12,6 +12,10 @@ function Fixture([string]$Name) {
     return $path
 }
 try {
+    foreach ($invalid in @(@{ Windows = @(105,114) }, '../ironwood-server.exe', 'cmd.exe')) {
+        try { Start-Companion $root @{executable=$invalid;args=@()} | Out-Null; throw 'Expected invalid restart target rejection' }
+        catch { Assert ($_.Exception.Message -eq 'Invalid Companion restart executable') 'Unsafe restart target was not rejected before launch' }
+    }
     $success = Fixture 'success'
     Switch-Release (Join-Path $success 'current') (Join-Path $success 'stage') (Join-Path $success 'previous') { param($folder) Assert ((Get-Content (Join-Path $folder 'version')) -eq 'new') 'New application was not installed' } { throw 'Unexpected recovery' }
     Assert ((Get-Content (Join-Path $success 'previous/version')) -eq 'old') 'Old version was not retained'

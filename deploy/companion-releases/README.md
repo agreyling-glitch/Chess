@@ -159,7 +159,7 @@ Prepare locally using the existing public pin and protected key:
 ```powershell
 $releasePublic = Get-Content "$env:LOCALAPPDATA/Ironwood/ReleaseSigning/release-public-key.json" -Raw | ConvertFrom-Json
 .\scripts\package-companion.ps1 -Channel public -UpdateSigningMode private-preview-key -UpdatePublicKey $releasePublic.public_key -UpdateFeed https://companion-releases.ironwoodchess.com/public/windows-x64/manifest.json
-.\scripts\publish-companion-release.ps1 -Channel public -Version 0.1.4 -ReleaseKeyFile "$env:LOCALAPPDATA/Ironwood/ReleaseSigning/release-key.dpapi.json"
+.\scripts\publish-companion-release.ps1 -Channel public -Version 0.1.8 -ReleaseKeyFile "$env:LOCALAPPDATA/Ironwood/ReleaseSigning/release-key.dpapi.json"
 ```
 
 Stop the current Windows Companion before packaging and preserve its data folder.

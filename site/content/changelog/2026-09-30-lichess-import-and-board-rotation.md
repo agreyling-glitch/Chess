@@ -8,7 +8,7 @@ version: "2026.09.30"
 
 ## Added
 
-- Import completed games from Lichess through **Game → Import…**. Enter a username to fetch the latest 20 completed games, or paste an individual game link. No Lichess login or API token is required.
+- Import completed games from Lichess through **Game History → Import…**. Enter a username to fetch the latest 20 completed games, or paste an individual game link. No Lichess login or API token is required.
 - Choose which fetched games to save in Imported Games, with duplicate checking. Open a saved game for review and analysis, or enable immediate full-game analysis when importing a single game.
 - Rotate the 3D board by holding the right mouse button and dragging. Double right-click the board or use the reset-view button to return to the default perspective.
 - Player-name links to FIDE profiles in Saved Games and around the board when the imported PGN provides a valid `WhiteFideId` or `BlackFideId`. Profiles open in a new tab.

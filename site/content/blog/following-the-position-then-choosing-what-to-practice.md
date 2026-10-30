@@ -17,7 +17,7 @@ For the 3D camera, hold the right mouse button while scrolling to zoom. Hold Shi
 
 ## Make feedback useful during play and quiet during review
 
-**View → Move feedback** now offers a saved check-square highlight and a capture dissolve. Live captured pieces briefly shrink and fade with a gold pulse; the 3D model also sinks slightly. Replaying or stepping through a game does not trigger the effect. System reduced-motion preferences suppress capture and live-move animations.
+**Settings → Move feedback** now offers a saved check-square highlight and a capture dissolve. Live captured pieces briefly shrink and fade with a gold pulse; the 3D model also sinks slightly. Replaying or stepping through a game does not trigger the effect. System reduced-motion preferences suppress capture and live-move animations.
 
 Tactical Map now places Knight reach ghosts and attacker/defender badges on the 3D board. They follow rotation, tilt, and zoom, helping you inspect routes in the view you are already using.
 

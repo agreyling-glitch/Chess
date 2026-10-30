@@ -80,7 +80,7 @@ export function manageCompanionConnection() {
       const style = document.createElement('link'); style.id = 'companion-connection-style'; style.rel = 'stylesheet'; style.href = '/companion-archive.css'; document.head.append(style);
     }
     const dialog = document.createElement('dialog'); dialog.id = 'companion-connection'; dialog.dataset.companionConnection = 'true';
-    dialog.innerHTML = `<form><p class="eyebrow">IRONWOOD COMPANION</p><h2>Companion connections</h2><p>Choose one default archive and any number of engine providers. Research and tablebases use the default archive.</p><section><label>Connections<select name="connection" aria-label="Named Companion connections"></select></label><button type="button" data-new>Add connection</button></section><section><label>Companion name<input name="connectionName" maxlength="80" required placeholder="Windows Engines or QNAP Archive"></label><label>Companion address<input name="endpoint" type="url" required></label><label>Connection token<input name="credential" type="password" autocomplete="off" required></label><label><input name="archive" type="checkbox"> Default archive (including research and tablebases)</label><label><input name="engines" type="checkbox"> Use as an engine provider</label><label><input name="remember" type="checkbox"> Remember this connection on this device</label><p>Remembering saves this address and token in this browser. Tokens stay masked and are never stored in games.</p></section><p role="status" aria-live="polite"></p><div class="actions"><button type="submit">Connect / Save</button><button type="button" data-disconnect>Disconnect selected</button><button type="button" data-forget>Remove selected</button><button type="button" data-close>Done</button></div></form>`;
+    dialog.innerHTML = `<form><p class="eyebrow">IRONWOOD COMPANION</p><h2>Companion connections</h2><p>Choose one default archive and any number of engine providers. Research and tablebases use the default archive.</p><section><label>Connections<select name="connection" aria-label="Named Companion connections"></select></label><button type="button" data-new>Add connection</button></section><section><label>Companion name<input name="connectionName" maxlength="80" required placeholder="Windows Engines or QNAP Archive"></label><label>Companion address<input name="endpoint" type="url" required></label><label>Connection token<input name="credential" type="password" autocomplete="off" required></label><label><input name="archive" type="checkbox"> Default archive (including research and tablebases)</label><label><input name="engines" type="checkbox"> Use as an engine provider</label><label><input name="remember" type="checkbox"> Remember this connection on this device</label><p>Remembering saves this address and token in this browser. Tokens stay masked and are never stored in games.</p></section><button type="button" data-backup-folder>Backup folder…</button><p role="status" aria-live="polite"></p><div class="actions"><button type="submit">Connect / Save</button><button type="button" data-disconnect>Disconnect selected</button><button type="button" data-forget>Remove selected</button><button type="button" data-close>Done</button></div></form>`;
     const form = dialog.querySelector('form'), status = dialog.querySelector('[role=status]'), submit = form.querySelector('[type=submit]');
     const picker = form.elements.connection;
     let editing = null, alive = true;
@@ -96,6 +96,7 @@ export function manageCompanionConnection() {
       form.elements.remember.checked = item?.remember ?? false;
       form.querySelector('[data-disconnect]').disabled = !item?.connected;
       form.querySelector('[data-forget]').disabled = !item;
+      form.querySelector('[data-backup-folder]').disabled = !item?.connected;
       status.textContent = item ? `${item.name}: ${item.connected ? 'Configured' : 'Disconnected'}. Connect / Save checks the server and applies changes.` : 'Enter the name, address and token for this Companion.';
     }
     function render(endpoint) {
@@ -113,6 +114,10 @@ export function manageCompanionConnection() {
     form.querySelector('[data-disconnect]').onclick = () => { disconnectCompanion(editing); render(editing); };
     form.querySelector('[data-forget]').onclick = () => {
       try { removeCompanionConnection(editing); render(null); } catch (error) { status.textContent = error.message; }
+    };
+    form.querySelector('[data-backup-folder]').onclick = async () => {
+      try { const module = await import('./history-backup.js'); await module.configureBackupFolder(window, editing); }
+      catch(error) { status.textContent = error.message; }
     };
     form.querySelector('[data-close]').onclick = () => dialog.close();
     form.onsubmit = async event => {

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-16T00:00:00-05:00
+lastmod: 2026-10-30T00:00:00-05:00
 title: "Playing online with FICS"
 description: "Use the FICS window to connect, chat, find opponents, watch public games, and preview or review player history."
 category: "using-ironwood"
@@ -7,7 +7,7 @@ keywords: [online, FICS, lobby, guest, seek, challenge, connection, rated, conso
 weight: 12
 ---
 
-Ironwood connects to **FICS**, the Free Internet Chess Server, for online games and spectating. Click **FICS** in the bottom status bar to open the **Free Internet Chess Server** window. Its main tabs are **Console**, **Chat**, **Lobby**, **History**, **Watch**, and **Play**. The bottom **Lichess** button opens the separate [Lichess lobby](/help/play-on-lichess/).
+Ironwood connects to **FICS**, the Free Internet Chess Server, for online games and spectating. Choose **Play → Online via FICS** or click **FICS** in the bottom status bar to open the **Free Internet Chess Server** window directly. An existing FICS session is reused. Its main tabs are **Console**, **Chat**, **Lobby**, **History**, **Watch**, and **Play**. The bottom **Lichess** button opens the separate [Lichess lobby](/help/play-on-lichess/).
 
 Connecting as a guest or signing in preserves your current board, moves, analysis, and layout. FICS takes over the main board when a game starts or you open a watched game. During live online play, FICS supplies the authoritative moves and clocks and engine assistance is disabled. Finished games are saved on this device for later review and analysis.
 
@@ -57,7 +57,7 @@ In **History**, enter a handle in **History for**, then choose **Look up** or pr
 - **Preview** opens the existing moves player for the archived game, keeping your main board and current game unchanged.
 - **Review** loads the game onto the main board at its starting position for navigation and analysis. Finish active online play or training before reviewing another game. The FICS connection stays open.
 
-Reviewing an archived game is temporary. Use **Game → Save current game** if you want it in your local library. Games can become unavailable as a player's server history changes or if access is restricted.
+Reviewing an archived game is temporary. Use **Play → Save current game** if you want it in your local library. Games can become unavailable as a player's server history changes or if access is restricted.
 
 ## Watch: public games
 

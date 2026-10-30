@@ -16,6 +16,10 @@ mod tablebase;
 mod training;
 mod tactical;
 mod nags;
+#[cfg(any(target_arch="wasm32",test))]
+mod sidebar_popout;
+#[cfg(target_arch="wasm32")]
+mod study_panel;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -40,7 +44,7 @@ pub async fn start() -> Result<(), JsValue> {
         .start(
             canvas,
             options,
-            Box::new(|cc| Ok(Box::new(app::ChessApp::new(cc)))),
+            Box::new(|cc| Ok(Box::new(study_panel::SharedApp::new(cc)))),
         )
         .await
 }

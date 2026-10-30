@@ -367,6 +367,7 @@ impl ChessApp {
                 continue;
             };
             match event["type"].as_str().unwrap_or("") {
+                "openLobby" => self.lichess.open = true,
                 "lobby" => {
                     self.lichess.lobby = event;
                     if self.lichess.active {
@@ -472,11 +473,30 @@ impl ChessApp {
         self.board = *self.review_positions.last().unwrap_or(&start);
         self.review_white_player = lichess_player_name(&event["white"], "White");
         self.review_black_player = lichess_player_name(&event["black"], "Black");
+        let previous_count=self.lichess.applied_moves.len();
+        let previous_clock=self.lichess.game["state"].clone();
         self.fics_applying_update = true;
         for mv in parsed.into_iter().skip(self.lichess.applied_moves.len()) {
             self.play(mv);
         }
         self.fics_applying_update = false;
+        if self.review_moves.len()>previous_count {
+            let index=self.review_moves.len();
+            let white=self.review_positions[index-1].side_to_move()==Color::White;
+            let key=if white {"wtime"}else{"btime"};
+            let inc_key=if white {"winc"}else{"binc"};
+            if let Some(remaining)=event["state"][key].as_f64().filter(|value|value.is_finite()&&*value>=0.0) {
+                self.move_timings.resize(index+1,MoveTiming::default());
+                self.move_timings[index].remaining=Some(Self::pgn_time(remaining/1000.0));
+                // Never turn reconnect/catch-up time into a made-up move duration.
+                if index==previous_count+1 && previous_clock["moves"].as_str().map(|moves|moves.split_whitespace().count())==Some(previous_count) {
+                    if let Some((before,increment))=previous_clock[key].as_f64().zip(event["state"][inc_key].as_f64()) {
+                        let spent=before+increment-remaining;
+                        if spent.is_finite()&&spent>=0.0 {self.move_timings[index].elapsed=Some(Self::pgn_time(spent/1000.0));}
+                    }
+                }
+            }
+        }
         self.lichess.applied_moves = moves;
         self.selected = None;
         self.legal_targets.clear();
@@ -1219,6 +1239,25 @@ mod lichess_tests {
             egui::Context::default(),
         ))
     }
+    #[test]
+    fn online_move_timings_use_server_clocks_and_skip_missing_history() {
+        let mut app=app();
+        let mut initial=event("","started");
+        initial["state"]["wtime"]=600000.into();initial["state"]["btime"]=600000.into();
+        initial["state"]["winc"]=2000.into();initial["state"]["binc"]=2000.into();
+        app.receive_lichess_game(initial.clone());
+        let mut first=initial.clone();first["state"]["moves"]="e2e4".into();first["state"]["wtime"]=598500.into();
+        app.receive_lichess_game(first.clone());
+        assert_eq!(app.move_timings[1].elapsed.as_deref(),Some("0:00:03.500"));
+        assert_eq!(app.move_timings[1].remaining.as_deref(),Some("0:09:58.500"));
+        let timing=app.move_timings.clone();app.receive_lichess_game(first);assert_eq!(app.move_timings,timing);
+        let mut catchup=initial;catchup["state"]["moves"]="e2e4 e7e5 g1f3 b8c6".into();catchup["state"]["btime"]=595000.into();
+        app.receive_lichess_game(catchup);
+        assert!(app.move_timings[4].elapsed.is_none());
+        assert_eq!(app.move_timings[4].remaining.as_deref(),Some("0:09:55.000"));
+        assert_eq!(app.move_timings[1],timing[1]);
+    }
+
     fn event(moves: &str, status: &str) -> serde_json::Value {
         serde_json::json!({"id":"abcd1234", "initialFen":"startpos", "side":"white", "rated":true,
             "white":{"name":"Alice", "rating":1500}, "black":{"name":"Bob", "rating":1600},
@@ -1910,20 +1949,47 @@ impl ChessApp {
         Self::paint_sunken_border(ui, section.response.rect);
     }
 
+    fn lichess_profile_review_blocked(&self)->bool {
+        (self.fics_active && !self.fics_game_finished) || self.training_live() || self.puzzle_navigation_locked()
+    }
+
     fn review_lichess_profile_game(&mut self, pgn: &str) {
         #[cfg(target_arch = "wasm32")]
         if profile_companion_mode() {
             if !review_profile_in_main(pgn) { self.lichess.profile_action_error = "Keep the main Ironwood window open to review this game.".into(); }
             return;
         }
-        if (self.fics_active && !self.fics_game_finished) || self.training.is_some() || self.puzzle_navigation_locked() {
+        if self.lichess_profile_review_blocked() {
             self.lichess.profile_action_error="Finish active play or training before opening another game.".into(); return;
         }
+        // Profile exports can carry clocks in PGN comments or JSON centiseconds.
+        let exported=serde_json::from_str::<serde_json::Value>(pgn).ok();
+        let pgn=exported.as_ref().and_then(|game|game["pgn"].as_str()).unwrap_or(pgn);
         if Self::parse_pgn_mainline(pgn).is_err() {self.lichess.profile_action_error="Could not read the game moves.".into();return;}
         self.save_game();
         self.exit_puzzle_mode();
         self.transient_profile_review=true;
         self.load_pgn_with_storage(pgn,false);
+        if let Some(game)=exported.as_ref() {
+            self.move_timings.resize(self.review_positions.len(),MoveTiming::default());
+            if let Some(clocks)=game["clocks"].as_array() {
+                for (ply,clock) in clocks.iter().take(self.review_moves.len()).enumerate() {
+                    if self.move_timings[ply+1].remaining.is_none() {
+                        if let Some(centis)=clock.as_u64() {self.move_timings[ply+1].remaining=Some(Self::pgn_time(centis as f64/100.0));}
+                    }
+                }
+            }
+            let control=Self::simple_time_control(pgn).or_else(||Some((game["clock"]["initial"].as_f64()?,game["clock"]["increment"].as_f64()?)));
+            if let Some((_,increment))=control {
+                // Recompute derived fields with per-player berserk flags, preserving explicit %emt.
+                let explicit=Self::parse_pgn_timing_comments(pgn,&self.review_positions);
+                for (index,timing) in self.move_timings.iter_mut().enumerate() {timing.elapsed=explicit.get(index).and_then(|value|value.elapsed.clone());}
+                let full_game=self.review_positions.first().is_some_and(|board|board.side_to_move()==Color::White)
+                    && Self::pgn_tag(pgn,"FEN").is_none_or(|fen|fen.split_whitespace().nth(5)==Some("1"));
+                Self::derive_lichess_move_times(&mut self.move_timings,&self.review_positions,increment,full_game,
+                    [game["players"]["white"]["berserk"].as_bool().unwrap_or(false),game["players"]["black"]["berserk"].as_bool().unwrap_or(false)]);
+            }
+        }
         self.engine_enabled=false;
         self.review_to(0);
         self.engine_status="Lichess game review · not saved".into();
@@ -1997,10 +2063,10 @@ impl ChessApp {
                 ui.allocate_ui_with_layout(Vec2::new(controls_width,0.0),egui::Layout::top_down(egui::Align::Max), |ui| {
                         ui.set_min_width(ui.available_width());
                         if !id.is_empty() { ui.add(egui::Hyperlink::from_label_and_url("Open game on Lichess",format!("https://lichess.org/{id}")).open_in_new_tab(true)); }
-                        let allowed=pgn.is_some() && !(self.fics_active && !self.fics_game_finished) && self.training.is_none() && !self.puzzle_navigation_locked();
+                        let allowed=pgn.is_some() && !self.lichess_profile_review_blocked();
                         if ui.add_enabled(allowed,Self::lichess_profile_button("Review"))
                             .on_hover_text("Review this game without adding it to Saved Games").on_disabled_hover_text("Finish active play or training before reviewing another game; refresh this profile if move data is missing.").clicked() {
-                            self.review_lichess_profile_game(pgn.unwrap());
+                            self.review_lichess_profile_game(&game.to_string());
                         }
                 });
             });
@@ -2373,6 +2439,66 @@ mod player_profile_review_tests {
         assert_eq!(app.review_moves.len(),3);
         assert_eq!(app.review_index,Some(0));
     }
+    #[test]
+    fn profile_review_derives_elapsed_from_json_clocks_and_increment() {
+        let pgn="[TimeControl \"180+2\"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 {[%emt 0:00:07.25]} *";
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        let mut game=serde_json::json!({"pgn":pgn,"clocks":[18000,18000,17850,17900,17600],"clock":{"initial":180,"increment":2}});
+        app.review_lichess_profile_game(&game.to_string());
+        assert!(app.lichess.profile_action_error.is_empty());
+        let expected=["0:00:00.000","0:00:00.000","0:00:03.500","0:00:03.000","0:00:07.25"];
+        for (timing,expected) in app.move_timings.iter().skip(1).zip(expected) {assert_eq!(timing.elapsed.as_deref(),Some(expected));}
+        assert_eq!(app.move_timings[3].remaining.as_deref(),Some("0:02:58.500"));
+        assert_eq!(ChessApp::move_time_label(app.move_timings[3].elapsed.as_deref()),"3.5s");
+        let exported=app.annotated_pgn();assert!(exported.contains("[%emt 0:00:03.500]"));assert!(exported.contains("[%clk 0:02:58.500]"));
+        let saved=serde_json::to_string(&app.persisted_game()).unwrap();
+        assert!(ChessApp::export_saved_game(&saved,"pgn").unwrap().contains("[%emt 0:00:03.500]"));
+        game["players"]=serde_json::json!({"white":{"berserk":true}});
+        app.review_lichess_profile_game(&game.to_string());
+        assert_eq!(app.move_timings[3].elapsed.as_deref(),Some("0:00:01.500"));
+        assert_eq!(app.move_timings[4].elapsed.as_deref(),Some("0:00:03.000"));
+    }
+
+    #[test]
+    fn lichess_clock_comments_handle_terminal_moves_gaps_and_untimed_games() {
+        let pgn="[Site \"https://lichess.org/testgame\"]\n[TimeControl \"180+2\"]\n\n1. f3 {[%clk 0:03:00]} e5 {[%clk 0:03:00]} 2. g4 {[%clk 0:02:59]} Qh4# {[%clk 0:02:54]} 0-1";
+        let timings=ChessApp::parse_pgn_timings(pgn);
+        assert_eq!(timings[3].elapsed.as_deref(),Some("0:00:03.000"));
+        assert_eq!(timings[4].elapsed.as_deref(),Some("0:00:06.000"),"No increment on checkmate");
+        let missing="[Site \"https://lichess.org/testgame\"]\n[TimeControl \"180+2\"]\n\n1. e4 {[%clk 0:03:00]} e5 {[%clk 0:03:00]} 2. Nf3 Nc6 {[%clk 0:02:59]} 3. Bb5 {[%clk 0:02:56]} a6 {[%clk 0:03:10]} *";
+        let timings=ChessApp::parse_pgn_timings(missing);
+        assert!(timings[5].elapsed.is_none(),"Do not bridge missing clock history");
+        assert!(timings[6].elapsed.is_none(),"Do not invent a negative time after a clock adjustment");
+        let timings=ChessApp::parse_pgn_timings("[Site \"https://lichess.org/testgame\"]\n[TimeControl \"-\"]\n\n1. e4 e5 *");
+        assert!(timings.iter().all(|timing|timing.elapsed.is_none()&&timing.remaining.is_none()));
+        let missing_control=ChessApp::parse_pgn_timings("[Site \"https://lichess.org/testgame\"]\n\n1. e4 {[%clk 0:03:00]} e5 {[%clk 0:03:00]} *");
+        assert!(missing_control[1].elapsed.is_none());
+    }
+
+    #[test]
+    fn completed_training_in_connected_lobby_does_not_block_profile_review() {
+        for finished in [false,true] {
+            let ctx=egui::Context::default();
+            let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+            if finished {app.load_pgn("1. f3 e5 2. g4 Qh4# 0-1");}
+            let profile:crate::training::Profile=serde_json::from_value(serde_json::json!({"id":"profile","name":"Dad"})).unwrap();
+            app.training=Some(profile.session("game".into(),"now".into()));
+            app.enter_lichess();
+            app.lichess.lobby=serde_json::json!({"connected":true,"account":"Dad"});
+            assert_eq!(app.lichess_profile_review_blocked(),!finished);
+            let board=app.board;
+            app.review_lichess_profile_game(PGN);
+            if finished {
+                assert!(app.transient_profile_review);
+                assert_eq!(app.review_index,Some(0));assert_eq!(app.review_moves.len(),3);
+                assert!(app.lichess.profile_action_error.is_empty());
+            } else {
+                assert!(!app.transient_profile_review);assert_eq!(app.board,board);
+                assert!(!app.lichess.profile_action_error.is_empty());
+            }
+        }
+    }
+
     #[test]
     fn active_online_play_cannot_be_replaced_by_profile_review() {
         let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
