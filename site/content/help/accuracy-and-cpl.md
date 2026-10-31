@@ -1,7 +1,7 @@
 ---
 title: "Accuracy and CPL"
 description: "Read the side-by-side accuracy and average centipawn loss charts for both players and each game phase."
-lastmod: 2026-10-28T00:00:00-05:00
+lastmod: 2026-10-31T00:00:00-05:00
 category: "terms"
 keywords: [CPL, ACPL, average centipawn loss, accuracy, percentage, pawn, loss, comparison, charts, gold, sage]
 weight: 40
@@ -9,7 +9,7 @@ weight: 40
 
 ## Compare the players
 
-After full-game analysis finishes, open **Analysis → Analysis Summary**. Two
+After full-game analysis finishes, open **Analysis → Summary**. Two
 comparison charts replace the separate player summary cards:
 
 - **Accuracy (higher is better):** compare the players' percentages on a 0–100 scale.

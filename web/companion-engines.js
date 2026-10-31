@@ -23,7 +23,7 @@ window.ironwoodCompanionPollChange = () => { const value = change; change = ''; 
 window.ironwoodCompanionSetAllowed = value => { allowed = value; window.ironwoodCompanionAllowed = value; };
 window.ironwoodCompanionEngineCatalog = () => {
   if (enabled() && !catalogRequested) void window.ironwoodRefreshCompanionEngines();
-  return JSON.stringify(enabled() ? state : {engines:[],busy:false,status:''});
+  return JSON.stringify(enabled() ? {...state, has_engine_provider: companionEngineConnections().length > 0} : {engines:[],busy:false,status:''});
 };
 
 window.ironwoodRefreshCompanionEngines = async () => {

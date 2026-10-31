@@ -6,6 +6,8 @@ thread_local! { static PGN_TIMELINES:std::cell::RefCell<std::collections::VecDeq
 
 #[path = "companion_ui.rs"]
 mod companion_ui;
+#[path = "time_management_ui.rs"]
+mod time_management_ui;
 #[path = "engine_uci_settings.rs"]
 mod engine_uci_settings;
 #[path = "training_ui.rs"]
@@ -11652,14 +11654,21 @@ impl ChessApp {
     fn receive_pending_archive_analysis(&mut self) {
         let pending=take_archive_run();
         if !pending.is_empty(){
-            if let Ok(snapshot)=serde_json::from_str::<ArchiveAnalysisSnapshot>(&pending){
-                if self.restore_archive_analysis_snapshot(snapshot){self.save_game();}
-                else{self.engine_status="Saved analysis does not match this game's positions".into();}
+            match serde_json::from_str::<ArchiveAnalysisSnapshot>(&pending) {
+                Ok(snapshot) => {
+                    let count = snapshot.game_analysis.len().saturating_sub(1);
+                    if self.restore_archive_analysis_snapshot(snapshot){self.save_game();}
+                    else{self.engine_status=format!("Error: this saved analysis belongs to a different game or move sequence ({count} moves). It cannot be applied to this game. The saved analysis is preserved.");}
+                }
+                Err(_) => {self.engine_status="Error: could not read this saved analysis. The saved analysis is preserved.".into();}
             }
         }
     }
     #[cfg(target_arch = "wasm32")]
     fn archive_analysis_runs_ui(&mut self,ui:&mut egui::Ui){
+        // A temporary review has no storage identity yet. The browser still
+        // points at the previous saved game until this review is explicitly saved.
+        if self.transient_profile_review { self.analysis_print_tray_ui(ui); return; }
         let state=serde_json::from_str::<serde_json::Value>(&archive_analysis_runs()).unwrap_or_default();
         if state["available"]!=true{self.analysis_print_tray_ui(ui);return;}
         self.receive_pending_archive_analysis();
@@ -11721,11 +11730,9 @@ impl ChessApp {
         if let Some(id) = Self::saved_analysis_number_buttons(ui, &runs, &current, can_switch) { chosen = id; }
         if chosen!=current{self.save_game();select_archive_run(&chosen);}
         });
-        if state["browser"]==true {
             if let Some(error)=state["error"].as_str().filter(|message|!message.is_empty()) {
                 ui.colored_label(Color32::from_rgb(232,112,112),error);
             }
-        }
         });
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
     }
@@ -12396,6 +12403,8 @@ impl ChessApp {
 
     fn save_current_game(&mut self) {
         // Explicit saving promotes a temporary profile review to a saved game.
+        #[cfg(target_arch = "wasm32")]
+        if self.transient_profile_review { start_new_stored_game("imported"); }
         self.transient_profile_review = false;
         self.save_game();
     }
@@ -17590,6 +17599,25 @@ mod tests {
     }
 
     #[test]
+    fn saved_analysis_from_another_game_cannot_replace_current_results() {
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        app.load_pgn("1. d4 d5 2. Nf3 *");
+        app.game_analysis=vec![Some(PositionAnalysis { eval_cp:Some(42), ..Default::default() });4];
+        app.analysis_run=Some(serde_json::json!({"id":"current"}));
+        for pgn in ["1. e4 c5 2. c3 *", "1. e4 c5 *"] {
+            let (positions,_)=ChessApp::parse_pgn_mainline(pgn).unwrap();
+            let snapshot=ArchiveAnalysisSnapshot {
+                analysis_run:Some(serde_json::json!({"id":"other","position_fens":positions.iter().map(ToString::to_string).collect::<Vec<_>>()})),
+                game_analysis:vec![None;positions.len()],verification_targets:vec![],verification_results:vec![],verification_nodes:0,verification_time_ms:0,
+            };
+            assert!(!app.restore_archive_analysis_snapshot(snapshot));
+            assert_eq!(app.analysis_run.as_ref().unwrap()["id"],"current");
+            assert_eq!(app.game_analysis.len(),4);
+            assert_eq!(app.game_analysis[0].as_ref().unwrap().eval_cp,Some(42));
+        }
+    }
+
+    #[test]
     fn expanded_graph_engine_label_follows_selected_saved_run() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
@@ -21547,27 +21575,41 @@ impl ChessApp {
                     ui.set_min_width(ui.available_width());
                     ui.set_min_height(details_min_height);
                     details_grain=Some(ui.painter().add(egui::Shape::Noop));
-                    let tab_id = egui::Id::new(if show_explore { "explore_details_tab" } else { "position_details_tab" });
+                    let tab_id = egui::Id::new(if show_explore { "explore_details_tab" } else if show_position { "position_details_tab" } else { "analysis_details_tab" });
                     let mut detail_tab = if show_position {
                         ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(1)).clamp(1, 3)
                     } else if show_explore {
                         ui.data_mut(|data| data.get_persisted::<usize>(tab_id).unwrap_or(4)).clamp(4, 5)
-                    } else { 0 };
-                    if show_position || show_explore {
+                    } else {
+                        match ui.data_mut(|data| data.get_persisted::<usize>(tab_id)).unwrap_or(0) {
+                            6 => 6,
+                            7 => 7,
+                            8 => 8,
+                            9 => 9,
+                            _ => 0,
+                        }
+                    };
+                    {
                         let tabs_background = ui.painter().add(egui::Shape::Noop);
                         let tabs = ui.horizontal_wrapped(|ui| {
                             if show_position {
                             ui.selectable_value(&mut detail_tab, 1, "Pawn Structure");
                             ui.selectable_value(&mut detail_tab, 2, "Piece Mobility");
                             ui.selectable_value(&mut detail_tab, 3, "King Safety");
-                            } else {
+                            } else if show_explore {
                             ui.selectable_value(&mut detail_tab, 4, "Openings");
                             ui.selectable_value(&mut detail_tab, 5, "Endgames");
+                            } else {
+                            ui.selectable_value(&mut detail_tab, 0, "Summary");
+                            ui.selectable_value(&mut detail_tab, 6, "Critical Analysis");
+                            ui.selectable_value(&mut detail_tab, 7, "Time per move");
+                            ui.selectable_value(&mut detail_tab, 8, "Clock burn-down");
+                            ui.selectable_value(&mut detail_tab, 9, "Time spent vs. move quality quadrant");
                             }
                         });
                         ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
                         ui.data_mut(|data| data.insert_persisted(tab_id, detail_tab));
-                        self.finish_saved_line_preview();
+                        if detail_tab != 6 { self.finish_saved_line_preview(); }
                         ui.separator();
                     }
                     // Keep controls, graph and tabs fixed above the scrolling details.
@@ -21578,7 +21620,19 @@ impl ChessApp {
                         .min_scrolled_height(0.0)
                         .auto_shrink([false, false])
                         .show_gold(ui, |ui| {
-                    if detail_tab == 5 {
+                    if detail_tab == 9 {
+                        if let Some(destination) = self.time_quality_quadrant_ui(ui, index) {
+                            self.review_to(destination);
+                        }
+                    } else if detail_tab == 8 {
+                        if let Some(destination) = self.clock_burn_down_ui(ui, index) {
+                            self.review_to(destination);
+                        }
+                    } else if detail_tab == 7 {
+                        if let Some(destination) = self.time_management_ui(ui, index) {
+                            self.review_to(destination);
+                        }
+                    } else if detail_tab == 5 {
                         if self.training_live() || (self.fics_active && self.fics_playing) {
                             ui.label("Tablebases are available after the game finishes.");
                         } else {
@@ -21622,7 +21676,7 @@ impl ChessApp {
                     {
                         ui.add_space(8.0);
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(RichText::new("Analysis Summary").size(17.0).strong());
+                            ui.label(RichText::new(if detail_tab == 6 { "Critical Analysis" } else { "Analysis Summary" }).size(17.0).strong());
                             if !self.verification_targets.is_empty()
                                 || !self.critical_verification_targets().is_empty()
                             {
@@ -21656,9 +21710,11 @@ impl ChessApp {
                             .corner_radius(6.0).inner_margin(Margin::same(12))
                             .show(ui, |ui| {
                         ui.set_min_width(ui.available_width());
+                        if detail_tab == 0 {
                         if let Some(destination) = self.analysis_comparison_charts(ui, index) {
                             self.review_to(destination);
                         }
+                        } else {
                         if let Some(turning_point) = self.turning_point_index() {
                             let loss_text = self.move_mate_outcome(turning_point)
                                 .map(|outcome| outcome.explanation().to_owned())
@@ -21736,8 +21792,8 @@ impl ChessApp {
                         egui::CollapsingHeader::new(
                             RichText::new("Move quality").size(14.0).strong(),
                         )
-                        .id_salt("move_quality_breakdown")
-                        .default_open(false)
+                        .id_salt("critical_analysis_move_quality_breakdown")
+                        .default_open(true)
                         .show(ui, |ui| {
                             if let Some(destination) = self.move_quality_chart(ui, index) {
                                 summary_jump = Some(destination);
@@ -21872,6 +21928,7 @@ impl ChessApp {
                         }
                         if let Some(destination) = summary_jump {
                             self.review_to(destination);
+                        }
                         }
                         });
                         Self::paint_sunken_border(ui,summary_section.response.rect);

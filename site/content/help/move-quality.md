@@ -1,7 +1,7 @@
 ---
 title: "Move labels"
 description: "Understand Best, Good, Inaccuracy, Mistake, and Blunder in Ironwood."
-lastmod: 2026-10-28T00:00:00-05:00
+lastmod: 2026-10-31T00:00:00-05:00
 category: "analysis"
 keywords: [best, good, inaccuracy, mistake, blunder, quality, threshold, classification]
 weight: 30
@@ -25,7 +25,8 @@ Use a label as a pointer to a position worth studying. Look at the board and the
 
 ## Compare move quality by player
 
-Expand **Move quality** in **Analysis Summary** after full-game analysis. Each
+Open **Analysis → Critical Analysis** after full-game analysis. **Move quality**
+is expanded by default and can be collapsed. Each
 player has a stacked horizontal bar showing the share of their classified moves
 in each category. The legend uses Ironwood's category colors: gold for Best,
 green for Good, yellow for Inaccuracy, orange for Mistake, and red for Blunder.

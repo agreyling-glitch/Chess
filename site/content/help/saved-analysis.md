@@ -4,7 +4,7 @@ description: "Switch saved engine runs with numbered buttons or keys 1–9, and 
 category: "analysis"
 keywords: [Saved Analysis, compare, engine, dropdown, numbered buttons, shortcuts, settings, hover, expanded graph]
 weight: 22
-lastmod: 2026-10-27T00:00:00-05:00
+lastmod: 2026-10-31T00:00:00-05:00
 ---
 
 ## Choose a saved run
@@ -14,6 +14,12 @@ Open a game and select **Analysis**. The **Analyze / Analyze again** controls an
 Click a numbered button or press **1–9** for the corresponding run. Numbers follow the dropdown order; buttons beyond 9 remain clickable. The dropdown and highlighted number stay synchronized after the selected run loads. Refreshing the list or saving another run can change the order.
 
 Switching is unavailable while full-game analysis is running or while a run is loading. Number shortcuts do not select runs while you are typing or using a modified key combination. In the Analysis view, these numbers take priority over observed FICS-game shortcuts.
+
+## If a selection does not load
+
+Saved results must match the game's positions and move sequence. An analysis from a different game is rejected with a visible error; your current results and the saved payload remain intact. Older browser records affected by a previous storage bug may contain analyses from another game. Those results cannot be applied to the game currently on the board.
+
+Temporary profile reviews do not show the previously opened game's saved-analysis selector. Explicitly saving a temporary review creates a separate game entry, so its future analyses stay with that game.
 
 ## Compare inside the expanded graph
 

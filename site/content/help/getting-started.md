@@ -46,7 +46,7 @@ Select the **Analysis** tab and click **Analyze full game with Stockfish 19**. A
 
 A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled while an online game is engaged. The **Analysis** tab shows **Game chat** during Lichess play and returns to analysis when the game ends. To review a saved game while a correspondence game remains ongoing, use **Game History → Saved games**.
 
-Analysis Summary compares both players with accuracy and average CPL charts for Overall, Opening, Middlegame, and Endgame. Move quality uses stacked bars. Move Analysis compares the played and engine-preferred lines beside an evaluation-swing bar.
+**Analysis → Summary** compares both players with accuracy and average CPL charts for Overall, Opening, Middlegame, and Endgame. **Critical Analysis** contains the turning point, the Move quality stacked bars (open by default), and Move Analysis with played and engine-preferred lines beside an evaluation-swing bar. **Time per move**, **Clock burn-down**, and **Time spent vs. move quality quadrant** help review recorded clock use. [Timing-chart guide](/help/time-management/).
 
 The results are estimates from a chess engine. They can change if Stockfish searches longer or uses different settings. Wait for analysis and any critical-move verification to finish before treating the summary as final.
 
@@ -76,7 +76,7 @@ the main window after reloading. Expanded analysis graphs open inside the Study 
 
 Start with the [evaluation](/help/evaluation/) graph to see when either player gained an advantage. Then inspect the [move labels](/help/move-quality/) and [symbols](/help/move-symbols/) around the biggest changes.
 
-**Analysis Summary** compares both players in two bar charts: **Accuracy** (higher
+**Analysis → Summary** compares both players in two bar charts: **Accuracy** (higher
 is better) and **Average centipawn loss** (lower is better). Gold identifies White;
 sage green identifies Black. Compare **Overall** and the three game phases,
 hover for details, or click a phase bar to visit that player's first move in it.

@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-10-31T00:00:00-05:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -22,6 +22,10 @@ Every tab after Moves identifies the selected position and move. The Game Moves 
 The **Time** column in Game Moves stacks White and Black’s elapsed times. Hover a time for available time-spent and remaining-clock details. PGN exports preserve `%emt` and `%clk`, and imports retain supplied timings. Lichess reviews request clock history and account for increment; FICS history reviews preserve elapsed times and reconstruct remaining clocks when the time control is known. Missing timings stay unavailable. Wheel navigation keeps visible move rows stationary and scrolls only when needed. [Move timings](/help/pgn/#time-spent-and-time-remaining).
 
 ## Analyze without limits
+
+Analysis now has **Summary**, **Critical Analysis**, **Time per move**, **Clock burn-down**, and **Time spent vs. move quality quadrant** tabs. Summary keeps the player and game-phase comparison charts together. Critical Analysis contains the turning point, Move quality (expanded by default), and Move Analysis. The three timing views compare thinking time, remaining clocks, and estimated centipawn loss, with separate player views where appropriate, hover details, and clickable moves. Charts sit in sunken sections with subtle grain. [Review your time use](/help/time-management/).
+
+When no Companion engine provider is configured, a compact gold **?** beside the analysis-engine refresh control explains how to connect other engines and opens Companion connections.
 
 **No analysis usage cap. No paywall. No subscription.** Analyze as many games and positions as you want with Stockfish 19 and its full NNUE network running directly in your browser. Choose your own search time, depth, or node budget, including unlimited search; speed and available resources depend on your device. Review evaluations, best moves, principal variations, and critical moments. Gold and sage comparison charts put both players’ accuracy and average centipawn loss side by side for the whole game and each phase. Stacked move-quality bars show each player’s counts, with forced-mate statistics below. Pause and resume full-game analysis or open the evaluation graph in a full-screen view with move labels, mistake markers, position navigation, and detailed scores. Colored bands on the expanded graph highlight opening, middlegame, and endgame, with phase labels and a legend matching the analysis summaries.
 

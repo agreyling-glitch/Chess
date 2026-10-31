@@ -97,7 +97,20 @@ impl ChessApp {
             self.poll_companion_provider();
         }
         if Self::analysis_refresh_button(ui,!busy,"Refresh installed engines").on_disabled_hover_text("Checking engines…").clicked() { refresh_companion_engines(); }
-        if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) { ui.label(status); }
+        if catalog["has_engine_provider"] != true {
+            let help = ui.add(egui::Button::new("?").raised_gold())
+                .on_hover_text("Use other engines with Ironwood Companion");
+            egui::Popup::from_toggle_button_response(&help).show(|ui| {
+                ui.set_max_width(300.0_f32.min(ui.ctx().content_rect().width() - 24.0));
+                ui.add(egui::Label::new("To use other engines in Ironwood, use Ironwood Companion and connect your engines. Open Companion connections, connect Companion, and enable ‘Use as an engine provider’. Then add your engines in Engine settings and refresh this list.").wrap());
+                if ui.button("Companion connections…").clicked() {
+                    manage_companion_connection();
+                    ui.close();
+                }
+            });
+        } else if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) {
+            ui.add(egui::Label::new(status).truncate()).on_hover_text(status);
+        }
         if busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)); }
     }
 

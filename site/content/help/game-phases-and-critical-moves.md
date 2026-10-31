@@ -35,7 +35,7 @@ The classification uses the board **before each move**. A capture that reduces t
 
 These are approximate study categories, shared by the expanded graph, phase summaries, and printed reports. They may differ from how a player describes the position.
 
-In **Analysis Summary**, the accuracy and average CPL comparison charts show
+In **Analysis → Summary**, the accuracy and average CPL comparison charts show
 **Overall**, **Opening**, **Middlegame**, and **Endgame** groups. Each group places
 White's gold bar beside Black's sage green bar, with values and per-player phase
 move counts. Higher accuracy and lower average CPL are better. A faint gold
