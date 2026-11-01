@@ -7,7 +7,7 @@ keywords: [Lichess, study, chapters, variations, repertoire, practice, PGN]
 weight: 85
 ---
 
-Open **Game History → Import**, choose **Lichess**, and paste a study link or a chapter link. Choose **Fetch study**, then **Continue**. The study opens at its first position in the **Study** tab beside the board. Its chapters stay together in one saved workspace. A public study must allow downloads. For a private study, export its PGN while signed in to Lichess and paste the file's contents into Ironwood's import dialog.
+Open **Game library → Import**, choose **Lichess**, and paste a study link or a chapter link. Choose **Fetch study**, then **Continue**. The study opens at its first position in the **Study** tab beside the board. Its chapters stay together in one saved workspace. A public study must allow downloads. For a private study, export its PGN while signed in to Lichess and paste the file's contents into Ironwood's import dialog.
 
 ## Read and explore
 

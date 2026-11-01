@@ -1,7 +1,7 @@
 ---
 title: "Set up Companion for Windows"
 description: "Install Companion, connect your browser, and understand where your games are saved."
-lastmod: 2026-10-28T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 category: "settings"
 keywords: [Companion, Windows, install, download, setup, token, connect, address, multiple companions, startup, sign in, 0.1.5]
 weight: 61
@@ -66,7 +66,7 @@ Read [Engines and storage with Companion](/help/companion-engines-and-storage/) 
 
 Companion 0.1.6 and later add a **Backup folder** setting in the Windows status window. Enter an absolute path and choose **Save folder**. You can also edit it through **Settings → Companion connection… → Backup folder…** for a connected server. Use a path on the machine running Companion, including an accessible NAS share or mounted volume. The account running Companion needs permission to read and write there.
 
-Use **Game History → Backup and Restore…** to select a named Companion and create or restore a database snapshot in its backup folder. This keeps large archives out of browser memory. See [Saved games and backups](/help/saved-games-and-backups/). These tools are included in public Windows release 0.1.8.
+Use **Game library → Backup and Restore…** to select a named Companion and create or restore a database snapshot in its backup folder. This keeps large archives out of browser memory. See [Saved games and backups](/help/saved-games-and-backups/). These tools are included in public Windows release 0.1.8.
 
 ## Update older installations
 

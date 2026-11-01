@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 title: "Playing online with FICS"
 description: "Use the FICS window to connect, chat, find opponents, watch public games, and preview or review player history."
 category: "using-ironwood"
@@ -7,7 +7,7 @@ keywords: [online, FICS, lobby, guest, seek, challenge, connection, rated, conso
 weight: 12
 ---
 
-Ironwood connects to **FICS**, the Free Internet Chess Server, for online games and spectating. Choose **Play → Online via FICS** or click **FICS** in the bottom status bar to open the **Free Internet Chess Server** window directly. An existing FICS session is reused. Its main tabs are **Console**, **Chat**, **Lobby**, **History**, **Watch**, and **Play**. The bottom **Lichess** button opens the separate [Lichess lobby](/help/play-on-lichess/).
+Ironwood connects to **FICS**, the Free Internet Chess Server, for online games and spectating. Choose **Play → Online → FICS lobby** or click **FICS** in the bottom status bar to open the **Free Internet Chess Server** window directly. An existing FICS session is reused. Its main tabs are **Console**, **Chat**, **Lobby**, **History**, **Watch**, and **Play**. The bottom **Lichess** button opens the separate [Lichess lobby](/help/play-on-lichess/).
 
 Connecting as a guest or signing in preserves your current board, moves, analysis, and layout. FICS takes over the main board when a game starts or you open a watched game. During live online play, FICS supplies the authoritative moves and clocks and engine assistance is disabled. Finished games are saved on this device for later review and analysis.
 

@@ -2,7 +2,7 @@
 title: "Train against AI"
 description: "Choose a training engine, build a profile, play both colors, and follow your progress."
 category: "using-ironwood"
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
@@ -51,7 +51,7 @@ When **Your next practice focus** recommends a phase, choose **Puzzle difficulty
 
 **Saved Games → Training** keeps training games separate from My Games, Imported Games, and Observed games. Filter the Training section by profile to replay games, add notes, and run analysis. Each game records the profile, color, opponent target, and rating change.
 
-Profiles and their completed-result histories are included in **Game History → Backup and Restore**. Restoring a backup merges profile results by their unique game IDs to avoid counting a result twice. Deleting a game from Saved Games removes its replay record; its completed rating result and aggregate analysis remain in the profile history. **Reset all local data** removes profiles too.
+Profiles and their completed-result histories are included in **Game library → Backup and Restore**. Restoring a backup merges profile results by their unique game IDs to avoid counting a result twice. Deleting a game from Saved Games removes its replay record; its completed rating result and aggregate analysis remain in the profile history. **Reset all local data** removes profiles too.
 
 Profiles are stored in this browser on this device. Make a backup before clearing browser data or moving devices. Native development previews keep profiles in memory for the current session.
 

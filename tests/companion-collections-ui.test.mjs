@@ -13,10 +13,10 @@ test('Saved Games collections target the selected named Companion and send colle
  window.ironwoodCompanionLibrary=async options=>{assert.equal(options.endpoint,'http://nas:8790');return provider;};
  const source=await readFile(new URL('../web/game-storage.js',import.meta.url),'utf8');await import(`data:text/javascript,${encodeURIComponent(source)}`);await window.ironwoodOpenGameLibrary();
  const settle=()=>new Promise(resolve=>setTimeout(resolve,230));const location=document.querySelector('[aria-label="Game storage location"]');location.value='http://nas:8790';location.dispatchEvent(new window.Event('change'));await settle();
- let collection=document.querySelector('#game-library-dialog [aria-label="Collection"]');assert.ok([...collection.options].some(option=>option.textContent==='Study'));
+ let collection=document.querySelector('#game-library-dialog [aria-label="Folder"]');assert.ok([...collection.options].some(option=>option.textContent==='Study'));
  collection.value='study';collection.dispatchEvent(new window.Event('change'));await settle();assert.ok(calls.some(call=>call.query?.collection==='study'));
- [...document.querySelectorAll('button')].find(button=>button.textContent==='New collection').click();await settle();const dialog=document.querySelector('#storage-management-dialog');dialog.querySelector('input').value='Endgames';dialog.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await settle();
+ [...document.querySelectorAll('button')].find(button=>button.textContent==='New folder').click();await settle();const dialog=document.querySelector('#storage-management-dialog');dialog.querySelector('input').value='Endgames';dialog.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await settle();
  assert.ok(calls.some(call=>call.path==='archive/collections'&&call.body?.name==='Endgames'));
- collection=document.querySelector('#game-library-dialog [aria-label="Collection"]');assert.ok([...collection.options].some(option=>option.textContent==='Endgames'));
+ collection=document.querySelector('#game-library-dialog [aria-label="Folder"]');assert.ok([...collection.options].some(option=>option.textContent==='Endgames'));
  document.querySelector('#game-library-dialog').close();dom.window.close();
 });

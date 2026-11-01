@@ -101,6 +101,7 @@ pub(super) struct EloControl {
     pub limited: bool,
 }
 impl EloControl {
+    pub(super) fn has_toggle(&self) -> bool { self.toggle.is_some() }
     fn discover(options: &[UciOption], values: &std::collections::BTreeMap<String,String>) -> Option<Self> {
         let primary=options.iter().find(|o|o.name=="Elo" && o.kind=="spin")
             .or_else(||options.iter().find(|o|o.name=="UCI_Elo" && o.kind=="spin"))?;
@@ -143,12 +144,13 @@ impl ChessApp {
         EloControl::discover(self.engine_uci_catalog.get(&Self::verification_engine_key(config))?,&config.companion_options)
     }
     pub(super) fn prepare_new_game_strength(&mut self) {
-        if let Some(control)=self.companion_elo_control(&self.engine_config) {
+        let config=self.new_game_engine_draft.as_ref().unwrap_or(&self.engine_config);
+        if let Some(control)=self.companion_elo_control(config) {
             self.new_game_elo=control.value;
             self.new_game_limit_strength=control.limited;
         } else {
-            self.new_game_elo=self.engine_config.elo.clamp(1320,3190);
-            self.new_game_limit_strength=self.engine_config.limit_strength;
+            self.new_game_elo=config.elo.clamp(1320,3190);
+            self.new_game_limit_strength=config.limit_strength;
         }
     }
     pub(super) fn apply_new_game_strength(&mut self) {

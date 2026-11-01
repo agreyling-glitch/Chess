@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -9,7 +9,7 @@ weight: 24
 
 ## Connect and open the lobby
 
-Choose **Play → Online via Lichess** or the bottom **Lichess** button to open the lobby directly. If signed out, the lobby shows **Sign in with Lichess** and **Reconnect saved session**. Opening it does not start OAuth. Choose the sign-in control when ready, authorize Ironwood on Lichess, then return to the lobby. Ironwood never asks for your Lichess password.
+Choose **Play → Online → Lichess lobby** or the bottom **Lichess** button to open the lobby directly. If signed out, the lobby shows **Sign in with Lichess** and **Reconnect saved session**. Opening it does not start OAuth. Choose the sign-in control when ready, authorize Ironwood on Lichess, then return to the lobby. Ironwood never asks for your Lichess password.
 
 The lobby opens manually. Being connected does not make it reopen whenever you start a local game or load a saved game. Refreshing reconnects your account without automatically engaging an existing correspondence game. Open the lobby and select a game when you want to resume it.
 
@@ -73,7 +73,7 @@ In the **Correspondence** tab, choose 1, 2, 3, 5, 7, 10, or 14 days per move, th
 
 While playing correspondence, choose **Return to lobby · keep this game ongoing** to put that game aside without resigning or signing out. You can resume another game or create a new one. Ironwood displays one online game at a time, while Lichess keeps your other games ongoing.
 
-**Game History → Saved games** also puts an active correspondence game aside and keeps your Lichess sign-in. The saved game remains on the board instead of being replaced by the correspondence game. Resume the online game manually from the lobby later. Loading a saved game during a live online game disconnects online play; it does not resign the game on Lichess, and its clock continues.
+**Game library → Saved games** also puts an active correspondence game aside and keeps your Lichess sign-in. The saved game remains on the board instead of being replaced by the correspondence game. Resume the online game manually from the lobby later. Loading a saved game during a live online game disconnects online play; it does not resign the game on Lichess, and its clock continues.
 
 ## Moves, chat, and game controls
 

@@ -26,7 +26,7 @@ For a game that begins from a custom position, PGN can include `SetUp` and `FEN`
 
 For completed Lichess games, Ironwood can fetch the PGN for you. See [Import games from Lichess](/help/import-from-lichess/).
 
-Open **Game History → Import…** to paste a game or collection, fetch games from Lichess or Chess.com, or choose **Scoresheet → Enter scoresheet** to enter and validate moves beside a reference photo. See [Import games](/help/import-games/) for all four tabs and [Import a game from a scoresheet](/help/import-a-scoresheet/) for manual entry.
+Open **Game library → Import…** to paste a game or collection, fetch games from Lichess or Chess.com, or choose **Scoresheet → Enter scoresheet** to enter and validate moves beside a reference photo. See [Import games](/help/import-games/) for all four tabs and [Import a game from a scoresheet](/help/import-a-scoresheet/) for manual entry.
 
 ## Time spent and time remaining
 

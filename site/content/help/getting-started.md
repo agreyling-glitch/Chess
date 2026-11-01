@@ -11,9 +11,9 @@ lastmod: 2026-11-01T00:00:00-05:00
 
 Play a game in Ironwood or open one from your saved games. You can also import a PGN, the common text format for chess moves. The game review shows the move list and lets you step forward and backward through positions.
 
-Open **Game History → Import…** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
+Open **Game library → Import…** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
 
-For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game History → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
+For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game library → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
 
 ## Main menus
 
@@ -45,7 +45,7 @@ Select a move in Moves, then switch tabs to inspect that position. [Compare save
 
 Select the **Analysis** tab and click **Analyze full game with Stockfish 19**. After a completed analysis, the button becomes **Analyze again with Stockfish 19**. Ironwood asks Stockfish to examine each position in turn. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply.
 
-A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled while an online game is engaged. The **Analysis** tab shows **Game chat** during Lichess play and returns to analysis when the game ends. To review a saved game while a correspondence game remains ongoing, use **Game History → Saved games**.
+A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled while an online game is engaged. The **Analysis** tab shows **Game chat** during Lichess play and returns to analysis when the game ends. To review a saved game while a correspondence game remains ongoing, use **Game library → Saved games**.
 
 **Analysis → Summary** compares both players with accuracy and average CPL charts for Overall, Opening, Middlegame, and Endgame. **Critical Analysis** contains the turning point, the Move quality stacked bars (open by default), and Move Analysis with played and engine-preferred lines beside an evaluation-swing bar. **Time per move**, **Clock burn-down**, and **Time spent vs. move quality quadrant** help review recorded clock use. [Timing-chart guide](/help/time-management/).
 

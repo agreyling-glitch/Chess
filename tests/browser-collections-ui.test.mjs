@@ -14,11 +14,11 @@ test('Browser collections create, group games, filter, rename and delete without
  await window.ironwoodOpenGameLibrary();const settle=()=>new Promise(resolve=>setTimeout(resolve,35));
  const button=text=>[...document.querySelectorAll('button')].find(button=>button.textContent===text&&!button.disabled);
  const submit=async(value)=>{const dialog=document.querySelector('#storage-management-dialog');if(value!==undefined)dialog.querySelector('input').value=value;dialog.querySelector('form').dispatchEvent(new window.Event('submit',{cancelable:true}));await settle();};
- button('New collection').click();await settle();await submit('Openings');let groups=module.browserCollections();assert.equal(groups[0].name,'Openings');const id=groups[0].id;
+ button('New folder').click();await settle();await submit('Openings');let groups=module.browserCollections();assert.equal(groups[0].name,'Openings');const id=groups[0].id;
  const entry=document.querySelector('.game-library-entry')||document.querySelector('.game-library-list').firstElementChild;const checkbox=entry.querySelector('input[type=checkbox]');checkbox.checked=true;checkbox.dispatchEvent(new window.Event('change'));await settle();
- button('Add to collection').click();await settle();await submit();assert.deepEqual(records.get('a').collectionIds,[id]);assert.equal(records.get('a').json,original);
- let filter=document.querySelector('#game-library-dialog [aria-label="Collection"]');filter.value=id;filter.dispatchEvent(new window.Event('change'));await settle();assert.equal(document.querySelectorAll('.game-library-title').length,1);
- button('Rename collection').click();await settle();await submit();await submit('Study');assert.equal(module.browserCollections()[0].name,'Study');
- button('Delete collection').click();await settle();await submit();await submit();assert.deepEqual(module.browserCollections(),[]);assert.equal(records.size,2);assert.equal(records.get('a').json,original);assert.deepEqual(records.get('a').collectionIds,[]);
+ button('Add to folder').click();await settle();await submit();assert.deepEqual(records.get('a').collectionIds,[id]);assert.equal(records.get('a').json,original);
+ let filter=document.querySelector('#game-library-dialog [aria-label="Folder"]');filter.value=id;filter.dispatchEvent(new window.Event('change'));await settle();assert.equal(document.querySelectorAll('.game-library-title').length,1);
+ button('Rename folder').click();await settle();await submit();await submit('Study');assert.equal(module.browserCollections()[0].name,'Study');
+ button('Delete folder').click();await settle();await submit();await submit();assert.deepEqual(module.browserCollections(),[]);assert.equal(records.size,2);assert.equal(records.get('a').json,original);assert.deepEqual(records.get('a').collectionIds,[]);
  document.querySelector('#game-library-dialog').close();dom.window.close();
 });

@@ -4,19 +4,19 @@ description: "Filter completed Lichess games by date and time control, fetch up 
 category: "using-ironwood"
 keywords: [Lichess, import, username, profile, game URL, PGN, recent games, completed games, duplicates, analyze]
 weight: 13
-lastmod: 2026-10-21T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 ---
 
 Bring completed Lichess games into Ironwood without downloading a PGN file first. You do not need to sign in to Lichess or provide an API token. Fetching games requires an internet connection.
 
 ## Import a player's recent games
 
-1. Open **Game History → Import…**.
+1. Open **Game library → Import…**.
 2. On the **Lichess** tab, enter the player's **username**, such as `Dr_Tiger`.
 3. Click the gold **Fetch games** button. Follow the status below the input while Ironwood retrieves up to the chosen number of matching completed games (20 by default).
 4. **Paste a game or collection** opens with the game text. Click **Continue** to open the game-selection window.
 5. Select the games you want, or use **Select matching** to select all games matching the current player filter. Click **Import selected**.
-6. Open **Game History → Saved games** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
+6. Open **Game library → Saved games** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
 
 Ironwood skips games that are already in Saved Games. Importing a collection saves the selected games; analyze them individually after opening them.
 

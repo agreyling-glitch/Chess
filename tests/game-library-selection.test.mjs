@@ -60,7 +60,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   const settle = async () => {
     await new Promise(resolve => setTimeout(resolve, 15));
     const prompt=document.querySelector('#storage-management-dialog');
-    if(prompt?.querySelector('h2')?.textContent.startsWith('Destination collection')) {
+    if(prompt?.querySelector('h2')?.textContent.startsWith('Destination folder')) {
       prompt.querySelector('form').dispatchEvent(new window.Event('submit',{bubbles:true,cancelable:true}));
       await new Promise(resolve => setTimeout(resolve, 15));
     }
@@ -144,6 +144,34 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.match(document.querySelector('.game-library-main strong').textContent, /Player0 vs/);
   chooseSort('recent');
 
+  // Preview selection is independent from checkboxes used for bulk operations.
+  const librarySearch=document.querySelector('[aria-label="Search games or players"]');
+  librarySearch.value='Player0';librarySearch.dispatchEvent(new window.Event('input'));
+  assert.equal(document.querySelectorAll('.game-library-entry').length,1);
+  assert.match(document.querySelector('.game-library-entry').textContent,/Player0/);
+  document.querySelector('[aria-label="Remove filter: Search: Player0"]').click();
+  assert.equal(librarySearch.value,'');
+  assert.equal(document.querySelectorAll('.game-library-entry').length,10);
+  document.querySelectorAll('.game-library-entry')[1].querySelector('td:nth-child(3)').click();
+  assert.match(document.querySelector('.game-library-inspector').textContent,/Player1/);
+  assert.ok(document.querySelectorAll('.game-library-entry')[1].classList.contains('previewing'));
+  document.querySelector('.game-library-select').click();
+  assert.match(document.querySelector('.game-library-inspector').textContent,/Player1/);
+  document.querySelector('.game-library-menu-button[aria-label^="Game actions:"]').click();
+  assert.match(document.querySelector('.game-library-inspector').textContent,/Player1/);
+  document.querySelector('.game-library-menu-button[aria-expanded="true"]').click();
+  document.querySelector('.game-library-select').click();
+  const previewChoice=[...document.querySelectorAll('.game-library-title')].find(button=>button.textContent.includes('Player0 vs'));
+  previewChoice.closest('tr').querySelector('small').click();
+  assert.equal(document.querySelectorAll('.game-library-table tbody tr').length,10);
+  assert.equal(document.querySelectorAll('.game-library-select:checked').length,0);
+  assert.match(document.querySelector('.game-library-inspector').textContent,/Player0/);
+  assert.ok(document.querySelector('.game-library-inspector .primary'));
+  assert.ok(document.querySelector('[aria-label="Manage library"]'));
+  assert.equal(document.querySelector('.game-library-batch-actions').hidden,true);
+  document.querySelector('.game-library-table th:nth-child(4) button').click();
+  assert.equal(document.querySelector('.game-library-table th:nth-child(4)').getAttribute('aria-sort'),'ascending');
+  chooseSort('recent');
   const notePreview = document.querySelector('.game-starting-note-preview');
   assert.equal(notePreview.textContent, 'Opening plan\n<img src=x onerror=alert(1)>');
   assert.equal(document.querySelectorAll('.game-starting-note-preview').length, 1);
@@ -219,7 +247,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   await window.ironwoodOpenGameLibrary();
   assert.equal(document.querySelector('[aria-label="Player"]').textContent,'Player11');
   document.querySelector('[aria-label="Player"]').click();[...document.querySelectorAll('.library-player-option')].find(option=>option.textContent==='All players').click();
-  const categorySelect=document.querySelector('[aria-label="Category"]');categorySelect.value='puzzles';categorySelect.dispatchEvent(new window.Event('change'));
+  const categorySelect=document.querySelector('[aria-label="Show"]');categorySelect.value='puzzles';categorySelect.dispatchEvent(new window.Event('change'));
   assert.equal(document.querySelectorAll('.game-library-select').length,1);
   assert.equal(document.querySelector('.game-library-main strong').textContent,'Lichess puzzle abc12');
   assert.equal(button('Move to My Games').hidden,true);
@@ -273,5 +301,11 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   companion=false;window.dispatchEvent(new window.Event('ironwood-companion-feature-changed'));await settle();assert.ok(!document.querySelector('#storage-management-dialog').textContent.includes('Server archive'));assert.equal(statsCalls,2);
   assert.deepEqual([...infoLocation.options].map(o=>o.textContent),['Browser']);assert.equal(info.querySelector('#storage-info-browser-panel').hidden,false);
   document.getElementById('storage-management-dialog').close();
+  await window.ironwoodOpenGameLibrary({category:'all'});
+  let titleOpened=0;window.ironwoodLibraryWindowNavigate=()=>titleOpened++;
+  const gameTitle=document.querySelector('.game-library-title');
+  assert.match(gameTitle.getAttribute('aria-label'),/^Open game:/);
+  gameTitle.click();await settle();
+  assert.equal(titleOpened,1,'a single title click opens the stored game');
   dom.window.close();
 });

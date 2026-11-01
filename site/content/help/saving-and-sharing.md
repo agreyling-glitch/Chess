@@ -9,7 +9,7 @@ weight: 80
 
 Ironwood keeps saved games in your browser's local storage. A **PGN** file is a portable text record of chess moves. You can import a PGN to review a game, and export one to share its moves and supported annotations. See [What is PGN?](/help/pgn/) for an example.
 
-To download one saved game, open **Game History → Saved games**, choose its **☰** options menu, and select **Export PGN**. The same option appears beside the close button in that saved game’s larger board preview. It exports the complete game as plain PGN, regardless of the preview position. For several games or other formats, select games in the library and use **Export → PGN**, **Annotated PGN**, or **Analysis JSON**.
+To download one saved game, open **Game library → Saved games**, choose its **☰** options menu, and select **Export PGN**. The same option appears beside the close button in that saved game’s larger board preview. It exports the complete game as plain PGN, regardless of the preview position. For several games or other formats, select games in the library and use **Export → PGN**, **Annotated PGN**, or **Analysis JSON**.
 
 An **Ironwood analysis JSON** file stores Ironwood's richer analysis data so you can restore results without rerunning Stockfish. JSON is a structured text file for software; you do not need to edit it by hand. If you share it, remember that game details and any notes in it may go with the file.
 

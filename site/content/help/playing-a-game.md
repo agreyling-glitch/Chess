@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -7,9 +7,9 @@ keywords: [new game, local, online, engine, Chess960, take back, resign, flip bo
 weight: 11
 ---
 
-The **Play** menu offers **vs AI Engine**, **Online via Lichess**, **Online via FICS**, and **Self-play**. The online choices open their lobby directly; the local choices open their own setup window. Local games run on your device; Self-play lets you make moves for both sides.
+The **Play** sidebar section offers **New game against AI**, **Online → Lichess lobby**, **Online → FICS lobby**, and **Self-play**. The online choices open their lobby directly; the local choices open a setup panel beside the icon rail. Local games run on your device; Self-play lets you make moves for both sides.
 
-In **vs AI Engine**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against AI](/help/training-vs-ai/).
+In **New game against AI**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against AI](/help/training-vs-ai/).
 
 Click a piece and then its destination, or **hold the left mouse button on a piece and drag it** to a legal square. A translucent piece follows the pointer while you drag. Release outside the board or on an illegal square to cancel; press **Escape** to cancel a drag. Promotion opens the usual piece chooser. You can also [type moves with the keyboard](/help/keyboard-input/), such as `e4` or `nc3`, then press Enter.
 
@@ -21,12 +21,18 @@ During an ordinary local game (outside AI training), **Take back** beneath the b
 
 Active games show **Resign…** and draw controls beneath the board in both 2D and 3D. Local two-player games use **Offer draw…**, followed by the other player choosing **Accept draw** or **Decline / keep playing**. Engine opponents do not negotiate draw offers, so that button is disabled against an engine. Ordinary local games also show **Take back**; training games do not. Lichess includes draw, takeback, abort, and claim actions supported by its server; FICS includes **Offer draw**, **Accept offer**, and **Decline offer**. Finished games and replay boards hide these actions.
 
-For an online game, choose **Play → Online via Lichess** or **Play → Online via FICS**. See [Play on Lichess](/help/play-on-lichess/) or [Playing online with FICS](/help/online-play/). The bottom **Lichess** and **FICS** buttons open each service's window directly. Lichess computer setup offers Standard, Chess960, and From Position, with Unlimited, Real time, or Correspondence timing. See the Lichess help page for its FEN input and strength settings. When a game ends, you can [analyze it](/help/getting-started/).
+For an online game, choose **Play → Online → Lichess lobby** or **Play → Online → FICS lobby**. See [Play on Lichess](/help/play-on-lichess/) or [Playing online with FICS](/help/online-play/). The bottom **Lichess** and **FICS** buttons open each service's window directly. Lichess computer setup offers Standard, Chess960, and From Position, with Unlimited, Real time, or Correspondence timing. See the Lichess help page for its FEN input and strength settings. When a game ends, you can [analyze it](/help/getting-started/).
 
+
+## Navigation sidebar
+
+The icon rail on the left replaces the top menus. Hover over it to expand navigation; move away to collapse it after a short delay. The selected section stays highlighted, and the game mode is shown above the board independently of the selected navigation section. On wider screens, it stays visible beside the expanded sidebar. Expanding navigation overlays the workspace without moving or resizing the board.
+
+Use **Pin** to keep navigation expanded and **Close** or **Escape** to collapse it. On a touch screen, tap the navigation toggle or a section icon, then tap outside to dismiss it. Keyboard users can Tab through the rail and expanded controls. The shortcuts below the divider open **New game**, **Saved games**, **Lichess puzzles**, and **Save current game** directly. Hover an icon for its label. Settings expand into groups such as **Settings → Board → Theme…**.
 
 ## Focus on the board
 
-Click the four-corner **Focus on board** icon immediately to the right of **Flip board** in the board toolbar. Focus mode hides the main menus, move list, analysis panels, status bar, observation tabs and floating windows. The board expands into the available space while player names, clocks, results, captured pieces, coordinates, and the board-view, flip, and focus controls remain visible. The study sidebar, including Tactical and Annotations, is hidden. This works in both 2D and 3D; moves, clocks, online connections, and engine play continue normally. Real-time position analysis pauses during focus mode and resumes after you leave if it was active or requested by a position change. Full-game analysis continues.
+Click the four-corner **Focus on board** icon immediately to the right of **Flip board** in the board toolbar. Focus mode hides the navigation sidebar, move list, analysis panels, status bar, observation tabs and floating windows. The board expands into the available space while player names, clocks, results, captured pieces, coordinates, and the board-view, flip, and focus controls remain visible. The study sidebar, including Tactical and Annotations, is hidden. This works in both 2D and 3D; moves, clocks, online connections, and engine play continue normally. Real-time position analysis pauses during focus mode and resumes after you leave if it was active or requested by a position change. Full-game analysis continues.
 
 Press **Shift+Enter** to toggle focus mode when you are not editing a text field. Click the icon again or press **Escape** to restore the workspace. Opening the theme chooser exits focus mode to show that tool. Game-action buttons remain beneath an active board in Focus mode. Focus mode is temporary and is not saved with your games.
 
@@ -36,7 +42,9 @@ Open **Settings → Board → Theme…** to browse the available 2D piece sets a
 
 ## Local game setup
 
-**Play → vs AI Engine** opens a resizable window with a 3D gold frame, **Your Side** cards, and a sunken **Game Settings** section. Choose the engine, strength, time control, and starting position, then start the game. **Play → Self-play** lets you move both sides. Online play and training have their own menu entries instead of tabs in this window.
+**Play → New game against AI** or the **+** shortcut opens Quick setup beside the sidebar. The **+** icon remains highlighted while the panel is open. Choose the engine and strength, your side, and a time preset (**5 + 3**, **10 + 5**, **15 + 10**, or **Untimed**), or expand **Custom clock**. Expand **Starting position** for Standard, Chess960, or Custom FEN. Invalid FEN disables **Start game**; the position editor remains available for arranging pieces or importing a screenshot.
+
+The panel fits its contents, with the summary and **Start game** / **Cancel** buttons immediately below the settings. The settings scroll only when needed to fit a shorter screen. Side choices show chess symbols, and time presets use outlined buttons. Starting applies the choices and closes the panel. Cancel, Escape, or clicking outside dismisses setup without replacing the current game; engine choices are applied only when starting. The panel overlays the workspace without resizing the board and becomes a full-width sheet on phones. **Self-play** uses the same panel without opponent controls. Online play and training retain their separate entries.
 
 ## Move times and navigation
 

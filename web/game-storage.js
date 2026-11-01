@@ -96,7 +96,17 @@ export function savedGameFilterValue(value,date=false) {
   return date?text.replaceAll('.','-'):text;
 }
 
-export function savedGameSourceLabel(game) {return savedGameFilterValue(game.source)||savedGameFilterValue(game.venue);}
+export function sourceGroup(value) {
+  const raw=savedGameFilterValue(value),normalized=raw.toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'');
+  if(normalized==='lichess'||/^lichess\.org(?:[/?#]|$)/.test(normalized)) {
+    if(/^lichess\.org\/training(?:[/?#]|$)/.test(normalized))return 'Lichess puzzles';
+    if(/^lichess\.org\/study(?:[/?#]|$)/.test(normalized))return 'Lichess studies';
+    return 'Lichess games';
+  }
+  if(normalized==='chess.com'||/^chess\.com[/?#]/.test(normalized))return 'Chess.com';
+  return raw;
+}
+export function savedGameSourceLabel(game) {return sourceGroup(savedGameFilterValue(game.source)||savedGameFilterValue(game.venue));}
 
 const DB_NAME = 'ironwood-chess';
 // Session-only summaries and view state; no disk persistence or extra credentials.
@@ -2786,7 +2796,17 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   windowControls.append(popout,maximize, close);
   const titleGroup = document.createElement('div'); titleGroup.className = 'game-library-title-group';
   const sources=document.createElement('div');sources.className='storage-location-field';
-  const locationSelect=document.createElement('select');locationSelect.setAttribute('aria-label','Game storage location');sources.append(locationSelect); titleGroup.append(title,sources); heading.append(titleGroup, windowControls);
+  const locationSelect=document.createElement('select');locationSelect.setAttribute('aria-label','Game storage location');sources.append(locationSelect);
+  const titleCopy=document.createElement('div');titleCopy.className='game-library-title-copy';
+  const eyebrow=document.createElement('div');eyebrow.className='game-library-eyebrow';eyebrow.textContent='YOUR LIBRARY';
+  const libraryIcon=document.createElement('span');libraryIcon.className='game-library-header-icon';libraryIcon.setAttribute('aria-hidden','true');
+  // Match the original library geometry in src/navigation.rs (icon index 2).
+  const librarySvg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  librarySvg.setAttribute('viewBox','0 0 24 24');
+  const libraryPath=document.createElementNS('http://www.w3.org/2000/svg','path');
+  libraryPath.setAttribute('d','M4 4V20M10 4V20M17 4V20M2 21H22');
+  librarySvg.append(libraryPath);libraryIcon.append(librarySvg);
+  titleCopy.append(eyebrow,title);titleGroup.append(libraryIcon,titleCopy);heading.append(titleGroup,sources,windowControls);
   heading.title = 'Drag to move';
   let drag = null;
   const stopDragging = () => { if(drag)saveBounds();drag = null; heading.classList.remove('dragging'); };
@@ -2820,17 +2840,29 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   controls.className = 'game-library-controls';
   controls.setAttribute('aria-label', 'Find and manage saved games');
   const filterSection=document.createElement('details');filterSection.className='game-library-filter-section';filterSection.open=readWindowState(window,'filters').open===true;
-  const filterSummary=document.createElement('summary');filterSummary.textContent='Filters';filterSection.append(filterSummary);
+  const filterSummary=document.createElement('summary');filterSummary.textContent='Filter';filterSection.append(filterSummary);
   const clearFilters=document.createElement('button');clearFilters.type='button';clearFilters.textContent='Clear filters';clearFilters.className='game-library-clear-filters';clearFilters.hidden=true;
   filters.hidden=!filterSection.open;
   filterSection.addEventListener('toggle',()=>{filters.hidden=!filterSection.open;writeWindowState(window,'filters',{open:filterSection.open});});
   const filterActions=document.createElement('div');filterActions.className='game-library-filter-actions';
   filterActions.append(filterSection,clearFilters);
   controls.append(tabs,filterActions,filters);
+  const searchInput=document.createElement('input');searchInput.type='search';searchInput.className='game-library-search';searchInput.placeholder='Search games or players…';searchInput.setAttribute('aria-label','Search games or players');searchInput.maxLength=200;
+  const chips=document.createElement('div');chips.className='game-library-filter-chips';chips.setAttribute('aria-label','Active filters');
+  const folders=document.createElement('div');folders.className='game-library-folders';
+  controls.prepend(searchInput);controls.append(folders,chips);
   const browserContent = document.createElement('div'); browserContent.className = 'game-library-browser'; browserContent.append(controls,selection,list,pager);
+  const workspace=document.createElement('div');workspace.className='game-library-workspace';
+  const inspector=document.createElement('aside');inspector.className='game-library-inspector';inspector.setAttribute('aria-label','Selected game preview');
+  list.before(workspace);workspace.append(list,inspector);
+  let previewId=null;
   const notice=document.createElement('p');notice.className='game-library-notice';notice.setAttribute('role','status');notice.hidden=true;
   let source='browser', archiveLocation='', sourceEpoch=0, selectAllEpoch=0, ready=false, operationBusy=false, loadSource=async()=>{}, renderCurrent=()=>{}, saveCurrentView=()=>{};
   const companionVisible = () => window.ironwoodCompanionFeatureEnabled?.() === true;
+  const storageLabel=document.createElement('label');storageLabel.textContent='Game location';locationSelect.before(storageLabel);storageLabel.append(locationSelect);
+  const storageHint=document.createElement('span');storageHint.className='game-library-location-hint';storageLabel.append(storageHint);
+  const connections=document.createElement('button');connections.type='button';connections.className='game-library-connections';connections.textContent='Connect Companion';sources.append(connections);
+  connections.onclick=async()=>{try{await import('./companion-connection.js');await window.ironwoodManageCompanionConnection?.();}catch(error){notice.hidden=false;notice.textContent=`Could not manage Companion: ${error.message}`;}};
   const locations=()=>companionVisible()?(window.ironwoodCompanionConnections?.()||[]).filter(item=>item.capabilities?.services?.archive!==false):[];
   const viewKey=()=>source==='browser'?'browser':`archive:${archiveLocation}`;
   function updateSourceButtons() {
@@ -2838,6 +2870,9 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     for(const item of locations()){const option=document.createElement('option');option.value=item.endpoint;option.textContent=item.name+(item.connected?'':' (Disconnected)');option.disabled=!item.connected;locationSelect.append(option);}
     locationSelect.value=source==='browser'?'browser':archiveLocation;
     locationSelect.disabled=popout.disabled=!ready||operationBusy;
+    connections.hidden=!companionVisible();connections.disabled=operationBusy;
+    connections.textContent=locations().some(item=>item.connected)?'Manage connections':'Connect Companion';
+    storageHint.textContent=source==='browser'?'Saved in this browser':'Connected Companion archive';
   }
   async function chooseSource(value) {
     if(!ready||operationBusy)return;
@@ -2865,7 +2900,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     let archivePage=null, loadedQuery='', requestedQuery='', queryEpoch=0, queryTimer=null;
     const selectedRecords=new Map();
     const remote=()=>Boolean(provider?.page);
-    const query=()=>({category,...(collectionFilter?{collection:collectionFilter}:{}),player:playerFilter,profile:profileFilter,source:sourceFilter,date:dateFilter,opening_choice:ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'',analysis:analysisFilter,special:specialFilter,sort:sortOrder,page});
+    const query=()=>({category,...(searchTerm?{search:searchTerm}:{}),...(collectionFilter?{collection:collectionFilter}:{}),player:playerFilter,profile:profileFilter,source:sourceFilter,date:dateFilter,opening_choice:ecoFilter==='?'?'?':ecoFilter||openingFilter?JSON.stringify([ecoFilter,openingFilter]):'',analysis:analysisFilter,special:specialFilter,sort:sortOrder,page});
     const selectedGames=()=>remote()?[...selectedIds].map(id=>selectedRecords.get(id)).filter(Boolean):games.filter(game=>selectedIds.has(game.id));
     let browserLoadedVersion=-1, refreshTimer=null, sourceLoading=true, prefetchTimer=null;
     const cacheKey=key=>`${archiveConnectionVersion}:${provider?.endpoint}:${key}`;
@@ -2919,6 +2954,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       }}
     };
     let category = restore?.category || 'all';
+    let searchTerm=restore?.searchTerm||'';
+    searchInput.oninput=()=>{searchTerm=searchInput.value.trim();selectedIds.clear();selectedRecords.clear();selectAllEpoch++;page=0;render();};
     let profileFilter = restore?.profileFilter || '*';
     let playerFilter = restore?.playerFilter || '*';
     let sourceFilter=restore?.sourceFilter||'*',dateFilter=restore?.dateFilter||'*';
@@ -2933,6 +2970,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     const initialView=()=>({category:'all',profile:'*',player:'*',source:'*',date:'*',analysis:'*',special:'*',sort:'recent',page:0});
     const restoreView=view=>{
       const settings=view?.settings||initialView();
+      searchTerm=settings.search||'';searchInput.value=searchTerm;
       collectionFilter=settings.collection||'';category=settings.category;profileFilter=settings.profile;playerFilter=settings.player;sourceFilter=settings.source||'*';dateFilter=settings.date||'*';[ecoFilter,openingFilter]=settings.opening_choice==='?'?['?','']:settings.opening_choice?JSON.parse(settings.opening_choice):[settings.eco||'',settings.opening||''];
       analysisFilter=settings.analysis;specialFilter=settings.special||'*';sortOrder=settings.sort;page=settings.page;
       selectedIds.clear();selectedRecords.clear();
@@ -2977,7 +3015,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     const destinationCollection=async storage=>{
       const choices=await collectionList(storage);
       const name=storage?locations().find(item=>item.endpoint===storage.endpoint)?.name||'Companion':'Browser';
-      return collectionPrompt(`Destination collection — ${name}`,choices,{optional:true});
+      return collectionPrompt(`Destination folder — ${name}`,choices,{optional:true});
     };
     const manageCollection=async(action,targets=[])=>{
       if(operationBusy)return;
@@ -2985,12 +3023,12 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       try{
         let available=await collectionList(storage),id='',name;
         if(action!=='create'){
-          id=await collectionPrompt(action==='add'?'Add games to collection':action==='remove'?'Remove games from collection':'Choose collection',available,{current:collectionFilter});
+          id=await collectionPrompt(action==='add'?'Add games to folder':action==='remove'?'Remove games from folder':'Choose folder',available,{current:collectionFilter});
           if(id===null)return;
         }
         const group=available.find(item=>item.id===id);
-        if(action==='create'||action==='rename') {name=await collectionPrompt(action==='create'?'Create collection':'Rename collection',[],{name:true,current:group?.name||''});if(name===null)return;if(!name||name.length>128||/[\x00-\x1f]/.test(name))throw Error('Enter a collection name of 1 to 128 characters.');}
-        if(action==='delete'&&await collectionPrompt(`Delete “${group.name}”? Games will be kept.`,[{id:'yes',name:'Delete collection; keep all games'}])===null)return;
+        if(action==='create'||action==='rename') {name=await collectionPrompt(action==='create'?'Create folder':'Rename folder',[],{name:true,current:group?.name||''});if(name===null)return;if(!name||name.length>128||/[\x00-\x1f]/.test(name))throw Error('Enter a collection name of 1 to 128 characters.');}
+        if(action==='delete'&&await collectionPrompt(`Delete “${group.name}”? Games will be kept.`,[{id:'yes',name:'Delete folder; keep all games'}])===null)return;
         if(storage?.endpoint!==endpoint||provider!==storage)throw Error('Storage location changed. Try again.');
         busy(true);
         if(storage){
@@ -3117,15 +3155,17 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     };
     clearFilters.onclick=()=>{
       if(operationBusy)return;
-      category='all';collectionFilter='';playerFilter=profileFilter=sourceFilter=dateFilter=analysisFilter=specialFilter='*';ecoFilter=openingFilter='';
+      category='all';collectionFilter='';searchTerm='';searchInput.value='';playerFilter=profileFilter=sourceFilter=dateFilter=analysisFilter=specialFilter='*';ecoFilter=openingFilter='';
       selectedIds.clear();selectedRecords.clear();selectAllEpoch++;page=0;render();list.scrollTop=0;
     };
     const render = () => {
-      clearFilters.hidden=!collectionFilter&&category==='all'&&[playerFilter,profileFilter,sourceFilter,dateFilter,analysisFilter,specialFilter].every(value=>!value||value==='*')&&!ecoFilter&&!openingFilter;
-      list.querySelectorAll('.game-library-menu-button[aria-expanded="true"]').forEach(trigger=>trigger.click());
+      clearFilters.hidden=!searchTerm&&!collectionFilter&&category==='all'&&[playerFilter,profileFilter,sourceFilter,dateFilter,analysisFilter,specialFilter].every(value=>!value||value==='*')&&!ecoFilter&&!openingFilter;
+      dialog.querySelectorAll('.game-library-menu-button[aria-expanded="true"]').forEach(trigger=>trigger.click());
+      inspector.replaceChildren();
       tabs.replaceChildren();
-      const categoryLabel=document.createElement('label');categoryLabel.textContent='Category ';
-      const categorySelect=document.createElement('select');categorySelect.setAttribute('aria-label','Category');
+      folders.replaceChildren();folders.hidden=!groups.length;
+      const categoryLabel=document.createElement('label');categoryLabel.textContent='Show ';
+      const categorySelect=document.createElement('select');categorySelect.setAttribute('aria-label','Show');
       for (const [value, label] of [
         ['all', 'All Games'],
         ['mine', 'My Games'],
@@ -3143,14 +3183,16 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       }
       categorySelect.value=category;categorySelect.addEventListener('change',()=>{category=categorySelect.value;playerFilter='*';profileFilter='*';selectedIds.clear();page=0;render();});
       categoryLabel.append(categorySelect);tabs.append(categoryLabel);
-      const collectionLabel=document.createElement('label');collectionLabel.textContent='Collection ';
-      const collectionSelect=document.createElement('select');collectionSelect.setAttribute('aria-label','Collection');
+      const collectionLabel=document.createElement('label');collectionLabel.textContent='Folder ';
+      const collectionSelect=document.createElement('select');collectionSelect.setAttribute('aria-label','Folder');
       for(const group of [{id:'',name:'All games'},...groups]){const option=document.createElement('option');option.value=group.id;option.textContent=group.name;collectionSelect.append(option);}
-      collectionSelect.value=collectionFilter;collectionSelect.onchange=()=>{collectionFilter=collectionSelect.value;selectedIds.clear();selectedRecords.clear();page=0;render();};collectionLabel.append(collectionSelect);tabs.append(collectionLabel);
-      for(const [label,action] of [['New collection','create'],['Rename collection','rename'],['Delete collection','delete']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||(action!=='create'&&!groups.length);button.onclick=()=>void manageCollection(action);tabs.append(button);}
+      collectionSelect.value=collectionFilter;collectionSelect.onchange=()=>{collectionFilter=collectionSelect.value;selectedIds.clear();selectedRecords.clear();page=0;render();};collectionLabel.append(collectionSelect);folders.append(collectionLabel);
+      const libraryOptions=document.createElement('div');libraryOptions.className='game-library-actions';
+      for(const [label,action] of [['New folder','create'],['Rename folder','rename'],['Delete folder','delete']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||(action!=='create'&&!groups.length);button.onclick=()=>void manageCollection(action);libraryOptions.append(button);}
+      const libraryMenu=createGameActionMenu(libraryOptions,'Library');libraryMenu.classList.add('game-library-options-trigger');libraryMenu.textContent='Manage library';libraryMenu.setAttribute('aria-label','Manage library');tabs.append(libraryMenu,libraryOptions);
 
       filters.replaceChildren();
-      const refresh=document.createElement('button');refresh.type='button';refresh.textContent='↻';refresh.className='game-library-refresh';refresh.title='Refresh saved games';refresh.setAttribute('aria-label','Refresh saved games');refresh.onclick=()=>{if(!operationBusy)void loadSource({force:true});};
+      const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh games';refresh.setAttribute('aria-label','Refresh saved games');refresh.setAttribute('role','menuitem');refresh.onclick=()=>{if(!operationBusy)void loadSource({force:true});};libraryOptions.append(refresh);
       if (category === 'training') {
         const label = document.createElement('label'); label.textContent = 'Profile ';
         const select = document.createElement('select'); select.setAttribute('aria-label', 'Training profile');
@@ -3173,7 +3215,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       for(const kind of ['Source','Date']) {
         const date=kind==='Date',label=document.createElement('label');label.append(`${kind} `);
         const names=remote()?(date?archivePage?.dates:archivePage?.sources)||[]:[...new Set(games.filter(game=>gameMatchesCategory(game,category)).map(game=>(date?savedGameFilterValue(game.playedAt,true):savedGameSourceLabel(game))).filter(Boolean))];
-        const sorted=[...names].sort((a,b)=>a.localeCompare(b));if(date)sorted.reverse();
+        const sorted=[...new Set(date?names:names.map(sourceGroup))].sort((a,b)=>a.localeCompare(b));if(date)sorted.reverse();
         label.append(createPlayerPicker(sorted,date?dateFilter:sourceFilter,value=>{if(date)dateFilter=value;else sourceFilter=value;selectedIds.clear();page=0;render();},{kind,plural:date?'dates':'sources',all:date?'All dates':'All sources',unknown:date?'Unknown dates':'Unknown sources'}));
         filters.append(label);
       }
@@ -3189,7 +3231,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       const analysisLabel = document.createElement('label');
       analysisLabel.textContent = 'Analysis ';
       const analysisSelect = document.createElement('select');
-      for (const [value, text] of [['*', 'All games'], ['complete', 'Complete'], ['partial', 'Partial'], ['unanalyzed', 'Not analyzed']]) {
+      for (const [value, text] of [['*', 'Any status'], ['complete', 'Fully analyzed'], ['partial', 'Partly analyzed'], ['unanalyzed', 'Not analyzed']]) {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = text;
@@ -3199,9 +3241,9 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       analysisSelect.addEventListener('change', () => { analysisFilter = analysisSelect.value; selectedIds.clear(); page = 0; render(); });
       analysisLabel.append(analysisSelect);
       filters.append(analysisLabel);
-      const specialLabel=document.createElement('label');specialLabel.append('Special filters ');
-      const specialSelect=document.createElement('select');specialSelect.setAttribute('aria-label','Special filters');
-      for(const [value,text] of [['*','None'],['short-games','Fewer than 2 full moves']]) {
+      const specialLabel=document.createElement('label');specialLabel.append('Game length ');
+      const specialSelect=document.createElement('select');specialSelect.setAttribute('aria-label','Game length');
+      for(const [value,text] of [['*','Any length'],['short-games','Very short games (under 2 moves)']]) {
         const option=document.createElement('option');option.value=value;option.textContent=text;specialSelect.append(option);
       }
       specialSelect.value=specialFilter;
@@ -3217,13 +3259,35 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         sortOrder = sortSelect.value; localStorage.setItem('ironwood.chess.library-sort.v1', sortOrder);
         page = 0; render(); list.scrollTop = 0;
       });
-      sortLabel.append(sortSelect); filters.append(sortLabel,refresh);
+      sortLabel.append(sortSelect);sortLabel.hidden=true;libraryOptions.append(sortLabel);
+      for(const [value,text] of [['recent','Sort: recently saved'],['moves-asc','Sort: fewest moves'],['moves-desc','Sort: most moves']]){
+        const button=document.createElement('button');button.type='button';button.textContent=text;button.setAttribute('role','menuitem');button.onclick=()=>{sortSelect.value=value;sortSelect.dispatchEvent(new Event('change'));};libraryOptions.append(button);
+      }
+      chips.replaceChildren();
+      const chip=(text,reset)=>{const button=document.createElement('button');button.type='button';button.textContent=`${text} ×`;button.setAttribute('aria-label',`Remove filter: ${text}`);button.onclick=()=>{reset();selectedIds.clear();selectedRecords.clear();selectAllEpoch++;page=0;render();};chips.append(button);};
+      if(searchTerm)chip(`Search: ${searchTerm}`,()=>{searchTerm='';searchInput.value='';});
+      if(playerFilter!=='*')chip(`Player: ${playerFilter==='?'?'Unknown':playerFilter}`,()=>playerFilter='*');
+      if(sourceFilter!=='*')chip(`Source: ${sourceFilter==='?'?'Unknown':sourceFilter}`,()=>sourceFilter='*');
+      if(dateFilter!=='*')chip(`Date: ${dateFilter==='?'?'Unknown':dateFilter}`,()=>dateFilter='*');
+      if(profileFilter!=='*')chip(`Profile: ${games.find(game=>game.trainingProfileId===profileFilter)?.trainingProfileName||profileFilter}`,()=>profileFilter='*');
+      if(ecoFilter||openingFilter)chip(`Opening: ${ecoFilter==='?'?'Unknown':[ecoFilter,openingFilter==='*'?'':openingFilter].filter(Boolean).join(' · ')}`,()=>{ecoFilter='';openingFilter='';});
+      if(analysisFilter!=='*')chip(analysisSelect.selectedOptions[0].textContent,()=>analysisFilter='*');
+      if(specialFilter!=='*')chip('Very short games',()=>specialFilter='*');
+      if(collectionFilter)chip(`Folder: ${groups.find(group=>group.id===collectionFilter)?.name||collectionFilter}`,()=>collectionFilter='');
+      clearFilters.textContent='Clear all';chips.append(clearFilters);chips.hidden=clearFilters.hidden;
+      const activeFilterCount=[playerFilter,sourceFilter,dateFilter,profileFilter,analysisFilter,specialFilter].filter(value=>value&&value!=='*').length+Number(Boolean(ecoFilter||openingFilter));
+      filterSummary.textContent=activeFilterCount?`Filter (${activeFilterCount})`:'Filter';
       list.replaceChildren();
       pager.replaceChildren();
       if(sourceLoading){selection.replaceChildren();list.textContent='Loading games…';list.inert=selection.inert=pager.inert=true;return;}
       const key=JSON.stringify(query());
       const loading=remote()&&loadedQuery!==key;
       list.inert=selection.inert=pager.inert=loading;
+      if(remote()&&archivePage&&!archivePage.source_groups&&['Lichess games','Lichess puzzles','Lichess studies','Chess.com'].includes(sourceFilter)&&archivePage.sources?.some(value=>sourceGroup(value)===sourceFilter&&value!==sourceFilter)) {
+        selection.replaceChildren();list.inert=false;
+        list.textContent='Update Companion to use grouped Source filters. Your original game links are preserved. Clear this filter to keep browsing.';
+        return;
+      }
       if(loading) {
         const cached=cachedPage(key);
         if(cached){
@@ -3237,7 +3301,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         if(requestedQuery!==key){requestedQuery=key;clearTimeout(queryTimer);queryTimer=setTimeout(()=>void loadArchivePage(key),150);}
         return;
       }
-      const visible = remote()?games:sortSavedGames(games.filter(game => (!collectionFilter||(game.collectionIds||[]).includes(collectionFilter)) && gameMatchesSpecialFilter(game,specialFilter) && ((!ecoFilter&&!openingFilter)|| (ecoFilter==='?'?!savedGameFilterValue(game.eco)&&!savedGameFilterValue(game.opening):savedGameFilterValue(game.eco).toUpperCase()===ecoFilter&&(openingFilter==='*'||savedGameFilterValue(game.opening)===openingFilter))) && (sourceFilter==='*'||(sourceFilter==='?'?!savedGameSourceLabel(game):savedGameSourceLabel(game)===sourceFilter)) && (dateFilter==='*'||(dateFilter==='?'?!savedGameFilterValue(game.playedAt,true):savedGameFilterValue(game.playedAt,true)===dateFilter)) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
+      const visible = remote()?games:sortSavedGames(games.filter(game => (!searchTerm||['title','white','black','source','venue','playedAt'].map(key=>game[key]||'').join(' ').toLowerCase().includes(searchTerm.toLowerCase())) && (!collectionFilter||(game.collectionIds||[]).includes(collectionFilter)) && gameMatchesSpecialFilter(game,specialFilter) && ((!ecoFilter&&!openingFilter)|| (ecoFilter==='?'?!savedGameFilterValue(game.eco)&&!savedGameFilterValue(game.opening):savedGameFilterValue(game.eco).toUpperCase()===ecoFilter&&(openingFilter==='*'||savedGameFilterValue(game.opening)===openingFilter))) && (sourceFilter==='*'||(sourceFilter==='?'?!savedGameSourceLabel(game):savedGameSourceLabel(game)===sourceFilter)) && (dateFilter==='*'||(dateFilter==='?'?!savedGameFilterValue(game.playedAt,true):savedGameFilterValue(game.playedAt,true)===dateFilter)) && gameMatchesCategory(game, category) && (profileFilter === '*' || game.trainingProfileId === profileFilter) && (playerFilter === '*' ||
         playerFilter === '?' && [game.white, game.black].includes('Unknown') ||
         [game.white, game.black].includes(playerFilter)) && (analysisFilter === '*' ||
         analysisFilter === 'complete' && game.analysisStatus === 'Complete' ||
@@ -3350,8 +3414,11 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       removeSelected.disabled = !selectedIds.size;
       removeSelected.addEventListener('click', () => removeGames(selectedGames()));
       selection.append(selectPageLabel, selectAll, clearSelection, exportMenu, removeSelected);
-      for(const [label,action] of [['Add to collection','add'],['Remove from collection','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||!selectedIds.size||!groups.length;button.onclick=()=>void manageCollection(action,selectedGames());selection.append(button);}
+      for(const [label,action] of [['Add to folder','add'],['Remove from folder','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||!selectedIds.size||!groups.length;button.onclick=()=>void manageCollection(action,selectedGames());selection.append(button);}
       if(companionVisible())appendTransferActions(selection,selectedGames,!selectedIds.size||operationBusy);
+      const batchActions=document.createElement('div');batchActions.className='game-library-batch-actions';batchActions.hidden=!selectedIds.size;
+      for(const element of [...selection.children].slice(3))batchActions.append(element);
+      selection.append(batchActions);
       if (!visible.length) {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
           category === 'all' ? 'No saved games yet.' :
@@ -3380,9 +3447,21 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       next.disabled = page + 1 >= pageCount;
       next.addEventListener('click', () => { page++; render(); list.scrollTop = 0; });
       pager.append(previous, count, next);
+      if(!pageGames.some(game=>game.id===previewId))previewId=pageGames[0]?.id;
+      const table=document.createElement('table');table.className='game-library-table';table.setAttribute('aria-label','Saved games');
+      const thead=document.createElement('thead'),header=document.createElement('tr');
+      for(const label of ['Select','Game / players','Result','Moves','Saved','Actions']){const th=document.createElement('th');th.scope='col';
+        if(label==='Moves'||label==='Saved'){
+          const sorted=label==='Moves'?sortOrder.startsWith('moves-'):sortOrder==='recent';
+          th.setAttribute('aria-sort',sorted?(sortOrder==='moves-asc'?'ascending':'descending'):'none');
+          const button=document.createElement('button');button.type='button';button.textContent=label+(sorted?(sortOrder==='moves-asc'?' ↑':' ↓'):'');
+          button.onclick=()=>{sortOrder=label==='Saved'?'recent':sortOrder==='moves-asc'?'moves-desc':'moves-asc';localStorage.setItem('ironwood.chess.library-sort.v1',sortOrder);page=0;render();};th.append(button);
+        }else th.textContent=label;header.append(th);}
+      thead.append(header);const tbody=document.createElement('tbody');table.append(thead,tbody);list.append(table);
       for (const game of pageGames) {
-        const entry = document.createElement('div');
+        const entry = document.createElement('tr');
         entry.className = `game-library-entry${selectedIds.has(game.id) ? ' selected' : ''}`;
+        entry.classList.toggle('previewing',game.id===previewId);
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'game-library-select';
@@ -3393,7 +3472,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           render();
           list.querySelectorAll('.game-library-select')[pageGames.indexOf(game)]?.focus();
         });
-        entry.append(checkbox);
+        const selectCell=document.createElement('td');selectCell.append(checkbox);entry.append(selectCell);
         const preview = document.createElement('button');
         preview.type = 'button';
         preview.className = 'game-library-preview';
@@ -3403,7 +3482,6 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         preview.append(previewBoard);
         preview.disabled = previewBoard.children.length !== 64;
         preview.addEventListener('click', () => showGamePreview(game, preview, actions));
-        entry.append(preview);
         const main = document.createElement('div');
         main.className = 'game-library-main';
         const name = document.createElement('strong');
@@ -3444,7 +3522,14 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
             list.textContent = `Could not open game: ${error.message}`;
           }
         };
-        const titleButton=document.createElement('button');titleButton.type='button';titleButton.className='game-library-title';titleButton.title='Open game';titleButton.setAttribute('aria-label',`Open game: ${game.title}`);titleButton.append(name);titleButton.addEventListener('click',openGame);
+        const titleButton=document.createElement('button');titleButton.type='button';titleButton.className='game-library-title';titleButton.title='Open game';titleButton.setAttribute('aria-label',`Open game: ${game.title}`);titleButton.append(name);
+        const selectPreview=()=>{previewId=game.id;render();[...list.querySelectorAll('.game-library-title')][pageGames.indexOf(game)]?.focus();};
+        titleButton.addEventListener('click',openGame);
+        entry.addEventListener('click',event=>{
+          // Row space selects the preview; embedded controls keep their own actions.
+          if(event.target.closest('button,input,select,a,label,[role="menu"]'))return;
+          selectPreview();
+        });
         const move = document.createElement('button');
         move.type = 'button';
         move.hidden = ['observed', 'training', 'puzzles', 'studies'].includes(game.category);
@@ -3517,17 +3602,30 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
             downloadBlob(payload.filename,new Blob([payload.content],{type:payload.type}));
           }catch(error){message(`Could not export game: ${error.message}`,true);}finally{busy(false);}
         };
-        actions.append(openButton, exportPgn, favorite, metadataButton, move, remove);
-        for(const [label,action] of [['Add to collection','add'],['Remove from collection','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=!groups.length;button.onclick=()=>void manageCollection(action,[game]);actions.append(button);}
+        const menuDivider=()=>{const divider=document.createElement('div');divider.className='game-library-menu-divider';divider.setAttribute('role','separator');return divider;};
+        actions.append(openButton, favorite, menuDivider(), metadataButton, move);
+        for(const [label,action] of [['Add to folder','add'],['Remove from folder','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=!groups.length;button.onclick=()=>void manageCollection(action,[game]);actions.append(button);}
 
+        actions.append(menuDivider(),exportPgn);
         if(companionVisible())appendTransferActions(actions,()=>[game]);
-        main.append(titleButton, players, result, details);
+        actions.append(menuDivider(),remove);
+        main.append(titleButton);
+        const opening=document.createElement('small');opening.textContent=[game.eco,game.opening].filter(Boolean).join(' · ')||game.title;main.append(opening);
         const note = startingNoteElement(game, true);
-        if (note) main.append(note);
         const actionTrigger=createGameActionMenu(actions,game.title);
-        main.append(actionTrigger,actions);
-        entry.append(main);
-        list.append(entry);
+        const gameCell=document.createElement('td');gameCell.append(main);entry.append(gameCell);
+        for(const text of [game.category==='studies'?'Study':game.category==='puzzles'?'Puzzle':game.result||'*',formatGameCount(game.moves),new Date(game.updatedAt).toLocaleDateString()]){const cell=document.createElement('td');cell.textContent=text;entry.append(cell);}
+        const actionCell=document.createElement('td');actionCell.append(actionTrigger,actions);entry.append(actionCell);tbody.append(entry);
+        if(previewId===game.id){
+          const previewHeading=document.createElement('h3');previewHeading.textContent=game.title;
+          const context=document.createElement('p');context.className='game-library-preview-context';context.textContent=`${source==='browser'?'Browser':locations().find(item=>item.endpoint===archiveLocation)?.name||'Companion'} · ${game.analysisStatus}`;
+          const primary=document.createElement('div');primary.className='game-library-preview-primary';
+          const open=document.createElement('button');open.type='button';open.textContent='Open game';open.className='primary';open.onclick=openGame;
+          const star=document.createElement('button');star.type='button';star.textContent=favorite.textContent;star.setAttribute('aria-pressed',String(Boolean(game.favorite)));star.onclick=()=>favorite.click();
+          const more=document.createElement('button');more.type='button';more.textContent='More options';more.onclick=()=>actionTrigger.click();primary.append(open,star,more);
+          const info=document.createElement('div');info.className='game-library-main';info.append(players,result,details);if(note)info.append(note);
+          inspector.append(previewHeading,context,preview,primary,info);
+        }
       }
     };
     loadSource=async({force=false,background=false,restoreState=true}={})=>{

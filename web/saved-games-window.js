@@ -26,7 +26,16 @@ export function installLibraryWindow(target) {
   };
   return {opener};
 }
-export async function startLibraryWindow(target=window,{loadApp=()=>import('./pkg/battle_chess.js'),loadStorage=()=>import('./game-storage.js')}={}) {
+export async function loadLibraryApp(target=window) {
+  const response=await target.fetch('/app-version.json',{cache:'no-store'});
+  if(!response.ok)throw Error('Could not check the application version. Reload and try again.');
+  const version=await response.json(),revision=version.package_version||version.version;
+  if(!revision)throw Error('Application version is unavailable.');
+  const suffix=`?v=${encodeURIComponent(revision)}`;
+  const app=await import(`./pkg/battle_chess.js${suffix}`);
+  return {...app,default:()=>app.default({module_or_path:`/pkg/battle_chess_bg.wasm${suffix}`})};
+}
+export async function startLibraryWindow(target=window,{loadApp=()=>loadLibraryApp(target),loadStorage=()=>import('./game-storage.js')}={}) {
   const {opener}=installLibraryWindow(target),loading=target.document.getElementById('library-loading');
   try {
     const state=await opener()?.ironwoodLibraryPopupState?.();

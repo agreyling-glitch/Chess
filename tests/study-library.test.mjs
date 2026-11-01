@@ -43,8 +43,8 @@ test('history consolidates chapter saves atomically, shows Studies, and keeps la
  assert.equal(combined.category,'studies');assert.equal(combined.favorite,true);assert.deepEqual(combined.collectionIds,['opening']);
  assert.equal(combined.studySavedCopies.length,2);assert.equal(combined.studySavedCopies[0].json,one.json);
  const study=JSON.parse(combined.json).study;assert.equal(study.chapters.length,2);assert.equal(study.chapters[0].nodes[1].local_note,'My note');
- for(let i=0;i<30&&!document.querySelector('[aria-label="Category"] option[value="studies"]')?.textContent.includes('(1)');i++)await new Promise(resolve=>setTimeout(resolve,10));
- const category=document.querySelector('[aria-label="Category"]');assert.ok([...category.options].some(option=>option.value==='studies'&&option.textContent==='Studies (1)'));
+ for(let i=0;i<30&&!document.querySelector('[aria-label="Show"] option[value="studies"]')?.textContent.includes('(1)');i++)await new Promise(resolve=>setTimeout(resolve,10));
+ const category=document.querySelector('[aria-label="Show"]');assert.ok([...category.options].some(option=>option.value==='studies'&&option.textContent==='Studies (1)'));
  category.value='studies';category.dispatchEvent(new window.Event('change'));
  assert.equal(document.querySelectorAll('.game-library-entry').length,1);
  assert.match(document.querySelector('.game-library-title').textContent,/Study · 2 chapters/);

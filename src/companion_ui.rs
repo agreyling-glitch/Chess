@@ -199,35 +199,45 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     pub(super) fn new_game_engine_selector(&mut self, ui: &mut egui::Ui, width: f32) {
+        let draft=self.new_game_engine_draft.clone().unwrap_or_else(||self.engine_config.clone());
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
         let busy = catalog["busy"] == true;
         let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
-            if self.new_game_opponent == OpponentEngine::Companion { self.engine_config.companion_identity.clone() } else { String::new() }
+            if self.new_game_opponent == OpponentEngine::Companion { draft.companion_identity.clone() } else { String::new() }
         });
         let previous = identity.clone();
         ui.vertical(|ui| {
             ui.set_width(width);
             ui.horizontal(|ui| {
-            ui.add_enabled_ui(!busy && !self.engine_settings_locked(), |ui| {
-                egui::ComboBox::from_id_salt("new_game_engine")
-                    .width((width - 46.0).max(90.0)).truncate()
-                    .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.engine_config.label()))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
-                        if let Some(engines) = catalog["engines"].as_array() {
-                            for engine in engines {
-                                if let (Some(id),Some(label)) = (engine["identity"].as_str(),engine["label"].as_str()) {
-                                    ui.selectable_value(&mut identity,id.to_owned(),label);
-                                }
+                let label=catalog["engines"].as_array().and_then(|engines|engines.iter().find(|engine|engine["identity"]==identity)).and_then(|engine|engine["label"].as_str()).unwrap_or(draft.label());
+                ui.allocate_ui_with_layout(Vec2::new((width-140.0).max(80.0), 48.0), Layout::top_down(Align::Min), |ui| {
+                    ui.add(egui::Label::new(RichText::new(label).size(17.0).strong()).wrap());
+                    ui.label(RichText::new(if identity.is_empty() {"Built-in · Runs on this device"} else {"Companion · Runs on your computer"}).small().weak());
+                });
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_enabled_ui(!busy && !self.engine_settings_locked(),|ui| {
+                    ui.visuals_mut().widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+                    ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
+                    let menu = ui.menu_button(RichText::new("Change engine    ").size(12.0).color(Color32::from_rgb(215,185,121)),|ui| {
+                        if ui.selectable_value(&mut identity,String::new(),"Built-in Stockfish").clicked(){ui.close();}
+                        if let Some(engines)=catalog["engines"].as_array(){for engine in engines {
+                            if let (Some(id),Some(label))=(engine["identity"].as_str(),engine["label"].as_str()) {
+                                if ui.selectable_value(&mut identity,id.to_owned(),label).clicked(){ui.close();}
                             }
-                        }
+                        }}
+                        ui.separator();
+                        if ui.button("Refresh installed engines").clicked(){refresh_companion_engines();ui.close();}
+                        if ui.button("Connect Companion…").clicked(){manage_companion_connection();ui.close();}
                     });
+                    let c = egui::pos2(menu.response.rect.right()-12.0, menu.response.rect.center().y);
+                    ui.painter().add(egui::Shape::line(vec![c+Vec2::new(-3.0,-2.0),c+Vec2::new(0.0,2.0),c+Vec2::new(3.0,-2.0)],Stroke::new(1.2,Color32::from_rgb(215,185,121))));
+                });
+                });
             });
-            if Self::companion_settings_icon(ui, !busy, "Refresh installed engines", 2).clicked() { refresh_companion_engines(); }
-            });
-            if let Some(status) = catalog["status"].as_str().filter(|status| !status.is_empty()) { ui.add(egui::Label::new(status).wrap()); }
+            if let Some(status) = catalog["status"].as_str().filter(|status| !status.is_empty() && catalog["has_engine_provider"]!=false) { ui.add(egui::Label::new(RichText::new(status).small().weak()).wrap()); }
         });
         if identity != previous {
+            self.new_game_engine_selection=Some(true);
             select_companion_engine(&identity);
             self.poll_companion_provider();
             ui.ctx().request_repaint();
@@ -318,7 +328,13 @@ impl ChessApp {
         companion_engine_allowed(allowed && enabled);
         if !enabled && !disabling { let _ = companion_engine_change(); return; }
         let raw = if disabling { r#"{"provider":"builtin"}"#.to_owned() } else { companion_engine_change() };
-        if raw.is_empty() { return; }
+        if raw.is_empty() {
+            if self.new_game_engine_selection.is_some() {
+                let catalog:serde_json::Value=serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+                if catalog["busy"]!=true && !catalog["pending_identity"].is_string() {self.new_game_engine_selection=None;}
+            }
+            return;
+        }
         if !allowed && !disabling { self.engine_status = "Finish active training, online play, or game analysis before changing providers".into(); return; }
         let Ok(change) = serde_json::from_str::<serde_json::Value>(&raw) else { return; };
         let opponent = if change["provider"] == "companion" { OpponentEngine::Companion } else { OpponentEngine::Stockfish };
@@ -329,6 +345,18 @@ impl ChessApp {
             self.engine_uci_catalog.insert(key.clone(), catalog);
         }
         let options: std::collections::BTreeMap<String,String> = self.engine_uci_preferences.get(&key).cloned().unwrap_or_else(||serde_json::from_value(change["options"].clone()).unwrap_or_default());
+        if self.new_game_engine_selection.is_some() {
+            let apply=self.new_game_engine_selection.take()==Some(true);
+            if apply && self.new_game_dialog_open {
+                let mut draft=self.engine_config.clone();
+                draft.opponent=opponent; draft.companion_name=name; draft.companion_identity=identity;
+                draft.companion_options=options.clone();
+                if opponent==OpponentEngine::Stockfish {draft.uci_options=options;}
+                self.new_game_engine_draft=Some(draft);self.new_game_opponent=opponent;
+                self.prepare_new_game_strength();
+            }
+            return;
+        }
         let changed = self.analysis_config.opponent != opponent || self.analysis_config.companion_identity != identity
             || self.analysis_config.companion_name != name || self.analysis_config.companion_options != options;
         self.engine = None; self.engine_ready = false; self.engine_start_failed = false;

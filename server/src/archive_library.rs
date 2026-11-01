@@ -26,6 +26,10 @@ pub fn initialize(db: &Connection) -> Result<()> {
     if !migrated {
         tx.execute_batch("CREATE TABLE library_openings_v1(id INTEGER PRIMARY KEY); INSERT OR IGNORE INTO library_dirty SELECT id FROM games; DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;")?;
     }
+    let source_groups_ready:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='library_filter_source_group_v1')",[],|r|r.get(0))?;
+    if !source_groups_ready {
+        tx.execute_batch(&format!("CREATE INDEX library_filter_source_group_v1 ON library_cards(({}),updated DESC,id); DELETE FROM library_query_cache; UPDATE library_cache_state SET revision=revision+1 WHERE id=1;",source_group_expression()))?;
+    }
     let needs_filter_statistics:bool=tx.query_row("SELECT NOT EXISTS(SELECT 1 FROM sqlite_master WHERE name='library_filter_statistics_v1') OR (SELECT count(*) FROM sqlite_master WHERE type='index' AND name LIKE 'library_filter_%')<9",[],|r|r.get(0))?;
     // Expression indexes keep the existing card format and older Companion builds compatible.
     // SQLite maintains these on every insert/update; complete game documents are untouched.
@@ -242,6 +246,14 @@ pub struct Filter {
     pub facets_revision: Option<u64>,
 }
 const SOURCE_VALUE: &str = "coalesce(nullif((CASE WHEN trim(coalesce(json_extract(summary,'$.source'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE trim(coalesce(json_extract(summary,'$.source'),'')) END),''),(CASE WHEN trim(coalesce(json_extract(summary,'$.venue'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE trim(coalesce(json_extract(summary,'$.venue'),'')) END))";
+// Group only recognized hosts. Complete source URLs stay in the original documents/cards.
+fn source_group_expression() -> String {
+    let lower=format!("lower({SOURCE_VALUE})");
+    let host=format!("CASE WHEN {lower} LIKE 'https://%' THEN substr({lower},9) WHEN {lower} LIKE 'http://%' THEN substr({lower},8) ELSE {lower} END");
+    let host=format!("CASE WHEN ({host}) LIKE 'www.%' THEN substr(({host}),5) ELSE ({host}) END");
+    let prefix=|path:&str|format!("(({host})='{path}' OR ({host}) GLOB '{path}[/?#]*')");
+    format!("CASE WHEN {} THEN 'Lichess puzzles' WHEN {} THEN 'Lichess studies' WHEN ({host})='lichess' OR {} THEN 'Lichess games' WHEN {} THEN 'Chess.com' ELSE {SOURCE_VALUE} END",prefix("lichess.org/training"),prefix("lichess.org/study"),prefix("lichess.org"),prefix("chess.com"))
+}
 const DATE_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.playedAt'),'')) IN ('?','-','????.??.??','????-??-??') THEN '' ELSE replace(trim(coalesce(json_extract(summary,'$.playedAt'),'')),'.','-') END";
 const ECO_VALUE: &str = "CASE WHEN trim(coalesce(json_extract(summary,'$.eco'),'')) IN ('?','-') THEN '' ELSE upper(trim(coalesce(json_extract(summary,'$.eco'),''))) END";
 const OPENING_VALUE: &str = "coalesce((SELECT description FROM eco_openings WHERE eco=upper(trim(coalesce(json_extract(summary,'$.eco'),'')))), '')";
@@ -358,7 +370,10 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
         }
     }
     if !opening.is_empty() {predicates.push(format!("instr(lower(({OPENING_VALUE})), {})>0",bind(&opening)));}
-    if !source.is_empty() {predicates.push(format!("({SOURCE_VALUE})={}",bind(if source=="?" {""} else {source})));}
+    if !source.is_empty() {
+        let expression=if matches!(source,"Lichess games"|"Lichess puzzles"|"Lichess studies"|"Chess.com") {source_group_expression()} else {SOURCE_VALUE.to_owned()};
+        predicates.push(format!("({expression})={}",bind(if source=="?" {""} else {source})));
+    }
     if !date.is_empty() {predicates.push(format!("({DATE_VALUE})={}",bind(if date=="?" {""} else {&date})));}
     if choice_mode!=0 {
         predicates.push(format!("({ECO_VALUE})={}",bind(if choice_mode==2 {""} else {&choice_eco})));
@@ -371,7 +386,7 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
         |r| r.get(0),
     )?;
     let count_key = serde_json::to_string(&json!([
-        "total-source-date-v2", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice,filter.special,filter.collection
+        "total-source-groups-v3", category, player, profile, search, analysis, eco, opening,source,date,filter.opening_choice,filter.special,filter.collection
     ]))?;
     let total = cached(&tx, &count_key, || {
         Ok(json!(tx.query_row(
@@ -408,11 +423,11 @@ pub fn query(db: &mut Connection, filter: Filter) -> Result<Value> {
         if !filter.selection {card["opening"]=tx.query_row("SELECT description FROM eco_openings WHERE eco=?1",[card["eco"].as_str().unwrap_or("")],|r|r.get::<_,String>(0)).optional()?.unwrap_or_default().into();}
         cards.push(card);
     }
-    let mut result = json!({"games":cards,"total":total,"page":page,"revision":revision});
+    let mut result = json!({"games":cards,"total":total,"page":page,"revision":revision,"source_groups":true});
     if !filter.selection && filter.facets_revision != Some(revision) {
         let facets = cached(
             &tx,
-            &serde_json::to_string(&json!(["facets-openings-v3", category]))?,
+            &serde_json::to_string(&json!(["facets-source-groups-v4", category]))?,
             || facets(&tx, category),
         )?;
         for key in ["counts", "players", "profiles", "sources", "dates", "openings"] {
@@ -477,7 +492,7 @@ fn facets(db: &Connection, category: &str) -> Result<Value> {
         let sql=format!("SELECT DISTINCT ({expression}) AS value FROM library_cards WHERE {scope} AND ({expression})<>'' ORDER BY value {}",if descending {"DESC"} else {"ASC"});
         Ok(db.prepare(&sql)?.query_map(scope_args(),|r|r.get::<_,String>(0))?.collect::<std::result::Result<Vec<_>,_>>()?)
     };
-    let sources=choices(SOURCE_VALUE,false)?;
+    let sources=choices(&source_group_expression(),false)?;
     let dates=choices(DATE_VALUE,true)?;
     let openings=db.prepare(&format!("SELECT DISTINCT ({ECO_VALUE}),({OPENING_VALUE}) FROM library_cards WHERE {scope} AND (({ECO_VALUE})<>'' OR ({OPENING_VALUE})<>'') ORDER BY 1,2"))?.query_map(scope_args(),|r|Ok(json!({"eco":r.get::<_,String>(0)?,"opening":r.get::<_,String>(1)?})))?.collect::<std::result::Result<Vec<_>,_>>()?;
     Ok(json!({"counts":counts,"players":players,"profiles":profiles,"sources":sources,"dates":dates,"openings":openings}))
@@ -520,12 +535,15 @@ mod tests {
         let runs=serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap();
         let before=query(&mut db,Filter::default()).unwrap();
         let indexes=db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'library_filter_%'").unwrap().query_map([],|r|r.get::<_,String>(0)).unwrap().collect::<std::result::Result<Vec<_>,_>>().unwrap();
-        assert_eq!(indexes.len(),9);
+        assert_eq!(indexes.len(),10);
         for name in indexes {db.execute_batch(&format!("DROP INDEX {name}")).unwrap();}
         initialize(&db).unwrap();initialize(&db).unwrap();
         assert_eq!(raw,db.query_row("SELECT document FROM games",[],|r|r.get::<_,String>(0)).unwrap());
         assert_eq!(runs,serde_json::to_value(crate::analysis_runs::all(&db,&id).unwrap()).unwrap());
-        assert_eq!(before,query(&mut db,Filter::default()).unwrap());
+        let mut after=query(&mut db,Filter::default()).unwrap();
+        assert_eq!(after["revision"].as_u64().unwrap(),before["revision"].as_u64().unwrap()+1);
+        after["revision"]=before["revision"].clone();
+        assert_eq!(before,after);
         // Rebuilding and replacing a card keeps SQLite's expression indexes current.
         let mut changed=archive::get(&db,&id).unwrap().document;
         changed.record.as_mut().unwrap()["source"]=json!("new source");
@@ -643,7 +661,7 @@ mod tests {
         let mut c=document(2);c.record.as_mut().unwrap()["source"]=Value::Null;c.metadata.insert("Date".into(),"????.??.??".into());c.metadata.insert("Site".into(),"-".into());
         archive::import(&mut db,vec![a,b,c],None).unwrap();
         let all=query(&mut db,Filter::default()).unwrap();
-        assert_eq!(all["sources"],json!(["Lichess","Local"]));assert_eq!(all["dates"],json!(["2026-10-20"]));
+        assert_eq!(all["sources"],json!(["Lichess games","Local"]));assert_eq!(all["dates"],json!(["2026-10-20"]));
         let chosen=query(&mut db,Filter{source:"Lichess".into(),date:"2026.10.20".into(),player:"Player 0".into(),selection:true,..Default::default()}).unwrap();assert_eq!(chosen["total"],1);assert_eq!(chosen["games"][0]["title"],"Player 0 vs Opponent");
         let date=query(&mut db,Filter{date:"2026-10-20".into(),..Default::default()}).unwrap();assert_eq!(date["total"],2);
         let unknown=query(&mut db,Filter{source:"?".into(),date:"?".into(),..Default::default()}).unwrap();assert_eq!(unknown["total"],1);assert_eq!(unknown["games"][0]["white"],"Player 2");
@@ -653,6 +671,26 @@ mod tests {
         let mut d=document(3);d.record.as_mut().unwrap()["source"]=Value::Null;archive::import(&mut db,vec![d],None).unwrap();
         let site=query(&mut db,Filter{source:"Test venue".into(),..Default::default()}).unwrap();assert_eq!(site["total"],1);assert_eq!(site["games"][0]["white"],"Player 3");
 
+    }
+
+    #[test]
+    fn source_groups_keep_urls_and_match_pages_and_bulk_selection() {
+        let mut db=database();
+        let urls=["https://lichess.org/abcd1234","https://lichess.org/efgh5678","https://lichess.org/training/abcde","https://www.lichess.org/study/xyz","https://www.chess.com/game/live/123","https://lichess.org.evil.example/game"];
+        let docs=urls.iter().enumerate().map(|(i,url)|{let mut doc=document(i);doc.record.as_mut().unwrap()["source"]=json!(url);doc}).collect();
+        archive::import(&mut db,docs,None).unwrap();
+        let all=query(&mut db,Filter::default()).unwrap();
+        assert_eq!(all["source_groups"],true);
+        assert_eq!(all["sources"].as_array().unwrap().len(),5);
+        for (group,count) in [("Lichess games",2),("Lichess puzzles",1),("Lichess studies",1),("Chess.com",1)] {
+            let page=query(&mut db,Filter{source:group.into(),..Default::default()}).unwrap();
+            assert_eq!(page["total"],count);
+            assert!(page["games"].as_array().unwrap().iter().all(|game|urls.contains(&game["source"].as_str().unwrap())));
+            let selected=query(&mut db,Filter{source:group.into(),selection:true,..Default::default()}).unwrap();
+            assert_eq!(selected["total"],count);
+        }
+        // Older exact-link filters still work after the index upgrade.
+        assert_eq!(query(&mut db,Filter{source:urls[0].into(),..Default::default()}).unwrap()["total"],1);
     }
 
     #[test]

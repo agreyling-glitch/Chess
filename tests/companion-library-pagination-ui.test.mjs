@@ -18,11 +18,11 @@ test('large Saved games counts are grouped while page and selection data remain 
   await window.ironwoodOpenGameLibrary({windowState:{storageSource:'archive',settings:{category:'all',profile:'*',player:'*',source:'*',date:'*',analysis:'*',special:'*',sort:'recent',page:1000}}});
   await new Promise(resolve=>setTimeout(resolve,200));
   const button=text=>[...document.querySelectorAll('button')].find(b=>b.textContent===text);
-  assert.match(document.querySelector('[aria-label="Category"]').textContent,/All Games \(2,068,097\)/);
-  assert.match(document.querySelector('[aria-label="Category"]').textContent,/Imported Games \(2,015,659\)/);
+  assert.match(document.querySelector('[aria-label="Show"]').textContent,/All Games \(2,068,097\)/);
+  assert.match(document.querySelector('[aria-label="Show"]').textContent,/Imported Games \(2,015,659\)/);
   assert.match(document.querySelector('.game-library-pager').textContent,/Page 1,001 of 206,810 · 2,068,097 games/);
   assert.equal(queries[0].page,1000);assert.equal(typeof queries[0].page,'number');
-  assert.match(document.querySelector('.game-library-entry').textContent,/1,234 moves.*2,345 positions analyzed/);
+  assert.match(document.querySelector('.game-library-inspector').textContent,/1,234 moves.*2,345 positions analyzed/);
   button('Select all 2,068,097 matching').click();await new Promise(resolve=>setTimeout(resolve,20));
   assert.match(selectingText,/Selecting 1,000 of 2,068,097/);
   assert.ok(button('Delete selected (1,001)'));button('Delete selected (1,001)').click();
@@ -62,7 +62,7 @@ test('archive UI pages remotely, keeps cross-page selection, filters, previews, 
  assert.equal(document.querySelector('[aria-label="Sort saved games"]').value,'recent');
 
  assert.equal(document.querySelectorAll('.game-library-entry').length,10);assert.equal(reads.length,0);assert.equal(queries.length,1);
- assert.match(document.querySelector('.game-library-pager').textContent,/Page 1 of 3 · 25 games/);assert.match(document.querySelector('[aria-label="Category"]').textContent,/All Games \(25\)/);
+ assert.match(document.querySelector('.game-library-pager').textContent,/Page 1 of 3 · 25 games/);assert.match(document.querySelector('[aria-label="Show"]').textContent,/All Games \(25\)/);
  await new Promise(resolve=>setTimeout(resolve,150));
  assert.equal(queries.filter(query=>query.page===1&&query.source==='*').length,1);
  document.querySelector('.game-library-select').click();click('Next ▶');
