@@ -1,6 +1,6 @@
 ---
 title: "Import games"
-lastmod: 2026-10-24T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 description: "Import PGN, ZIP and Scid databases, fetch online games, or enter a handwritten scoresheet."
 category: "using-ironwood"
 keywords: [import, tabs, PGN, ZIP, Scid, si4, si5, database, compressed, drag and drop, JSON, collection, Lichess, Chess.com, scoresheet]
@@ -55,7 +55,10 @@ For a collection, select games to keep and click **Import selected**. Drag the r
 
 Enter a player's username to fetch up to the chosen number of matching completed games (20 by default), or paste a completed-game link to fetch one game. Click the gold **Fetch games** button and watch the status below the input. No login or API token is needed. [Lichess import instructions](/help/import-from-lichess/).
 
+For a study, paste its Lichess study or chapter link to open the chapter workspace. Saved chapters are grouped under **Studies** in the Browser library, with one entry per study. [Lichess study instructions](/help/lichess-studies/).
+
 ## Chess.com
+
 
 Enter a Chess.com username and click **Fetch games** for up to the chosen number of completed standard chess or Chess960 games (20 by default). No login or API token is needed. Recently finished games may take time to appear in the cached archives. [Chess.com import instructions](/help/import-from-chess-com/).
 

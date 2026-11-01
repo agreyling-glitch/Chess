@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-10-31T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -13,9 +13,15 @@ Start a game as White or Black, or let Ironwood choose a side at random. When yo
 
 ## Keep the board beside your study tools
 
-The live board stays on the left, with **Moves · Prediction · Analysis · Position · Explore · Tactical · Annotations** on the right. Analysis contains engine results; Position contains pawn structure, piece mobility, and king safety. Explore groups **Openings** and **Endgames**. Tactical provides **Insights**, **Activity**, and **Patterns**. Annotations keeps **Drawings**, **Notes**, and **Chess Symbols** together in sunken panels with gray subtabs.
+The live board stays on the left, with **Moves · Prediction · Analysis · Position · Explore · Tactical · Annotations · Study** on the right. Analysis contains engine results; Position contains pawn structure, piece mobility, and king safety. Explore groups **Openings** and **Endgames**. Tactical provides **Insights**, **Activity**, and **Patterns**. Annotations keeps **Drawings**, **Notes**, and **Chess Symbols** together in sunken panels with gray subtabs.
 
 Every tab after Moves identifies the selected position and move. The Game Moves panel fits its contents, while the board follows the available space when the browser is resized. Switching between 2D and 3D keeps the same live-board size. [Workspace guide](/help/getting-started/#find-your-way-around).
+
+## Read and practice Lichess studies
+
+Import a public Lichess study or chapter link and keep its chapters together in one workspace. Read author comments beside numbered moves, explore variations, follow video links, and add your own notes and drawings. A chapter selector, Previous and Next controls, and the chapter's ECO code and opening name keep navigation clear. The lesson sits in a sunken panel with subtle grain, gold moves, and softer commentary.
+
+Practice either side with accepted study continuations, automatic replies, feedback, and a reveal control. Refresh the public source while preserving local work, or copy the complete study as PGN. In the Browser library, **Studies** shows one entry per Lichess study; older individual chapter saves are consolidated while preserving notes, analysis, favorites, and collections. [Lichess studies guide](/help/lichess-studies/).
 
 ## See time spent on each move
 
@@ -32,6 +38,12 @@ When no Companion engine provider is configured, a compact gold **?** beside the
 Saved analyses remain separate runs. Below the Analyze controls, select a run from **Saved Analysis** or click its numbered gray button. Press **1–9** to select the corresponding run in Analysis or the expanded graph. The dropdown, highlighted button, and expanded graph engine name follow the selected run. Hover a numbered button for its recorded engine, budget, verification status, and engine options. [Compare saved analyses](/help/saved-analysis/). Move Analysis shows the move-quality badge and CPL loss in its header, an evaluation-swing bar, and the played and engine-preferred lines side by side. The played line identifies its player and uses the move’s quality color. Replay the preferred continuation with its compact player, then choose **Return to game moves** to exit the preview. Filter navigation to mistakes and blunders or blunders only. **Try the best move** appears when the engine recommends a different move.
 
 For full-game analysis, choose a **node budget** or **1–60 seconds per position**. Node mode keeps Quick, Standard, Deep and Custom quality choices. Turn **Verify critical moves after analysis** on or off; after the first pass, **Verify critical moves** lets you request the deeper check manually. Choose the engine beside the Analyze controls; the bottom-bar **Engine** button opens its settings. [Analysis budgets and settings](/help/search-depth-and-settings/).
+
+## See candidate moves on the board
+
+In **Prediction**, the arrow beside **Analyze position** opens engine selection for browser Stockfish and available Companion engines. The current engine is named below the button. Switching clears old live results and resumes an active search when the new engine is ready.
+
+Enable **Show best next move** in its prominent On/Off card to compare all available PV lines: the strongest move has a green circle, arrow, and score bubble; alternatives use red. Scores sit in the destination square's bottom-right corner and use White's perspective. **Compare saved line**, enabled by default, adds a blue dashed saved recommendation and a translucent ghost when its piece has already moved. A label identifies the earlier position, and the 3D ghost follows the board's camera and piece scale. [Prediction and saved-line comparison](/help/engine-line/).
 
 {{< companion-features >}}
 

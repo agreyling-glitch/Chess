@@ -84,17 +84,17 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   window.ironwoodCompanionLibrary=async()=>archiveStore;
   // The same game cards and controls are used on each source.
   const row=document.querySelector('.game-library-entry');
-  [...row.querySelectorAll('button')].find(button=>button.textContent==='Move to Archive').click();await settle();
+  [...row.querySelectorAll('button')].find(button=>button.textContent==='Move to Win11').click();await settle();
   assert.equal(records.size,12);assert.match(document.querySelector('.game-library-notice').textContent,/simulated archive failure/);
   failImport=false;mutateSource=true;
-  [...document.querySelector('.game-library-entry').querySelectorAll('button')].find(button=>button.textContent==='Move to Archive').click();await settle();
+  [...document.querySelector('.game-library-entry').querySelectorAll('button')].find(button=>button.textContent==='Move to Win11').click();await settle();
   assert.equal(records.size,12);assert.match(document.querySelector('.game-library-notice').textContent,/changed during transfer/);
   mutateSource=false;
-  [...document.querySelector('.game-library-entry').querySelectorAll('button')].find(button=>button.textContent==='Move to Archive').click();await settle();
+  [...document.querySelector('.game-library-entry').querySelectorAll('button')].find(button=>button.textContent==='Move to Win11').click();await settle();
 
   assert.equal(records.size,11);assert.equal(archiveRecords.length,1);
   for(const index of [0,1]){const input=document.querySelectorAll('.game-library-select')[index];input.checked=true;input.dispatchEvent(new window.Event('change'));}
-  click('Move to Archive');await settle();assert.equal(records.size,9);assert.equal(archiveRecords.length,3);
+  click('Move to Win11');await settle();assert.equal(records.size,9);assert.equal(archiveRecords.length,3);
   click('Archive');await settle();
   assert.equal(document.querySelector('.game-library-browser').hidden,false);
   assert.equal(document.querySelectorAll('.game-library-select').length,3);

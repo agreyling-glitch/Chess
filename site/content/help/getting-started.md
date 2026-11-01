@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 ---
 
 ## Open a game
@@ -35,6 +35,7 @@ The live board stays on the left. Choose a tab on the right:
 - **Explore:** **Openings** for Opening Explorer and **Endgames** for Tablebases.
 - **Tactical:** Tactical Map, with **Insights**, **Activity**, and **Patterns**.
 - **Annotations:** **Drawings**, **Notes**, and **Chess Symbols**.
+- **Study:** imported Lichess study chapters, comments, variations, and practice. [Read and practice a study](/help/lichess-studies/).
 
 Every tab after Moves shows the selected position and move, for example **Position 9 of 44 (Qe3)**. Gray subtabs inside sunken panels keep related tools together. The Moves panel fits its contents; the board fits the available space as you resize the browser. Switching between 2D and 3D preserves the live board's size. Some study tools are unavailable during active online play or training.
 
@@ -86,7 +87,7 @@ happened.
 
 ## Explore one position
 
-Select a move in **Moves**, then open **Prediction** to see Stockfish's suggested move and its [engine line](/help/engine-line/). Step through the line on the board. Ask what threat the suggestion addresses, which piece improves, or what the played move allowed. The engine gives a candidate continuation; it does not give a human explanation by itself.
+Select a move in **Moves**, then open **Prediction** to see the selected engine's suggested move and its [engine line](/help/engine-line/). Step through the line on the board. Ask what threat the suggestion addresses, which piece improves, or what the played move allowed. The engine gives a candidate continuation; it does not give a human explanation by itself.
 
 ## Watch, compare, and keep games
 

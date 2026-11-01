@@ -4,7 +4,7 @@ description: "Switch saved engine runs with numbered buttons or keys 1–9, and 
 category: "analysis"
 keywords: [Saved Analysis, compare, engine, dropdown, numbered buttons, shortcuts, settings, hover, expanded graph]
 weight: 22
-lastmod: 2026-10-31T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 ---
 
 ## Choose a saved run
@@ -26,6 +26,12 @@ Temporary profile reviews do not show the previously opened game's saved-analysi
 Choose **Expand** in the graph's upper-right corner. The expanded view includes the same numbered buttons and **1–9** shortcuts, so you can compare runs without closing it. The graph, results, and engine heading follow the selected saved run. Returning to the main view shows the same selection in the dropdown.
 
 Selecting a historical run does not change the engine configured for your next analysis. To create new results, choose the desired engine beside Analyze and start a new run. Your earlier saved runs and personal annotations remain separate.
+
+## Compare saved and live recommendations on the board
+
+**Compare saved line** starts enabled in **Move Analysis**, under **Analysis → Critical Analysis**. A dashed blue arrow marks the saved recommendation. If its piece has already moved, a translucent blue ghost shows its original square, and a label identifies the position before the played move. The actual board stays unchanged. The setting is remembered; clear the checkbox to hide it.
+
+Live Prediction uses solid green for its strongest candidate and red for alternatives, with matching score bubbles. These results come from the current analysis engine and may differ from the selected historical run. The blue comparison remains tied to the saved run. See [engine lines and board markers](/help/engine-line/).
 
 ## Inspect the engine and settings
 

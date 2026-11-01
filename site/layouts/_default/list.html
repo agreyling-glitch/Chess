@@ -3,6 +3,11 @@
   <p class="eyebrow">{{ with .Params.eyebrow }}{{ . }}{{ else }}Ironwood Chess{{ end }}</p>
   <h1>{{ .Title }}</h1>
   {{ with .Description }}<p class="lede">{{ . }}</p>{{ end }}
+  {{ if eq .Section "changelog" }}
+    {{ with .OutputFormats.Get "rss" }}
+    <p><a href="{{ .RelPermalink }}" type="application/rss+xml">Subscribe to changelog RSS</a></p>
+    {{ end }}
+  {{ end }}
 </section>
 <section class="entry-list" aria-label="{{ .Title }} entries">
   {{ range .Pages.ByDate.Reverse }}

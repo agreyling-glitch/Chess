@@ -5,7 +5,7 @@ category: "using-ironwood"
 keywords: [Companion, archive, engine, auto-install, manual, Import folder, ZIP, 7z, progress, backup]
 weight: 62
 draft: false
-lastmod: 2026-10-27T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 ---
 
 ## Install an engine
@@ -54,3 +54,5 @@ To compare results already saved for a game, use [Saved Analysis](/help/saved-an
 ## Unified game management
 
 The old **Your game archive** window has been retired. Use **Game History → Saved games…** for collections, browsing, metadata, copies, moves, exports and deletion. Choose Browser or a named Companion there. Use **Game History → Backup and Restore…** for backups, **Settings → Companion connection…** for connections, and the Import Games window for folder-import progress.
+
+In Browser Saved Games, copy and move controls use your Companion’s saved name. If several Companions are configured, open **Copy to…** or **Move to…** and choose a named destination from the submenu; disconnected destinations are disabled. These controls are available for selected games above the list and in each saved game’s **☰** menu, including its larger preview. See [Saved games and backups](/help/saved-games-and-backups/#copy-games-to-an-archive).

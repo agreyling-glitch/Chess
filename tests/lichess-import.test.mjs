@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 globalThis.window = globalThis;
 const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
-const { lichessExportUrl, importFilters } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+const { lichessExportUrl, importFilters, gameDetails, libraryMetadataDetails, importFingerprint } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 
 test('filters validate dates and generate inclusive UTC bounds', () => {
   const url = new URL(lichessExportUrl('Ada',{limit:100,speed:'blitz',from:'2026-09-01',to:'2026-09-30'}));
@@ -23,10 +23,23 @@ test('username exports are bounded to completed games', () => {
 });
 test('game URLs discard player secrets and reject other hosts', () => {
   assert.equal(new URL(lichessExportUrl('https://lichess.org/abcd1234WXYZ/black#12')).pathname, '/game/export/abcd1234');
-  for (const input of ['https://evil.com/abcd1234', 'https://lichess.org@evil.com/abcd1234', 'https://lichess.org/study/abcd1234', 'bad name']) {
+  for (const input of ['https://evil.com/abcd1234', 'https://lichess.org@evil.com/abcd1234', 'https://lichess.org/study/short', 'bad name']) {
     assert.throws(() => lichessExportUrl(input));
   }
 });
+test('study links export all chapters or one chapter with annotations', () => {
+  for (const [link,path] of [
+    ['https://lichess.org/study/abcd1234','/api/study/abcd1234.pgn'],
+    ['https://lichess.org/study/abcd1234/WXYZ5678#12','/api/study/abcd1234/WXYZ5678.pgn'],
+  ]) {
+    const url = new URL(lichessExportUrl(link,{from:'invalid'}));
+    assert.equal(url.pathname,path);
+    for (const option of ['comments','variations','clocks','orientation']) assert.equal(url.searchParams.get(option),'true');
+    assert.equal(url.searchParams.has('ongoing'),false);
+  }
+  for (const link of ['https://lichess.org/study/abcd1234/short','https://lichess.org/study/abcd1234/WXYZ5678/extra','https://user@lichess.org/study/abcd1234']) assert.throws(()=>lichessExportUrl(link));
+});
+
 test('fetch hands PGN off once, rejects ongoing games, and honors rate limits', async () => {
   let calls = 0;
   let body = '[Event "Rated blitz"]\n[Result "1-0"]\n\n1. e4 1-0';
@@ -44,10 +57,37 @@ test('fetch hands PGN off once, rejects ongoing games, and honors rate limits', 
   await window.ironwoodFetchLichess('https://lichess.org/abcd1234');
   assert.equal(window.ironwoodPollLichess(), '');
   assert.match(window.ironwoodLichessStatus(), /still in progress/);
+  body = '[Event "Study: Chapter"]\n[StudyName "Study"]\n[ChapterName "Chapter"]\n[Result "*"]\n\n1. e4 {note} (1. d4) *';
+  await window.ironwoodFetchLichess('https://lichess.org/study/abcd1234');
+  assert.equal(window.ironwoodPollLichess(),body);
+  assert.match(window.ironwoodLichessStatus(),/choose chapters/);
+  status = 403;
+  await window.ironwoodFetchLichess('https://lichess.org/study/abcd1234');
+  assert.equal(window.ironwoodPollLichess(),'');
+  assert.match(window.ironwoodLichessStatus(),/public study/);
   status = 429;
   await window.ironwoodFetchLichess('Ada');
   const before = calls;
   await window.ironwoodFetchLichess('Ada');
   assert.equal(calls, before);
   assert.match(window.ironwoodLichessStatus(), /full minute/);
+});
+
+
+test('saved chapters retain study titles and source metadata', () => {
+  const pgn = '[Event "Study: Chapter"]\n[StudyName "My study"]\n[ChapterName "First chapter"]\n[ChapterURL "https://lichess.org/study/abcd1234/WXYZ5678"]\n[Result "*"]\n\n1. e4 *';
+  const details = gameDetails(JSON.stringify({review_pgn:pgn,board:'',game_analysis:[],move_notes:['Introduction']}));
+  assert.equal(details.title,'My study · 1 chapter');
+  assert.equal(details.category,'studies');
+  assert.equal(details.startingNote,'Introduction');
+  assert.equal(details.chapterUrl,'https://lichess.org/study/abcd1234/WXYZ5678');
+  assert.equal(libraryMetadataDetails(details,{}).title,details.title);
+});
+
+
+test('distinct study chapters are not discarded as duplicate games', () => {
+  const chapter = name => `[StudyName "Study"]\n[ChapterName "${name}"]\n[Result "*"]\n\n*`;
+  assert.ok(importFingerprint(chapter('Introduction')));
+  assert.notEqual(importFingerprint(chapter('Introduction')),importFingerprint(chapter('Position')));
+  assert.equal(importFingerprint(chapter('Introduction')),importFingerprint(chapter('Introduction')));
 });

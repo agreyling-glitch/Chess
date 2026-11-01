@@ -9,9 +9,9 @@ function writeWindowState(target,kind,value){try{target.localStorage.setItem('ir
 export function createGameActionMenu(actions,title){
   const trigger=document.createElement('button');trigger.type='button';trigger.className='game-library-menu-button';trigger.textContent='☰';trigger.title='Game actions';trigger.setAttribute('aria-label',`Game actions: ${title}`);trigger.setAttribute('aria-haspopup','menu');trigger.setAttribute('aria-expanded','false');
   actions.classList.add('game-library-action-menu');actions.setAttribute('role','menu');actions.setAttribute('aria-label',`Actions for ${title}`);actions.setAttribute('popover','auto');actions.hidden=true;
-  const items=()=>[...actions.querySelectorAll('button')].filter(item=>!item.hidden&&!item.disabled);
+  const items=()=>[...actions.querySelectorAll('button')].filter(item=>!item.closest('[hidden]')&&!item.disabled);
   for(const item of actions.querySelectorAll('button'))item.setAttribute('role','menuitem');
-  const close=(focus=false)=>{try{actions.hidePopover?.();}catch{}actions.hidden=true;trigger.setAttribute('aria-expanded','false');document.removeEventListener('pointerdown',outside);trigger.closest('dialog')?.removeEventListener('close',dismiss);if(focus)trigger.focus();};
+  const close=(focus=false)=>{actions.querySelectorAll('[data-transfer-submenu]').forEach(menu=>menu.hidden=true);actions.querySelectorAll('[aria-haspopup]').forEach(button=>button.setAttribute('aria-expanded','false'));try{actions.hidePopover?.();}catch{}actions.hidden=true;trigger.setAttribute('aria-expanded','false');document.removeEventListener('pointerdown',outside);trigger.closest('dialog')?.removeEventListener('close',dismiss);if(focus)trigger.focus();};
   const dismiss=()=>close();
   const outside=event=>{if(!actions.contains(event.target)&&!trigger.contains(event.target))close();};
   const show=(last=false)=>{
@@ -31,7 +31,7 @@ export function createGameActionMenu(actions,title){
     else if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();buttons[event.key==='Home'?0:event.key==='End'?buttons.length-1:(index+(event.key==='ArrowUp'?-1:1)+buttons.length)%buttons.length]?.focus();}
     else if(event.key==='Tab')close(true);
   });
-  actions.addEventListener('click',event=>{if(event.target.closest('button'))close();});
+  actions.addEventListener('click',event=>{if(event.target.closest('button')&&!event.target.closest('button').hasAttribute('aria-haspopup'))close();});
   actions.addEventListener('toggle',event=>{if(event.newState==='closed')close();});
   return trigger;
 }
@@ -264,6 +264,27 @@ let lichessBusy = false;
 let lichessRetryAt = 0;
 let lichessStatus = '';
 let lichessPgn = '';
+let studyRefreshResult = '';
+let studyRefreshBusy = false;
+window.ironwoodPollStudyRefresh = () => { const result=studyRefreshResult; studyRefreshResult=''; return result; };
+window.ironwoodRefreshStudy = async input => {
+  studyRefreshResult='';
+  if (studyRefreshBusy || lichessBusy) {studyRefreshResult=JSON.stringify({error:'A Lichess request is already running. Try refresh again shortly.'});return;}
+  studyRefreshBusy=true;lichessBusy=true;
+  try {
+    const url=new URL(lichessExportUrl(input));
+    if (!/^\/api\/study\/[a-zA-Z0-9]{8}\.pgn$/.test(url.pathname)) throw Error('Refresh requires a whole-study Lichess link.');
+    if (Date.now()<lichessRetryAt) throw Error('Lichess rate limit: wait a full minute before trying again.');
+    const response=await fetch(url.href,{headers:{Accept:'application/x-chess-pgn'},credentials:'omit',signal:AbortSignal.timeout(30000),cache:'no-store'});
+    if(response.status===429){lichessRetryAt=Date.now()+60000;throw Error('Lichess rate limit: wait a full minute before trying again.');}
+    if([401,403,404].includes(response.status))throw Error('Study unavailable. Check that it is public and downloads are enabled. Your local copy was kept.');
+    if(!response.ok)throw Error(`Study refresh failed (${response.status}). Your local copy was kept.`);
+    const pgn=await response.text();
+    if(!/^\[StudyName\s/m.test(pgn)||!/^\[ChapterName\s/m.test(pgn)||pgn.length>64*1024*1024)throw Error('Lichess returned an invalid study. Your local copy was kept.');
+    studyRefreshResult=JSON.stringify({pgn,url:input});
+  } catch(error){studyRefreshResult=JSON.stringify({error:error.name==='TimeoutError'?'Study refresh timed out. Your local copy was kept.':error.message});}
+  finally{studyRefreshBusy=false;lichessBusy=false;}
+};
 
 export function importFilters(options = {}) {
   if (typeof options === 'string') options = JSON.parse(options);
@@ -288,11 +309,18 @@ export function lichessExportUrl(input, options = {}) {
   let path;
   if (/^https?:\/\//i.test(value)) {
     const url = new URL(value);
-    if (url.protocol !== 'https:' || url.hostname !== 'lichess.org' || url.port) {
-      throw new Error('Use an https://lichess.org game link.');
+    if (url.protocol !== 'https:' || url.hostname !== 'lichess.org' || url.port || url.username || url.password) {
+      throw new Error('Use an https://lichess.org game or study link.');
+    }
+    const study = url.pathname.match(/^\/study\/([a-zA-Z0-9]{8})(?:\/([a-zA-Z0-9]{8}))?\/?$/);
+    if (study) {
+      const path = `/api/study/${study[1]}${study[2] ? `/${study[2]}` : ''}.pgn`;
+      const exported = new URL(path, 'https://lichess.org');
+      exported.search = new URLSearchParams({clocks:'true',comments:'true',variations:'true',orientation:'true'});
+      return exported.href;
     }
     const match = url.pathname.match(/^\/([a-zA-Z0-9]{8})(?:[a-zA-Z0-9]{4})?(?:\/(?:white|black))?\/?$/);
-    if (!match) throw new Error('Paste a Lichess game link, or enter a username.');
+    if (!match) throw new Error('Paste a Lichess game or study link, or enter a username.');
     path = `/game/export/${match[1]}`;
   } else {
     if (!/^[a-zA-Z0-9_-]{2,30}$/.test(value)) throw new Error('Enter a valid Lichess username or game link.');
@@ -324,7 +352,8 @@ window.ironwoodFetchLichess = async (input, options = {}) => {
     return;
   }
   lichessBusy = true;
-  lichessStatus = 'Fetching completed games from Lichess…';
+  const study = /^https:\/\/lichess\.org\/study\//i.test(input.trim());
+  lichessStatus = study ? 'Fetching study chapters from Lichess…' : 'Fetching completed games from Lichess…';
   try {
     const response = await fetch(lichessExportUrl(input, options), {
       headers: { Accept: 'application/x-chess-pgn' }, credentials: 'omit',
@@ -334,14 +363,15 @@ window.ironwoodFetchLichess = async (input, options = {}) => {
       lichessRetryAt = Date.now() + 60000;
       throw new Error('Lichess rate limit: wait a full minute before trying again.');
     }
+    if (study && [401,403,404].includes(response.status)) throw new Error('Study unavailable. Use a public study with downloads enabled, or paste a PGN exported from your Lichess account.');
     if (response.status === 404) throw new Error('Lichess user or game not found.');
     if (!response.ok) throw new Error(`Lichess request failed (${response.status}). Try again later.`);
     const pgn = await response.text();
-    if (!pgn.trim()) throw new Error('No completed games match these filters. Try a wider date range or another time control.');
+    if (!pgn.trim()) throw new Error(study ? 'This study has no downloadable chapters.' : 'No completed games match these filters. Try a wider date range or another time control.');
     if (!/^\[Event\s/m.test(pgn)) throw new Error('Lichess returned an unexpected game format.');
-    if (/^\[Result "\*"\]/m.test(pgn)) throw new Error('This game is still in progress. Import it after it finishes.');
+    if (!study && /^\[Result "\*"\]/m.test(pgn)) throw new Error('This game is still in progress. Import it after it finishes.');
     lichessPgn = pgn;
-    lichessStatus = 'Games fetched. Continue to choose games to import.';
+    lichessStatus = study ? 'Study fetched. Continue to choose chapters to import.' : 'Games fetched. Continue to choose games to import.';
   } catch (error) {
     lichessStatus = error.name === 'TimeoutError' ? 'Lichess request timed out. Try again.' :
       error instanceof TypeError ? 'Could not reach Lichess. Check your connection and try again.' : error.message;
@@ -507,8 +537,10 @@ export function importFingerprint(pgn) {
   const moves = clean.split(/\s+/).map(token => token.replace(/^\d+\.(?:\.\.)?/, '').replace(/[!?]+$/g, ''))
     .filter(token => token && token !== '...' && !token.startsWith('$') &&
       !['1-0', '0-1', '1/2-1/2', '*'].includes(token));
-  if (!moves.length) return null;
-  const identity = [header('White'), header('Black'), header('Date'), header('FEN'), ...moves].join('\x1f');
+  const study = pgnTag(pgn, 'StudyName'), chapter = pgnTag(pgn, 'ChapterName');
+  if (!moves.length && !(study && chapter)) return null;
+  const chapterIdentity = study && chapter ? ['study', study, chapter, pgnTag(pgn, 'ChapterURL') || ''] : [];
+  const identity = [...chapterIdentity, header('White'), header('Black'), header('Date'), header('FEN'), ...moves].join('\x1f');
   let hash = 0xcbf29ce484222325n;
   for (let index = 0; index < identity.length; index++) {
     hash = BigInt.asUintN(64, (hash ^ BigInt(identity.charCodeAt(index))) * 0x100000001b3n);
@@ -655,13 +687,69 @@ async function readGame(id) {
 
 function librarySummary(record) {
   const {json,archiveAnalysisRuns,...summary}=record, details=libraryMetadataDetails(gameDetails(json),record._archive?.document?.metadata || record.metadata || {});
-  return {...summary,...details,category:details.category==='puzzles'?'puzzles':details.trainingProfileId?'training':summary.category||details.category,source:summary.source,favorite:Boolean(summary.favorite),fingerprint:storedFingerprint(record)};
+  return {...summary,...details,category:['puzzles','studies'].includes(details.category)?details.category:details.trainingProfileId?'training':summary.category||details.category,source:summary.source,favorite:Boolean(summary.favorite),fingerprint:storedFingerprint(record)};
+}
+
+// Use the source ID rather than the title: unrelated studies may share a name.
+export function savedStudyId(json) {
+  let game;try{game=JSON.parse(json);}catch{return null;}
+  const chapters=game.study?.chapters;
+  const urls=Array.isArray(chapters)&&chapters.length?chapters.map(ch=>ch.url):[pgnTag(game.review_pgn,'ChapterURL')];
+  if(!game.study&&!pgnTag(game.review_pgn,'StudyName'))return null;
+  const ids=urls.map(url=>typeof url==='string'?url.match(/^https:\/\/lichess\.org\/study\/([a-zA-Z0-9]{8})\/[a-zA-Z0-9]{8}\/?$/)?.[1]:null);
+  return ids.length&&ids.every(id=>id&&id===ids[0])?`study-lichess-${ids[0]}`:null;
+}
+
+export function consolidatedStudyRecord(records, merge=window.ironwoodMergeSavedStudies) {
+  const ordered=[...records].sort((a,b)=>a.updatedAt-b.updatedAt);
+  const id=savedStudyId(ordered[0]?.json);
+  if(!id||ordered.some(record=>savedStudyId(record.json)!==id))throw Error('Cannot combine unrelated studies.');
+  const latest=ordered.at(-1);
+  const json=merge(JSON.stringify(ordered.map(record=>JSON.parse(record.json))));
+  // Keep every original save in backups, including conflicting old annotations.
+  const copies=new Map();
+  for(const record of ordered){
+    for(const copy of record.studySavedCopies||[])copies.set(copy.id,copy);
+    if(record.id!==id){const {studySavedCopies,...copy}=record;copies.set(copy.id,copy);}
+  }
+  return {...latest,...gameDetails(json),id,json,category:'studies',
+    favorite:ordered.some(record=>record.favorite),
+    collectionIds:[...new Set(ordered.flatMap(record=>record.collectionIds||[]))],
+    archiveAnalysisRuns:[...new Map(ordered.flatMap(record=>browserAnalysisRuns(null,record)).map(run=>[run.id,run])).values()],
+    studySavedCopies:[...copies.values()]};
+}
+
+async function consolidateBrowserStudies() {
+  if(typeof window.ironwoodMergeSavedStudies!=='function')return;
+  pendingWrite=pendingWrite.catch(()=>{}).then(async()=>{
+    const db=await openDatabase();
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(STORE_NAME,'readwrite'),store=tx.objectStore(STORE_NAME),request=store.getAll();let failure,changed=false;
+      request.onsuccess=()=>{
+        try{
+          const groups=new Map();
+          for(const record of request.result){const id=savedStudyId(record.json);if(id){if(!groups.has(id))groups.set(id,[]);groups.get(id).push(record);}}
+          for(const [id,records] of groups){
+            if(request.result.some(record=>record.id===id&&!records.includes(record)))throw Error('Study save ID is already in use. Original saves were kept.');
+            if(records.length===1&&records[0].id===id&&records[0].category==='studies')continue;
+            const combined=consolidatedStudyRecord(records);store.put(combined);
+            for(const record of records)if(record.id!==id)store.delete(record.id);
+            changed=true;
+          }
+        }catch(error){failure=error;tx.abort();}
+      };
+      tx.oncomplete=()=>{if(changed)notifyLibraryChanged('browser');resolve();};
+      tx.onerror=tx.onabort=()=>reject(failure||tx.error||Error('Study grouping failed. Original saves were kept.'));
+    });
+  });
+  await pendingWrite;
 }
 async function archiveLibrary(interactive=true,endpoint) {
   if(typeof window.ironwoodCompanionLibrary!=='function')throw Error('Archive storage is unavailable. Reload Ironwood.');
   return window.ironwoodCompanionLibrary({details:gameDetails,prepare:window.ironwoodPrepareArchivedPgn,exporter:window.ironwoodExportSavedGame,receive:receiveCompanionDocuments,interactive,...(endpoint?{endpoint}:{})});
 }
 async function listGames() {
+  await consolidateBrowserStudies();
   await pendingWrite;
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
@@ -813,7 +901,7 @@ function validateBackup(value) {
     return {
       ...record,
       id: record.id,
-      category: gameDetails(record.json).category === 'puzzles' ? 'puzzles' : gameDetails(record.json).trainingProfileId ? 'training' : ['imported', 'observed', 'puzzles'].includes(record.category) ? record.category : 'mine',
+      category: ['puzzles','studies'].includes(gameDetails(record.json).category) ? gameDetails(record.json).category : gameDetails(record.json).trainingProfileId ? 'training' : ['imported', 'observed', 'puzzles', 'studies'].includes(record.category) ? record.category : 'mine',
       favorite: Boolean(record.favorite),
       updatedAt: Number(record.updatedAt) || Date.now(),
     };
@@ -835,6 +923,7 @@ export function backupSummary(value) {
     observed: backup.games.filter(game => game.category === 'observed').length,
     training: backup.games.filter(game => game.category === 'training').length,
     puzzles: backup.games.filter(game => game.category === 'puzzles').length,
+    studies: backup.games.filter(game => game.category === 'studies').length,
     profiles: backup.trainingProfiles?.profiles.length || 0,
     collections:backup.collections.length,
     favorites: backup.games.filter(game => game.favorite).length,
@@ -1259,7 +1348,7 @@ window.ironwoodRestoreStorage = () => {
       const summary = backupSummary(raw);
       const dialog = storageDialog('Restore backup');
       const message = document.createElement('p');
-      message.textContent = `${file.name} contains ${formatGameCount(summary.games)} games (${formatGameCount(summary.mine)} personal, ${formatGameCount(summary.imported)} imported, ${formatGameCount(summary.observed)} observed, ${formatGameCount(summary.training)} training, ${formatGameCount(summary.puzzles)} puzzles, ${formatGameCount(summary.favorites)} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
+      message.textContent = `${file.name} contains ${formatGameCount(summary.games)} saved entries (${formatGameCount(summary.mine)} personal, ${formatGameCount(summary.imported)} imported, ${formatGameCount(summary.observed)} observed, ${formatGameCount(summary.training)} training, ${formatGameCount(summary.puzzles)} puzzles, ${formatGameCount(summary.studies)} studies, ${formatGameCount(summary.favorites)} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
       const guidance = document.createElement('p');
       guidance.className = 'storage-guidance';
       guidance.textContent = `Merge keeps existing games and adds the backup. Replace removes existing games first. Both options restore included preferences and training profiles (${formatGameCount(summary.profiles)}) and collections (${formatGameCount(summary.collections)}). Training results are merged by game ID so ratings are not counted twice.`;
@@ -1685,11 +1774,16 @@ export function gameDetails(json) {
   const analysisStatus = analyzed === 0 ? 'Not analyzed' : analyzed >= moves + 1 ? 'Complete' : 'Partial';
   const whiteFideId = pgnTag(game.review_pgn, 'WhiteFideId') || null;
   const blackFideId = pgnTag(game.review_pgn, 'BlackFideId') || null;
+  const studyName = game.study?.name || pgnTag(game.review_pgn, 'StudyName') || null;
+  const studyChapters = Array.isArray(game.study?.chapters) ? game.study.chapters.length : studyName ? 1 : 0;
+  const studyAuthor = pgnTag(game.study?.chapters?.[0]?.source || game.review_pgn, 'StudyAuthor') || null;
+  const chapterName = pgnTag(game.review_pgn, 'ChapterName') || null;
+  const chapterUrl = pgnTag(game.review_pgn, 'ChapterURL') || null;
   const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
-  return { ...gameOpening(game), startingNote, analysisStatus, puzzleId, title: puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, event:pgnTag(game.review_pgn, 'Event') || null, result, moves, analyzed,
+  return { ...gameOpening(game), studyName, studyChapters, studyAuthor, chapterName, chapterUrl, startingNote, analysisStatus, puzzleId, title: studyChapters ? `${studyName} · ${studyChapters} ${studyChapters===1?'chapter':'chapters'}` : puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, event:pgnTag(game.review_pgn, 'Event') || null, result, moves, analyzed,
     trainingProfileId: training?.profile_id || null, trainingProfileName: profileName, trainingSide: training?.side || null,
     trainingOpponentElo: training?.opponent_elo, trainingOpponentLevel:training?.difficulty_level, trainingNodeBudget:training?.node_budget, trainingEngineKind:training?.engine?.kind || 'stockfish', ratingBefore: training?.rating_before, ratingAfter: training?.rating_after,
-    finalFen: game.final_board || game.board, category: puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
+    finalFen: game.final_board || game.board, category: studyName ? 'studies' : puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
 }
 
 // Library metadata is independent of the move timeline and saved analysis.
@@ -1739,7 +1833,7 @@ export function libraryMetadataDetails(details, metadata) {
     if(Object.hasOwn(metadata,key))result[field]=metadata[key] || (['White','Black'].includes(key)?'Unknown':null);
   }
   result.white=enginePlayerName(result.white);result.black=enginePlayerName(result.black);
-  if(details.category!=='puzzles'&&!details.puzzleId)result.title=`${result.white} vs ${result.black}`;
+  if(details.category!=='puzzles'&&!details.puzzleId&&!details.studyName)result.title=`${result.white} vs ${result.black}`;
   return result;
 }
 export function libraryEventVenueLabel(game) {
@@ -1855,7 +1949,12 @@ function queueGameRecord(json, id, category, trackBatch = false, source) {
   try {
     const details = gameDetails(json);
     // Session restoration is separate; only played games belong in the library.
-    if (details.moves === 0) return;
+    if (details.moves === 0 && details.category!=='studies') return;
+    const studyId=savedStudyId(json);
+    // The initial storage bootstrap precedes WASM. Its current-game copy remains
+    // in localStorage until the study merger is available.
+    if(studyId&&typeof window.ironwoodMergeSavedStudies!=='function')return;
+    if(studyId){id=studyId;category='studies';}
     const fingerprint = importFingerprint(JSON.parse(json).review_pgn);
     if (batch?.archive) {
       batch.pending++;
@@ -1866,7 +1965,8 @@ function queueGameRecord(json, id, category, trackBatch = false, source) {
     }
     if (fingerprint) importedFingerprints.add(fingerprint);
     if (batch) batch.pending++;
-    const write = putGame({ id, ...details, category: details.category === 'puzzles' ? 'puzzles' : category, fingerprint, ...(source ? { source } : {}), updatedAt: Date.now(), json });
+    const record={ id, ...details, category: ['puzzles','studies'].includes(details.category) ? details.category : category, fingerprint, ...(source ? { source } : {}), updatedAt: Date.now(), json };
+    const write = studyId ? putGame(record,existing=>existing?consolidatedStudyRecord([existing,record]):consolidatedStudyRecord([record])) : putGame(record);
     if (batch) write.then(() => {
       batch.pending--;
       batch.saved++;
@@ -2235,6 +2335,11 @@ window.ironwoodStoreCurrentGame = json => {
     }
     const details = gameDetails(json);
     queueGameRecord(json, activeId(), details.trainingProfileId ? 'training' : localStorage.getItem(ACTIVE_CATEGORY_KEY) || details.category);
+    const studyId=savedStudyId(json);
+    if(studyId&&typeof window.ironwoodMergeSavedStudies==='function'){
+      localStorage.setItem(ACTIVE_ID_KEY,studyId);
+      localStorage.setItem(ACTIVE_CATEGORY_KEY,'studies');
+    }
   } catch (error) {
     console.warn('Ironwood game library save failed:', error);
   }
@@ -2377,7 +2482,7 @@ export async function previewCompanionDocument(document, trigger) {
 
 const PREVIEW_AUTOPLAY_SPEED_KEY='ironwood.chess.preview-autoplay-delay.v1';
 let previewAutoplayDelay=2000;
-async function showGamePreview(game, trigger) {
+async function showGamePreview(game, trigger, gameActions) {
   document.getElementById('game-preview-dialog')?.close();
   const dialog = document.createElement('dialog');
   dialog.id = 'game-preview-dialog';
@@ -2388,6 +2493,21 @@ async function showGamePreview(game, trigger) {
   close.type = 'button'; close.textContent = '×';
   close.setAttribute('aria-label', 'Close board preview');
   close.addEventListener('click', () => dialog.close());
+  if(gameActions){
+    const actions=gameActions.cloneNode(true);
+    const originalButtons=[...gameActions.querySelectorAll('button')];
+    const buttons=[...actions.querySelectorAll('button')];
+    actions.querySelectorAll('[data-transfer-submenu]').forEach(menu=>menu.hidden=true);
+    buttons.forEach((button,index)=>{
+      if(button.hasAttribute('aria-haspopup')){
+        button.setAttribute('aria-expanded','false');
+        button.onclick=()=>{const submenu=button.nextElementSibling,opening=submenu.hidden;actions.querySelectorAll('[data-transfer-submenu]').forEach(menu=>menu.hidden=true);actions.querySelectorAll('[aria-haspopup]').forEach(item=>item.setAttribute('aria-expanded','false'));submenu.hidden=!opening;button.setAttribute('aria-expanded',String(opening));if(opening)submenu.querySelector('button:not(:disabled)')?.focus();};
+        button.onkeydown=event=>{if(event.key==='ArrowRight'){event.preventDefault();event.stopPropagation();if(button.nextElementSibling.hidden)button.click();}};
+      }else button.onclick=()=>{dialog.close();originalButtons[index].click();};
+    });
+    actions.querySelectorAll('[data-transfer-submenu]').forEach(menu=>menu.onkeydown=event=>{if(event.key==='ArrowLeft'||event.key==='Escape'){event.preventDefault();event.stopPropagation();menu.hidden=true;menu.previousElementSibling.setAttribute('aria-expanded','false');menu.previousElementSibling.focus();}});
+    heading.append(createGameActionMenu(actions,game.title),actions);
+  }
   heading.append(close);
   const players = document.createElement('div');
   players.className = 'game-preview-players';
@@ -2888,7 +3008,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       }catch(error){message(`Collection change failed: ${error.message}`);}finally{busy(false);}
     };
 
-    const copyGames=async targets=>{
+    const copyGames=async (targets,endpoint)=>{
       if(operationBusy||!targets.length||!companionVisible())return;
       if(source==='archive'){
         const storage=provider;busy(true);
@@ -2897,21 +3017,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         return;
       }
       const destinations=locations().filter(item=>item.connected);
-      let endpoint;
-      if(destinations.length===1)endpoint=destinations[0].endpoint;
-      else if(destinations.length>1)endpoint=await new Promise(resolve=>{
-        const picker=storageDialog('Copy to Archive');
-        const label=document.createElement('label');label.textContent='Destination Companion';
-        const select=document.createElement('select');select.setAttribute('aria-label','Copy destination Companion');select.style.cssText='display:block;width:100%;padding:10px;margin:12px 0;background:#252d34;color:#ecebe4';
-        for(const item of destinations){const option=document.createElement('option');option.value=item.endpoint;option.textContent=item.name;select.append(option);}
-        select.value=destinations.find(item=>item.archive)?.endpoint||destinations[0].endpoint;
-        label.append(select);picker.append(label);
-        const actions=document.createElement('div');actions.className='storage-actions';
-        const cancel=document.createElement('button');cancel.textContent='Cancel';cancel.onclick=()=>picker.close();
-        const apply=document.createElement('button');apply.textContent='Copy games';apply.onclick=()=>{const value=select.value;picker.close();resolve(value);};
-        actions.append(cancel,apply);picker.append(actions);picker.addEventListener('close',()=>queueMicrotask(()=>resolve(null)),{once:true});picker.showModal();
-      });
-      if(!endpoint){if(!destinations.length)message('Connect a Companion archive before copying games.');return;}
+      endpoint ||= destinations.length===1?destinations[0].endpoint:null;
+      if(!endpoint||!destinations.some(item=>item.endpoint===endpoint)){message('Choose a connected Companion before copying games.');return;}
       const targetName=destinations.find(item=>item.endpoint===endpoint)?.name||'Archive';
       busy(true);message(`Copying games to ${targetName}…`);
       try {
@@ -2926,15 +3033,17 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       finally{busy(false);}
     };
 
-    const moveGames=async targets=>{
+    const moveGames=async (targets,endpoint)=>{
       if(operationBusy||!targets.length||!companionVisible())return;
+      if(source==='browser'&&!locations().some(item=>item.connected&&item.endpoint===endpoint)){message('Choose a connected Companion before moving games.');return;}
+      const targetName=source==='browser'?locations().find(item=>item.endpoint===endpoint).name:'Browser';
       const from=source, storage=provider;busy(true);message('Moving games…');
       try {
         await pendingWrite;
         if(from==='browser') {
           const records=await Promise.all(targets.map(game=>readGame(game.id)));
           if(records.some(record=>!record?.json))throw Error('A browser game is no longer available. Refresh and try again.');
-          const destination=await archiveLibrary();
+          const destination=await archiveLibrary(false,endpoint);
           const collection=await destinationCollection(destination);if(collection===null)return;
           const ids=await destination.importRecords(records,collection||null);
           const active=records.findIndex(record=>!getArchiveActive()&&record.id===localStorage.getItem(ACTIVE_ID_KEY));
@@ -2947,12 +3056,34 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
           const active=getArchiveActive();
           if(active?.endpoint===storage.endpoint){const index=targets.findIndex(game=>game.id===active.id);if(index>=0){localStorage.removeItem(ACTIVE_ARCHIVE_KEY);if(result.ids?.[index])localStorage.setItem(ACTIVE_ID_KEY,result.ids[index]);}}
         }
-        await refreshGames();message(`${formatGameCount(targets.length)} game${targets.length===1?'':'s'} moved to ${from==='browser'?'Archive':'Browser'}.`);
+        await refreshGames();message(`${formatGameCount(targets.length)} game${targets.length===1?'':'s'} moved to ${targetName}.`);
       } catch(error) {
         try{await refreshGames();}catch{}
         message(`Move not completed: ${error.message} Any source that could not be removed was kept; destination copies may already exist.`);
       } finally{busy(false);}
     };
+
+    function appendTransferActions(container,targets,disabled=false) {
+      const destinations=source==='archive'?[{name:'Browser',connected:true}]:locations();
+      for(const [verb,run] of [['Move',moveGames],['Copy',copyGames]]) {
+        const button=document.createElement('button');button.type='button';button.disabled=disabled||!destinations.some(item=>item.connected);
+        if(destinations.length<=1){
+          const destination=destinations[0];button.textContent=`${verb} to ${destination?.name||'Companion'}`;
+          button.onclick=()=>void run(targets(),destination?.endpoint);container.append(button);continue;
+        }
+        button.textContent=`${verb} to…`;button.setAttribute('aria-haspopup','menu');button.setAttribute('aria-expanded','false');
+        const submenu=document.createElement('div');submenu.dataset.transferSubmenu='';submenu.style.cssText='padding-left:12px;border-left:1px solid #73808a';submenu.setAttribute('role','menu');submenu.setAttribute('aria-label',`${verb} destination`);submenu.hidden=true;
+        for(const destination of destinations){
+          const item=document.createElement('button');item.type='button';item.setAttribute('role','menuitem');item.textContent=destination.name+(destination.connected?'':' (Disconnected)');item.disabled=!destination.connected;
+          item.onclick=()=>{submenu.hidden=true;button.setAttribute('aria-expanded','false');void run(targets(),destination.endpoint);};submenu.append(item);
+        }
+        const toggle=()=>{const opening=submenu.hidden;container.querySelectorAll('[data-transfer-submenu]').forEach(menu=>menu.hidden=true);container.querySelectorAll('[aria-haspopup]').forEach(trigger=>trigger.setAttribute('aria-expanded','false'));submenu.hidden=!opening;button.setAttribute('aria-expanded',String(!submenu.hidden));if(!submenu.hidden)submenu.querySelector('button:not(:disabled)')?.focus();};
+        button.onclick=toggle;
+        button.onkeydown=event=>{if(event.key==='ArrowRight'){event.preventDefault();event.stopPropagation();if(submenu.hidden)toggle();}};
+        submenu.onkeydown=event=>{if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){event.preventDefault();event.stopPropagation();const items=[...submenu.querySelectorAll('button:not(:disabled)')],index=items.indexOf(document.activeElement);items[event.key==='Home'?0:event.key==='End'?items.length-1:(index+(event.key==='ArrowUp'?-1:1)+items.length)%items.length]?.focus();}else if(event.key==='ArrowLeft'||event.key==='Escape'){event.preventDefault();event.stopPropagation();submenu.hidden=true;button.setAttribute('aria-expanded','false');button.focus();}};
+        container.append(button,submenu);
+      }
+    }
 
     const removeGames = async targets => {
       if (deleting || operationBusy || !targets.length) return;
@@ -3000,10 +3131,12 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         ['mine', 'My Games'],
         ['training', 'Training'],
         ['puzzles', 'Puzzles'],
+        ['studies', 'Studies'],
         ['observed', 'Observed'],
         ['imported', 'Imported Games'],
         ['favorites', 'Favorites'],
       ]) {
+        if(value==='studies'&&remote()&&!Object.hasOwn(archivePage?.counts||{},'studies'))continue;
         const tab = document.createElement('option');tab.value=value;
         tab.textContent = `${label} (${formatGameCount(remote()?archivePage?.counts?.[value]||0:games.filter(game => gameMatchesCategory(game, value)).length)})`;
         categorySelect.append(tab);
@@ -3218,19 +3351,13 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       removeSelected.addEventListener('click', () => removeGames(selectedGames()));
       selection.append(selectPageLabel, selectAll, clearSelection, exportMenu, removeSelected);
       for(const [label,action] of [['Add to collection','add'],['Remove from collection','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||!selectedIds.size||!groups.length;button.onclick=()=>void manageCollection(action,selectedGames());selection.append(button);}
-      if(companionVisible()) {
-        const transfer=document.createElement('button');transfer.type='button';transfer.textContent=source==='archive'?'Move to Browser':'Move to Archive';transfer.disabled=!selectedIds.size||operationBusy;
-        transfer.onclick=()=>void moveGames(selectedGames());selection.append(transfer);
-        {
-          const copy=document.createElement('button');copy.type='button';copy.textContent=source==='browser'?'Copy to Archive':'Copy to Browser';copy.disabled=!selectedIds.size||operationBusy;
-          copy.onclick=()=>void copyGames(selectedGames());selection.append(copy);
-        }
-      }
+      if(companionVisible())appendTransferActions(selection,selectedGames,!selectedIds.size||operationBusy);
       if (!visible.length) {
         list.textContent = games.some(game => gameMatchesCategory(game, category)) ? 'No games match these filters.' :
           category === 'all' ? 'No saved games yet.' :
           category === 'training' ? 'Start Training vs AI from New game to add games under a profile.' :
           category === 'puzzles' ? 'Puzzle move history appears here after the first move or a revealed solution.' :
+          category === 'studies' ? 'Import a Lichess study to keep its chapters together here.' :
           category === 'observed' ? 'Finished games you watch are saved here automatically.' :
           category === 'mine' ? 'No games here yet. Finished online games and games against Stockfish are saved automatically.' :
             category === 'imported' ? 'No imported games here yet. Import a PGN or analysis JSON to add one.' :
@@ -3275,17 +3402,18 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         const previewBoard = finalBoard(game.finalFen);
         preview.append(previewBoard);
         preview.disabled = previewBoard.children.length !== 64;
-        preview.addEventListener('click', () => showGamePreview(game, preview));
+        preview.addEventListener('click', () => showGamePreview(game, preview, actions));
         entry.append(preview);
         const main = document.createElement('div');
         main.className = 'game-library-main';
         const name = document.createElement('strong');
         // listGames reads these from the original PGN, including older saved records.
         const fide = game;
-        if (game.category === 'puzzles') name.append(game.favorite ? '★ ' : '', game.title);
+        if (['puzzles','studies'].includes(game.category)) name.append(game.favorite ? '★ ' : '', game.title);
         else name.append(game.favorite ? '★ ' : '', game.white,' vs ',game.black);
         const players = document.createElement('div');
         players.className = 'game-library-players';
+        players.hidden = game.category === 'studies';
         for (const [side, player, fideId] of [['White', game.white, fide.whiteFideId], ['Black', game.black, fide.blackFideId]]) {
           const label = document.createElement('span');
           label.append(`${side}: `, playerNameElement(player, fideId));
@@ -3293,11 +3421,12 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         }
         const result = document.createElement('span');
         result.className = 'game-library-result';
-        result.textContent = game.category === 'puzzles' ? 'Puzzle move history' : game.result === '1-0' ? `${game.white} won (White)` :
+        result.textContent = game.category === 'studies' ? 'Lichess study' : game.category === 'puzzles' ? 'Puzzle move history' : game.result === '1-0' ? `${game.white} won (White)` :
           game.result === '0-1' ? `${game.black} won (Black)` :
           game.result === '1/2-1/2' ? 'Draw' : 'Result unknown / unfinished';
         const details = document.createElement('span');
         details.textContent = `${game.playedAt ? `Played ${game.playedAt}` : 'Date played unknown'} · ${libraryEventVenueLabel(game)} · Saved ${new Date(game.updatedAt).toLocaleString()} · ${formatGameCount(game.moves)} moves · ${game.analysisStatus} · ${formatGameCount(game.analyzed)} positions analyzed${game.source ? ` · ${game.source}` : ''}`;
+        if(game.category==='studies')details.textContent=`${game.studyAuthor ? `By ${game.studyAuthor.replace(/^https:\/\/lichess.org\/@\//,'')} · ` : ''}Saved ${new Date(game.updatedAt).toLocaleString()} · Notes, variations and chapter progress kept`;
         if(game.eco||game.opening)details.textContent+=` · ${[game.eco,game.opening].filter(Boolean).join(' · ')}`;
         if (game.trainingProfileId) {
           details.textContent += game.trainingEngineKind==='lc0'
@@ -3318,7 +3447,7 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
         const titleButton=document.createElement('button');titleButton.type='button';titleButton.className='game-library-title';titleButton.title='Open game';titleButton.setAttribute('aria-label',`Open game: ${game.title}`);titleButton.append(name);titleButton.addEventListener('click',openGame);
         const move = document.createElement('button');
         move.type = 'button';
-        move.hidden = ['observed', 'training', 'puzzles'].includes(game.category);
+        move.hidden = ['observed', 'training', 'puzzles', 'studies'].includes(game.category);
         move.textContent = game.category === 'mine' ? 'Move to Imported' : 'Move to My Games';
         move.addEventListener('click', async () => {
           const oldCategory = game.category;
@@ -3375,17 +3504,23 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
             });
           }catch(error){message(`Could not edit metadata: ${error.message}`);}
         };
-        actions.append(favorite, metadataButton, move, remove);
+        const openButton=document.createElement('button');openButton.type='button';openButton.textContent='Open Game';openButton.addEventListener('click',openGame);
+        const exportPgn=document.createElement('button');exportPgn.type='button';exportPgn.textContent='Export PGN';
+        exportPgn.onclick=async()=>{
+          if(operationBusy)return;
+          busy(true);
+          try{
+            await pendingWrite;
+            const record=await readSource(game.id);
+            if(!record?.json)throw Error('Saved game was not found');
+            const payload=buildGameExport([record],'pgn',window.ironwoodExportSavedGame);
+            downloadBlob(payload.filename,new Blob([payload.content],{type:payload.type}));
+          }catch(error){message(`Could not export game: ${error.message}`,true);}finally{busy(false);}
+        };
+        actions.append(openButton, exportPgn, favorite, metadataButton, move, remove);
         for(const [label,action] of [['Add to collection','add'],['Remove from collection','remove']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=!groups.length;button.onclick=()=>void manageCollection(action,[game]);actions.append(button);}
 
-        if(companionVisible()) {
-          const transfer=document.createElement('button');transfer.type='button';transfer.textContent=source==='archive'?'Move to Browser':'Move to Archive';
-          transfer.onclick=()=>void moveGames([game]);actions.append(transfer);
-          {
-            const copy=document.createElement('button');copy.type='button';copy.textContent=source==='browser'?'Copy to Archive':'Copy to Browser';
-            copy.onclick=()=>void copyGames([game]);actions.append(copy);
-          }
-        }
+        if(companionVisible())appendTransferActions(actions,()=>[game]);
         main.append(titleButton, players, result, details);
         const note = startingNoteElement(game, true);
         if (note) main.append(note);

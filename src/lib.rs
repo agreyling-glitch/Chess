@@ -71,6 +71,12 @@ pub fn prepare_archived_pgn(pgn: &str) -> Result<String, JsValue> {
     app::ChessApp::prepare_archived_pgn(pgn).map_err(|error| JsValue::from_str(&error))
 }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+pub fn merge_saved_studies(json: &str) -> Result<String, JsValue> {
+    app::ChessApp::merge_saved_studies(json).map_err(|error| JsValue::from_str(&error))
+}
+
 /// Checks scoresheet moves without changing the current game or saving anything.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]

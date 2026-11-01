@@ -469,8 +469,8 @@ function installFallbacks(target) {
   target.ironwoodBeginBoardPngCopy ??= () => false;
   target.ironwoodFinishBoardPngCopy ??= () => {};
   target.ironwoodFailBoardPngCopy ??= () => {};
-  for (const name of ['FetchLichess', 'FetchChessCom']) target[`ironwood${name}`] ??= () => {};
-  for (const name of ['PollLichess', 'PollChessCom']) target[`ironwood${name}`] ??= () => '';
+  for (const name of ['FetchLichess', 'FetchChessCom', 'RefreshStudy']) target[`ironwood${name}`] ??= () => {};
+  for (const name of ['PollLichess', 'PollChessCom', 'PollStudyRefresh']) target[`ironwood${name}`] ??= () => '';
   for (const name of ['LichessStatus', 'ChessComStatus'])
     target[`ironwood${name}`] ??= () => 'Game import is unavailable. Please reload Ironwood.';
   for (const name of ['OpenGameLibrary', 'BackupStorage', 'RestoreStorage', 'OpenStorageInfo', 'ClearSavedGames', 'ResetLocalData'])
@@ -523,6 +523,7 @@ export async function startChessApp({
     await app.default({ module_or_path: wasm });
     target.ironwoodExportSavedGame = app.export_saved_game;
     target.ironwoodPrepareArchivedPgn = app.prepare_archived_pgn;
+    target.ironwoodMergeSavedStudies = app.merge_saved_studies;
     target.ironwoodValidateScoresheet = app.validate_scoresheet_pgn;
     target.ironwoodPreviewScoresheet = app.preview_scoresheet;
     target.ironwoodBeginStudyPanel = app.begin_study_panel;

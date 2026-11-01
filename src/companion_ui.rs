@@ -1,6 +1,89 @@
 use super::*;
 
 impl ChessApp {
+    fn reset_prediction_for_engine_switch(&mut self, identity: String) {
+        let running=self.analysis_running;
+        #[cfg(target_arch="wasm32")]
+        if running { self.stop_analysis(); }
+        if self.prediction_index>0 {
+            if let Some(root)=self.prediction_positions.first() {self.board=*root;}
+            self.last_move=self.review_index.and_then(|index|Self::review_move_at(&self.review_positions,&self.review_moves,index));
+        }
+        self.clear_analysis_result();
+        self.analysis_running=false;
+        self.engine_searching=false;
+        self.realtime_analysis_due_at=None;
+        self.prediction_engine_switch=Some((identity,running));
+    }
+
+    pub(super) fn prediction_analyze_control_ui(&mut self,ui:&mut egui::Ui) {
+        #[cfg(target_arch="wasm32")]
+        let catalog:serde_json::Value=if crate::companion::enabled() {
+            serde_json::from_str(&companion_engine_catalog()).unwrap_or_default()
+        }else{serde_json::Value::Null};
+        #[cfg(not(target_arch="wasm32"))]
+        let catalog=serde_json::Value::Null;
+        let busy=catalog["busy"]==true || catalog["pending_identity"].is_string();
+        let current=if self.analysis_config.opponent==OpponentEngine::Companion {
+            self.analysis_config.companion_identity.clone()
+        }else{String::new()};
+        if !busy && self.prediction_engine_switch.as_ref().is_some_and(|(target,_)|target!=&current) {
+            self.prediction_engine_switch=None;
+        }
+        let mut chosen=None;
+        ui.horizontal(|ui| {
+            ui.set_height(36.0);
+            let width=(ui.available_width()-38.0-ui.spacing().item_spacing.x).max(60.0);
+            let running=self.analysis_running;
+            if ui.add_enabled(!busy,egui::Button::new(RichText::new(
+                if busy {"Preparing engine…"}else if running {"Stop analysis"}else{"Analyze position"})
+                .color(Color32::from_rgb(25,29,35))).min_size(Vec2::new(width,34.0)).truncate().raised_gold())
+                .on_hover_text(format!("{} with {} (Space)",if running {"Stop analysis"}else{"Analyze this position"},self.analysis_config.label()))
+                .clicked() {
+                #[cfg(target_arch="wasm32")]
+                if running {self.stop_analysis();}else{self.start_analysis();}
+            }
+            let menu=ui.add_enabled(!busy && !self.engine_settings_locked()
+                && !(self.fics_active && !self.fics_game_finished),
+                egui::Button::new("").min_size(Vec2::new(34.0,34.0)).raised_gold())
+                .on_hover_text("Choose analysis engine");
+            let center=menu.rect.center();
+            ui.painter().add(egui::Shape::line(vec![center+Vec2::new(-4.0,-2.0),
+                center+Vec2::new(0.0,3.0),center+Vec2::new(4.0,-2.0)],
+                Stroke::new(2.0,Color32::from_rgb(46,39,24))));
+            egui::Popup::from_toggle_button_response(&menu).show(|ui| {
+                ui.set_max_width(340.0);
+                ui.label(RichText::new("Analysis engine").strong());
+                if ui.selectable_label(current.is_empty(),"Stockfish 19 (browser)").clicked() {
+                    chosen=Some(String::new());ui.close();
+                }
+                if let Some(engines)=catalog["engines"].as_array() {
+                    for engine in engines {
+                        if let (Some(id),Some(label))=(engine["identity"].as_str(),engine["label"].as_str()) {
+                            if ui.selectable_label(current==id,label).clicked(){chosen=Some(id.to_owned());ui.close();}
+                        }
+                    }
+                }
+                #[cfg(target_arch="wasm32")]
+                {
+                    ui.separator();
+                    if crate::companion::enabled() && ui.button("Refresh installed engines").clicked(){refresh_companion_engines();}
+                    if ui.button("Companion connections…").clicked(){manage_companion_connection();ui.close();}
+                }
+            });
+        });
+        ui.label(RichText::new(format!("Engine: {}",self.analysis_config.label())).size(12.0).weak());
+        if let Some(identity)=chosen.filter(|id|id!=&current) {
+            self.reset_prediction_for_engine_switch(identity.clone());
+            #[cfg(target_arch="wasm32")]
+            {select_companion_engine(&identity);self.poll_companion_provider();}
+        }
+        if busy {ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));}
+        if let Some(status)=catalog["status"].as_str().filter(|status|!status.is_empty()) {
+            ui.add(egui::Label::new(status).truncate()).on_hover_text(status);
+        }
+    }
+
     #[cfg(target_arch = "wasm32")]
     pub(super) fn import_location_selector(ui: &mut egui::Ui) -> (bool,bool) {
         let catalog:serde_json::Value=serde_json::from_str(&import_location_catalog()).unwrap_or_default();
@@ -281,5 +364,32 @@ impl ChessApp {
         if self.strength_dialog_open { self.prepare_uci_settings(); }
         self.engine_status = format!("{} selected · start analysis or continue play", self.engine_config.label());
         self.save_game(); self.queue_live_engine_resume();
+        if self.prediction_engine_switch.as_ref().is_some_and(|(target,_)| target==&identity) {
+            let (_,resume)=self.prediction_engine_switch.take().unwrap();
+            if resume {self.start_analysis();}
+        }
+    }
+}
+
+#[cfg(test)]
+mod prediction_engine_tests {
+    use super::*;
+
+    #[test]
+    fn prediction_engine_switch_clears_live_hints_and_returns_to_root() {
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        let root=Board::default();
+        let (positions,moves,chess_moves)=ChessApp::prediction_line(root,&["e2e4","e7e5"]);
+        app.board=positions[1];app.prediction_positions=positions.clone();
+        app.prediction_index=1;app.analysis_running=true;
+        app.analysis_variations=vec![AnalysisVariation{positions,moves,chess_moves,eval_cp:Some(35),..Default::default()}];
+        app.analysis_eval_cp=Some(35);app.show_prediction_best_move=true;
+        app.reset_prediction_for_engine_switch("other-engine".into());
+        assert_eq!(app.board,root);
+        assert!(app.analysis_variations.is_empty());
+        assert!(app.analysis_eval_cp.is_none());
+        assert!(app.prediction_pv_moves().is_empty());
+        assert!(!app.analysis_running);
+        assert_eq!(app.prediction_engine_switch,Some(("other-engine".into(),true)));
     }
 }

@@ -32,6 +32,7 @@ export async function startLibraryWindow(target=window,{loadApp=()=>import('./pk
     const state=await opener()?.ironwoodLibraryPopupState?.();
     const app=await loadApp();await app.default();
     target.ironwoodExportSavedGame=app.export_saved_game;target.ironwoodPrepareArchivedPgn=app.prepare_archived_pgn;
+    target.ironwoodMergeSavedStudies=app.merge_saved_studies;
     await loadStorage();
     if(loading)loading.hidden=true;
     await target.ironwoodOpenGameLibrary(state?{windowState:state}:null);

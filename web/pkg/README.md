@@ -66,6 +66,30 @@ Fetching requires an internet connection. Ironwood makes one Lichess request
 at a time and waits at least one minute after a rate-limit response. Live
 games cannot be imported. No additional libraries or Lichess assets are bundled.
 
+### Lichess studies
+
+The Lichess import field also accepts `https://lichess.org/study/STUDY_ID`
+and chapter links ending in `/CHAPTER_ID`. Click **Fetch study**, then
+**Continue** to choose chapters. Public, downloadable studies need no login.
+For private studies, export PGN from your Lichess account and use the Paste tab.
+Import only studies you own or have permission to use; study content is not
+bundled with Ironwood or assumed to carry Lichess's software license.
+
+Studies open in the **Study** tab as one saved workspace with chapter navigation,
+an interactive move tree, author comments, personal notes and local variations.
+Short and position-only chapters are retained. Follow branches with continuation
+buttons, arrow keys or moves on the board. **Practice** accepts studied
+continuations, plays the other side, and gives feedback and optional reveals.
+**Refresh from Lichess** preserves local notes, glyphs and drawings by source
+chapter and move path; removed annotated material is retained as a local copy.
+Full-study PGN export includes all chapters and variations. Browser backups
+preserve the editable workspace. No changes are uploaded to Lichess.
+
+See [Lichess studies help](site/content/help/lichess-studies.md) for the full
+workflow. Private studies can be imported by PGN; authenticated browsing and
+private-study refresh are not included. Unsupported chess variants remain
+unsupported.
+
 ## Play on Lichess
 
 Choose **Play → Online via Lichess**, or open **Lichess-Online → Lichess

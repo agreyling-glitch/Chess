@@ -4,7 +4,7 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-10-30T00:00:00-05:00
+lastmod: 2026-11-01T00:00:00-05:00
 ---
 
 Use **Play → Save current game** to keep the current game, and **Game History → Saved games** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
@@ -16,6 +16,8 @@ Saved games live in this browser's storage on this device. A different browser, 
 Full-game analyses are saved as separate runs. Use the dropdown beside **Saved Analysis** to switch between engines or settings without replacing previous results. **Manage analyses** lists each run's engine, settings, status and date; deleting selected runs asks for confirmation and keeps the game, notes and other runs. Runs are stored with the Browser game and included in Browser backups from **Game History → Backup and Restore…**.
 
 Use [Import Games](/help/import-games/) to paste PGN or Analysis JSON, fetch completed games from Lichess or Chess.com, or enter a scoresheet. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
+
+Imported Lichess studies appear in the Browser library's **Studies** category, with one entry for each study and its chapter count. Older separate chapter saves from the same Lichess study are combined while keeping notes, analysis, favorites, and collection membership. Original chapter records remain inside the consolidated record in browser backups. Open the study card to return to its chapters in the **Study** tab. [Read and practice studies](/help/lichess-studies/).
 
 Open **Game History → Backup and Restore…**, choose **Backup** or **Restore**, then select **Game History Location**. The list includes **Browser** and each configured Companion under its saved name; disconnected Companions cannot be selected. Each action affects only the chosen location.
 
@@ -35,13 +37,15 @@ Games with a Starting note show a short preview in the library. Click that note 
 
 ## Find and select games
 
-Use the **Category** dropdown and expand **Filters** to access the **Player**, **Source**, **Date**, **Opening** and **Analysis** filters to narrow the library. Player, Source, Date and Opening each have a searchable dropdown; type inside it, then select an entry. Opening entries show the ECO code and opening name together, and you can search using either. Dates appear newest first. Source uses the saved import source, or the PGN Site value when no source was saved. Choose **All** to clear a filter or **Unknown** for missing information. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. **Clear selection** unselects games across all pages. Export or delete the selected games using the controls above the list. Click a game title to open it directly; its hamburger menu contains Favorite, Move and Delete actions. Deletion asks for confirmation.
+Use the **Category** dropdown and expand **Filters** to access the **Player**, **Source**, **Date**, **Opening** and **Analysis** filters to narrow the library. Player, Source, Date and Opening each have a searchable dropdown; type inside it, then select an entry. Opening entries show the ECO code and opening name together, and you can search using either. Dates appear newest first. Source uses the saved import source, or the PGN Site value when no source was saved. Choose **All** to clear a filter or **Unknown** for missing information. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. **Clear selection** unselects games across all pages. Export or delete the selected games using the controls above the list. Click a game title to open it directly, or choose **Open Game** at the top of its **☰** options menu. The same menu offers **Export PGN**, Favorite, **Edit metadata…**, category moves where available, Delete, collection actions, and Companion copy and move actions. **Export PGN** downloads that game as a plain PGN file. Deletion asks for confirmation.
 
 Drag the Saved games title to move the window, drag an edge or corner to resize it, or use the title-bar maximize/restore button. Choose **Open saved games in a new window** (↗) to browse in a separate window. Your filters and selection carry over, and the game cards adjust to the available width. Saved Games remembers its size and position, as well as whether Filters is expanded. The game list scrolls within the window.
 
 ## Larger board preview
 
 Click a game's small board to open the larger preview. Use **First**, **Previous**, **Next**, and **Last** beneath the board to browse its positions. **Left Arrow** and **Right Arrow** also move backward and forward.
+
+The **☰** options button beside the preview’s close button offers the same actions as that saved game’s library menu, including **Open Game**, **Export PGN**, and named Companion destinations. Choosing an action closes the preview and carries out that action.
 
 Select **Play** to advance one move every **2 seconds** by default. Right-click **Play** to choose a speed; the preview remembers your choice. If the preview is already at the final position, autoplay starts from the beginning. **Pause**, a navigation button, or an arrow key stops autoplay. It also stops at the last move and when you close the preview. Previewing does not change the current game.
 
@@ -86,7 +90,9 @@ Training engine players use a stable engine/model name, such as **Maia3 79M (GPU
 
 ## Copy games to an archive
 
-In Browser Saved Games, choose **Copy to Archive** from a game's hamburger menu or select several games and use **Copy to Archive** above the list. When several Companions are connected, choose the destination by its saved name. Copies retain metadata, notes, timings and saved analyses. Browser originals and the currently open game stay in place. **Move to Archive** remains available when you want to transfer and remove the Browser originals instead.
+In Browser Saved Games, use a game’s **☰** menu, the same menu in its larger preview, or select several games and use the controls above the list. With one configured Companion, **Copy to [Companion name]** and **Move to [Companion name]** use the name you chose for that connection. With several Companions, **Copy to…** and **Move to…** open destination submenus listing those names. Disconnected destinations are disabled.
+
+Copies retain metadata, notes, timings and saved analyses. Browser originals and the currently open game stay in place. Moving transfers the games and removes the Browser originals after the destination is saved. When browsing a Companion, **Copy to Browser** and **Move to Browser** transfer games back to this browser.
 
 
 ## Collections in Browser and Companion storage

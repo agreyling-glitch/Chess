@@ -1,4 +1,7 @@
 use crate::rules::{Board, MoveGen};
+#[path = "studies.rs"]
+mod studies;
+use studies::{StudyWorkspace, StudyChapter};
 // Exact PGN text is the cache key. Only successful legal timelines are retained;
 // notes, analysis and tags are never cached or substituted between records.
 struct CachedPgnTimeline { source:String,positions:Vec<Board>,moves:Vec<String>,bytes:usize,content:Option<Vec<(bool,String,usize)>> }
@@ -393,6 +396,10 @@ extern "C" {
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
     fn fetch_lichess(input: &str, options: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRefreshStudy)]
+    fn refresh_study(input: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollStudyRefresh)]
+    fn poll_study_refresh() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchChessCom)]
     fn fetch_chess_com(input: &str, options: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollChessCom)]
@@ -694,6 +701,8 @@ struct ArchiveAnalysisSnapshot {
 
 #[derive(Deserialize)]
 struct ImportedAnalysisFile {
+    #[serde(default)]
+    study: Option<StudyWorkspace>,
     schema: String,
     engine: ImportedAnalysisEngine,
     game: ImportedAnalysisGame,
@@ -1607,6 +1616,8 @@ enum CompactPanel {
 #[derive(Serialize, Deserialize)]
 struct PersistedGame {
     #[serde(default)]
+    study: Option<StudyWorkspace>,
+    #[serde(default)]
     training: Option<Session>,
     #[serde(default)]
     local_clock: Option<LocalClock>,
@@ -1634,6 +1645,10 @@ struct PersistedGame {
     piece_shadows: bool,
     #[serde(default = "default_best_move_arrows", skip_serializing)]
     show_best_move_arrows: bool,
+    #[serde(default)]
+    show_prediction_best_move: bool,
+    #[serde(default = "default_best_move_arrows")]
+    show_saved_comparison: bool,
     #[serde(default = "default_best_move_arrows", skip_serializing)]
     show_move_hover_text: bool,
     #[serde(default, skip_serializing)]
@@ -1707,6 +1722,10 @@ struct UserPreferences {
     piece_appearance: crate::board3d::PieceAppearance,
     theme_adjustments: std::collections::BTreeMap<String, crate::board3d::PieceAppearance>,
     show_best_move_arrows: bool,
+    #[serde(default)]
+    show_prediction_best_move: bool,
+    #[serde(default = "default_best_move_arrows")]
+    show_saved_comparison: bool,
     show_move_hover_text: bool,
     figurine_notation: bool,
     move_sounds: bool,
@@ -1739,6 +1758,8 @@ impl Default for UserPreferences {
             piece_appearance: Default::default(),
             theme_adjustments: Default::default(),
             show_best_move_arrows: true,
+            show_prediction_best_move: false,
+            show_saved_comparison: true,
             show_move_hover_text: true,
             figurine_notation: false,
             move_sounds: true,
@@ -1773,6 +1794,8 @@ impl UserPreferences {
             piece_appearance: Default::default(),
             theme_adjustments: Default::default(),
             show_best_move_arrows: game.show_best_move_arrows,
+            show_prediction_best_move: game.show_prediction_best_move,
+            show_saved_comparison: game.show_saved_comparison,
             show_move_hover_text: game.show_move_hover_text,
             figurine_notation: game.figurine_notation,
             move_sounds: game.move_sounds,
@@ -1858,6 +1881,8 @@ pub struct ChessApp {
     adjustment_theme_key: String,
     theme_adjustments_open: bool,
     show_best_move_arrows: bool,
+    show_prediction_best_move: bool,
+    show_saved_comparison: bool,
     show_move_hover_text: bool,
     figurine_notation: bool,
     move_sounds: bool,
@@ -1867,6 +1892,7 @@ pub struct ChessApp {
     capture_animation: Option<CaptureAnimation>,
     piece_set: PieceSet,
     engine_enabled: bool,
+    study: Option<StudyWorkspace>,
     lichess: LichessSession,
     new_game_lichess: bool,
     fics_active: bool,
@@ -2060,6 +2086,7 @@ pub struct ChessApp {
     show_engine_download: bool,
     resume_engine_after_ready: bool,
     pending_analysis_search: Option<String>,
+    prediction_engine_switch: Option<(String, bool)>,
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     ignore_next_bestmove: bool,
     #[cfg(target_arch = "wasm32")]
@@ -3046,7 +3073,8 @@ impl ChessApp {
         style.visuals.panel_fill = Color32::from_rgb(17, 20, 24);
         style.visuals.window_fill = Color32::from_rgb(25, 29, 35);
         cc.egui_ctx.set_style_of(cc.egui_ctx.theme(), style);
-        let saved = Self::load_game();
+        let mut saved = Self::load_game();
+        if let Some(game)=saved.as_mut(){game.study=game.study.take().and_then(|study|study.validated().ok());}
         let mut board = saved
             .as_ref()
             .and_then(|game| Board::from_str(&game.board).ok())
@@ -3207,6 +3235,8 @@ impl ChessApp {
         let show_board_frame = preferences.show_board_frame;
         let piece_shadows = preferences.theme_adjustments.get(&theme_adjustment_key(preferences.board_3d_active,preferences.piece_set,preferences.board_3d_theme)).map_or(if preferences.theme_adjustments.is_empty() { preferences.piece_shadows } else { true }, |a| a.shadows);
         let show_best_move_arrows = preferences.show_best_move_arrows;
+        let show_prediction_best_move = preferences.show_prediction_best_move;
+        let show_saved_comparison = preferences.show_saved_comparison;
         let show_move_hover_text = preferences.show_move_hover_text;
         let figurine_notation = preferences.figurine_notation;
         let move_sounds = preferences.move_sounds;
@@ -3317,6 +3347,8 @@ impl ChessApp {
             theme_adjustments: preferences.theme_adjustments.clone(),
             theme_adjustments_open: false,
             show_best_move_arrows,
+            show_prediction_best_move,
+            show_saved_comparison,
             show_move_hover_text,
             figurine_notation,
             move_sounds,
@@ -3327,6 +3359,7 @@ impl ChessApp {
             capture_animation: None,
             piece_set,
             engine_enabled,
+            study: saved.as_ref().and_then(|g|g.study.clone()),
             lichess: LichessSession::new(),
             new_game_lichess: true,
             fics_active: false,
@@ -3532,6 +3565,7 @@ impl ChessApp {
             show_engine_download: false,
             resume_engine_after_ready,
             pending_analysis_search: None,
+            prediction_engine_switch: None,
             ignore_next_bestmove: false,
             #[cfg(target_arch = "wasm32")]
             engine: None,
@@ -4548,9 +4582,9 @@ impl ChessApp {
                                     .corner_radius(CornerRadius::same(8)).inner_margin(Margin::same(16))
                                     .show(ui, |ui| {
                                 ui.set_width(ui.available_width());
-                                ui.label(RichText::new(if chess_com { "Chess.com username" } else { "Lichess username or game link" }).size(16.0).strong());
+                                ui.label(RichText::new(if chess_com { "Chess.com username" } else { "Lichess username, game or study link" }).size(16.0).strong());
                                 ui.label(RichText::new(if chess_com { "Enter the username shown on your Chess.com profile." }
-                                    else { "Enter a username for recent games, or paste a link to one game." }).size(14.0).weak());
+                                    else { "Enter a username for recent games, or paste a game, study or chapter link." }).size(14.0).weak());
                                 let narrow = ui.available_width() < 420.0;
                                 let single_game = !chess_com && self.lichess_input.trim().starts_with("https://");
                                 ui.add_enabled_ui(!single_game, |ui| {
@@ -4582,7 +4616,7 @@ impl ChessApp {
                                         }
                                     });
                                 });
-                                ui.label(RichText::new(if single_game { "Filters apply to username imports; a game link fetches that one game." }
+                                ui.label(RichText::new(if single_game { "Filters apply to usernames. Links fetch the selected game, study or chapter." }
                                     else { "Dates use UTC. Leave either date blank for an open range. Newest matching games are fetched first." }).size(13.0).weak());
                                 let options = serde_json::json!({"limit":self.import_limit,"speed":self.import_speed,"from":self.import_from,"to":self.import_to}).to_string();
                                 ui.vertical(|ui| {
@@ -4594,7 +4628,7 @@ impl ChessApp {
                                             .font(FontId::proportional(16.0))
                                             .hint_text(if chess_com { "e.g. your_username" } else { "Username or https://lichess.org/..." }));
                                         fetch = ui.add_enabled(!input.trim().is_empty(),egui::Button::new(
-                                            RichText::new("Fetch games").size(16.0).strong().color(Color32::from_rgb(30,26,20)))
+                                            RichText::new(if !chess_com && input.contains("/study/") { "Fetch study" } else { "Fetch games" }).size(16.0).strong().color(Color32::from_rgb(30,26,20)))
                                             .fill(gold).min_size(Vec2::new(128.0,38.0)).raised_gold()).clicked();
                                     };
                                     if narrow { input_row(ui); } else { ui.horizontal(input_row); }
@@ -4611,7 +4645,10 @@ impl ChessApp {
                                 });
                                 ui.add_space(8.0);
                                 ui.label(RichText::new("Next: review your games").size(16.0).strong());
-                                ui.label(RichText::new("Fetched games open in the Paste tab. Choose Continue to review the collection and select games to import.").size(14.0).weak());
+                                ui.label(RichText::new("Fetched PGN opens in the Paste tab. Choose Continue to review the collection and select games or chapters to import.").size(14.0).weak());
+                                if !chess_com {
+                                    ui.label(RichText::new("Public studies with downloads enabled can be imported without signing in. For private studies, export PGN on Lichess and paste it here. Notes, glyphs and board markings are supported. Open the Study tab to navigate chapters and variations, add local notes, and practice the moves.").size(13.0).weak());
+                                }
                                 if chess_com {
                                     ui.add_space(4.0);
                                     ui.label(RichText::new("Recently finished games may take a little time to appear in Chess.com’s archives.").size(13.0).weak());
@@ -5007,7 +5044,7 @@ impl ChessApp {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.checkbox(
                                         &mut game.selected,
-                                        format!("{}. {} vs {}", index + 1, game.white, game.black),
+                                        format!("{}. {}", index + 1, Self::pgn_tag(&game.text, "ChapterName").unwrap_or_else(|| format!("{} vs {}", game.white, game.black))),
                                     );
                                     ui.label(&game.result);
                                 });
@@ -6041,6 +6078,13 @@ impl ChessApp {
             if let Some(best) = best {
                 ui.add_space(5.0);
                 ui.label(self.display_san_line(&Self::best_move_description(&root, best)));
+                if ui.checkbox(&mut self.show_saved_comparison,"Compare saved line").changed() {
+                    self.save_game();
+                }
+                if self.show_saved_comparison {
+                    ui.colored_label(Color32::from_rgb(112,175,244),format!("Blue ghost · saved alternative before {}",
+                        self.review_moves.get(index.saturating_sub(1)).map(String::as_str).unwrap_or("the played move")));
+                }
             }
             if let Some(outcome) = self.move_mate_outcome(index) { ui.label(outcome.explanation()); }
             ui.add_space(8.0);
@@ -8074,7 +8118,7 @@ impl ChessApp {
 
     fn evaluation_bar(&self, ui: &egui::Ui, rect: egui::Rect) {
         let state_id = egui::Id::new("balance_bar_last_score").with(
-            (self.review_positions.first().map(ToString::to_string), &self.review_white_player, &self.review_black_player),
+            (self.review_positions.first().map(ToString::to_string), &self.review_white_player, &self.review_black_player, self.study.as_ref().map(|s|(&s.name,s.chapter,s.node))),
         );
         let previous = ui.ctx().data(|data| data.get_temp::<(f32, String)>(state_id));
         let (white_fraction, score) = if self.game_analysis_running {
@@ -8790,6 +8834,26 @@ impl ChessApp {
         self.prediction_scroll_to_selected = false;
     }
 
+    // PGN headers only occur before movetext. A directive inside a multi-line
+    // brace comment can begin with '[' too, and must never be removed as a tag.
+    fn pgn_header_lines(text: &str) -> Vec<&str> {
+        let mut headers=Vec::new();
+        for line in text.lines(){let line=line.trim();if line.is_empty(){continue;}
+            let tag=line.strip_prefix('[').and_then(|rest|rest.split_once(' '));
+            if tag.is_some_and(|(name,value)|!name.is_empty()&&name.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')&&value.starts_with('"')&&line.ends_with("\"]")){headers.push(line);}else{break;}
+        }
+        headers
+    }
+    fn pgn_movetext(text:&str)->String {
+        let mut body=false;
+        text.lines().filter(|line|{
+            if body{return true;}
+            if line.trim().is_empty(){return false;}
+            if Self::pgn_header_lines(line).len()==1{return false;}
+            body=true;true
+        }).collect::<Vec<_>>().join("\n")
+    }
+
     fn pgn_tag(text: &str, tag: &str) -> Option<String> {
         let prefix = format!("[{tag} \"");
         text.lines().find_map(|line| {
@@ -8802,6 +8866,14 @@ impl ChessApp {
 
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     fn game_result(&self) -> String {
+        // A study's future mating line is a lesson, not the outcome of the
+        // currently displayed position (especially while practising it).
+        if self.study.is_some(){return match self.board.status(){
+            BoardStatus::Ongoing=>"*",BoardStatus::Stalemate=>"1/2-1/2",
+            BoardStatus::Checkmate if self.board.side_to_move()==Color::White=>"0-1",
+            BoardStatus::Checkmate=>"1-0",
+        }.into();}
+
         if !self.fics_active && self.local_agreed_draw { return "1/2-1/2".into(); }
         if !self.fics_active
             && let Some(white) = self.local_resigned_white
@@ -8870,6 +8942,8 @@ impl ChessApp {
             "Stockfish 19"
         };
         let mut saved: PersistedGame = serde_json::from_value(raw).map_err(|e| e.to_string())?;
+        saved.study=saved.study.take().map(StudyWorkspace::validated).transpose()?;
+        if ["pgn","annotated","study"].contains(&format) && let Some(study)=&saved.study{return Ok(study.export_pgn());}
         // Reports describe the selected historical run, without changing the active engine.
         if let Some(config)=saved.analysis_run.as_ref().and_then(|run|run["config_key"].as_str()).and_then(|key|serde_json::from_str::<serde_json::Value>(key).ok()) {
             if let Ok(engine)=serde_json::from_value(config[0].clone()){saved.analysis_config=engine;}
@@ -9036,6 +9110,7 @@ impl ChessApp {
             };
             return serde_json::to_string_pretty(&serde_json::json!({
                 "schema": "ironwood.analyzed-game/v1", "schema_version": 1, "application": "Ironwood Chess",
+                "study": saved.study,
                 "engine": { "name": saved.analysis_run.as_ref().and_then(|run|run["engine_name"].as_str()).map(str::to_owned).unwrap_or_else(||saved.analysis_config.label().to_owned()),
                     "provider": if saved.analysis_config.opponent == OpponentEngine::Companion { "companion" } else { "browser" },
                     "version": (saved.analysis_config.opponent == OpponentEngine::Stockfish).then_some(19),
@@ -9906,7 +9981,7 @@ impl ChessApp {
             moves.push(token.to_owned());
             positions.push(board);
         }
-        if moves.is_empty() && initial_fen.is_none() {
+        if moves.is_empty() && initial_fen.is_none() && !Self::is_study_chapter(text) {
             return Err("No legal mainline moves were found in the PGN.".to_owned());
         }
         Ok((positions, moves))
@@ -10078,12 +10153,27 @@ impl ChessApp {
 
     fn parse_pgn_notes(text: &str, positions: &[Board]) -> Vec<String> {
         let mut notes = vec![String::new(); positions.len()];
+        let study = Self::is_study_chapter(text);
         Self::visit_pgn_comments(text, positions, |comment, index| {
             if let Some(value) = Self::pgn_annotation_directive(comment, "note")
                 && let Ok(note) = serde_json::from_str::<String>(value)
                 && let Some(target) = notes.get_mut(index)
             {
                 *target = note;
+            } else if study && let Some(target) = notes.get_mut(index) {
+                let mut rest = comment;
+                let mut prose = String::new();
+                while let Some(start) = rest.find("[%") {
+                    prose.push_str(&rest[..start]);
+                    let Some(end) = rest[start..].find(']') else { break; };
+                    rest = &rest[start + end + 1..];
+                }
+                prose.push_str(rest);
+                let prose = prose.trim();
+                if !prose.is_empty() {
+                    if !target.is_empty() { target.push_str("\n\n"); }
+                    target.push_str(prose);
+                }
             }
         });
         notes
@@ -10138,11 +10228,7 @@ impl ChessApp {
         for (comment,value,index) in events {if comment {visit(&value,index);}else{visit_token(&value,index);}}
     }
     fn visit_pgn_content_uncached(text: &str, positions: &[Board], mut visit: impl FnMut(&str, usize), mut visit_token: impl FnMut(&str, usize)) {
-        let move_text = text
-            .lines()
-            .filter(|line| !line.trim_start().starts_with('['))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let move_text = Self::pgn_movetext(text);
         let mut board = positions.first().copied().unwrap_or_default();
         let mut move_count = 0_usize;
         let mut variation_depth = 0_u32;
@@ -10266,6 +10352,11 @@ impl ChessApp {
     }
 
     fn load_pgn(&mut self, text: &str) -> bool {
+        if Self::is_study_chapter(text) {
+            if let Err(error)=self.open_study(text){self.pgn_error=Some(error);}
+            return false;
+        }
+        self.study=None;
         self.load_pgn_with_storage(text, true)
     }
 
@@ -10340,7 +10431,16 @@ impl ChessApp {
         }
     }
 
+    fn is_study_chapter(text: &str) -> bool {
+        Self::pgn_tag(text, "StudyName").is_some()
+            && Self::pgn_tag(text, "ChapterName").is_some()
+    }
+
     fn import_pgn_is_short(text: &str) -> Result<bool, String> {
+        if Self::is_study_chapter(text) {
+            Self::cached_pgn_timeline(text)?;
+            return Ok(false);
+        }
         match Self::cached_pgn_timeline(text) {
             Ok((_, moves)) => Ok(moves.len() < 4),
             Err(error) if error == "No legal mainline moves were found in the PGN." => Ok(true),
@@ -10367,6 +10467,7 @@ impl ChessApp {
             let last_move = Self::review_move_at(&positions, &moves, positions.len() - 1)
                 .map(|chess_move| chess_move.to_string());
             let game = PersistedGame {
+                study: None,
                 training: None,
                 local_clock: None,
                 local_resigned_white: None,
@@ -10383,6 +10484,8 @@ impl ChessApp {
                 show_board_frame: self.show_board_frame,
                 piece_shadows: self.piece_shadows,
                 show_best_move_arrows: self.show_best_move_arrows,
+                show_prediction_best_move: self.show_prediction_best_move,
+                show_saved_comparison: self.show_saved_comparison,
                 show_move_hover_text: self.show_move_hover_text,
                 figurine_notation: self.figurine_notation,
                 move_sounds: self.move_sounds,
@@ -10433,7 +10536,7 @@ impl ChessApp {
         self.import_tab = 0;
         if !text.trim_start().starts_with('{') {
             match Self::split_pgn_games(&text) {
-                Ok(games) if games.len() > 1 => {
+                Ok(games) if games.len() > 1 && !games.iter().all(|pgn|Self::is_study_chapter(pgn)) => {
                     // Match dropped collections before a multi-megabyte PGN
                     // ever reaches TextEdit layout. Saving still requires selection.
                     self.open_import_collection(games);
@@ -10467,6 +10570,11 @@ impl ChessApp {
     }
 
     fn begin_import(&mut self) {
+        if Self::is_study_chapter(&self.import_input) {
+            let text=self.import_input.clone();
+            if let Err(error)=self.open_study(&text){self.pgn_error=Some(error);}
+            return;
+        }
         #[cfg(target_arch = "wasm32")]
         ensure_imported_index();
         if !self.import_input.trim_start().starts_with('{') {
@@ -10658,8 +10766,9 @@ impl ChessApp {
             Self::review_move_at(&self.review_positions, &self.review_moves, final_index);
         self.selected = None;
         self.legal_targets.clear();
+        self.study=imported.study.and_then(|study|study.validated().ok());
         self.pgn_input = source_pgn;
-        self.pgn_input = self.annotated_pgn();
+        if self.study.is_none(){self.pgn_input = self.annotated_pgn();}
         self.import_input.clear();
         self.pgn_error = None;
         self.pgn_dialog_open = false;
@@ -10681,6 +10790,13 @@ impl ChessApp {
     }
 
     fn review_to(&mut self, index: usize) {
+        if let Some(study)=self.study.as_ref() {
+            if study.practice {return;}
+            let path=study.chapters[study.chapter].path(study.line_end);
+            let node=path[index.min(path.len()-1)];
+            let chapter=study.chapter;
+            self.study_select(chapter,node);return;
+        }
         self.playback_target=None;
         if self.puzzle_navigation_locked() { return; }
         if self.training_live() { return; }
@@ -10993,6 +11109,32 @@ impl ChessApp {
                 .get(self.prediction_index - 1)
                 .copied();
         }
+    }
+
+    fn prediction_best_next_move(&self) -> Option<ChessMove> {
+        self.prediction_pv_moves().first().map(|(mv, _)| *mv)
+    }
+
+    fn prediction_pv_moves(&self) -> Vec<(ChessMove, &AnalysisVariation)> {
+        if !self.show_prediction_best_move || self.training_live()
+            || self.best_move_attempt.is_some() || self.game_analysis_running
+            || self.game_analysis_paused || self.saved_line_key.is_some() {
+            return Vec::new();
+        }
+        let perspective = if self.board.side_to_move() == Color::White { 1 } else { -1 };
+        let mut lines=self.analysis_variations.iter().filter_map(|line| {
+            // At the root compare every PV, independent of the selected line.
+            // While stepping through a PV, only continuations of this exact
+            // displayed position can supply its next move.
+            let index = line.positions.iter().position(|board| *board == self.board)?;
+            let mv = *line.chess_moves.get(index)?;
+            if !MoveGen::new_legal(&self.board).any(|legal| legal == mv) { return None; }
+            let score = line.comparison_value()? * perspective;
+            Some((score, line.depth, mv, line))
+        }).collect::<Vec<_>>();
+        lines.sort_by_key(|(score,depth,_,_)| (std::cmp::Reverse(*score),std::cmp::Reverse(*depth)));
+        let mut seen=std::collections::HashSet::new();
+        lines.into_iter().filter(|(_,_,mv,_)|seen.insert(*mv)).map(|(_,_,mv,line)|(mv,line)).collect()
     }
 
     fn take_board_wheel(input: &mut egui::InputState) -> Vec2 {
@@ -12202,6 +12344,8 @@ impl ChessApp {
                     themes
                 },
                 show_best_move_arrows: self.show_best_move_arrows,
+                show_prediction_best_move: self.show_prediction_best_move,
+                show_saved_comparison: self.show_saved_comparison,
                 show_move_hover_text: self.show_move_hover_text,
                 figurine_notation: self.figurine_notation,
                 move_sounds: self.move_sounds,
@@ -12255,6 +12399,7 @@ impl ChessApp {
             self.review_positions.get(index).map(|board|(*board,Self::review_move_at(&self.review_positions,&self.review_moves,index)))
         });
         PersistedGame {
+            study: self.study_snapshot(),
             training: self.training.clone(),
             local_clock: self.local_clock.clone(),
             local_resigned_white: self.local_resigned_white,
@@ -12275,6 +12420,8 @@ impl ChessApp {
             show_board_frame: self.show_board_frame,
             piece_shadows: self.piece_shadows,
             show_best_move_arrows: self.show_best_move_arrows,
+                show_prediction_best_move: self.show_prediction_best_move,
+                show_saved_comparison: self.show_saved_comparison,
             show_move_hover_text: self.show_move_hover_text,
             figurine_notation: self.figurine_notation,
             move_sounds: self.move_sounds,
@@ -12318,6 +12465,7 @@ impl ChessApp {
     fn observed_saved_game(&self, observed: &ObservedGame) -> PersistedGame {
         let mut game = self.persisted_game();
         game.analysis_run=None;
+        game.study=None;
         game.move_timings=observed.move_timings.clone();
         game.training = None;
         game.move_notes = if self.fics_game_id == Some(observed.id) {
@@ -12495,6 +12643,7 @@ impl ChessApp {
         self.review_scroll_to_selected = false;
         self.best_move_attempt = None;
         self.pgn_input.clear();
+        self.study=None;
         self.review_white_player = if !self.engine_enabled {
             "White".into()
         } else if player_side == PlayerSide::White {
@@ -12628,6 +12777,7 @@ impl ChessApp {
         self.review_index = None;
         self.review_scroll_to_selected = false;
         self.pgn_input.clear();
+        self.study=None;
         self.review_white_player = if !self.engine_enabled {
             "White".into()
         } else if self.player_side == PlayerSide::White {
@@ -12766,7 +12916,7 @@ impl ChessApp {
         {
             return;
         }
-        if self.review_index.is_some() && self.best_move_attempt.is_none() {
+        if self.review_index.is_some() && self.best_move_attempt.is_none() && self.study.is_none() {
             return;
         }
         if self.promotion.is_some() || self.board.status() != BoardStatus::Ongoing {
@@ -12811,8 +12961,8 @@ impl ChessApp {
             || self.batch_pgn_dialog_open || self.batch_pgn_result_open || self.print_confirm_open
             || self.background_dialog_open || self.board_theme_open || self.expanded_graph_open || !self.prediction_windows.is_empty() || self.fics_console_open || self.fics_challenge_open
             || self.fics_sign_in_open || self.fics_resign_dialog_open;
-        let playable = !blocked && self.review_index.is_none() && self.best_move_attempt.is_none()
-            && self.promotion.is_none() && self.game_result() == "*"
+        let playable = !blocked && (self.review_index.is_none() || self.study.is_some()) && self.best_move_attempt.is_none()
+            && self.promotion.is_none() && (self.study.is_some() || self.game_result() == "*")
             && (!self.engine_enabled || self.board.side_to_move() == self.player_side.color())
             && (!self.fics_active || (self.fics_playing && !self.fics_pending_move
                 && self.board.side_to_move() == self.player_side.color()));
@@ -12977,6 +13127,7 @@ impl ChessApp {
     }
 
     fn play(&mut self, mv: ChessMove) {
+        if self.study.is_some(){self.study_play(mv);return;}
         if self.companion_training_blocked() { return; }
         if self.puzzle_mode() { self.play_puzzle_move(mv); return; }
         if self.training.is_some() && self.game_result() != "*" { return; }
@@ -14003,6 +14154,10 @@ impl ChessApp {
         destination: egui::Pos2,
         cell: f32,
     ) {
+        Self::paint_pv_move_arrow(ui,source,destination,cell,Color32::from_rgba_unmultiplied(112,214,139,215));
+    }
+
+    fn paint_pv_move_arrow(ui:&egui::Ui,source:egui::Pos2,destination:egui::Pos2,cell:f32,color:Color32) {
         let direction = (destination - source).normalized();
         let perpendicular = Vec2::new(-direction.y, direction.x);
         let start = source + direction * cell * 0.20;
@@ -14010,7 +14165,6 @@ impl ChessApp {
         let head_length = (cell * 0.22).clamp(9.0, 20.0);
         let head_width = (cell * 0.11).clamp(5.0, 11.0);
         let base = tip - direction * head_length;
-        let color = Color32::from_rgba_unmultiplied(112, 214, 139, 215);
         ui.painter().line_segment(
             [start, base + direction * 2.0],
             Stroke::new((cell * 0.055).clamp(3.0, 6.0), color),
@@ -14029,6 +14183,119 @@ impl ChessApp {
             (cell * 0.10).clamp(5.0, 9.0),
             Stroke::new(2.0, color),
         );
+    }
+
+    fn paint_prediction_pv_moves(&self,ui:&egui::Ui,rect:egui::Rect) {
+        let lines=self.prediction_pv_moves();
+        let cell=rect.width()/8.0;
+        let center=|square| if self.board_3d_rendering() {
+            crate::board3d::square_center(square,rect,self.flipped,self.board_3d_view())
+        } else {Some(rect.min+Self::square_screen_offset(square,self.flipped,cell))};
+        // Paint alternatives first so the best move stays visible at crossings.
+        for (rank,(mv,_)) in lines.iter().enumerate().rev() {
+            if let (Some(from),Some(to))=(center(mv.get_source()),center(mv.get_dest())) {
+                let color=if rank==0 {Color32::from_rgba_unmultiplied(112,214,139,225)}
+                    else {Color32::from_rgba_unmultiplied(235,92,86,185)};
+                Self::paint_pv_move_arrow(ui,from,to,cell,color);
+            }
+        }
+        let mut stacked=std::collections::HashMap::<Square,usize>::new();
+        for (rank,(mv,line)) in lines.iter().enumerate() {
+            let dest=mv.get_dest();
+            let bounds=if self.board_3d_rendering() {
+                let Some(points)=crate::board3d::square_outline(dest,rect,self.flipped,self.board_3d_view()) else {continue;};
+                egui::Rect::from_points(&points)
+            } else {
+                let Some(pos)=center(dest) else {continue;};
+                egui::Rect::from_center_size(pos,Vec2::splat(cell))
+            };
+            let score=if let Some(mate)=line.mate {format!("M{mate}")}
+                else {format!("{:+.2}",line.eval_cp.unwrap_or(0) as f32/100.0)};
+            let font=FontId::proportional((cell*0.14).clamp(10.0,16.0));
+            let galley=ui.painter().layout_no_wrap(score,font,Color32::WHITE);
+            let size=galley.size()+Vec2::new(10.0,5.0);
+            let stack=stacked.entry(dest).or_default();
+            let bottom_right=bounds.right_bottom()-Vec2::new(3.0,3.0+*stack as f32*(size.y+2.0));
+            *stack+=1;
+            let badge=egui::Rect::from_min_size(bottom_right-size,size);
+            let color=if rank==0 {Color32::from_rgb(31,119,65)} else {Color32::from_rgb(166,48,45)};
+            ui.painter().rect_filled(badge.translate(Vec2::new(0.0,1.5)),6,Color32::from_black_alpha(120));
+            ui.painter().rect_filled(badge,6,color);
+            ui.painter().rect_stroke(badge,6,Stroke::new(1.0,Color32::from_white_alpha(160)),egui::StrokeKind::Inside);
+            ui.painter().galley(badge.min+Vec2::new(5.0,2.5),galley,Color32::WHITE);
+        }
+    }
+
+    fn saved_comparison_move(&self,_ctx:&egui::Context) -> Option<(Board,ChessMove,usize)> {
+        if !self.show_saved_comparison || self.training_live() || self.prediction_index>0 || self.saved_line_key.is_some() {return None;}
+        let index=self.review_index?;
+        if self.review_index!=Some(index) || self.review_positions.get(index)!=Some(&self.board) {return None;}
+        let root=*self.review_positions.get(index.checked_sub(1)?)?;
+        let best=self.game_analysis.get(index-1)?.as_ref()?.best_move.as_deref().and_then(Self::parse_uci_value)?;
+        MoveGen::new_legal(&root).any(|mv|mv==best).then_some((root,best,index))
+    }
+
+    fn paint_saved_comparison(&self,ui:&egui::Ui,rect:egui::Rect) {
+        let Some((root,best,index))=self.saved_comparison_move(ui.ctx()) else{return;};
+        let cell=rect.width()/8.0;
+        let center=|square|if self.board_3d_rendering(){crate::board3d::square_center(square,rect,self.flipped,self.board_3d_view())}
+            else{Some(rect.min+Self::square_screen_offset(square,self.flipped,cell))};
+        let (Some(source),Some(destination))=(center(best.get_source()),center(best.get_dest())) else{return;};
+        let blue=Color32::from_rgba_unmultiplied(94,166,246,210);
+        if let (Some(piece),Some(color))=(root.piece_on(best.get_source()),root.color_on(best.get_source())) {
+            if self.board.piece_on(best.get_source())!=Some(piece) || self.board.color_on(best.get_source())!=Some(color) {
+                if self.board_3d_rendering() {
+                    let (texture,bounds)=self.saved_comparison_ghost_3d(ui.ctx(),rect,best.get_source(),piece,color);
+                    egui::Image::new(&texture).tint(Color32::from_rgba_unmultiplied(105,177,255,150))
+                        .paint_at(ui,bounds);
+                } else {
+                    ui.painter().text(source,Align2::CENTER_CENTER,Self::piece_glyph_for(color,piece),
+                        FontId::proportional(cell*0.80),Color32::from_rgba_unmultiplied(105,177,255,145));
+                }
+            }
+        }
+        let direction=(destination-source).normalized();
+        let perpendicular=Vec2::new(-direction.y,direction.x);
+        let start=source+direction*cell*0.22;
+        let tip=destination-direction*cell*0.13;
+        let base=tip-direction*cell*0.18;
+        let length=(base-start).length();
+        let dash=(cell*0.10).max(4.0);
+        let mut offset=0.0;
+        while offset<length {
+            ui.painter().line_segment([start+direction*offset,start+direction*(offset+dash).min(length)],Stroke::new((cell*0.035).clamp(2.0,4.0),blue));
+            offset+=dash*1.75;
+        }
+        ui.painter().add(egui::Shape::convex_polygon(vec![tip,base+perpendicular*cell*0.09,base-perpendicular*cell*0.09],blue,Stroke::NONE));
+        ui.painter().circle_stroke(source,cell*0.13,Stroke::new(2.0,blue));
+        let played=self.review_moves.get(index-1).map(String::as_str).unwrap_or("played move");
+        let label=format!("Saved alternative · before {played}");
+        let galley=ui.painter().layout_no_wrap(label,FontId::proportional(12.0),Color32::from_rgb(170,207,255));
+        let badge=egui::Rect::from_min_size(rect.left_top()+Vec2::splat(8.0),galley.size()+Vec2::new(14.0,8.0));
+        ui.painter().rect_filled(badge,5,Color32::from_rgba_unmultiplied(13,31,55,235));
+        ui.painter().galley(badge.min+Vec2::new(7.0,4.0),galley,blue);
+    }
+
+    fn saved_comparison_ghost_3d(&self,ctx:&egui::Context,rect:egui::Rect,square:Square,piece:Piece,color:Color)
+        -> (egui::TextureHandle,egui::Rect) {
+        type Cached=(String,egui::TextureHandle,egui::Rect);
+        let view=self.board_3d_view();
+        let adjustments=self.render_piece_appearance();
+        let key=format!("{square}:{piece:?}:{color:?}:{:?}:{:?}:{:?}:{rect:?}:{}:{}:{}",
+            self.board_3d_theme,(view.yaw,view.elevation,view.distance),adjustments,
+            self.flipped,self.board_3d_appearance,ctx.pixels_per_point());
+        let id=egui::Id::new("saved_comparison_3d_ghost");
+        if let Some((_,texture,bounds))=ctx.data(|d|d.get_temp::<Cached>(id)).filter(|cached|cached.0==key) {
+            return (texture,bounds);
+        }
+        let center=crate::board3d::square_center(square,rect,self.flipped,view).unwrap_or(rect.center());
+        let (image,offset,size)=crate::board3d::drag_piece_image(square,piece,color,rect,
+            self.flipped,view,self.board_3d_appearance as f32/100.0,self.board_3d_theme,
+            adjustments,ctx.pixels_per_point().min(1.5));
+        let texture=ctx.load_texture("Saved comparison ghost",image,egui::TextureOptions::LINEAR);
+        let bounds=egui::Rect::from_min_size(center+offset,size);
+        ctx.data_mut(|d|d.insert_temp(id,(key,texture.clone(),bounds)));
+        (texture,bounds)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -14646,7 +14913,7 @@ impl ChessApp {
             } else {
                 0.0
             };
-        let show_balance = !self.focus_mode && !self.training_live() && (!self.fics_active || self.fics_game_finished);
+        let show_balance = !self.focus_mode && !self.training_live() && !self.study.as_ref().is_some_and(|s|s.practice) && (!self.fics_active || self.fics_game_finished);
         let balance_width = if show_balance { 44.0 } else { 0.0 };
         let board_available_width = (available.x - balance_width).max(180.0);
         let board_size = board_available_width
@@ -14682,7 +14949,8 @@ impl ChessApp {
             .flatten();
         let highlighted_classification =
             highlighted_position_index.and_then(|index| self.move_classification(index));
-        let best_move_arrow = crate::tablebase::hover_arrow(ui.ctx(), self.board).or_else(|| self
+        let best_move_arrow = crate::tablebase::hover_arrow(ui.ctx(), self.board)
+            .or_else(|| self.prediction_best_next_move()).or_else(|| self
             .best_move_attempt
             .filter(|attempt| attempt.revealed)
             .map(|attempt| attempt.best_move)
@@ -15109,7 +15377,10 @@ impl ChessApp {
                     self.paint_tactical_map(ui, board_response.response.rect);
                     self.paint_board_marks(ui, board_response.response.rect, self.review_index.unwrap_or(self.review_moves.len()));
                 }
-                if let Some(best_move) = best_move_arrow.filter(|_| ui.is_enabled()) {
+                if ui.is_enabled() && !self.prediction_pv_moves().is_empty()
+                    && crate::tablebase::hover_arrow(ui.ctx(),self.board).is_none() {
+                    self.paint_prediction_pv_moves(ui,board_response.response.rect);
+                } else if let Some(best_move) = best_move_arrow.filter(|_| ui.is_enabled()) {
                     if self.board_3d_rendering() {
                         Self::draw_best_move_arrow_3d(
                             ui,
@@ -15129,6 +15400,7 @@ impl ChessApp {
                 }
                 if ui.is_enabled() {
                     self.paint_tactical_bubbles(ui, board_response.response.rect);
+                    self.paint_saved_comparison(ui, board_response.response.rect);
                 }
                 if show_players {
                     ui.add_space(4.0);
@@ -15233,6 +15505,31 @@ impl ChessApp {
         }
         ui.vertical(|ui| {
             ui.label(RichText::new("Engine Prediction").size(19.0).strong());
+            ui.add_space(5.0);
+            let enabled=self.show_prediction_best_move;
+            Frame::new()
+                .fill(if enabled {Color32::from_rgb(22,47,34)}else{Color32::from_rgb(27,32,34)})
+                .stroke(Stroke::new(1.0,if enabled {Color32::from_rgb(75,155,103)}else{Color32::from_rgb(95,101,96)}))
+                .corner_radius(6).inner_margin(Margin::symmetric(10,8))
+                .show(ui,|ui| {
+                    ui.set_min_width((ui.available_width()).max(0.0));
+                    ui.spacing_mut().icon_width=20.0;
+                    ui.spacing_mut().icon_spacing=8.0;
+                    if ui.checkbox(&mut self.show_prediction_best_move,
+                        RichText::new("Show best next move").size(16.0).strong()
+                            .color(Color32::from_rgb(225,239,226)))
+                        .on_hover_text("Show the best PV move in green and alternatives in red, with score bubbles.")
+                        .changed() {self.save_game();}
+                    ui.horizontal(|ui| {
+                        let (dot,_)=ui.allocate_exact_size(Vec2::splat(10.0),Sense::hover());
+                        ui.painter().circle_filled(dot.center(),4.0,
+                            if self.show_prediction_best_move {Color32::from_rgb(112,214,139)}else{Color32::from_gray(125)});
+                        ui.label(RichText::new(if self.show_prediction_best_move {
+                            "ON · Arrows and scores on the board"
+                        }else{"OFF · Enable board arrows and scores"}).size(12.0)
+                            .color(Color32::from_rgb(171,192,176)));
+                    });
+                });
 
             ui.separator();
             if self.game_analysis_running || self.game_analysis_paused {
@@ -15309,19 +15606,7 @@ impl ChessApp {
         ui.vertical(|ui| {
             ui.vertical(|ui| {
                 ui.add_space(8.0);
-                ui.with_layout(Layout::top_down(Align::Center), |ui| {
-                let running = self.analysis_running;
-                let width = (ui.available_width() - 8.0).max(0.0);
-                if ui.add_sized([width, 34.0], egui::Button::new(
-                    RichText::new(if running { "Stop analysis" } else { "Analyze position" })
-                        .color(Color32::from_rgb(25, 29, 35)))
-                        .truncate().raised_gold())
-                    .on_hover_text(if running { "Stop Stockfish analysis (Space)" } else { "Analyze this position (Space)" })
-                    .clicked() {
-                    #[cfg(target_arch = "wasm32")]
-                    if running { self.stop_analysis(); } else { self.start_analysis(); }
-                }
-                });
+                self.prediction_analyze_control_ui(ui);
                 ui.add_space(10.0);
             {
                 ui.separator();
@@ -20712,6 +20997,34 @@ mod tests {
     }
 
     #[test]
+    fn lichess_study_chapters_preserve_supported_annotations_and_short_positions() {
+        let headers = "[Event \"Study: Chapter\"]\n[StudyName \"Study\"]\n[ChapterName \"Chapter\"]\n[ChapterURL \"https://lichess.org/study/abcd1234/WXYZ5678\"]\n[Result \"*\"]\n\n";
+        let pgn = format!("{headers}{{Introduction}} 1. e4 $1 {{King pawn [%eval 0.25] [%csl Ge4] [%cal Ge2e4]}} (1. d4 {{Side line}}) *");
+        let (positions, moves) = ChessApp::parse_pgn_mainline(&pgn).unwrap();
+        assert_eq!(moves, ["e4"]);
+        assert!(!ChessApp::import_pgn_is_short(&pgn).unwrap());
+        let notes = ChessApp::parse_pgn_notes(&pgn, &positions);
+        assert_eq!(notes[0], "Introduction");
+        assert_eq!(notes[1], "King pawn");
+        assert_eq!(ChessApp::parse_pgn_nags(&pgn, &positions)[1], vec![1]);
+        assert_eq!(ChessApp::parse_pgn_annotations(&pgn, &positions)[1].as_ref().unwrap().eval_cp, Some(25));
+        assert!(!ChessApp::parse_pgn_board_marks(&pgn, &positions)[1].is_empty());
+        let empty = format!("{headers}{{Position introduction}} *");
+        assert_eq!(ChessApp::parse_pgn_mainline(&empty).unwrap().0.len(), 1);
+        assert!(!ChessApp::import_pgn_is_short(&empty).unwrap());
+        assert!(ChessApp::import_pgn_is_short("1. e4 *").unwrap());
+        let collection = ChessApp::split_pgn_games(&format!("{empty}\n\n{pgn}")).unwrap();
+        assert_eq!(collection.len(), 2);
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.load_pgn(&pgn);
+        let saved = app.persisted_game();
+        assert_eq!(saved.study.as_ref().unwrap().chapters[0].source, pgn);
+        app.study_select(0,1);
+        assert_eq!(app.move_notes, notes);
+    }
+
+    #[test]
     fn parses_pgn_mainline_with_comments_and_variations() {
         let pgn = r#"
 [Event "Test"]
@@ -20888,6 +21201,79 @@ mod tests {
     }
 
     #[test]
+    fn saved_comparison_3d_ghost_tracks_camera_scale_and_reuses_unchanged_views() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        let board=app.board;
+        let rect=egui::Rect::from_min_size(egui::pos2(20.0,20.0),Vec2::splat(700.0));
+        app.board_3d_distance=17.0;app.board_3d_yaw=0.0;
+        let (texture,near)=app.saved_comparison_ghost_3d(&ctx,rect,Square::G7,Piece::King,Color::Black);
+        let (cached,same)=app.saved_comparison_ghost_3d(&ctx,rect,Square::G7,Piece::King,Color::Black);
+        assert_eq!(texture.id(),cached.id());assert_eq!(near,same);
+        app.board_3d_distance=25.0;
+        let (_,far)=app.saved_comparison_ghost_3d(&ctx,rect,Square::G7,Piece::King,Color::Black);
+        assert!(far.width()<near.width() && far.height()<near.height());
+        app.board_3d_yaw=0.8;app.flipped=true;
+        let (_,rotated)=app.saved_comparison_ghost_3d(&ctx,rect,Square::G7,Piece::King,Color::Black);
+        assert!(rotated.is_finite()&&rect.intersects(rotated));assert_ne!(far,rotated);
+        assert_eq!(app.board,board);
+    }
+
+    #[test]
+    fn saved_comparison_uses_the_pre_move_piece_without_changing_the_board() {
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        app.load_pgn("1.e4 Nf6 *");app.review_to(2);
+        app.game_analysis.resize(3,None);
+        app.game_analysis[1]=Some(PositionAnalysis{best_move:Some("g8h6".into()),..Default::default()});
+        let ctx=egui::Context::default();
+        assert!(UserPreferences::default().show_saved_comparison);
+        app.show_saved_comparison=false;
+        assert!(app.saved_comparison_move(&ctx).is_none());
+        app.show_saved_comparison=true;
+        let board=app.board;
+        let (root,best,index)=app.saved_comparison_move(&ctx).unwrap();
+        assert_eq!(index,2);assert_eq!(root.piece_on(best.get_source()),Some(Piece::Knight));
+        assert_eq!(root.color_on(best.get_source()),Some(Color::Black));
+        assert!(app.board.piece_on(best.get_source()).is_none());
+        assert_eq!(app.board,board);
+        app.prediction_index=1;assert!(app.saved_comparison_move(&ctx).is_none());
+        app.prediction_index=0;app.review_to(1);assert!(app.saved_comparison_move(&ctx).is_none());
+    }
+
+    #[test]
+    fn prediction_hint_compares_all_lines_for_the_displayed_side_and_position() {
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(egui::Context::default()));
+        let line=|root, moves:&[&str], score, mate| {
+            let (positions,moves,chess_moves)=ChessApp::prediction_line(root,moves);
+            AnalysisVariation{positions,moves,chess_moves,eval_cp:Some(score),mate,depth:12}
+        };
+        let root=Board::default();app.board=root;
+        app.analysis_variations=vec![line(root,&["e2e4","e7e5"],10,None),line(root,&["d2d4","d7d5"],40,None)];
+        app.selected_variation=0;
+        assert!(app.prediction_best_next_move().is_none());
+        app.show_prediction_best_move=true;
+        assert_eq!(app.prediction_best_next_move(),ChessApp::parse_uci_value("d2d4"));
+        assert_eq!(app.prediction_pv_moves().len(),2);
+        app.analysis_variations.push(line(root,&["d2d4","g8f6"],20,None));
+        let hints=app.prediction_pv_moves();
+        assert_eq!(hints.len(),2,"Repeated first moves share one arrow and score bubble");
+        assert_eq!(hints[0].1.eval_cp,Some(40));
+        app.analysis_variations[0].mate=Some(3);
+        assert_eq!(app.prediction_best_next_move(),ChessApp::parse_uci_value("e2e4"));
+        app.board=root.make_move_new(ChessApp::parse_uci_value("d2d4").unwrap());
+        assert_eq!(app.prediction_best_next_move(),ChessApp::parse_uci_value("g8f6"));
+        let black=app.board;
+        app.analysis_variations=vec![line(black,&["d7d5"],30,None),line(black,&["g8f6"],-20,None)];
+        assert_eq!(app.prediction_best_next_move(),ChessApp::parse_uci_value("g8f6"));
+        app.analysis_variations[0].mate=Some(-2);
+        assert_eq!(app.prediction_best_next_move(),ChessApp::parse_uci_value("d7d5"));
+        app.board=root.make_move_new(ChessApp::parse_uci_value("c2c4").unwrap());
+        assert!(app.prediction_best_next_move().is_none());
+        app.board=black;app.game_analysis_running=true;
+        assert!(app.prediction_best_next_move().is_none());
+    }
+
+    #[test]
     fn classifies_centipawn_loss_boundaries() {
         assert!(matches!(
             ChessApp::classify_loss(10),
@@ -21043,6 +21429,19 @@ mod tests {
 
 impl ChessApp {
     fn review_keyboard_input(&mut self, ctx: &egui::Context) {
+        if let Some(study)=self.study.as_ref() {
+            if !ctx.egui_wants_keyboard_input() && !self.pgn_dialog_open && !self.new_game_dialog_open && !study.practice {
+                let ch=&study.chapters[study.chapter];
+                let node=ctx.input(|input|{
+                    if input.key_pressed(egui::Key::ArrowLeft){ch.nodes[study.node].parent}
+                    else if input.key_pressed(egui::Key::ArrowRight){ch.nodes[study.node].children.first().copied()}
+                    else if input.key_pressed(egui::Key::Home){Some(0)}else{None}
+                });
+                if let Some(node)=node{let chapter=study.chapter;self.study_select(chapter,node);}
+            }
+            return;
+        }
+
         if let Some(index) = self.review_index.or_else(|| {
             (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
         }) && self.best_move_attempt.is_none()
@@ -21177,7 +21576,15 @@ impl ChessApp {
     pub(crate) fn sidebar_contents_ui(&mut self, ui: &mut egui::Ui, detached: bool) {
         let ctx = &ui.ctx().clone();
         let tab_id = egui::Id::new("game_sidebar_tab");
-        let mut selected_tab = ctx.data(|data|data.get_temp::<usize>(tab_id).unwrap_or(0));
+        let mut selected_tab = ctx.data(|data|data.get_temp::<usize>(tab_id).unwrap_or(if self.study.is_some(){7}else{0}));
+        let had_study=ctx.data(|d|d.get_temp::<bool>(egui::Id::new("study_tab_opened")).unwrap_or(false));
+        if let Some(study)=self.study.as_mut(){
+            if study.focus_panel || !had_study {selected_tab=7;study.focus_panel=false;ctx.data_mut(|d|d.insert_temp(tab_id,7usize));}
+            ctx.data_mut(|d|d.insert_temp(egui::Id::new("study_tab_opened"),true));
+        } else if had_study {
+            if selected_tab==7 {selected_tab=0;ctx.data_mut(|d|d.insert_temp(tab_id,0usize));}
+            ctx.data_mut(|d|d.insert_temp(egui::Id::new("study_tab_opened"),false));
+        }
                 ui.horizontal_wrapped(|ui| {
                     ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(15.0));
                     ui.spacing_mut().button_padding = Vec2::new(9.0, 5.0);
@@ -21187,7 +21594,7 @@ impl ChessApp {
                     }).inner.on_hover_text(if detached { "Dock the study panel in the main window" } else { "Open the entire right-hand panel in a separate window" }).clicked() {
                         if detached { dock_sidebar_popout(); } else { open_sidebar_popout(); }
                     }
-                    for (index, label) in ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations"].iter().enumerate() {
+                    for (index, label) in ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations", "Study"].iter().enumerate() {
                         if Self::sidebar_tab_button(ui, label, selected_tab == index).clicked() {
                             if index!=selected_tab {
                                 self.finish_saved_line_preview();
@@ -21221,7 +21628,7 @@ impl ChessApp {
                 content_rect.set_width(content_width);
                 let mut content_ui = ui.new_child(egui::UiBuilder::new().max_rect(content_rect));
                 let ui = &mut content_ui;
-                if selected_tab != 0 {
+                if selected_tab != 0 && selected_tab != 7 {
                     let index = self.review_index.unwrap_or(self.review_moves.len());
                     let move_text = index.checked_sub(1)
                         .and_then(|ply| self.review_moves.get(ply))
@@ -21230,6 +21637,7 @@ impl ChessApp {
                         "Position {index} of {} ({move_text})", self.review_moves.len(),
                     )).size(14.0).color(Color32::from_rgb(218, 225, 235)));
                 }
+                if selected_tab == 7 {egui::ScrollArea::vertical().id_salt("study_workspace_scroll").auto_shrink([false,false]).show_gold(ui,|ui|self.study_panel_ui(ui));return;}
                 if selected_tab == 6 {
                     self.annotations_panel(ui);
                     return;
