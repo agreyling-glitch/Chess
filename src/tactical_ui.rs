@@ -100,7 +100,7 @@ impl ChessApp {
             return;
         }
         let content_height = (ui.available_height() - 24.0).max(0.0);
-        Self::tactical_sunken_section(ui, |ui| {
+        Self::grained_outer_section(ui, |ui| {
             ui.set_min_height(content_height);
             egui::ScrollArea::vertical().id_salt("tactical_panel_content")
                 .max_height(content_height)
@@ -114,6 +114,26 @@ impl ChessApp {
             .corner_radius(4.0).inner_margin(Margin::symmetric(7, 4)).show(ui, |ui| {
                 ui.label(RichText::new(label).size(11.0).strong().color(color));
             });
+    }
+
+    pub(super) fn grained_outer_section<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> R {
+        let mut grain_layer = None;
+        let section = Frame::new().fill(Color32::from_rgb(13,17,22))
+            .stroke(Stroke::new(1.0,Color32::from_white_alpha(25)))
+            .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                grain_layer = Some(ui.painter().add(egui::Shape::Noop));
+                ui.set_min_width(ui.available_width());
+                contents(ui)
+            });
+        if let Some(layer) = grain_layer {
+            let grain = Self::paper_grain_texture(ui.ctx());
+            let surface = section.response.rect.shrink(4.0);
+            let uv = egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0));
+            // Match Explore: one full-opacity paper layer at a 256 px tile size.
+            ui.painter().set(layer,egui::Shape::image(grain.id(),surface,uv,Color32::WHITE));
+        }
+        Self::paint_sunken_border(ui,section.response.rect);
+        section.inner
     }
 
     fn tactical_sunken_section<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui) -> R) -> egui::InnerResponse<R> {
@@ -132,13 +152,14 @@ impl ChessApp {
         ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
         let tab_id = egui::Id::new("tactical_map_tab");
         let mut tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
-        let tabs_background = ui.painter().add(egui::Shape::Noop);
-        let tabs = ui.horizontal_wrapped(|ui| {
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+            ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
             for (index, label) in ["Insights", "Activity", "Patterns"].iter().enumerate() {
-                ui.selectable_value(&mut tab, index, *label);
+                if Self::compact_panel_button(ui, label, tab == index).clicked() { tab = index; }
             }
         });
-        ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
+        ui.add_space(8.0);
         ui.ctx().data_mut(|d| d.insert_temp(tab_id, tab));
         ui.separator();
         let mut filters = ui.ctx().data(|d| d.get_temp::<[bool; 3]>(egui::Id::new("tactical_filters"))).unwrap_or([true; 3]);

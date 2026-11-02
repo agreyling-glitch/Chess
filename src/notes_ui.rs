@@ -122,18 +122,19 @@ impl ChessApp {
         ui.label(RichText::new("Annotations").size(19.0).strong());
         ui.separator();
         let content_height = (ui.available_height() - 24.0).max(0.0);
-        Self::notes_section(ui, |ui| {
+        Self::grained_outer_section(ui, |ui| {
             ui.set_min_height(content_height);
             let tab_id = egui::Id::new("annotations_tab");
             let mut tab = ui.ctx().data(|d| d.get_temp::<usize>(tab_id)).unwrap_or(0);
             let previous = tab;
-            let background = ui.painter().add(egui::Shape::Noop);
-            let tabs = ui.horizontal_wrapped(|ui| {
-                ui.selectable_value(&mut tab, 0, "Drawings");
-                ui.selectable_value(&mut tab, 1, "Notes");
-                ui.selectable_value(&mut tab, 2, "Chess Symbols");
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+                ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
+                for (index, label) in ["Drawings", "Notes", "Chess Symbols"].iter().enumerate() {
+                    if Self::compact_panel_button(ui, label, tab == index).clicked() { tab = index; }
+                }
             });
-            ui.painter().set(background, Self::glass_surface(tabs.response.rect.expand(2.0)));
+            ui.add_space(8.0);
             ui.ctx().data_mut(|d| d.insert_temp(tab_id, tab));
             if tab != previous {
                 self.board_mark_mode = tab == 0;

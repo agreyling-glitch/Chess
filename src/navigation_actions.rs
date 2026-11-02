@@ -48,6 +48,13 @@ impl ChessApp {
             ui.ctx()
                 .data_mut(|d| d.insert_temp(egui::Id::new("puzzles_open"), true));
         }
+        if Self::navigation_action(ui, self.navigation_puzzles_enabled(), "Study…")
+            .on_disabled_hover_text("Finish your training or online game before opening Study.").clicked() {
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(egui::Id::new("puzzles_open"), false);
+                d.insert_temp(egui::Id::new("study_window_open"), true);
+            });
+        }
     }
     pub(super) fn navigation_library(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);

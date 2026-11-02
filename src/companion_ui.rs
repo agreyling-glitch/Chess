@@ -140,7 +140,7 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     pub(super) fn analysis_engine_selector(&mut self, ui: &mut egui::Ui) {
-        if !crate::companion::enabled() { return; }
+        if !crate::companion::enabled() { ui.label(self.analysis_config.label()); return; }
         let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
         let busy = catalog["busy"] == true;
         let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
@@ -154,15 +154,20 @@ impl ChessApp {
             let menu_style=ui.style().as_ref().clone();
             let background=ui.painter().add(egui::Shape::Noop);
             let mut visuals=ui.visuals().widgets.inactive;
-            visuals.weak_bg_fill=Color32::TRANSPARENT;visuals.bg_stroke=Stroke::NONE;visuals.expansion=0.0;
+            visuals.weak_bg_fill=Color32::from_rgb(30,39,44);visuals.bg_stroke=Stroke::new(1.0,Color32::from_rgb(59,71,76));visuals.expansion=0.0;
             ui.visuals_mut().widgets.inactive=visuals;ui.visuals_mut().widgets.hovered=visuals;
             ui.visuals_mut().widgets.active=visuals;ui.visuals_mut().widgets.open=visuals;
+            let engine_label=catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.analysis_config.label());
             let selector=egui::ComboBox::from_id_salt("analysis_engine_provider")
-                .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.analysis_config.label())).width(260.0).truncate()
+                .selected_text(RichText::new(engine_label).color(Color32::TRANSPARENT)).width(260.0).truncate()
                 .show_ui(ui, |ui| {
                     *ui.style_mut()=menu_style;
                     ui.set_min_width(320.0_f32.min(ui.ctx().content_rect().width()-24.0));
                     ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
+                    if catalog["has_engine_provider"] != true {
+                        ui.separator();
+                        if ui.button("Connect engines with Companion…").clicked() { manage_companion_connection();ui.close(); }
+                    }
                     if let Some(engines) = catalog["engines"].as_array() {
                         for engine in engines {
                             if let (Some(id), Some(label)) = (engine["identity"].as_str(), engine["label"].as_str()) {
@@ -171,28 +176,14 @@ impl ChessApp {
                         }
                     }
                 });
-            ui.painter().set(background,Self::glass_surface(selector.response.rect));
+            ui.painter().set(background,egui::Shape::Noop);
+            Self::analysis_icon_text(ui,selector.response.rect,engine_label,0,Color32::from_rgb(228,231,226));
             selector.response.on_hover_text("Engine for the next full-game analysis");
         });
         if identity != previous {
             self.save_game();
             select_companion_engine(&identity);
             self.poll_companion_provider();
-        }
-        if Self::analysis_refresh_button(ui,!busy,"Refresh installed engines").on_disabled_hover_text("Checking engines…").clicked() { refresh_companion_engines(); }
-        if catalog["has_engine_provider"] != true {
-            let help = ui.add(egui::Button::new("?").raised_gold())
-                .on_hover_text("Use other engines with Ironwood Companion");
-            egui::Popup::from_toggle_button_response(&help).show(|ui| {
-                ui.set_max_width(300.0_f32.min(ui.ctx().content_rect().width() - 24.0));
-                ui.add(egui::Label::new("To use other engines in Ironwood, use Ironwood Companion and connect your engines. Open Companion connections, connect Companion, and enable ‘Use as an engine provider’. Then add your engines in Engine settings and refresh this list.").wrap());
-                if ui.button("Companion connections…").clicked() {
-                    manage_companion_connection();
-                    ui.close();
-                }
-            });
-        } else if let Some(status) = catalog["status"].as_str().filter(|s| !s.is_empty()) {
-            ui.add(egui::Label::new(status).truncate()).on_hover_text(status);
         }
         if busy { ui.ctx().request_repaint_after(std::time::Duration::from_millis(50)); }
     }

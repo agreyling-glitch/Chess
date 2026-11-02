@@ -3812,6 +3812,45 @@ impl ChessApp {
             ui.painter().set(background, egui::Shape::Vec(shapes));
     }
 
+    fn compact_panel_button(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
+        Self::stable_panel_button_style(ui);
+        let gold = Color32::from_rgb(215, 185, 121);
+        let has_icon = ["Moves", "Analysis", "Explore", "Study", "Prediction", "Position", "Tactical", "Annotations"].contains(&label);
+        let text = if has_icon { format!("     {label}") } else { label.to_owned() };
+        let response = ui.add(egui::Button::new(RichText::new(text).size(14.0)
+            .color(if selected { gold } else { Color32::from_rgb(188, 198, 193) }))
+            .min_size(Vec2::new(0.0, 36.0)).corner_radius(5)
+            .fill(if selected { Color32::from_rgb(48, 46, 37) } else { Color32::from_rgb(30, 39, 44) })
+            .stroke(Stroke::new(1.0, if selected { Color32::from_rgb(154, 131, 83) } else { Color32::from_rgb(57, 69, 74) }))
+            .selected(selected));
+        if has_icon {
+            let c = egui::pos2(response.rect.left() + 15.0, response.rect.center().y);
+            let stroke = Stroke::new(1.4, if selected { gold } else { Color32::from_rgb(188, 198, 193) });
+            let line = |a: (f32, f32), b: (f32, f32)| {
+                ui.painter().line_segment([c + Vec2::new(a.0, a.1), c + Vec2::new(b.0, b.1)], stroke);
+            };
+            match label {
+                "Moves" => for y in [-5.0, 0.0, 5.0] { line((-6.0,y),(-4.0,y)); line((-1.0,y),(6.0,y)); },
+                "Analysis" => { line((-6.0,-6.0),(-6.0,6.0)); line((-6.0,6.0),(6.0,6.0)); line((-3.0,3.0),(0.0,-1.0)); line((0.0,-1.0),(3.0,1.0)); line((3.0,1.0),(6.0,-5.0)); },
+                "Explore" => { ui.painter().circle_stroke(c, 7.0, stroke); line((-3.0,3.0),(3.0,-3.0)); line((3.0,-3.0),(1.0,3.0)); line((1.0,3.0),(-3.0,3.0)); },
+                "Study" => { line((0.0,-4.0),(0.0,7.0)); for x in [-7.0,7.0] { line((0.0,-4.0),(x,-6.0)); line((x,-6.0),(x,5.0)); line((x,5.0),(0.0,7.0)); } },
+                "Prediction" => { for (x,y) in [(0.0,0.0),(5.0,-5.0)] { line((x-3.0,y),(x+3.0,y)); line((x,y-4.0),(x,y+4.0)); } },
+                "Position" | "Tactical" => { ui.painter().circle_stroke(c, 5.0, stroke); for sign in [-1.0,1.0] { line((sign*3.0,0.0),(sign*8.0,0.0)); line((0.0,sign*3.0),(0.0,sign*8.0)); } },
+                "Annotations" => { line((-6.0,6.0),(3.0,-6.0)); line((3.0,-6.0),(6.0,-3.0)); line((6.0,-3.0),(-3.0,7.0)); line((-3.0,7.0),(-6.0,6.0)); },
+                _ => {}
+            }
+        }
+        response
+    }
+
+    fn stable_panel_button_style(ui: &mut egui::Ui) {
+        let widgets = &mut ui.visuals_mut().widgets;
+        for widget in [&mut widgets.inactive, &mut widgets.hovered, &mut widgets.active, &mut widgets.open] {
+            widget.bg_stroke.width = 1.0;
+            widget.expansion = 0.0;
+        }
+    }
+
     fn sidebar_tab_button(ui: &mut egui::Ui, label: &str, selected: bool) -> egui::Response {
         let width=ui.painter().layout_no_wrap(label.to_owned(),FontId::proportional(15.0),Color32::WHITE).size().x+22.0;
         ui.allocate_ui_with_layout(Vec2::new(width,32.0),Layout::left_to_right(Align::Center),|ui| {
@@ -4659,7 +4698,7 @@ impl ChessApp {
                                 ui.label(RichText::new("Next: review your games").size(16.0).strong());
                                 ui.label(RichText::new("Fetched PGN opens in the Paste tab. Choose Continue to review the collection and select games or chapters to import.").size(14.0).weak());
                                 if !chess_com {
-                                    ui.label(RichText::new("Public studies with downloads enabled can be imported without signing in. For private studies, export PGN on Lichess and paste it here. Notes, glyphs and board markings are supported. Open the Study tab to navigate chapters and variations, add local notes, and practice the moves.").size(13.0).weak());
+                                    ui.label(RichText::new("Public studies with downloads enabled can be imported without signing in. For private studies, export PGN on Lichess and paste it here. Notes, glyphs and board markings are supported. Open Training → Study to navigate chapters and variations, add local notes, and practice the moves.").size(13.0).weak());
                                 }
                                 if chess_com {
                                     ui.add_space(4.0);
@@ -11548,54 +11587,67 @@ impl ChessApp {
         {
             if let Some(id) = runs[index]["id"].as_str() { chosen = id.to_owned(); }
         }
-        ui.vertical(|ui| {
-        ui.scope(|ui| {
-        Self::quiet_analysis_controls(ui);
-        let tray=Frame::new().fill(Color32::from_rgb(13,17,22))
-            .corner_radius(CornerRadius::same(5)).inner_margin(Margin::same(6)).show(ui,|ui| {
-        let text_width=ui.painter().layout_no_wrap(selected.to_owned(),egui::TextStyle::Button.resolve(ui.style()),ui.visuals().text_color()).size().x;
-        let selector_width=(text_width+40.0).min((ui.available_width()-180.0).max(120.0));
-        egui::ScrollArea::horizontal().id_salt("saved_analysis_toolbar").show(ui,|ui| {
-        Self::saved_analysis_control_row(ui,|ui| {
-        ui.add_enabled_ui(!self.game_analysis_running&&state["busy"]!=true,|ui|{
-            let menu_style=ui.style().as_ref().clone();
-            let background=ui.painter().add(egui::Shape::Noop);
-            for visuals in [&mut ui.visuals_mut().widgets.inactive] {visuals.weak_bg_fill=Color32::TRANSPARENT;visuals.bg_stroke=Stroke::NONE;}
-            let visuals=ui.visuals().widgets.inactive;
-            ui.visuals_mut().widgets.hovered=visuals;ui.visuals_mut().widgets.active=visuals;ui.visuals_mut().widgets.open=visuals;
-            let selector=egui::ComboBox::from_id_salt("archive_analysis_run_selector").selected_text(selected).width(selector_width).truncate().show_ui(ui,|ui|{
-                *ui.style_mut()=menu_style;
-                // Popup width follows its entries, independently of the compact
-                // selected label (which can become "Current analysis" on reconnect).
-                ui.set_width(menu_width);
-                ui.style_mut().wrap_mode=Some(egui::TextWrapMode::Truncate);
-                for run in &runs {if let Some(id)=run["id"].as_str(){ui.selectable_value(&mut chosen,id.to_owned(),run["label"].as_str().unwrap_or("Saved analysis"));}}
+        Self::saved_analysis_control_row(ui, |ui| {
+            Self::stable_panel_button_style(ui);
+            let compact = selected.rsplit_once(';').map(|(label,_)| label.trim()).unwrap_or(selected);
+            ui.add_enabled_ui(can_switch, |ui| {
+                for widget in [&mut ui.visuals_mut().widgets.inactive] { widget.weak_bg_fill=Color32::from_rgb(30,39,44);widget.bg_stroke=Stroke::new(1.0,Color32::from_rgb(59,71,76));widget.corner_radius=CornerRadius::same(5); }
+                let flat=ui.visuals().widgets.inactive;
+                ui.visuals_mut().widgets.hovered=flat;ui.visuals_mut().widgets.active=flat;ui.visuals_mut().widgets.open=flat;
+                let selector=egui::ComboBox::from_id_salt("archive_analysis_run_selector")
+                    .selected_text(RichText::new(compact).color(Color32::TRANSPARENT)).width(260.0).truncate().show_ui(ui, |ui| {
+                        ui.set_width(menu_width);
+                        for (index,run) in runs.iter().enumerate() {
+                            if let Some(id)=run["id"].as_str() {
+                                ui.selectable_value(&mut chosen,id.to_owned(),run["label"].as_str().unwrap_or("Saved analysis"))
+                                    .on_hover_text(Self::saved_analysis_run_tooltip(run,index+1));
+                            }
+                        }
+                    });
+                Self::analysis_icon_text(ui,selector.response.rect,compact,1,Color32::from_rgb(228,231,226));
+                selector.response.on_hover_text(selected);
             });
-            ui.painter().set(background,Self::glass_surface(selector.response.rect));
-            selector.response.on_hover_text("Saved analysis");
-        });
-            if Self::analysis_refresh_button(ui,!self.game_analysis_running&&state["busy"]!=true,"Refresh saved analyses")
-                .on_disabled_hover_text("Refresh unavailable while analysis or loading is in progress").clicked(){refresh_archive_runs();}
-            let manage=Self::analysis_toolbar_icon_button(ui,!self.game_analysis_running&&state["busy"]!=true);
+            if let Some((_,status)) = selected.rsplit_once(';') {
+                let complete=status.trim();
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x=4.0;
+                    if complete.eq_ignore_ascii_case("complete") {
+                        let (icon,_) = ui.allocate_exact_size(Vec2::new(20.0,20.0),Sense::hover());
+                        Self::analysis_control_icon(ui,icon.translate(Vec2::new(-5.0,0.0)),3,Color32::from_rgb(175,196,179));
+                    }
+                    ui.label(RichText::new(complete).size(12.0).color(Color32::from_rgb(175,196,179)));
+                });
+            }
+            let manage=Self::analysis_toolbar_icon_button(ui,can_switch);
             manage.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,manage.enabled(),"Manage analyses"));
-            let center=manage.rect.center();let color=if manage.enabled(){Color32::from_rgb(226,231,235)}else{Color32::from_gray(105)};
+            let center=manage.rect.center();
             for (y,x) in [(-5.0,-2.0),(0.0,3.0),(5.0,-1.0)] {
-                ui.painter().line_segment([center+Vec2::new(-7.0,y),center+Vec2::new(7.0,y)],Stroke::new(1.3,color));
-                ui.painter().rect_filled(egui::Rect::from_center_size(center+Vec2::new(x,y),Vec2::new(3.0,4.0)),1,color);
+                ui.painter().line_segment([center+Vec2::new(-7.0,y),center+Vec2::new(7.0,y)],Stroke::new(1.3,Color32::from_rgb(188,198,193)));
+                ui.painter().rect_filled(egui::Rect::from_center_size(center+Vec2::new(x,y),Vec2::new(3.0,4.0)),1,Color32::from_rgb(188,198,193));
             }
             if manage.on_hover_text("Manage analyses").clicked(){self.save_game();manage_archive_analyses();}
-            self.analysis_print_button(ui);
+            let more=Self::analysis_toolbar_icon_button(ui,true).on_hover_text("More analysis actions");
+            for x in [-5.0,0.0,5.0] { ui.painter().circle_filled(more.rect.center()+Vec2::new(x,0.0),1.5,Color32::from_rgb(188,198,193)); }
+            more.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,"More analysis actions"));
+            egui::Popup::menu(&more).show(|ui| {
+                self.analysis_print_button(ui);
+                if ui.add_enabled(can_switch,egui::Button::new("Refresh saved results")).clicked() { refresh_archive_runs(); ui.close(); }
+                let busy=serde_json::from_str::<serde_json::Value>(&companion_engine_catalog()).unwrap_or_default()["busy"]==true;
+                if crate::companion::enabled() && ui.add_enabled(!busy,egui::Button::new("Refresh engines")).clicked() { refresh_companion_engines(); ui.close(); }
+                if runs.len()>1 {
+                    ui.separator();
+                    ui.label("Saved results · keyboard shortcuts 1–9");
+                    for (index,run) in runs.iter().enumerate() {
+                        if let Some(id)=run["id"].as_str() {
+                            if ui.add_enabled(can_switch,egui::Button::new(format!("{} · {}",index+1,run["label"].as_str().unwrap_or("Saved analysis"))))
+                                .on_hover_text(Self::saved_analysis_run_tooltip(run,index+1)).clicked() { chosen=id.to_owned();ui.close(); }
+                        }
+                    }
+                }
+            });
         });
-        });
-        });
-        Self::paint_sunken_border(ui,tray.response.rect);
-        if let Some(id) = Self::saved_analysis_number_buttons(ui, &runs, &current, can_switch) { chosen = id; }
         if chosen!=current{self.save_game();select_archive_run(&chosen);}
-        });
-            if let Some(error)=state["error"].as_str().filter(|message|!message.is_empty()) {
-                ui.colored_label(Color32::from_rgb(232,112,112),error);
-            }
-        });
+        if let Some(error)=state["error"].as_str().filter(|message|!message.is_empty()) { ui.colored_label(Color32::LIGHT_RED,error); }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
     }
 
@@ -11686,18 +11738,62 @@ impl ChessApp {
 
     fn saved_analysis_control_row<R>(ui: &mut egui::Ui, contents: impl FnOnce(&mut egui::Ui)->R) -> egui::InnerResponse<R> {
         ui.scope(|ui| {
-            ui.spacing_mut().interact_size.y=28.0;
+            Self::stable_panel_button_style(ui);
+            ui.spacing_mut().item_spacing.x=12.0;
+            ui.spacing_mut().interact_size.y=38.0;
             ui.spacing_mut().button_padding=Vec2::new(8.0,4.0);
-            ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),28.0),Layout::left_to_right(Align::Center),contents).inner
+            ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),38.0),Layout::left_to_right(Align::Center),contents).inner
         })
     }
 
+    fn analysis_control_icon(ui: &egui::Ui, rect: egui::Rect, kind: u8, color: Color32) {
+        let c = egui::pos2(rect.left()+15.0,rect.center().y);
+        let stroke=Stroke::new(1.4,color);
+        let line=|a:(f32,f32),b:(f32,f32)| { ui.painter().line_segment([c+Vec2::new(a.0,a.1),c+Vec2::new(b.0,b.1)],stroke); };
+        match kind {
+            0 => {
+                ui.painter().rect_stroke(egui::Rect::from_center_size(c,Vec2::splat(10.0)),1,stroke,egui::StrokeKind::Inside);
+                for n in [-3.0,3.0] { line((n,-8.0),(n,-5.0));line((n,5.0),(n,8.0));line((-8.0,n),(-5.0,n));line((5.0,n),(8.0,n)); }
+            }
+            1 => { ui.painter().rect_stroke(egui::Rect::from_center_size(c,Vec2::new(13.0,12.0)),1,stroke,egui::StrokeKind::Inside);line((-6.0,-2.0),(6.0,-2.0));line((-2.0,1.0),(2.0,1.0)); }
+            2 => { line((-4.0,-6.0),(5.0,0.0));line((5.0,0.0),(-4.0,6.0));line((-4.0,6.0),(-4.0,-6.0)); }
+            3 => { line((-5.0,0.0),(-1.0,4.0));line((-1.0,4.0),(6.0,-4.0)); }
+            _ => { line((-6.0,6.0),(-6.0,-6.0));line((-6.0,6.0),(6.0,6.0));line((-3.0,3.0),(0.0,-2.0));line((0.0,-2.0),(3.0,0.0));line((3.0,0.0),(6.0,-6.0)); }
+        }
+    }
+
+    fn analysis_icon_text(ui: &egui::Ui, rect: egui::Rect, text: &str, kind: u8, color: Color32) {
+        Self::analysis_control_icon(ui,rect,kind,color);
+        let mut job=egui::text::LayoutJob::simple_singleline(text.to_owned(),FontId::proportional(14.0),color);
+        job.wrap.max_width=(rect.width()-54.0).max(20.0);
+        job.wrap.max_rows=1;
+        job.wrap.break_anywhere=true;
+        let galley=ui.fonts_mut(|f|f.layout_job(job));
+        ui.painter().galley(egui::pos2(rect.left()+32.0,rect.center().y-galley.size().y/2.0),galley,color);
+    }
+
+    fn analysis_run_button(ui: &mut egui::Ui, label: &str) -> egui::Response {
+        let width=ui.painter().layout_no_wrap(label.to_owned(),FontId::proportional(14.0),Color32::WHITE).size().x+54.0;
+        let response=ui.add_sized([width,40.0],egui::Button::new("")
+            .fill(Color32::from_rgb(215,185,121)).stroke(Stroke::new(1.0,Color32::from_rgb(215,185,121))).corner_radius(5));
+        response.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,response.enabled(),label));
+        Self::analysis_icon_text(ui,response.rect,label,2,Color32::from_rgb(27,32,30));
+        response
+    }
+
     fn analysis_print_tray_ui(&mut self, ui: &mut egui::Ui) {
-        let tray = Frame::new().fill(Color32::from_rgb(13,17,22))
-            .corner_radius(5).inner_margin(Margin::same(6)).show(ui, |ui| {
-                Self::saved_analysis_control_row(ui, |ui| self.analysis_print_button(ui));
+        Self::saved_analysis_control_row(ui, |ui| {
+            ui.label("Current analysis");
+            ui.menu_button("More actions", |ui| {
+                self.analysis_print_button(ui);
+                #[cfg(target_arch="wasm32")]
+                {
+                    if ui.add_enabled(!self.game_analysis_running,egui::Button::new("Refresh saved results")).clicked() { refresh_archive_runs();ui.close(); }
+                    let busy=serde_json::from_str::<serde_json::Value>(&companion_engine_catalog()).unwrap_or_default()["busy"]==true;
+                    if crate::companion::enabled() && ui.add_enabled(!busy,egui::Button::new("Refresh engines")).clicked() { refresh_companion_engines();ui.close(); }
+                }
             });
-        Self::paint_sunken_border(ui, tray.response.rect);
+        });
     }
 
     fn analysis_print_button(&mut self, ui: &mut egui::Ui) {
@@ -11711,7 +11807,7 @@ impl ChessApp {
                     let reason = if saved_run_loading { "Wait for the selected saved analysis to finish loading." } else if self.game_analysis_running {
                         "Pause or stop game analysis or verification before printing."
                     } else { "Analyze at least one position before printing." };
-                    if Self::glossy_board_button(ui, "Print analysis", false, enabled)
+                    if ui.add_enabled(enabled, egui::Button::new("Print analysis"))
                         .on_disabled_hover_text(reason)
                         .on_hover_text("Open a critical-positions report to print or save as PDF")
                         .clicked() {
@@ -11721,8 +11817,8 @@ impl ChessApp {
 
     fn analysis_toolbar_icon_button(ui: &mut egui::Ui, enabled: bool) -> egui::Response {
         ui.scope(|ui| {
-            ui.spacing_mut().interact_size.y = 28.0;
-            Self::glossy_board_button(ui, "", false, enabled)
+            ui.spacing_mut().interact_size.y = 38.0;
+            ui.add_enabled(enabled, egui::Button::new("").min_size(Vec2::splat(38.0)).fill(Color32::from_rgb(30,39,44)).stroke(Stroke::new(1.0,Color32::from_rgb(59,71,76))).corner_radius(5))
         }).inner
     }
 
@@ -15225,7 +15321,7 @@ impl ChessApp {
         }
         ui.vertical(|ui| {
             ui.label(RichText::new("Engine Prediction").size(19.0).strong());
-            ui.add_space(5.0);
+            ui.add_space(8.0);
             let enabled=self.show_prediction_best_move;
             Frame::new()
                 .fill(if enabled {Color32::from_rgb(22,47,34)}else{Color32::from_rgb(27,32,34)})
@@ -15251,7 +15347,7 @@ impl ChessApp {
                     });
                 });
 
-            ui.separator();
+            ui.add_space(16.0);
             if self.game_analysis_running || self.game_analysis_paused {
                 let state = if !self.verification_targets.is_empty() {
                     if self.game_analysis_paused {
@@ -15273,7 +15369,6 @@ impl ChessApp {
                     });
                 }
             } else {
-                ui.add_space(5.0);
                 let score_width = ui.available_width() - 14.0;
                 let mut score_linen=None;
                 let score_frame=Frame::new()
@@ -15297,7 +15392,7 @@ impl ChessApp {
                         egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/128.0,surface.height()/128.0)),Color32::WHITE));
                 }
                 Self::paint_sunken_border(ui,score_frame.response.rect);
-                ui.add_space(5.0);
+
 
                 score_frame.response.on_hover_text(
                     if self.realtime_analysis_due_at.is_some() {
@@ -15309,7 +15404,7 @@ impl ChessApp {
             }
         });
 
-        ui.separator();
+        ui.add_space(16.0);
         if self.game_analysis_running || self.game_analysis_paused {
             ui.horizontal(|ui| {
                 ui.spinner();
@@ -15325,12 +15420,10 @@ impl ChessApp {
 
         ui.vertical(|ui| {
             ui.vertical(|ui| {
-                ui.add_space(8.0);
                 self.prediction_analyze_control_ui(ui);
-                ui.add_space(10.0);
+                ui.add_space(16.0);
             {
-                ui.separator();
-                ui.add_space(8.0);
+
                 let mut prediction_linen=None;
                 let prediction_panel = Frame::new().fill(Color32::from_rgb(13,17,22))
                     .corner_radius(6.0).inner_margin(Margin{left:6,right:4,top:10,bottom:10}).show(ui, |ui| {
@@ -17048,7 +17141,7 @@ impl ChessApp {
     }
 
     fn board_action_icon(ui: &mut egui::Ui, flip: bool, enabled: bool) -> egui::Response {
-        let response = Self::glossy_board_button(ui, "", false, enabled);
+        let response = ui.add_enabled(enabled, egui::Button::new("").min_size(Vec2::splat(32.0)).fill(Color32::from_rgb(30,39,44)).stroke(Stroke::new(1.0,Color32::from_rgb(59,71,76))).corner_radius(5));
         let rect = response.rect.shrink(5.0);
         let stroke = ui.style().interact(&response).fg_stroke;
         let painter = ui.painter();
@@ -18321,8 +18414,8 @@ mod tests {
                 ChessApp::saved_analysis_control_row(ui,|ui| {
                     let combo=ui.add_enabled_ui(enabled,|ui|egui::ComboBox::from_id_salt("aligned_saved_run").selected_text("Stockfish 19; Complete").width(220.0).show_ui(ui,|_|{})).inner.response.rect;
                     let refresh=ChessApp::analysis_refresh_button(ui,enabled,"Refresh").rect;
-                    let manage=ui.add_enabled(enabled,egui::Button::new("").min_size(Vec2::splat(28.0)).raised_gray()).rect;
-                    for rect in [combo,refresh,manage] {assert_eq!(rect.height(),28.0);assert_eq!(rect.center().y,combo.center().y);}
+                    let manage=ChessApp::analysis_toolbar_icon_button(ui,enabled).rect;
+                    for rect in [combo,refresh,manage] {assert_eq!(rect.height(),38.0);assert_eq!(rect.center().y,combo.center().y);}
                 });
             });
         }
@@ -18701,8 +18794,8 @@ mod tests {
         let mut output=ctx.run_ui(egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(400.0,800.0))),..Default::default()},|root| {
             egui::CentralPanel::default().show(root,|ui| {
                 ui.horizontal_wrapped(|ui| {
-                    for label in ["Moves","Prediction","Analysis","Position","Explore","Tactical","Annotations"] {
-                        let rect=ChessApp::sidebar_tab_button(ui,label,false).rect;
+                    for label in ["Moves","Analysis","Explore","Study","More tools ▾"] {
+                        let rect=ChessApp::compact_panel_button(ui,label,false).rect;
                         assert!(rect.height()<42.0,"wrapped text in {label}: {rect:?}");
                         assert!(rect.right()<=400.0,"tab overflow in {label}: {rect:?}");
                     }
@@ -18710,6 +18803,42 @@ mod tests {
             });
         });
         output.textures_delta.clear();
+    }
+
+    #[test]
+    fn compact_panel_button_keeps_size_on_hover() {
+        let ctx = egui::Context::default();
+        let mut rect = egui::Rect::NOTHING;
+        run_test_ui(&ctx, egui::RawInput::default(), |ui| {
+            rect = ChessApp::compact_panel_button(ui, "Analysis", false).rect;
+        });
+        let original = rect.size();
+        for _ in 0..3 {
+            let input = egui::RawInput { events: vec![egui::Event::PointerMoved(rect.center())], ..Default::default() };
+            run_test_ui(&ctx, input, |ui| {
+                rect = ChessApp::compact_panel_button(ui, "Analysis", false).rect;
+            });
+            assert_eq!(rect.size(), original);
+        }
+    }
+
+    #[test]
+    fn sidebar_panel_choices_hide_disabled_views_and_allow_all_off() {
+        let ctx = egui::Context::default();
+        let context = eframe::CreationContext::_new_kittest(ctx.clone());
+        let mut app = ChessApp::new(&context);
+        let preference_id = egui::Id::new("enabled_sidebar_panels");
+        let tab_id = egui::Id::new("game_sidebar_tab");
+        let mut enabled = [false; 8];
+        enabled[0] = true;
+        ctx.data_mut(|d| { d.insert_temp(preference_id, enabled); d.insert_temp(tab_id, 6usize); });
+        app.board_mark_mode = true;
+        run_test_ui(&ctx, egui::RawInput::default(), |ui| app.sidebar_contents_ui(ui, false));
+        assert_eq!(ctx.data(|d| d.get_temp::<usize>(tab_id)), Some(0));
+        assert!(!app.board_mark_mode);
+        ctx.data_mut(|d| d.insert_temp(preference_id, [false; 8]));
+        run_test_ui(&ctx, egui::RawInput::default(), |ui| app.sidebar_contents_ui(ui, false));
+        assert_eq!(ctx.data(|d| d.get_temp::<[bool; 8]>(preference_id)), Some([false; 8]));
     }
 
     #[test]
@@ -18723,10 +18852,10 @@ mod tests {
                 egui::CentralPanel::default().show(root,|ui|app.sidebar_contents_ui(ui,false));
             });
             let tabs:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {
-                ["Moves","Prediction","Analysis","Position","Explore","Tactical","Annotations"].contains(&text.galley.job.text.as_str()).then_some(text.pos)
+                ["     Moves","     Analysis","     Explore"].contains(&text.galley.job.text.as_str()).then_some(text.pos)
             }else{None}).collect();
             output.textures_delta.clear();
-            assert_eq!(tabs.len(),7);
+            assert_eq!(tabs.len(),3);
             assert!(tabs.iter().all(|pos|(pos.y-tabs[0].y).abs()<1.0),"Tabs must use sidebar width, not move-list width: {tabs:?}");
         }
     }
@@ -18742,10 +18871,10 @@ mod tests {
         for _ in 0..2 {
             let mut output=panel.run_ui(input(),|root| {egui::CentralPanel::default().show(root,|ui|app.detached_sidebar_ui(ui));});
             let tab_y:Vec<_>=output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {
-                ["Moves","Prediction","Analysis","Position","Explore","Tactical","Annotations"].contains(&text.galley.job.text.as_str()).then_some(text.pos.y)
+                ["     Moves","     Analysis","     Explore"].contains(&text.galley.job.text.as_str()).then_some(text.pos.y)
             }else{None}).collect();
             output.textures_delta.clear();
-            assert_eq!(tab_y.len(),7);
+            assert_eq!(tab_y.len(),3);
             assert!(tab_y.iter().all(|y|(*y-tab_y[0]).abs()<1.0),"Wide window must keep tabs on one row: {tab_y:?}");
         }
         app.expanded_graph_open=true;
@@ -21296,41 +21425,118 @@ impl ChessApp {
     pub(crate) fn sidebar_contents_ui(&mut self, ui: &mut egui::Ui, detached: bool) {
         let ctx = &ui.ctx().clone();
         let tab_id = egui::Id::new("game_sidebar_tab");
-        let mut selected_tab = ctx.data(|data|data.get_temp::<usize>(tab_id).unwrap_or(if self.study.is_some(){7}else{0}));
-        let had_study=ctx.data(|d|d.get_temp::<bool>(egui::Id::new("study_tab_opened")).unwrap_or(false));
-        if let Some(study)=self.study.as_mut(){
-            if study.focus_panel || !had_study {selected_tab=7;study.focus_panel=false;ctx.data_mut(|d|d.insert_temp(tab_id,7usize));}
-            ctx.data_mut(|d|d.insert_temp(egui::Id::new("study_tab_opened"),true));
-        } else if had_study {
-            if selected_tab==7 {selected_tab=0;ctx.data_mut(|d|d.insert_temp(tab_id,0usize));}
-            ctx.data_mut(|d|d.insert_temp(egui::Id::new("study_tab_opened"),false));
+        let mut selected_tab = ctx.data(|data|data.get_temp::<usize>(tab_id)).filter(|&tab|tab < 7).unwrap_or(0);
+        ctx.data_mut(|d| d.insert_temp(tab_id, selected_tab));
+        let preference_id = egui::Id::new("enabled_sidebar_panels");
+        let mut enabled = ctx.data(|d| d.get_temp::<[bool; 8]>(preference_id)).unwrap_or([true; 8]);
+        #[cfg(target_arch = "wasm32")]
+        if let Some(saved) = web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item("ironwood.sidebar-panels.v1").ok().flatten())
+            .and_then(|s| serde_json::from_str::<[bool; 8]>(&s).ok()) { enabled = saved; }
+        enabled[7] = false; // Study lives in its own Training panel.
+        let before = enabled;
+        let order_id = egui::Id::new("sidebar_panel_order");
+        let mut order = ctx.data(|d| d.get_temp::<[usize; 8]>(order_id)).unwrap_or([0,1,2,3,4,5,6,7]);
+        #[cfg(target_arch="wasm32")]
+        if let Some(saved) = web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+            .and_then(|s| s.get_item("ironwood.sidebar-panel-order.v1").ok().flatten())
+            .and_then(|s| serde_json::from_str::<[usize; 8]>(&s).ok()) {
+            let mut sorted = saved; sorted.sort_unstable();
+            if sorted == [0,1,2,3,4,5,6,7] { order = saved; }
         }
-                ui.horizontal_wrapped(|ui| {
-                    ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(15.0));
-                    ui.spacing_mut().button_padding = Vec2::new(9.0, 5.0);
-                    #[cfg(target_arch="wasm32")]
-                    if ui.allocate_ui_with_layout(Vec2::new(29.0,32.0),Layout::left_to_right(Align::Center),|ui| {
-                        Self::glossy_board_button(ui,if detached { "↙" } else { "↗" },false,true)
-                    }).inner.on_hover_text(if detached { "Dock the study panel in the main window" } else { "Open the entire right-hand panel in a separate window" }).clicked() {
-                        if detached { dock_sidebar_popout(); } else { open_sidebar_popout(); }
-                    }
-                    for (index, label) in ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations", "Study"].iter().enumerate() {
-                        if Self::sidebar_tab_button(ui, label, selected_tab == index).clicked() {
-                            if index!=selected_tab {
-                                self.finish_saved_line_preview();
-                                if index == 6 || selected_tab == 6 {
-                                    self.board_mark_mode = index == 6 && ui.ctx().data(|d| d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0) == 0;
-                                    self.board_mark_drag = None;
-                                    self.selected = None;
-                                    self.legal_targets.clear();
-                                }
+        let previous_order = order;
+        let labels = ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations", "Study"];
+        let mut requested = None;
+        ui.horizontal(|ui| {
+            Self::stable_panel_button_style(ui);
+            let tabs_width = (ui.available_width() - 46.0).max(20.0);
+            let mut tab_center_y = None;
+            ui.allocate_ui_with_layout(Vec2::new(tabs_width, 40.0), Layout::left_to_right(Align::Center), |ui| {
+                egui::ScrollArea::horizontal().id_salt("panel_tab_strip").auto_shrink([false,true]).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().button_padding = Vec2::new(10.0, 7.0);
+                        for &index in &order {
+                            if enabled[index] {
+                                let tab = Self::compact_panel_button(ui, labels[index], selected_tab == index);
+                                tab_center_y = Some(tab.rect.center().y);
+                                if tab.clicked() { requested = Some(index); }
                             }
-                            selected_tab = index;
-                            ui.ctx().data_mut(|data| data.insert_temp(tab_id, selected_tab));
                         }
-                    }
+                        #[cfg(target_arch="wasm32")]
+                        if Self::compact_panel_button(ui, if detached { "↙" } else { "↗" }, false)
+                            .on_hover_text(if detached { "Dock the study panel" } else { "Open the study panel in a separate window" }).clicked() {
+                            if detached { dock_sidebar_popout(); } else { open_sidebar_popout(); }
+                        }
+                    });
                 });
+            });
+            let (_, mut gear_rect) = ui.allocate_space(Vec2::splat(36.0));
+            if let Some(y) = tab_center_y { gear_rect = gear_rect.translate(Vec2::new(0.0, y - gear_rect.center().y)); }
+            let gear = ui.put(gear_rect, egui::Button::new(""))
+                .on_hover_text("Choose and reorder panels");
+            gear.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "Choose and reorder panels"));
+            let c = gear.rect.center();
+            let stroke = Stroke::new(1.5,Color32::from_rgb(215,185,121));
+            ui.painter().circle_stroke(c,6.0,stroke);
+            ui.painter().circle_stroke(c,2.5,stroke);
+            for n in 0..8 {
+                let angle = n as f32 * std::f32::consts::TAU / 8.0;
+                let v = Vec2::new(angle.cos(),angle.sin());
+                ui.painter().line_segment([c+v*6.0,c+v*9.0],stroke);
+            }
+            egui::Popup::menu(&gear).close_behavior(egui::containers::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+                Self::stable_panel_button_style(ui);
+                ui.label("Show panels · change order");
                 ui.separator();
+                let mut reorder = None;
+                let visible_order: Vec<_> = order.iter().copied().filter(|&index| index != 7).collect();
+                for position in 0..visible_order.len() {
+                    let index = visible_order[position];
+                    ui.horizontal(|ui| {
+                        ui.allocate_ui_with_layout(Vec2::new(140.0,30.0), Layout::left_to_right(Align::Center), |ui| {
+                            ui.checkbox(&mut enabled[index], labels[index]);
+                        });
+                        if ui.add_enabled(position > 0,egui::Button::new("Up")).on_hover_text("Move earlier in the row").clicked() { reorder = Some((position,position-1)); }
+                        if ui.add_enabled(position + 1 < visible_order.len(),egui::Button::new("Down")).on_hover_text("Move later in the row").clicked() { reorder = Some((position,position+1)); }
+                    });
+                }
+                if let Some((a,b)) = reorder {
+                    let left=order.iter().position(|&i|i==visible_order[a]).unwrap();
+                    let right=order.iter().position(|&i|i==visible_order[b]).unwrap();
+                    order.swap(left,right);
+                }
+            });
+        });
+        if enabled != before || order != previous_order {
+            #[cfg(target_arch="wasm32")]
+            if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                if let Ok(json) = serde_json::to_string(&enabled) { let _ = storage.set_item("ironwood.sidebar-panels.v1", &json); }
+                if let Ok(json) = serde_json::to_string(&order) { let _ = storage.set_item("ironwood.sidebar-panel-order.v1", &json); }
+            }
+        }
+        ctx.data_mut(|d| { d.insert_temp(preference_id, enabled); d.insert_temp(order_id, order); });
+        if !enabled[selected_tab] { requested = order.iter().copied().find(|&i| enabled[i]); }
+        if let Some(index) = requested {
+            if index != selected_tab {
+                self.finish_saved_line_preview();
+                if index == 6 || selected_tab == 6 {
+                    self.board_mark_mode = index == 6 && ctx.data(|d| d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0) == 0;
+                    self.board_mark_drag = None;
+                    self.selected = None;
+                    self.legal_targets.clear();
+                }
+            }
+            selected_tab = index;
+            ctx.data_mut(|d| d.insert_temp(tab_id, selected_tab));
+        }
+        if !enabled.iter().any(|on| *on) {
+            self.finish_saved_line_preview();
+            self.board_mark_mode = false;
+            self.board_mark_drag = None;
+            ui.label("Use the gear menu to turn on a panel.");
+            return;
+        }
+        ui.add_space(8.0);
                 let content_width = if selected_tab == 0 && !detached {
                     // Keep the move list beside the height-fitted board without
                     // stretching its columns across unused widescreen space.
@@ -21357,7 +21563,6 @@ impl ChessApp {
                         "Position {index} of {} ({move_text})", self.review_moves.len(),
                     )).size(14.0).color(Color32::from_rgb(218, 225, 235)));
                 }
-                if selected_tab == 7 {egui::ScrollArea::vertical().id_salt("study_workspace_scroll").auto_shrink([false,false]).show_gold(ui,|ui|self.study_panel_ui(ui));return;}
                 if selected_tab == 6 {
                     self.annotations_panel(ui);
                     return;
@@ -21620,36 +21825,41 @@ impl ChessApp {
                     let engine_selection_busy = crate::companion::enabled() && serde_json::from_str::<serde_json::Value>(&companion_engine_catalog()).unwrap_or_default()["busy"] == true;
                     #[cfg(not(target_arch = "wasm32"))]
                     let engine_selection_busy = false;
+                    let (heading,_) = ui.allocate_exact_size(Vec2::new(150.0,24.0),Sense::hover());
+                    Self::analysis_icon_text(ui,heading,"Analysis",4,Color32::from_rgb(215,185,121));
+                    ui.add_space(8.0);
+                    let toolbar = Frame::new().fill(Color32::from_rgb(17,24,28)).corner_radius(7).inner_margin(16).show(ui, |ui| {
+                    Self::stable_panel_button_style(ui);
+                    ui.spacing_mut().interact_size.y=38.0;
                     ui.add_enabled_ui(!engine_selection_busy, |ui| {
                         egui::ScrollArea::horizontal().id_salt("analysis_engine_toolbar")
                             .max_width(ui.available_width()).show(ui, |ui| {
                         Self::saved_analysis_control_row(ui,|ui| {
+                            ui.allocate_ui_with_layout(Vec2::new(94.0,38.0),Layout::left_to_right(Align::Center),|ui| {ui.label(RichText::new("Run analysis").size(12.0).color(Color32::from_rgb(178,191,188)));});
                             #[cfg(target_arch = "wasm32")]
                             {
+                                self.analysis_engine_selector(ui);
                                 if self.game_analysis_running {
                                     if ui.add(egui::Button::new(RichText::new("Stop").color(Color32::WHITE))
-                                        .corner_radius(CornerRadius::same(5)).raised_gray()).clicked() {
+                                        .corner_radius(CornerRadius::same(5))).clicked() {
                                         self.stop_game_analysis();
                                     }
                                     if ui.add(egui::Button::new(RichText::new("Pause").color(Color32::WHITE))
-                                        .corner_radius(CornerRadius::same(5)).raised_gray()).clicked() {
+                                        .corner_radius(CornerRadius::same(5))).clicked() {
                                         self.pause_game_analysis();
                                     }
                                 } else if self.game_analysis_paused {
                                     if ui.add(egui::Button::new(RichText::new("Stop").color(Color32::WHITE))
-                                        .corner_radius(CornerRadius::same(5)).raised_gray()).clicked() {
+                                        .corner_radius(CornerRadius::same(5))).clicked() {
                                         self.stop_game_analysis();
                                     }
                                     if ui.add(egui::Button::new(RichText::new("Resume").color(Color32::WHITE))
-                                        .corner_radius(CornerRadius::same(5)).raised_gray()).clicked() {
+                                        .corner_radius(CornerRadius::same(5))).clicked() {
                                         self.resume_game_analysis();
                                     }
                                 } else if analysis_incomplete {
-                                    let label = self.full_game_analysis_button_label(completed > 0 && !self.archive_resume_needs_new_analysis(), false);
-                                    if ui.add(egui::Button::new(RichText::new(label).color(Color32::from_rgb(25,29,35)))
-                                        .fill(Color32::from_rgb(211,173,98))
-                                        .stroke(Stroke::new(1.0,Color32::from_rgb(241,206,131)))
-                                        .corner_radius(CornerRadius::same(5)).raised_gold()).clicked() {
+                                    let label = if completed > 0 && !self.archive_resume_needs_new_analysis() { "Continue analysis" } else { "Analyze full game" };
+                                    if Self::analysis_run_button(ui,label).clicked() {
                                         if self.verification_pending_index().is_some() {
                                             self.resume_verification();
                                         } else if completed > 0 {
@@ -21658,27 +21868,28 @@ impl ChessApp {
                                             self.start_game_analysis();
                                         }
                                     }
-                                } else if ui.add(egui::Button::new(RichText::new(self.full_game_analysis_button_label(false, true)).color(Color32::from_rgb(25,29,35)))
-                                    .fill(Color32::from_rgb(211,173,98))
-                                    .stroke(Stroke::new(1.0,Color32::from_rgb(241,206,131)))
-                                    .corner_radius(CornerRadius::same(5)).raised_gold()).clicked() {
+                                } else if Self::analysis_run_button(ui,"Analyze again").clicked() {
                                     self.start_game_analysis();
                                 }
-                                self.analysis_engine_selector(ui);
                             }
                         ui.add_space(4.0);
                         });
                     });
                     ui.add_space(5.0);
                     });
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(8.0);
                     ui.allocate_ui_with_layout(Vec2::new(ui.available_width(),40.0),Layout::left_to_right(Align::Center),|ui| {
-                        ui.label(RichText::new("Saved Analysis").size(19.0).strong());
+                        ui.allocate_ui_with_layout(Vec2::new(94.0,38.0),Layout::left_to_right(Align::Center),|ui| {ui.label(RichText::new("Saved results").size(12.0).color(Color32::from_rgb(178,191,188)));});
                         #[cfg(target_arch = "wasm32")]
                         self.archive_analysis_runs_ui(ui);
                         #[cfg(not(target_arch = "wasm32"))]
                         self.analysis_print_tray_ui(ui);
                     });
-                    ui.separator();
+                    });
+                    ui.painter().rect_stroke(toolbar.response.rect,7,Stroke::new(1.0,Color32::from_rgb(12,18,21)),egui::StrokeKind::Inside);
+                    ui.add_space(16.0);
                     if let Some((fraction, progress_text)) = &progress {
                         Self::full_analysis_progress(ui, *fraction, progress_text);
                     }
@@ -21690,7 +21901,7 @@ impl ChessApp {
                     if let Some(destination) = self.analysis_graph(ui, false) {
                         self.review_to(destination);
                     }
-                    ui.add_space(8.0);
+                    ui.add_space(16.0);
                     }
                     let details_min_height = (ui.clip_rect().bottom() - ui.cursor().top() - 26.0).max(0.0);
                     let mut details_grain=None;
@@ -21718,24 +21929,23 @@ impl ChessApp {
                         }
                     };
                     {
-                        let tabs_background = ui.painter().add(egui::Shape::Noop);
-                        let tabs = ui.horizontal_wrapped(|ui| {
-                            if show_position {
-                            ui.selectable_value(&mut detail_tab, 1, "Pawn Structure");
-                            ui.selectable_value(&mut detail_tab, 2, "Piece Mobility");
-                            ui.selectable_value(&mut detail_tab, 3, "King Safety");
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+                            ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
+                            let tabs: &[(usize, &str)] = if show_position {
+                                &[(1,"Pawn Structure"),(2,"Piece Mobility"),(3,"King Safety")]
                             } else if show_explore {
-                            ui.selectable_value(&mut detail_tab, 4, "Openings");
-                            ui.selectable_value(&mut detail_tab, 5, "Endgames");
+                                &[(4,"Openings"),(5,"Endgames")]
                             } else {
-                            ui.selectable_value(&mut detail_tab, 0, "Summary");
-                            ui.selectable_value(&mut detail_tab, 6, "Critical Analysis");
-                            ui.selectable_value(&mut detail_tab, 7, "Time per move");
-                            ui.selectable_value(&mut detail_tab, 8, "Clock burn-down");
-                            ui.selectable_value(&mut detail_tab, 9, "Time spent vs. move quality quadrant");
+                                &[(0,"Summary"),(6,"Critical Analysis"),(7,"Time per move"),(8,"Clock burn-down"),(9,"Time vs. quality")]
+                            };
+                            for &(index,label) in tabs {
+                                let response = Self::compact_panel_button(ui,label,detail_tab == index);
+                                let response = if index == 9 { response.on_hover_text("Time spent vs. move quality quadrant") } else { response };
+                                if response.clicked() { detail_tab = index; }
                             }
                         });
-                        ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
+                        ui.add_space(8.0);
                         ui.data_mut(|data| data.insert_persisted(tab_id, detail_tab));
                         if detail_tab != 6 { self.finish_saved_line_preview(); }
                         ui.separator();
@@ -22564,7 +22774,31 @@ impl eframe::App for ChessApp {
         let sidebar_detached=sidebar_popout_open();
         #[cfg(not(target_arch="wasm32"))]
         let sidebar_detached=false;
-        if !self.puzzle_mode() && !sidebar_detached {
+        if let Some(study) = self.study.as_mut() {
+            if study.focus_panel {
+                ctx.data_mut(|d| d.insert_temp(egui::Id::new("study_window_open"), true));
+                study.focus_panel = false;
+            }
+        }
+        let study_open = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false);
+        if study_open && !self.puzzle_mode() {
+            egui::Panel::right("study_window").default_size(600.0).min_size(360.0).resizable(true)
+                .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
+                .show(root_ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Study").size(19.0).strong());
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.button("Close").clicked() {
+                                ctx.data_mut(|d| d.insert_temp(egui::Id::new("study_window_open"), false));
+                            }
+                        });
+                    });
+                    ui.separator();
+                    egui::ScrollArea::vertical().id_salt("study_workspace_scroll").auto_shrink([false,false])
+                        .show_gold(ui, |ui| self.study_panel_ui(ui));
+                });
+        }
+        if !self.puzzle_mode() && !sidebar_detached && !study_open {
             let available=root_ui.available_size();
             let chrome=self.live_board_vertical_chrome(root_ui.spacing().item_spacing.y,available.x,true);
             let balance=if !self.focus_mode&&!self.training_live()&&(!self.fics_active||self.fics_game_finished){44.0}else{0.0};
