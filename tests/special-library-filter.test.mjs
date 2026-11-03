@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 
-test('Special filters find short Browser games, preserve records and remember the choice',async()=>{
+test('Special filters find short Browser games, preserve records and remember the choice with filters collapsed',async()=>{
  const dom=new JSDOM('<body></body>',{url:'https://test.local'}),{window}=dom;
  Object.assign(globalThis,{window,document:window.document,localStorage:window.localStorage});
  window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
@@ -19,19 +19,19 @@ test('Special filters find short Browser games, preserve records and remember th
  await window.ironwoodOpenGameLibrary();
  assert.equal(document.querySelector('.game-library-filter-section').open,false);
  assert.equal(document.querySelector('.game-library-filters').hidden,true);
- assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filter');
+ assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filters0');
  assert.equal(document.querySelectorAll('.game-library-entry').length,5);
  assert.equal(document.querySelector('.game-library-clear-filters').hidden,true);
  const select=document.querySelector('[aria-label="Game length"]');
  select.value='short-games';select.dispatchEvent(new window.Event('change'));
- assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filter (1)');
+ assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filters1');
  assert.equal(document.querySelector('.game-library-filter-chips').hidden,false);
  assert.equal(document.querySelector('.game-library-filter-section').open,false);
  const section=document.querySelector('.game-library-filter-section');section.open=true;section.dispatchEvent(new window.Event('toggle'));
  assert.equal(document.querySelectorAll('.game-library-entry').length,4);
  assert.doesNotMatch(document.querySelector('.game-library-list').textContent,/Player4/);
  document.querySelector('#game-library-dialog').close();await window.ironwoodOpenGameLibrary();
- assert.equal(document.querySelector('.game-library-filter-section').open,true);
+ assert.equal(document.querySelector('.game-library-filter-section').open,false);
  assert.equal(document.querySelector('[aria-label="Game length"]').value,'short-games');
  assert.equal(document.querySelectorAll('.game-library-entry').length,4);
  assert.equal(document.querySelector('.game-library-clear-filters').hidden,false);
@@ -44,7 +44,7 @@ test('Special filters find short Browser games, preserve records and remember th
  assert.equal(document.querySelector('[aria-label="Game length"]').value,'*');
  assert.equal(document.querySelector('[aria-label="Sort saved games"]').value,'moves-asc');
  assert.equal(document.querySelector('.game-library-clear-filters').hidden,true);
- assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filter');
+ assert.equal(document.querySelector('.game-library-filter-section summary').textContent,'Filters0');
  assert.equal(JSON.stringify(records),before);
  document.querySelector('#game-library-dialog').close();
 });

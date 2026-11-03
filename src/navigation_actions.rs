@@ -1,6 +1,44 @@
 use super::*;
 
 impl ChessApp {
+    pub(super) fn navigation_open_analysis(&mut self, ctx: &egui::Context) {
+        if self.training_live() || (self.fics_active && self.fics_playing) { return; }
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("navigation_action_selected"), "Analysis".to_owned());
+                d.insert_temp(egui::Id::new("puzzles_open"), false);
+                d.insert_temp(egui::Id::new("study_window_open"), false);
+                d.insert_temp(egui::Id::new("game_sidebar_tab"), 2usize);
+                let mut panels = d.get_temp::<[bool; 8]>(egui::Id::new("enabled_sidebar_panels")).unwrap_or([true; 8]);
+                #[cfg(target_arch = "wasm32")]
+                if let Some(saved) = web_sys::window().and_then(|w| w.local_storage().ok().flatten())
+                    .and_then(|s| s.get_item("ironwood.sidebar-panels.v1").ok().flatten())
+                    .and_then(|s| serde_json::from_str::<[bool; 8]>(&s).ok()) { panels = saved; }
+                panels[2] = true;
+                d.insert_temp(egui::Id::new("enabled_sidebar_panels"), panels);
+                #[cfg(target_arch = "wasm32")]
+                if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+                    let _ = storage.set_item("ironwood.sidebar-panels.v1", &serde_json::to_string(&panels).unwrap());
+                }
+            });
+    }
+
+    pub(super) fn navigation_analysis(&mut self, ui: &mut egui::Ui) {
+        Self::set_menu_item_font(ui);
+        let enabled = !self.training_live() && !(self.fics_active && self.fics_playing);
+        if Self::navigation_action(ui, enabled, "Analyze current game")
+            .on_disabled_hover_text("Finish your training or online game before opening analysis.")
+            .clicked()
+        {
+            self.navigation_open_analysis(ui.ctx());
+        }
+        if Self::navigation_action(ui, self.navigation_library_enabled(), "Analyze a saved game…").clicked() {
+            self.navigation_open_library();
+        }
+        if Self::navigation_action(ui, !self.engine_settings_locked(), "Engine settings…").clicked() {
+            self.open_engine_settings();
+        }
+    }
+
     pub(super) fn navigation_play(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
         if Self::navigation_action(ui, true, "New game against AI…").clicked() {
@@ -25,7 +63,6 @@ impl ChessApp {
         .clicked()
         {
             self.save_current_game();
-            self.engine_status = "Game saved on this device".into();
         }
         ui.separator();
         if Self::navigation_action(ui, true, "Exit to home").clicked() {

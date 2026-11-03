@@ -14,6 +14,17 @@ function harness(fetch) {
 }
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
+test('older saved puzzles can be restored by their validated Lichess ID', async () => {
+  let calls=0;
+  const h=harness(async(url,options)=>{
+    calls++;assert.equal(url.href,'https://lichess.org/api/puzzle/QYQYF');assert.equal(options.credentials,'omit');
+    return {ok:true,json:async()=>({puzzle:{id:'QYQYF'}})};
+  });
+  h.call('request',JSON.stringify({id:'../daily'}));assert.equal(calls,0);
+  h.call('request',JSON.stringify({id:'QYQYF'}));await tick();
+  assert.equal(calls,1);assert.equal(JSON.parse(h.call('poll')).data.puzzle.id,'QYQYF');
+});
+
 test('practice filters, anonymous requests, and concurrent request protection', async () => {
   let finish, calls = 0;
   const h = harness((url, options) => {

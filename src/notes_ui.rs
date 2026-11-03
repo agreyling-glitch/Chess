@@ -1,6 +1,40 @@
 use super::*;
 
 impl ChessApp {
+    pub(super) fn workspace_annotations_tabs(&mut self,ui:&mut egui::Ui,study:bool)->bool {
+        let id=egui::Id::new(if study{"study_workspace_tab"}else{"puzzle_workspace_tab"});
+        let mut tab=ui.ctx().data(|d|d.get_temp::<usize>(id)).unwrap_or(0).min(1);
+        let previous=tab;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing=Vec2::splat(6.0);
+            ui.spacing_mut().button_padding=Vec2::new(10.0,7.0);
+            for (index,label) in [if study{"Study"}else{"Puzzles"},"Annotations"].iter().enumerate() {
+                if Self::compact_panel_button(ui,label,tab==index).clicked(){tab=index;}
+            }
+        });
+        ui.ctx().data_mut(|d|{d.insert_temp(id,tab);});
+        if tab!=previous {
+            self.board_mark_mode=tab==1&&ui.ctx().data(|d|d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0)==0;
+            self.board_mark_drag=None;self.selected=None;self.legal_targets.clear();
+        } else if tab==0 {
+            // A different workspace may have left drawing enabled.
+            self.board_mark_mode=false;self.board_mark_drag=None;
+        }
+        ui.add_space(8.0);
+        tab==1
+    }
+
+    pub(super) fn open_workspace_annotations(ctx:&egui::Context,tab:usize) {
+        ctx.data_mut(|d| {
+            if d.get_temp::<bool>(egui::Id::new("puzzles_open")).unwrap_or(false) {
+                d.insert_temp(egui::Id::new("puzzle_workspace_tab"),1usize);
+            } else if d.get_temp::<bool>(egui::Id::new("study_window_open")).unwrap_or(false) {
+                d.insert_temp(egui::Id::new("study_workspace_tab"),1usize);
+            } else {d.insert_temp(egui::Id::new("game_sidebar_tab"),6usize);}
+            d.insert_temp(egui::Id::new("annotations_tab"),tab);
+        });
+    }
+
     fn notes_tabs_ui(&mut self, ui: &mut egui::Ui) {
         if let Some(index) = self.note_editor_index {
             if index >= self.review_positions.len() { self.note_editor_index = None; }
@@ -157,5 +191,25 @@ impl ChessApp {
                     }
                 });
         });
+    }
+}
+
+#[cfg(test)]
+mod workspace_tests {
+    use super::*;
+    #[test]
+    fn annotations_route_to_the_active_workspace_and_drawing_tab() {
+        let ctx=egui::Context::default();
+        for (workspace,key) in [("study_window_open","study_workspace_tab"),("puzzles_open","puzzle_workspace_tab")] {
+            ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("study_window_open"),workspace=="study_window_open");
+                d.insert_temp(egui::Id::new("puzzles_open"),workspace=="puzzles_open");
+            });
+            ChessApp::open_workspace_annotations(&ctx,0);
+            assert_eq!(ctx.data(|d|d.get_temp::<usize>(egui::Id::new(key))),Some(1));
+            assert!(ChessApp::drawings_tab_active(&ctx));
+            ChessApp::open_workspace_annotations(&ctx,1);
+            assert!(!ChessApp::drawings_tab_active(&ctx));
+        }
     }
 }

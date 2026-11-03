@@ -53,7 +53,7 @@ test('archive UI pages remotely, keeps cross-page selection, filters, previews, 
  const chooseSource=value=>{document.querySelector('[aria-label="Source"]').click();const input=document.querySelector('[aria-label="Find a source"]');input.value=value;input.dispatchEvent(new window.Event('input'));[...document.querySelectorAll('.library-player-option')].find(option=>option.textContent===value).click();};
  chooseSource('Browser');
  document.querySelector('.library-player-trigger').click();const browserPlayer=document.querySelector('[aria-label="Find a player"]');browserPlayer.value='Opponent';browserPlayer.dispatchEvent(new window.Event('input'));document.querySelector('.library-player-option').click();
- const browserAnalysis=[...document.querySelectorAll('label')].find(label=>label.textContent.startsWith('Analysis ')).querySelector('select');browserAnalysis.value='unanalyzed';browserAnalysis.dispatchEvent(new window.Event('change'));
+ const browserAnalysis=document.querySelector('[aria-label="Analysis"]');browserAnalysis.value='unanalyzed';browserAnalysis.dispatchEvent(new window.Event('change'));
  const browserSort=document.querySelector('[aria-label="Sort saved games"]');browserSort.value='moves-desc';browserSort.dispatchEvent(new window.Event('change'));
  click('Next ▶');document.querySelector('.game-library-select').click();
  assert.match(document.querySelector('.game-library-pager').textContent,/Page 2 of 3/);
@@ -77,7 +77,7 @@ test('archive UI pages remotely, keeps cross-page selection, filters, previews, 
  assert.equal(document.querySelector('[aria-label="Source"]').textContent,'Browser');
  assert.equal(document.querySelector('[aria-label="Sort saved games"]').value,'moves-desc');
  assert.equal(document.querySelector('.library-player-trigger').textContent,'Opponent');
- assert.equal([...document.querySelectorAll('label')].find(label=>label.textContent.startsWith('Analysis ')).querySelector('select').value,'unanalyzed');
+ assert.equal(document.querySelector('[aria-label="Analysis"]').value,'unanalyzed');
  assert.match(document.querySelector('.game-library-pager').textContent,/Page 2 of 3/);assert.ok(button('Delete selected (1)'));
  assert.match(document.querySelector('.game-library-main strong').textContent,/Browser14/);
  click('Archive');
@@ -92,7 +92,7 @@ test('archive UI pages remotely, keeps cross-page selection, filters, previews, 
  await settle();assert.equal(document.querySelectorAll('.game-library-entry').length,10);
  assert.match(document.querySelector('.game-library-notice').textContent,/cached games.*offline/);
  document.querySelector('[aria-label="Refresh saved games"]').click();await settle();assert.ok(button('Delete selected (2)'));
- click('Select all 25 matching');await settle();assert.ok(button('Delete selected (25)'));click('Clear selection');assert.ok(button('Delete selected (0)').disabled);assert.ok(button('Export ▾').disabled);assert.ok(button('Clear selection').disabled);assert.ok([...document.querySelectorAll('.game-library-select')].every(box=>!box.checked));assert.match(document.querySelector('.game-library-pager').textContent,/Page 2 of 3/);click('Select all 25 matching');await settle();click('Delete selected (25)');assert.match(document.querySelector('#game-delete-dialog').textContent,/Delete 25 saved games/);document.querySelector('#game-delete-dialog').close();
+ click('Select all 25 matching');await settle();assert.ok(button('Delete selected (25)'));click('Clear selection');assert.ok(button('Delete selected (0)').disabled);assert.ok(button('Export').disabled);assert.ok(button('Clear selection').disabled);assert.ok([...document.querySelectorAll('.game-library-select')].every(box=>!box.checked));assert.match(document.querySelector('.game-library-pager').textContent,/Page 2 of 3/);click('Select all 25 matching');await settle();click('Delete selected (25)');assert.match(document.querySelector('#game-delete-dialog').textContent,/Delete 25 saved games/);document.querySelector('#game-delete-dialog').close();
  const sort=document.querySelector('[aria-label="Sort saved games"]');sort.value='moves-desc';sort.dispatchEvent(new window.Event('change'));await settle();assert.equal(queries.at(-1).sort,'moves-desc');assert.match(document.querySelector('.game-library-main strong').textContent,/Player24/);
  document.querySelector('.game-library-preview').click();await new Promise(resolve=>setTimeout(resolve,10));assert.deepEqual(reads,['24']);assert.equal([...document.querySelectorAll('#game-preview-dialog button')].find(b=>b.textContent==='Play').disabled,false);document.querySelector('#game-preview-dialog').close();
  const search=chooseSource;

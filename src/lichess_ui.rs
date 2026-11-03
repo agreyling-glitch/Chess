@@ -1968,15 +1968,17 @@ impl ChessApp {
         if Self::parse_pgn_mainline(pgn).is_err() {self.lichess.profile_action_error="Could not read the game moves.".into();return;}
         self.save_game();
         self.exit_puzzle_mode();
+        self.study=None;
+        self.puzzle_context.data_mut(|d|d.insert_temp(egui::Id::new("study_window_open"),false));
         self.transient_profile_review=true;
         self.load_pgn_with_storage(pgn,false);
         if let Some(game)=exported.as_ref() {
             self.move_timings.resize(self.review_positions.len(),MoveTiming::default());
             if let Some(clocks)=game["clocks"].as_array() {
                 for (ply,clock) in clocks.iter().take(self.review_moves.len()).enumerate() {
-                    if self.move_timings[ply+1].remaining.is_none() {
-                        if let Some(centis)=clock.as_u64() {self.move_timings[ply+1].remaining=Some(Self::pgn_time(centis as f64/100.0));}
-                    }
+                    // JSON clocks retain centiseconds; PGN clocks may be rounded
+                    // to whole seconds. Keep PGN as fallback when JSON is absent.
+                    if let Some(centis)=clock.as_u64() {self.move_timings[ply+1].remaining=Some(Self::pgn_time(centis as f64/100.0));}
                 }
             }
             let control=Self::simple_time_control(pgn).or_else(||Some((game["clock"]["initial"].as_f64()?,game["clock"]["increment"].as_f64()?)));
@@ -2457,6 +2459,21 @@ mod player_profile_review_tests {
         app.review_lichess_profile_game(&game.to_string());
         assert_eq!(app.move_timings[3].elapsed.as_deref(),Some("0:00:01.500"));
         assert_eq!(app.move_timings[4].elapsed.as_deref(),Some("0:00:03.000"));
+    }
+
+    #[test]
+    fn profile_review_leaves_study_and_keeps_bullet_game_timings() {
+        let ctx=egui::Context::default();let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.open_study("[StudyName \"Earlier study\"]\n[ChapterName \"First\"]\n\n1. e4 e5 *").unwrap();
+        app.navigation_enter_study(&ctx);
+        let game=serde_json::json!({"pgn":"[White \"Profile White\"]\n[Black \"Profile Black\"]\n[TimeControl \"30+0\"]\n\n1. d4 {[%clk 0:00:30]} Nf6 {[%clk 0:00:30]} 2. Nc3 {[%clk 0:00:29]} c5 {[%clk 0:00:30]} *","clock":{"initial":30,"increment":0},"clocks":[3003,3003,2923,2971]});
+        app.review_lichess_profile_game(&game.to_string());
+        assert!(app.study.is_none(),"A profile review must leave the previous study");
+        assert_eq!(app.review_moves,vec!["d4","Nf6","Nc3","c5"]);
+        assert_eq!(app.move_timings.len(),5);
+        assert!(app.move_timings.iter().skip(1).all(|timing|timing.remaining.is_some()&&timing.elapsed.is_some()));
+        assert_eq!(app.move_timings[3].elapsed.as_deref(),Some("0:00:00.800"));
+        assert!(!ctx.data(|d|d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false));
     }
 
     #[test]

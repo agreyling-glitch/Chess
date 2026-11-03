@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -13,13 +13,13 @@ Start a game as White or Black, or let Ironwood choose a side at random. When yo
 
 ## Keep the board beside your study tools
 
-The live board stays on the left, with **Moves · Prediction · Analysis · Position · Explore · Tactical · Annotations · Study** on the right. Analysis contains engine results; Position contains pawn structure, piece mobility, and king safety. Explore groups **Openings** and **Endgames**. Tactical provides **Insights**, **Activity**, and **Patterns**. Annotations keeps **Drawings**, **Notes**, and **Chess Symbols** together in sunken panels with gray subtabs.
+The live board stays on the left, with a configurable row of icon tabs on the right: **Analysis**, **Prediction**, **Moves**, **Position**, **Explore**, **Tactical**, and **Annotations**. Use the gold gear at the end of the row to turn panels on or off and change their order. Your choices are remembered; Analysis comes first for new users. Study has its own workspace under **Training → Study**, below Lichess Puzzles.
 
-Every tab after Moves identifies the selected position and move. The Game Moves panel fits its contents, while the board follows the available space when the browser is resized. Switching between 2D and 3D keeps the same live-board size. [Workspace guide](/help/getting-started/#find-your-way-around).
+The sidebar can collapse to icons while keeping the selected mode visible. Move the pointer over it to expand navigation. The gold gear at its bottom lets you hide and reorder quick-access shortcuts, including optional Lichess Profiles, Board Theme, and Study shortcuts. [Workspace guide](/help/getting-started/#find-your-way-around).
 
 ## Read and practice Lichess studies
 
-Import a public Lichess study or chapter link and keep its chapters together in one workspace. Read author comments beside numbered moves, explore variations, follow video links, and add your own notes and drawings. A chapter selector, Previous and Next controls, and the chapter's ECO code and opening name keep navigation clear. The lesson sits in a sunken panel with subtle grain, gold moves, and softer commentary.
+Open **Training → Study** and paste a public Lichess study link directly into the import box. The study opens at its starting chapter. Choose an existing study from selectable saved-study cards, using **Storage location** to switch between Browser and a connected Companion. Studies reopen in Study mode and keep their chapters together in one workspace. Read author comments beside numbered moves, explore variations, follow video links, and add your own notes and drawings. A chapter selector, Previous and Next controls, and the chapter's ECO code and opening name keep navigation clear. The lesson sits in a sunken panel with subtle grain, gold moves, and softer commentary.
 
 Practice either side with accepted study continuations, automatic replies, feedback, and a reveal control. Refresh the public source while preserving local work, or copy the complete study as PGN. In the Browser library, **Studies** shows one entry per Lichess study; older individual chapter saves are consolidated while preserving notes, analysis, favorites, and collections. [Lichess studies guide](/help/lichess-studies/).
 
@@ -41,7 +41,7 @@ For full-game analysis, choose a **node budget** or **1–60 seconds per positio
 
 ## See candidate moves on the board
 
-In **Prediction**, the arrow beside **Analyze position** opens engine selection for browser Stockfish and available Companion engines. The current engine is named below the button. Switching clears old live results and resumes an active search when the new engine is ready.
+Prediction uses a compact console with a gold evaluation and best-move header, analysis controls, engine/depth information, a board-guidance toggle, and a continuation table with playback controls. Its engine menu offers browser Stockfish and available Companion engines. Switching clears old live results and resumes an active search when the new engine is ready.
 
 Enable **Show best next move** in its prominent On/Off card to compare all available PV lines: the strongest move has a green circle, arrow, and score bubble; alternatives use red. Scores sit in the destination square's bottom-right corner and use White's perspective. **Compare saved line**, enabled by default, adds a blue dashed saved recommendation and a translucent ghost when its piece has already moved. A label identifies the earlier position, and the 3D ghost follows the board's camera and piece scale. [Prediction and saved-line comparison](/help/engine-line/).
 
@@ -71,7 +71,9 @@ Expand **Activity** in a Lichess profile to load recent daily results, grouped b
 
 ## Train against an adaptive opponent
 
-Open **Training → Train against AI…** to create a profile for Built-in Stockfish or a supported installed Companion engine. Strength controls follow that engine’s capabilities. Stockfish profiles start at a chosen target from 1320–3190, with 1320 as the default. Alternate White and Black games against an opponent whose target follows the rating for that color. The lower color rating determines overall progress. Track separate color rating histories, results, and clock losses. A progress dashboard shows analysis coverage and comparable average-loss bars for opening, middlegame, and endgame, with mistake counts and a practice suggestion based on the analyzed sample. Rename profiles without losing their ratings or history, move, resize or maximize the dashboard, restore its previous size and position, or pop it out onto another monitor, and continue with **Start next training game**. Training games have their own Saved Games category and profile filter; profiles and completed results are included in full backups. [How training ratings and focus areas work](/help/training-vs-ai/).
+Open **Training → Train against AI…** and choose a training profile. The training console shows the next color, opponent difficulty, and unlimited player clock above a gold **Start training game** button. **Manage profiles** keeps profile creation, engine selection, rename, import, export, and deletion together.
+
+Switch between **Progress**, **Focus areas**, and **Recent games**. Progress retains separate color ratings and rating history. Focus areas adds matching sunken charts for opening, middlegame, and endgame loss over time: gold 10-game rolling averages, individual-game dots, a shared scale, Last 20 / Last 50 / All games, and hover details. Missing analysis stays a gap; coverage and sample counts help interpret partial data. Ratings are personal training measures, not official ratings. [Training and progress guide](/help/training-vs-ai/).
 
 ## Practice with puzzles
 
@@ -83,7 +85,7 @@ Choose Opening, Middlegame, or Endgames in puzzle practice. When your training d
 
 ## Replay puzzle attempts without losing progress
 
-Puzzle attempts with played moves appear under **Puzzles** in Saved Games, using the same larger playback viewer as ordinary games. Playback records are separate from the results used by Puzzle Progress and Review mistakes: deleting an attempt’s saved replay does not reset its progress count. Completed training results similarly remain in the training profile when their replay game is deleted. [Puzzles](/help/puzzles/) · [Saved Games](/help/saved-games-and-backups/).
+Saved puzzles reopen in Puzzle mode with their recorded position and annotations. **Annotations** is available directly in the Puzzle panel, and initial-position notes can be saved before making a move. The larger board viewer remains available for playback. Playback records are separate from the results used by Puzzle Progress and Review mistakes: deleting an attempt’s saved replay does not reset its progress count. Completed training results similarly remain in the training profile when their replay game is deleted. [Puzzles](/help/puzzles/) · [Saved Games](/help/saved-games-and-backups/).
 
 ## Explore opening choices
 
@@ -149,13 +151,15 @@ Pause or stop full-game analysis before printing. Choose **Save as PDF** in your
 
 ## Build your library
 
-Open **Game library → Saved games…** and choose Browser or a named Companion. Create collections, add games to several collections without duplicating their stored PGN, and combine Collection with Category and other filters. Copy or move games between locations, optionally choosing a destination collection. Edit player and event metadata from a game’s menu while preserving its original PGN and analysis. [Collections and metadata](/help/saved-games-and-backups/).
+Open **Game library → Saved games…** and choose Browser or a named Companion. The table has fixed column widths, an **Analysis** status column, and a selected-game preview. Click a title to open a game, or select a row to inspect its board and details. Puzzles and studies reopen in their respective modes.
 
-Saved Games keeps **My Games**, **Training**, **Puzzles**, **Observed**, and **Imported Games** together on this device. Choose a **Category**, expand **Filters**, and search dedicated Player, Source, Date and Opening dropdowns. Opening entries combine ECO codes and opening names; games without opening tags are classified from their moves using the bundled opening dataset. Filter by analysis status, sort by recency or move count, and mark favorites. **Special filters → Fewer than 2 full moves** finds games with fewer than four played half-moves for review, export or deletion. When a filter is active, **Clear filters** appears beside **Filters** and clears all filters together while keeping your sort order. Click a game title to reopen it, or use its hamburger menu for other actions.
+The Search console places **Search games or players** beside **Manage library**, with **Show** and **Filters** below. Filters start collapsed. Expand the aligned, icon-labeled fields for player, source, date, opening, analysis, game length, folder, and training profile when applicable. Removable gold chips stay visible when collapsed. Source groups recognizable services while retaining each game's original URL. [Search and manage saved games](/help/saved-games-and-backups/#find-and-select-games).
 
-Move, resize or maximize Saved Games, or open it in a separate window. Its size, position and expanded Filters state are remembered, and game cards reflow with the available space. Board Theme and Training Profiles pop-outs also adapt to their window size. Select individual games, a page, or all matching games; **Clear selection** clears every page. A progress bar tracks large exports and disappears when preparation completes. Export plain PGN, annotated PGN with notes, symbols and drawings, or Analysis JSON; multiple JSON files are bundled in a ZIP.
+Select games using their checkboxes, a page, or **Select all matching**. A grouped console keeps **Export**, **Organize** and **More** actions together. Export plain PGN, annotated PGN, or Analysis JSON; organize folders, move or copy between storage locations, and delete with confirmation. Previous analysis runs and annotations stay with the game.
 
-Click a small board for a larger player with a move table beside it. The current move has a rounded outline, and the list scrolls to keep it visible. Browse with the navigation controls or arrow keys, or use **Play** for automatic playback. Right-click Play to choose **Very Fast (0.5 s)**, **Fast (1 s)**, **Normal (2 s)**, **Slow (3 s)** or **Analysis (5 s)**. The preview remembers your speed. Games with a Starting note show a short preview and retain the full note in the larger player. Deleting a game returns to the library with the current filters and window state preserved.
+Select two or more games to choose a browser or Companion engine and **Analyze N games**. The progress modal distinguishes the full-game pass from optional critical-move verification, enabled by default. Results are saved and read back before success is reported. Cancel keeps completed work and partial results. An active **Not analyzed** filter hides analyzed games and fills their places with the next matching games. [Batch-analysis guide](/help/saved-games-and-backups/#batch-analysis).
+
+Saved Games remains movable, resizable, maximizable, and available in a separate window. Its size and position are remembered. Enlarge the preview board for playback, notes, and the game's actions. **Save current game** confirms a completed save or reports an error; Companion saves distinguish local pending synchronization from a completed archive update.
 
 ## Choose how to import your games
 
@@ -275,7 +279,7 @@ First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background 
 
 Board Theme and Background open at normal sizes and can be moved, resized, or opened in separate browser windows with **↗**. Both have raised **×** buttons, gold 3D borders, heavy outer paper grain, and linen and subtle-grain inset sections. Theme choices and background changes in a pop-out apply to the main workspace; theme **Adjust** controls open in the main window. Import Games uses matching gold borders and textured sections. Engine Settings marks its selected context tab with a raised gold finish and dark text. Allow browser pop-ups for Ironwood and keep the main window open when using companion windows.
 
-Local **vs AI Engine** setup uses a resizable 3D gold frame, side-selection cards, and a sunken Game Settings section. The installed-engine dropdown and refresh icon use the available width, and help text expands its row without overlapping other controls. Online menu choices open their lobby directly. Backup and Restore and the metadata editor use matching gold frames, heavy outer grain, and fine-grain sunken controls.
+Local **New game against AI** uses a content-sized Quick setup panel connected to the sidebar, with chess symbols, side-selection cards, gold strength controls where supported, and time-preset buttons. The installed-engine dropdown and refresh icon use the available width, and help text expands its row without overlapping other controls. Online menu choices open their lobby directly. Backup and Restore and the metadata editor use matching gold frames, heavy outer grain, and fine-grain sunken controls.
 
 Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Fine linen adds depth to the main move list, Engine Prediction score and continuation sections, and the Saved Games controls. Paper grain appears around training profiles, engine settings, Tactical Map, Notes, Saved Games, and larger playback. Profile graphs and expanded prediction boards have their own sunken textured surfaces. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
 

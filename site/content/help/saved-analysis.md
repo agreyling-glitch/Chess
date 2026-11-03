@@ -4,7 +4,7 @@ description: "Switch saved engine runs with numbered buttons or keys 1–9, and 
 category: "analysis"
 keywords: [Saved Analysis, compare, engine, dropdown, numbered buttons, shortcuts, settings, hover, expanded graph]
 weight: 22
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 ---
 
 ## Choose a saved run
@@ -14,6 +14,14 @@ Open a game and select **Analysis**. The **Analyze / Analyze again** controls an
 Click a numbered button or press **1–9** for the corresponding run. Numbers follow the dropdown order; buttons beyond 9 remain clickable. The dropdown and highlighted number stay synchronized after the selected run loads. Refreshing the list or saving another run can change the order.
 
 Switching is unavailable while full-game analysis is running or while a run is loading. Number shortcuts do not select runs while you are typing or using a modified key combination. In the Analysis view, these numbers take priority over observed FICS-game shortcuts.
+
+## Analyze several saved games
+
+Select two or more checkboxes in Saved Games. The grouped selection console offers an analysis-engine dropdown, **Verify critical moves** enabled by default, and a gold **Analyze N games** button. First-pass positions use one second each; critical positions use five seconds each in the second pass. The modal names the active pass and reports progress, completion and failures. Cancel preserves completed work, including partial verification.
+
+A successful batch save is read back before being counted as complete. Previous runs and annotations are preserved. The library includes retained runs when showing analysis status. If the current snapshot is empty, reopening can restore a retained run only when its recorded positions match the game.
+
+An active **Not analyzed** filter hides newly analyzed entries and shows the next matching games. Clear the chip to see completed results. See [Batch analysis](/help/saved-games-and-backups/#batch-analysis).
 
 ## If a selection does not load
 

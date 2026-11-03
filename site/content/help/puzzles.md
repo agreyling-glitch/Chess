@@ -3,7 +3,7 @@ title: "Puzzles"
 description: "Solve Lichess puzzles and review mistakes with local progress."
 category: "play"
 keywords: [puzzles, daily puzzle, practice, tactics, hints, progress, review mistakes]
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 weight: 12
 ---
 
@@ -25,8 +25,10 @@ Puzzle data is supplied by [Lichess](https://database.lichess.org/#puzzles) unde
 
 ## Puzzle move history
 
-Puzzle attempts with played moves appear under **Puzzles** in Saved Games, where you can replay the recorded moves. These playback records are separate from the puzzle progress used by **Progress** and **Review mistakes**. Deleting a saved playback record does not reset those counts.
+Choose the **Annotations** tab at the top of the Puzzle panel to add drawings, notes and chess symbols. **Save current game** keeps them even before the first move and confirms the save. Saved puzzles reopen in Puzzle mode with their position, recorded progress and annotations. Older saved attempts may need to download their puzzle data again.
+
+Puzzle attempts appear under **Puzzles** in Saved Games, where you can reopen the attempt and review its recorded moves. These playback records are separate from the puzzle progress used by **Progress** and **Review mistakes**. Deleting a saved playback record does not reset those counts.
 
 ## Playback versus progress
 
-The Puzzles library category is for watching recorded attempt moves. **Progress** and **Review mistakes** use the puzzle results stored separately in this browser. Deleting a playback entry does not turn a solved puzzle into an unsolved one. Training-profile practice recommendations use that profile’s analyzed games; Lichess profile Activity shows results from Lichess. These are different records.
+The Puzzles library category reopens saved attempts in Puzzle mode. **Progress** and **Review mistakes** use the puzzle results stored separately in this browser. Deleting a playback entry does not turn a solved puzzle into an unsolved one. Training-profile practice recommendations use that profile’s analyzed games; Lichess profile Activity shows results from Lichess. These are different records.

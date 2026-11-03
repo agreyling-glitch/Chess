@@ -2,12 +2,12 @@
 title: "Train against AI"
 description: "Choose a training engine, build a profile, play both colors, and follow your progress."
 category: "using-ironwood"
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 keywords: [training, profile, Elo, rating, progress, statistics, Stockfish]
 weight: 14
 ---
 
-Choose **Training → Train against AI…** and select Built-in Stockfish or a supported installed Companion engine. Each profile retains its engine and options. For Stockfish, enter a profile name, choose **Starting target Elo** from 1320–3190, and select **Create profile**. The default is 1320. Start the game to play White against Stockfish at your chosen target. Games use the standard starting position with unlimited thinking time for you. Stockfish gets up to one second of search time per move. Unfinished training games from earlier versions also become untimed when reopened.
+Choose **Training → Train against AI…** and choose **Manage profiles** to create a profile for Built-in Stockfish or a supported installed Companion engine. Each profile retains its engine and options. For Stockfish, enter a profile name, choose **Starting target Elo** from 1320–3190, and select **Create profile**. The default is 1320. Start the game to play White against Stockfish at your chosen target. Games use the standard starting position with unlimited thinking time for you. Stockfish gets up to one second of search time per move. Unfinished training games from earlier versions also become untimed when reopened.
 
 Each profile starts with separate White and Black ratings at its chosen starting target. After a completed game, the next game uses the other color. A color's next opponent target follows its rating. **Overall** progress is the lower of the two ratings, so advancing requires results with both colors.
 
@@ -28,11 +28,11 @@ Open **Training → Train against AI…** or **Profile & progress** in Game Move
 - A score rate and a broad descriptive 95% range, including its sample size. This range is not uncertainty in your Elo or proof of improvement; opponents adapt, and your own skill changes.
 - Clock losses and recent completed games.
 
-Use **Start next training game** to continue with the next color. While a training game is underway, finish it before starting the next one. Training Profiles is movable and resizable, with a gold 3D border. Drag its header or resize its edges. The raised **↗** button opens it in a separate browser window; **×** closes it. Profile edits are shared between windows, and Start next training game in the pop-out starts play on the main board. Keep the main window open. Puzzle practice is launched from Training Profiles in the main window.
+The console groups **Progress**, **Focus areas**, and **Recent games** in separate icon tabs. The next-game inset shows your side, opponent difficulty, and unlimited clock. Use the gold **Start training game** button to continue with the next color. While a training game is underway, finish it before starting the next one. Training Profiles is movable and resizable, with a gold 3D border. Drag its header or resize its edges. The raised **↗** button opens it in a separate browser window; **×** closes it. Profile edits are shared between windows, and Start training game in the pop-out starts play on the main board. Keep the main window open. Puzzle practice is launched from Training Profiles in the main window.
 
 ### Rename a profile
 
-Select the profile, choose **Rename profile**, edit the name, and choose **Save name**. **Cancel** keeps the existing name. Renaming changes the display name, while its internal ID, ratings, and completed-game history stay linked. Saved Games titles and the profile filter display the current profile name; previously recorded game data can retain the name used when the game was played.
+Open **Manage profiles**, check the row for one profile, choose **Rename**, edit the name, and choose **Save name**. Profile creation, engine choices, import, export and deletion remain in this management window. **Cancel** keeps the existing name. Renaming changes the display name, while its internal ID, ratings, and completed-game history stay linked. Saved Games titles and the profile filter display the current profile name; previously recorded game data can retain the name used when the game was played.
 
 You can also [type your moves](/help/keyboard-input/), including lowercase piece letters such as `nc3`, during training.
 
@@ -46,6 +46,12 @@ Phase labels are heuristics: the first ten full moves are the opening; later pos
 
 When **Your next practice focus** recommends a phase, choose **Puzzle difficulty** and click **Practice this phase** to load a matching [Lichess puzzle](/help/puzzles/). The profile window closes and Puzzles opens on Practice with Opening, Middlegame, or Endgames selected. Difficulty uses Lichess's anonymous baseline of 1500, not your Ironwood training rating. Finish active training or online play before starting puzzles.
 
+### Progress over time
+
+In **Focus areas**, the three sunken history charts track average loss for Opening, Middlegame and Endgame. Gold lines show a rolling average of the available per-game means within each ten-completed-game window; faint dots show individual games. A shorter starting window is used until ten games are available. **Last 20 games**, **Last 50 games**, and **All games** change the visible history, while rolling averages still include earlier games in their ten-game window. All three charts share the same vertical scale.
+
+Lower is better. Hover a chart for the game date, color, average loss, rolling average, sampled-game count, numerical evaluations and game coverage. Games without numerical evaluations for that phase remain gaps, not zero loss. Mate scores are excluded. The coverage line distinguishes games with analysis from known-move coverage; older games without recorded move totals are excluded from that percentage. Partial analysis and changing opponents limit comparisons.
+
 ## Saved games and backups
 
 
@@ -57,4 +63,4 @@ Profiles are stored in this browser on this device. Make a backup before clearin
 
 ## Training window layout
 
-Training profiles now groups profile management, ratings, progress, and practice recommendations into sunken sections. The rating graph has a gold paper surface, and the training result card uses the same recessed treatment. Primary actions such as **Next training game** use raised gold buttons.
+The Training console separates the next-game controls from Progress, Focus areas and Recent games, with profile management behind **Manage profiles**. Gold icons and primary controls, aligned spacing, and sunken sections match the rest of Ironwood. The rating graph has a gold paper surface, and the training result card uses the same recessed treatment. Primary actions such as **Start training game** use raised gold buttons.

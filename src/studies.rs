@@ -1106,13 +1106,128 @@ impl ChessApp {
                 return;
             }
         }
-        if self.study.is_none() {
-            ui.heading("Studies");
-            ui.label("Import a Lichess study link or paste study PGN to begin.");
-            if ui.button("Import study…").clicked() {
-                self.pgn_dialog_open = true;
-                self.import_tab = 1;
+        let chooser_id=egui::Id::new("study_choose_another");
+        if self.study.is_some() && ui.button("Choose another study…").clicked() {
+            self.save_game();
+            ui.ctx().data_mut(|d|d.insert_temp(chooser_id,true));
+            #[cfg(target_arch="wasm32")]
+            refresh_study_picker();
+        }
+        if self.study.is_none() || ui.ctx().data(|d|d.get_temp::<bool>(chooser_id)).unwrap_or(false) {
+            let ctx=ui.ctx().clone();
+            let input_id=egui::Id::new("study_quick_url");
+            let busy_id=egui::Id::new("study_quick_loading");
+            let error_id=egui::Id::new("study_quick_error");
+            let mut input=ctx.data(|d|d.get_temp::<String>(input_id)).unwrap_or_default();
+            let mut busy=ctx.data(|d|d.get_temp::<bool>(busy_id)).unwrap_or(false);
+            let mut error=ctx.data(|d|d.get_temp::<String>(error_id)).unwrap_or_default();
+            #[cfg(target_arch="wasm32")]
+            if busy {
+                ctx.request_repaint_after(std::time::Duration::from_millis(100));
+                if let Ok(reply)=serde_json::from_str::<serde_json::Value>(&poll_study_refresh()) {
+                    busy=false;
+                    if let Some(pgn)=reply["pgn"].as_str() {
+                        match self.open_study(pgn) {
+                            Err(message)=>error=message,
+                            Ok(())=>{ctx.data_mut(|d|d.insert_temp(chooser_id,false));},
+                        }
+                    } else {error=reply["error"].as_str().unwrap_or("Could not import study.").into();}
+                }
             }
+            Self::stable_panel_button_style(ui);
+            Self::grained_outer_section(ui, |ui| {
+                let gold=Color32::from_rgb(215,185,121);
+                ui.label(RichText::new("IMPORT A STUDY").size(11.0).color(gold));
+                ui.heading("Learn from a Lichess study");
+                ui.label("Paste a public study link to open its first chapter.");
+                ui.add_space(6.0);
+                let response=ui.add_enabled(!busy,egui::TextEdit::singleline(&mut input)
+                    .hint_text("https://lichess.org/study/…").desired_width(ui.available_width()));
+                let import=ui.add_enabled(!busy&&!input.trim().is_empty(),egui::Button::new(
+                    RichText::new("Import study").color(Color32::from_rgb(30,26,20)))
+                    .min_size(Vec2::new(140.0,38.0)).raised_gold()).clicked()
+                    || (response.lost_focus()&&ui.input(|i|i.key_pressed(egui::Key::Enter))&&!busy);
+                if import {
+                    let parts:Vec<_>=input.trim().trim_end_matches('/').split('/').collect();
+                    if parts.len()>=5&&parts.len()<=6&&parts[0]=="https:"&&parts[2]=="lichess.org"&&parts[3]=="study"
+                        && parts[4].len()==8&&parts[4].bytes().all(|c|c.is_ascii_alphanumeric())
+                        && (parts.len()==5||(parts[5].len()==8&&parts[5].bytes().all(|c|c.is_ascii_alphanumeric()))) {
+                        #[cfg(target_arch="wasm32")]
+                        {refresh_study(&format!("https://lichess.org/study/{}",parts[4]));busy=true;error.clear();}
+                        #[cfg(not(target_arch="wasm32"))]
+                        {error="URL imports are available in the browser version.".into();}
+                    } else {error="Paste an https://lichess.org/study/ link.".into();}
+                }
+                if busy {ui.horizontal(|ui| {ui.spinner();ui.label("Importing study chapters…");});}
+                if !error.is_empty(){ui.colored_label(Color32::LIGHT_RED,&error);}
+                ui.small("The study must be public with downloads enabled. Notes and variations are kept.");
+            });
+            ctx.data_mut(|d|{d.insert_temp(input_id,input);d.insert_temp(busy_id,busy);d.insert_temp(error_id,error);});
+            if self.study.is_some() && !ctx.data(|d|d.get_temp::<bool>(chooser_id)).unwrap_or(false){return;}
+            ui.add_space(16.0);
+            Self::grained_outer_section(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Saved studies").size(19.0).strong());
+                    #[cfg(target_arch="wasm32")]
+                    if ui.button("Refresh").clicked(){refresh_study_picker();}
+                });
+                ui.small("Choose where your studies are saved, then select one to open.");
+                #[cfg(target_arch="wasm32")]
+                {
+                    let initialized=egui::Id::new("study_picker_initialized");
+                    if !ctx.data(|d|d.get_temp::<bool>(initialized)).unwrap_or(false) {
+                        refresh_study_picker();ctx.data_mut(|d|d.insert_temp(initialized,true));
+                    }
+                    if let Ok(catalog)=serde_json::from_str::<serde_json::Value>(&study_picker()) {
+                        let selected=catalog["location"].as_str().unwrap_or("browser");
+                        let locations=catalog["locations"].as_array();
+                        let label=locations.and_then(|items|items.iter().find(|item|item["value"].as_str()==Some(selected)))
+                            .and_then(|item|item["label"].as_str()).unwrap_or("Unavailable Companion");
+                        ui.horizontal(|ui| {
+                            ui.set_height(36.0);
+                            ui.spacing_mut().interact_size.y = 36.0;
+                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.label("Storage location");
+                            egui::ComboBox::from_id_salt("study_picker_location").selected_text(label).width(220.0).show_ui(ui,|ui| {
+                                if let Some(locations)=locations {
+                                    for location in locations {
+                                        let value=location["value"].as_str().unwrap_or("browser");
+                                        let name=location["label"].as_str().unwrap_or("Companion");
+                                        let enabled=location["enabled"].as_bool().unwrap_or(false);
+                                        if ui.add_enabled(enabled,egui::Button::new(if enabled {name.to_owned()} else {format!("{name} · offline")}).selected(value==selected)).clicked() {
+                                            set_study_picker_location(value);ui.close();
+                                        }
+                                    }
+                                }
+                            });
+                            if ui.button("Connections…").clicked(){manage_companion_connection();}
+                            });
+                        });
+                        ui.add_space(6.0);
+                        if catalog["loading"].as_bool()==Some(true){ui.spinner();ctx.request_repaint_after(std::time::Duration::from_millis(100));}
+                        if let Some(message)=catalog["error"].as_str().filter(|s|!s.is_empty()){ui.colored_label(Color32::LIGHT_RED,message);}
+                        if let Some(items)=catalog["items"].as_array() {
+                            if items.is_empty()&&catalog["loading"].as_bool()!=Some(true){ui.label("No studies in this location. Choose another location or import a study above.");}
+                            for item in items {
+                                let name=item["name"].as_str().unwrap_or("Study");
+                                let chapters=item["chapters"].as_u64().unwrap_or(1);
+                                let label=format!("{name}\n{chapters} {} · Open study",if chapters==1 {"chapter"} else {"chapters"});
+                                let response=ui.add_sized([ui.available_width(),68.0],egui::Button::new(
+                                    RichText::new(label).color(Color32::from_rgb(225,218,197)))
+                                    .fill(Color32::from_rgb(30,39,44)).stroke(Stroke::new(1.0,Color32::from_rgb(85,78,56)))
+                                    .corner_radius(6.0));
+                                let c=egui::pos2(response.rect.right()-18.0,response.rect.center().y);
+                                let stroke=Stroke::new(1.5,Color32::from_rgb(215,185,121));
+                                ui.painter().line_segment([c+Vec2::new(-3.0,-5.0),c+Vec2::new(2.0,0.0)],stroke);
+                                ui.painter().line_segment([c+Vec2::new(2.0,0.0),c+Vec2::new(-3.0,5.0)],stroke);
+                                if response.on_hover_text("Open this study in Study mode").clicked(){if let Some(id)=item["id"].as_str(){open_picked_study(id);}}
+                            }
+                        }
+                    }
+                }
+                if ui.button("Browse full library…").clicked(){self.navigation_open_library();}
+                if self.study.is_some() && ui.button("Return to current study").clicked(){ctx.data_mut(|d|d.insert_temp(chooser_id,false));}
+            });
             return;
         }
         #[cfg(target_arch = "wasm32")]

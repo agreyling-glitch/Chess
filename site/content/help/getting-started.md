@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 ---
 
 ## Open a game
@@ -15,14 +15,19 @@ Open **Game library → Import…** and choose **Paste a game or collection**, *
 
 For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game library → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
 
-## Main menus
+## Sidebar navigation
 
-- **Play:** vs AI Engine, Online via Lichess, Online via FICS, and Self-play.
-- **Training:** Train against AI, followed by Lichess Puzzles.
-- **Game History:** Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data.
-- **Settings:** Engine settings and Companion connection first, followed by board and appearance options.
+The sidebar replaces the top menus. Its collapsed rail keeps the selected mode visible; move the pointer over it to expand the menu.
 
-Online choices open their lobby directly. If signed out of Lichess, use the lobby’s **Sign in with Lichess** or **Reconnect saved session** control. Opening the lobby does not start authorization automatically.
+- **Play:** New game against AI, online lobbies, Self-play, and Save current game.
+- **Analysis:** open the analysis workspace directly.
+- **Training:** Train against AI, Lichess Puzzles, then Study.
+- **Game library:** Saved games, imports, Backup and Restore, and Storage information.
+- **Settings:** engines, Companion connections, board appearance, and local-data controls.
+
+The gold gear at the bottom of the sidebar configures quick-access shortcuts: enable or hide each shortcut and move it up or down. Lichess Profiles, Board Theme, and Study are available but start disabled for new users. Choices are remembered.
+
+Online choices open their lobby without automatically signing in. Use the lobby's sign-in or reconnect control when needed. New game against AI opens a content-sized Quick setup panel connected to the sidebar.
 
 ## Find your way around
 
@@ -35,9 +40,12 @@ The live board stays on the left. Choose a tab on the right:
 - **Explore:** **Openings** for Opening Explorer and **Endgames** for Tablebases.
 - **Tactical:** Tactical Map, with **Insights**, **Activity**, and **Patterns**.
 - **Annotations:** **Drawings**, **Notes**, and **Chess Symbols**.
-- **Study:** imported Lichess study chapters, comments, variations, and practice. [Read and practice a study](/help/lichess-studies/).
 
-Every tab after Moves shows the selected position and move, for example **Position 9 of 44 (Qe3)**. Gray subtabs inside sunken panels keep related tools together. The Moves panel fits its contents; the board fits the available space as you resize the browser. Switching between 2D and 3D preserves the live board's size. Some study tools are unavailable during active online play or training.
+Study is a separate **Training → Study** workspace with chapter comments, variations, and practice. [Read and practice a study](/help/lichess-studies/).
+
+Use the gold gear at the end of the tab row to enable or hide panels and change their order. Your preferences are remembered. Analysis is first for new users; an existing custom order is preserved.
+
+Each analysis panel shows the selected position and move, for example **Position 9 of 44 (Qe3)**. Gold-accented subtabs inside sunken panels keep related tools together. The Moves panel fits its contents; the board fits the available space as you resize the browser. Switching between 2D and 3D preserves the live board's size. Some study tools are unavailable during active online play or training.
 
 Select a move in Moves, then switch tabs to inspect that position. [Compare saved analyses](/help/saved-analysis/), [inspect positions](/help/positional-insights/), or [add annotations](/help/taking-notes/).
 
@@ -50,6 +58,8 @@ A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled 
 **Analysis → Summary** compares both players with accuracy and average CPL charts for Overall, Opening, Middlegame, and Endgame. **Critical Analysis** contains the turning point, the Move quality stacked bars (open by default), and Move Analysis with played and engine-preferred lines beside an evaluation-swing bar. **Time per move**, **Clock burn-down**, and **Time spent vs. move quality quadrant** help review recorded clock use. [Timing-chart guide](/help/time-management/).
 
 The results are estimates from a chess engine. They can change if Stockfish searches longer or uses different settings. Wait for analysis and any critical-move verification to finish before treating the summary as final.
+
+For several saved games at once, select their checkboxes in Saved Games and choose **Analyze N games**. The engine selector, optional critical second pass and progress modal are described in [Batch analysis](/help/saved-games-and-backups/#batch-analysis).
 
 ## Open the right-hand panel in a separate window
 

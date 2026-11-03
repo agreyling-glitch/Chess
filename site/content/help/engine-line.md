@@ -4,8 +4,12 @@ description: "Choose a prediction engine, compare candidate arrows and scores, a
 category: "analysis"
 keywords: [best move, engine line, PV, principal variation, variation, multipv]
 weight: 50
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 ---
+
+## Compact prediction console
+
+Prediction groups the gold evaluation and best move, analysis controls, engine and depth, board guidance, variation selector, and continuation playback in one compact sunken console. The evaluation remains in White's perspective. The engine menu retains browser Stockfish and connected Companion choices. Use the continuation's playback and expand controls to inspect lines without losing the main game.
 
 ## Best move
 

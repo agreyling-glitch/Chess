@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 title: "Lichess studies"
 description: "Read chapters, explore variations, practice moves, and keep your own notes."
 category: "using-ironwood"
@@ -7,7 +7,11 @@ keywords: [Lichess, study, chapters, variations, repertoire, practice, PGN]
 weight: 85
 ---
 
-Open **Game library → Import**, choose **Lichess**, and paste a study link or a chapter link. Choose **Fetch study**, then **Continue**. The study opens at its first position in the **Study** tab beside the board. Its chapters stay together in one saved workspace. A public study must allow downloads. For a private study, export its PGN while signed in to Lichess and paste the file's contents into Ironwood's import dialog.
+Open **Training → Study**. Paste a public Lichess study URL into the import box and choose **Import study**. The study opens in Study mode at its starting chapter. Public studies must allow downloads.
+
+When no study is open, choose one of the selectable **Saved studies** cards. **Storage location** switches between Browser and a connected Companion; **Connections…** manages connections. **Choose another study…** returns to the picker, while **Return to current study** restores the loaded workspace. Opening a saved study from Saved Games also uses Study mode.
+
+The general **Game library → Import → Lichess** workflow still accepts study or chapter links. For private study content, export PGN from Lichess and import it in Ironwood.
 
 ## Read and explore
 
@@ -19,7 +23,7 @@ You can also play moves on the board. A studied move follows that branch. In **R
 
 ## Your notes and drawings
 
-Write in **Your note** to keep a personal observation at the current position. The author's text stays separate, including after a PGN export and reimport. The existing **Annotations** tools also work on study positions; your notes, glyphs, and drawings follow the position when you switch chapters or branches.
+Write in **Your note** to keep a personal observation at the current position. The author's text stays separate, including after a PGN export and reimport. The **Annotations** tab at the top of the Study panel provides **Drawings**, **Notes**, and **Chess Symbols** for study positions; your notes, glyphs, and drawings follow the position when you switch chapters or branches.
 
 Ironwood saves the workspace with your saved games, including the selected chapter, variations, and local notes. Under **Source and export**, **Copy study PGN** copies every chapter and its supported annotations. Exporting the workspace as PGN from Saved Games also includes the complete study. Moving within a line keeps its analysis active. Switching branches keeps separate analysis snapshots so returning restores that line’s results. A manual board flip stays in effect while you navigate. Back up your browser library to preserve the complete editable workspace and its local state.
 

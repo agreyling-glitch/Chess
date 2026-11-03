@@ -29,6 +29,35 @@ struct PuzzleInfo {
 }
 #[derive(Clone, Deserialize, Serialize)]
 struct Record { data: PuzzleData, solved: bool }
+
+#[derive(Clone,Deserialize,Serialize)]
+pub(super) struct PuzzleSnapshot {
+    data: PuzzleData,
+    played: Vec<String>,
+    done: bool,
+    recorded: bool,
+}
+impl PuzzleSnapshot {
+    fn from_session(session:&Session)->Self {
+        Self{data:session.data.clone(),played:session.played.iter().map(ToString::to_string).collect(),done:session.done,recorded:session.recorded}
+    }
+    fn restore(&self)->Result<Session,String> {
+        let mut session=Session::new(self.data.clone())?;
+        if self.played.len()>session.moves.len(){return Err("Invalid saved puzzle progress.".into());}
+        for (i,value) in self.played.iter().enumerate() {
+            let mv=ChessMove::from_str(value).map_err(|_|"Invalid saved puzzle move")?;
+            if !MoveGen::new_legal(&session.board).any(|legal|legal==mv) {return Err("Illegal saved puzzle move.".into());}
+            let next=session.board.make_move_new(mv);
+            if session.moves.get(i)!=Some(&mv)&&next.status()!=BoardStatus::Checkmate{return Err("Saved puzzle move does not match its solution.".into());}
+            session.board=next;session.played.push(mv);
+        }
+        session.step=session.played.len();
+        session.done=self.done||session.step==session.moves.len();
+        session.recorded=self.recorded;session.storage_started=true;
+        session.message=if session.done{"Saved puzzle · solution complete."}else{"Saved puzzle · find the best move."}.into();
+        Ok(session)
+    }
+}
 #[derive(Deserialize)]
 struct Response { data: Option<PuzzleData>, error: Option<String> }
 #[derive(Clone)]
@@ -124,11 +153,12 @@ struct State {
     storage_error: String,
     linked: bool,
     synced_board: Option<Board>,
+    restore_board: Option<Board>,
 }
 impl Default for State {
     fn default() -> Self {
         let history = serde_json::from_str::<Vec<Record>>(&bridge("history", "")).unwrap_or_default();
-        Self { tab: 0, theme: 0, difficulty: 2, session: None, history, loading: false, error: String::new(), storage_error: String::new(), linked: false, synced_board: None }
+        Self { tab: 0, theme: 0, difficulty: 2, session: None, history, loading: false, error: String::new(), storage_error: String::new(), linked: false, synced_board: None,restore_board:None }
     }
 }
 impl State {
@@ -163,7 +193,17 @@ impl State {
             else if let Some(data) = response.data {
                 self.loading = false;
                 match Session::new(data) {
-                    Ok(session) => { self.session = Some(session); }
+                    Ok(mut session) => {
+                        if let Some(target)=self.restore_board.take() {
+                            while session.board!=target&&session.played.len()<session.moves.len() {
+                                let mv=session.moves[session.played.len()];session.board=session.board.make_move_new(mv);session.played.push(mv);
+                            }
+                            if session.board!=target {self.error="Saved position does not match this puzzle. The saved annotations were kept.".into();return;}
+                            session.step=session.played.len();session.done=session.step==session.moves.len();session.storage_started=true;
+                            self.synced_board=Some(target);self.linked=true;
+                        }
+                        self.session = Some(session);
+                    }
                     Err(error) => { self.error = error; }
                 }
             }
@@ -185,6 +225,50 @@ fn training_emphasis(stats: &crate::training::AnalysisStats, theme: &str) -> Opt
 }
 
 impl ChessApp {
+    pub(super) fn puzzle_snapshot(&self)->Option<PuzzleSnapshot> {
+        if !self.puzzle_mode(){return None;}
+        self.puzzle_context.data(|d| {
+            let snapshot=d.get_temp::<PuzzleSnapshot>(egui::Id::new("puzzle_save_snapshot"))?;
+            if let Some(session)=d.get_temp::<State>(egui::Id::new("puzzles_state")).and_then(|state|state.session)
+                .filter(|session|session.data.puzzle.id==snapshot.data.puzzle.id&&session.played.len()>=snapshot.played.len()) {
+                Some(PuzzleSnapshot::from_session(&session))
+            } else {Some(snapshot)}
+        })
+    }
+
+    pub(super) fn restore_saved_puzzle(&mut self,snapshot:Option<&PuzzleSnapshot>) {
+        let id=Self::pgn_tag(&self.pgn_input,"PuzzleId");
+        if snapshot.is_none()&&id.is_none(){return;}
+        self.study=None;
+        let ctx=self.puzzle_context.clone();let mut state=State::default();
+        if let Some(snapshot)=snapshot {
+            match snapshot.restore() {
+                Ok(session)=>{self.board=session.board;self.review_index=None;state.synced_board=Some(session.board);state.linked=true;
+                    ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzle_save_snapshot"),snapshot.clone());});state.session=Some(session);}
+                Err(error)=>state.error=error,
+            }
+        } else if let Some(id)=id {
+            if let Some(record)=state.history.iter().find(|record|record.data.puzzle.id==id) {
+                let data=record.data.clone();state.restore_board=Some(self.board);state.loading=true;
+                // Reuse the same response validation path for older saved records.
+                let mut session=Session::new(data).ok();
+                if let Some(session)=session.as_mut() {
+                    while session.board!=self.board&&session.played.len()<session.moves.len(){let mv=session.moves[session.played.len()];session.board=session.board.make_move_new(mv);session.played.push(mv);}
+                    if session.board==self.board {
+                        session.step=session.played.len();session.done=session.step==session.moves.len();session.storage_started=true;
+                        state.loading=false;state.restore_board=None;state.synced_board=Some(self.board);state.linked=true;
+                        ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzle_save_snapshot"),PuzzleSnapshot::from_session(session));});
+                        state.session=session.clone().into();
+                    }
+                }
+                if state.loading {bridge("request",&serde_json::json!({"id":id}).to_string());}
+            } else {state.loading=true;state.restore_board=Some(self.board);bridge("request",&serde_json::json!({"id":id}).to_string());}
+        }
+        self.engine_enabled=false;self.analysis_running=false;self.realtime_analysis_due_at=None;
+        self.game_analysis_running=false;self.game_analysis_paused=false;self.resume_game_analysis_after_ready=false;
+        self.navigation_enter_puzzles(&ctx);
+        ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzles_state"),state);});
+    }
     pub(super) fn puzzle_mode(&self) -> bool {
         self.puzzle_context.data(|d| d.get_temp::<bool>(egui::Id::new("puzzles_open"))).unwrap_or(false)
     }
@@ -192,6 +276,7 @@ impl ChessApp {
     pub(super) fn exit_puzzle_mode(&mut self) {
         self.puzzle_context.data_mut(|data| {
             data.insert_temp(egui::Id::new("puzzles_open"), false);
+            data.remove::<PuzzleSnapshot>(egui::Id::new("puzzle_save_snapshot"));
             let id = egui::Id::new("puzzles_state");
             if let Some(mut state) = data.get_temp::<State>(id) {
                 state.session = None;
@@ -280,6 +365,14 @@ impl ChessApp {
 
     fn sync_puzzle_position(&mut self, session: &mut Session) -> Result<(), String> {
         self.transient_profile_review = false;
+        self.study=None;
+        // Keep local annotations when advancing within this same puzzle attempt.
+        let annotations=if session.storage_started {
+            self.review_positions.iter().enumerate().map(|(i,board)|(*board,
+                self.move_notes.get(i).cloned().unwrap_or_default(),
+                self.board_marks.get(i).cloned().unwrap_or_default(),
+                self.move_annotations.get(i).cloned().unwrap_or_default())).collect::<Vec<_>>()
+        }else{Vec::new()};
         if !session.storage_started {
             #[cfg(target_arch = "wasm32")]
             start_new_stored_game("puzzles");
@@ -288,11 +381,20 @@ impl ChessApp {
         // Board synchronization updates the same attempt rather than importing a new game per move.
         self.load_pgn_with_storage(&session.review_pgn(), false);
         if let Some(error) = self.pgn_error.as_ref() { return Err(error.clone()); }
+        for (i,board) in self.review_positions.iter().enumerate() {
+            if let Some((_,note,marks,nags))=annotations.get(i).filter(|(previous,_,_,_)|previous==board) {
+                if let Some(value)=self.move_notes.get_mut(i){*value=note.clone();}
+                if let Some(value)=self.board_marks.get_mut(i){*value=marks.clone();}
+                if let Some(value)=self.move_annotations.get_mut(i){*value=nags.clone();}
+            }
+        }
         self.flipped = session.start.side_to_move() == Color::Black;
         self.review_index = None;
         self.engine_enabled = false;
         self.local_clock = None;
         self.engine_status = "Puzzle: find the best move".into();
+        self.puzzle_context.data_mut(|d|{d.insert_temp(egui::Id::new("puzzle_save_snapshot"),PuzzleSnapshot::from_session(session));});
+        self.save_game();
         Ok(())
     }
     pub(super) fn puzzles_panel(&mut self, ui: &mut egui::Ui) {
@@ -303,53 +405,48 @@ impl ChessApp {
         let state_id = egui::Id::new("puzzles_state");
         let mut state = ctx.data(|d| d.get_temp::<State>(state_id)).unwrap_or_default();
         state.poll();
+        if let Some(session)=state.session.as_ref() {
+            ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzle_save_snapshot"),PuzzleSnapshot::from_session(session));});
+        }
         if state.loading { ctx.request_repaint_after(std::time::Duration::from_millis(150)); }
         let mut close = false;
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Puzzles").size(19.0).strong());
+            ui.with_layout(Layout::right_to_left(Align::Center),|ui| {close=ui.button("Close").on_hover_text("Close puzzles").clicked();});
+        });
+        ui.add_space(8.0);
+        if self.workspace_annotations_tabs(ui,false) {
+            if state.session.is_some(){self.annotations_panel(ui);}
+            else {ui.label("Load a puzzle to add drawings, notes, and chess symbols.");}
+        } else {
         egui::ScrollArea::vertical().id_salt("puzzle_panel_scroll")
             .auto_shrink([false, false]).show_gold(ui, |ui| {
-                ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(16.0));
-                ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(16.0));
-                ui.style_mut().text_styles.insert(egui::TextStyle::Small, FontId::proportional(14.0));
-                ui.spacing_mut().item_spacing = Vec2::new(12.0, 12.0);
-                ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
+                Self::stable_panel_button_style(ui);
+                ui.spacing_mut().item_spacing = Vec2::new(8.0, 12.0);
+                ui.spacing_mut().button_padding = Vec2::new(12.0, 7.0);
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("Lichess Puzzles").size(19.0).strong());
-                    ui.label("(");
-                    if ui.link("by Lichess").on_hover_text("Open Lichess puzzle data and licensing in a new tab").clicked() {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab("https://database.lichess.org/#puzzles"));
-                    }
-                    ui.label(")");
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let (rect, response) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
-                        let inset = rect.shrink(6.0);
-                        let stroke = ui.style().interact(&response).fg_stroke;
-                        ui.painter().line_segment([inset.left_top(), inset.right_bottom()], stroke);
-                        ui.painter().line_segment([inset.right_top(), inset.left_bottom()], stroke);
-                        close = response.on_hover_text("Close puzzles").clicked();
+                    let gold = Color32::from_rgb(215,185,121);
+                    let (rect, _) = ui.allocate_exact_size(Vec2::splat(32.0), Sense::hover());
+                    ui.painter().circle_stroke(rect.center(), 11.0, Stroke::new(1.5,gold));
+                    ui.painter().circle_stroke(rect.center(), 5.0, Stroke::new(1.5,gold));
+                    ui.vertical(|ui| {
+                        ui.label(RichText::new("TRAINING").size(10.0).color(gold));
+                        ui.label(RichText::new("Lichess puzzles").size(21.0).strong());
                     });
                 });
-                ui.separator();
-                let body_rect = egui::Rect::from_min_max(
-                    egui::pos2(ui.clip_rect().left(), ui.cursor().top()),
-                    ui.clip_rect().right_bottom(),
-                );
-                ui.painter().rect_filled(body_rect, 0.0, Color32::from_rgb(17, 20, 24));
-                let body = Frame::new().fill(Color32::from_rgb(17, 20, 24))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(12, 14, 17)))
-                    .corner_radius(6.0).inner_margin(8.0).show(ui, |ui| {
-                    ui.set_min_width(ui.available_width());
-                    ui.set_min_height((body_rect.height() - 18.0).max(0.0));
-                ui.label("Find the best moves on the live board.");
-                let tabs_background = ui.painter().add(egui::Shape::Noop);
-                let tabs = ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Find the best continuation. Play your moves on the board.").weak());
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::splat(6.0);
                     for (tab, label) in ["Daily puzzle", "Practice", "Review mistakes", "Progress"].iter().enumerate() {
-                        ui.selectable_value(&mut state.tab, tab, *label);
+                        if Self::compact_panel_button(ui,label,state.tab == tab).clicked() { state.tab = tab; }
                     }
                 });
-                ui.painter().set(tabs_background, Self::glass_surface(tabs.response.rect.expand(2.0)));
-                ui.separator();
+                ui.add_space(4.0);
+                Self::grained_outer_section(ui, |ui| {
                 if state.tab == 0 {
+                    ui.label(RichText::new("Your daily challenge").size(17.0).strong());
+                    ui.label(RichText::new("A fresh puzzle from Lichess every day.").weak());
                     if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Load daily puzzle").strong().color(Color32::from_rgb(30, 26, 20)))
                         .fill(Color32::from_rgb(211, 173, 98))
                         .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
@@ -360,11 +457,12 @@ impl ChessApp {
                     let amber = Color32::from_rgb(232, 188, 114);
                     let training_stats = self.training_profiles.selected()
                         .map(|profile| profile.analysis_totals()).unwrap_or_default();
-                    let card = Frame::new().fill(Color32::from_rgb(27, 33, 41))
-                        .stroke(Stroke::new(1.0, Color32::from_rgb(49, 59, 71)))
-                        .corner_radius(8.0).inner_margin(14.0).show(ui, |ui| {
+                    ui.scope(|ui| {
                         ui.set_min_width(ui.available_width());
-                    Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Puzzle type", true);
+                        ui.spacing_mut().item_spacing.y = 8.0;
+                    ui.label(RichText::new("Build your practice").size(17.0).strong());
+                    ui.label(RichText::new("Choose a theme and difficulty, then start a puzzle.").weak());
+                    ui.label(RichText::new("PUZZLE TYPE").size(11.0).color(gold));
                     for (group, indices) in [
                         ("", &[0][..]),
                         ("Tactics", &[1, 2, 3, 4, 5][..]),
@@ -383,16 +481,14 @@ impl ChessApp {
                                 Some(_) => amber,
                                 None => Color32::from_rgb(164, 171, 180),
                             };
-                            let fill = if selected {
-                                if emphasis.is_some() { accent } else { Color32::from_rgb(0, 104, 139) }
-                            } else { Color32::from_rgb(27, 33, 41) };
-                            let text = if selected && emphasis.is_some() { ink }
-                                else if selected { Color32::WHITE } else { accent };
+                            let fill = if selected { Color32::from_rgb(48,46,37) }
+                                else { Color32::from_rgb(30,39,44) };
+                            let text = if selected { gold } else { accent };
                             let chip = egui::Button::new(RichText::new(name).color(text))
                                 .fill(fill)
-                                .stroke(Stroke::new(if selected { 2.0 } else { 1.0 }, accent))
-                                .corner_radius(16.0)
-                                .min_size(Vec2::new(0.0, 32.0));
+                                .stroke(Stroke::new(1.0, if selected { gold } else { Color32::from_rgb(57,69,74) }))
+                                .corner_radius(5.0)
+                                .min_size(Vec2::new(0.0, 36.0));
                             if ui.add(chip).on_hover_text(emphasis.unwrap_or("Practice this puzzle type")).clicked() {
                                 state.theme = i;
                             }
@@ -420,7 +516,7 @@ impl ChessApp {
                         ui.visuals_mut().widgets.active.bg_fill = gold;
                         ui.visuals_mut().widgets.hovered.bg_fill = gold;
                         ui.add(egui::Slider::new(&mut state.difficulty, 0..=DIFFICULTIES.len() - 1)
-                            .integer().show_value(false).step_by(1.0));
+                            .integer().show_value(false).step_by(1.0).trailing_fill(true));
                     });
                     ui.horizontal(|ui| {
                         ui.small("Easiest");
@@ -436,7 +532,6 @@ impl ChessApp {
                         state.request(false, THEMES[state.theme].1, DIFFICULTIES[state.difficulty].1);
                     }
                     });
-                    Self::paint_sunken_border(ui, card.response.rect);
                 } else if state.tab == 2 {
                     let count = state.history.iter().filter(|r| !r.solved).count();
                     ui.heading(format!("Review mistakes · {count}"));
@@ -523,26 +618,33 @@ impl ChessApp {
                 if !state.storage_error.is_empty() { ui.colored_label(Color32::LIGHT_RED, &state.storage_error); }
                 let mut result = None;
                 if let Some(session) = state.session.as_mut().filter(|_| state.tab != 3) {
-                    ui.separator();
+                    ui.add_space(8.0);
+                    let accent = if session.done { Color32::from_rgb(136,205,158) } else { Color32::from_rgb(215,185,121) };
+                    Frame::new().fill(Color32::from_rgb(22,30,32))
+                        .stroke(Stroke::new(1.0,accent.gamma_multiply(0.5)))
+                        .corner_radius(6.0).inner_margin(14.0).show(ui, |ui| {
+                    ui.set_min_width(ui.available_width());
+                    ui.label(RichText::new(if session.done { "PUZZLE COMPLETE" } else { "ON THE BOARD" }).size(11.0).color(accent));
                     ui.horizontal_wrapped(|ui| {
                         ui.strong(format!("Puzzle {} · {} to move", session.data.puzzle.id, if session.board.side_to_move() == Color::White { "White" } else { "Black" }));
                         if session.done { ui.label(format!("Rating {} · {}", session.data.puzzle.rating, session.data.puzzle.themes.join(", "))); }
                     });
-                    ui.label(&session.message);
+                    ui.label(RichText::new(&session.message).size(17.0));
                     ui.horizontal_wrapped(|ui| {
                         if !session.done {
-                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Hint").strong().color(Color32::from_rgb(30, 26, 20)))
-                                .fill(Color32::from_rgb(211, 173, 98))
-                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
-                                .corner_radius(6.0).min_size(Vec2::new(110.0, 40.0)).raised_gold()).clicked() {
+                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Hint").color(accent))
+                                .fill(Color32::from_rgb(30,39,44))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(57,69,74)))
+                                .corner_radius(5.0).min_size(Vec2::new(100.0, 36.0))).clicked() {
                                 if let Some(mv) = session.moves.get(session.step) { session.message = format!("Look at the piece on {}.", mv.get_source()); result = Some(false); }
                             }
-                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Show solution").strong().color(Color32::from_rgb(30, 26, 20)))
-                                .fill(Color32::from_rgb(211, 173, 98))
-                                .stroke(Stroke::new(1.0, Color32::from_rgb(241, 206, 131)))
-                                .corner_radius(6.0).min_size(Vec2::new(110.0, 40.0)).raised_gold()).clicked() { session.reveal(); result = Some(false); }
+                            if ui.add_enabled(!state.loading, egui::Button::new(RichText::new("Show solution").color(accent))
+                                .fill(Color32::from_rgb(30,39,44))
+                                .stroke(Stroke::new(1.0, Color32::from_rgb(57,69,74)))
+                                .corner_radius(5.0).min_size(Vec2::new(110.0, 36.0))).clicked() { session.reveal(); result = Some(false); }
                         }
 
+                    });
                     });
                 }
                 if let Some(solved) = result { state.record(solved); }
@@ -587,9 +689,13 @@ impl ChessApp {
                     }
                 }
                 });
-                Self::paint_sunken_border(ui, body.response.rect);
+                ui.add_space(4.0);
+                if ui.link("Puzzle data by Lichess · licensing").on_hover_text("Open Lichess puzzle data and licensing in a new tab").clicked() {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab("https://database.lichess.org/#puzzles"));
+                }
             });
-        if close { open = false; }
+        }
+        if close { open = false; self.board_mark_mode=false; self.board_mark_drag=None; }
         if let Some(session) = state.session.as_mut() {
             if state.synced_board != Some(session.board) {
                 if !state.linked { self.save_game(); }
@@ -607,6 +713,55 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn unsolved_saved_puzzle_restores_mode_and_preserves_annotations() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.open_study("[Event \"Study\"]\n[StudyName \"Before puzzle\"]\n[ChapterName \"First\"]\n[ChapterURL \"https://lichess.org/study/abcdefgh/12345678\"]\n\n1. e4 e5 *").unwrap();
+        app.navigation_enter_puzzles(&ctx);
+        let mut session=Session::new(example()).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
+        app.move_notes[0]="Look for the fork".into();app.move_annotations[0]=vec![1];
+        app.board_marks[0]=vec![BoardMark{style:String::new(),color:'G',from:"f5".into(),to:"f3".into()}];
+        let saved:PersistedGame=serde_json::from_str(&serde_json::to_string(&app.persisted_game()).unwrap()).unwrap();
+        assert!(saved.puzzle.is_some());
+        assert!(saved.study.is_none());
+        let other=egui::Context::default();
+        let mut restored=ChessApp::new(&eframe::CreationContext::_new_kittest(other));
+        restored.load_pgn_with_storage(saved.review_pgn.as_deref().unwrap(),false);
+        restored.move_notes=saved.move_notes.clone();restored.board_marks=saved.board_marks.clone();restored.move_annotations=saved.move_annotations.clone();
+        restored.restore_saved_puzzle(saved.puzzle.as_ref());
+        assert!(restored.puzzle_mode());assert!(restored.puzzle_navigation_locked());assert_eq!(restored.board,session.board);
+        assert_eq!(restored.move_notes[0],"Look for the fork");assert_eq!(restored.board_marks[0].len(),1);assert_eq!(restored.move_annotations[0],vec![1]);
+        assert!(!restored.engine_enabled);
+        restored.exit_puzzle_mode();assert!(restored.puzzle_snapshot().is_none());
+    }
+
+    #[test]
+    fn saved_puzzle_progress_is_validated_before_restoring() {
+        let mut session=Session::new(example()).unwrap();session.submit(ChessMove::from_str("f5f3").unwrap());
+        let snapshot=PuzzleSnapshot::from_session(&session);
+        let restored=snapshot.restore().unwrap();assert_eq!(restored.board,session.board);assert_eq!(restored.step,session.step);
+        let mut invalid=snapshot;invalid.played=vec!["a1a8".into()];assert!(invalid.restore().is_err());
+    }
+
+    #[test]
+    fn advancing_a_puzzle_keeps_notes_and_marks_on_existing_positions() {
+        let ctx=egui::Context::default();
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx));
+        let mut session=Session::new(example()).unwrap();
+        app.sync_puzzle_position(&mut session).unwrap();
+        app.move_notes[0]="Keep this puzzle note".into();
+        app.move_annotations[0]=vec![1];
+        session.reveal();
+        app.sync_puzzle_position(&mut session).unwrap();
+        assert_eq!(app.move_notes[0],"Keep this puzzle note");
+        assert_eq!(app.move_annotations[0],vec![1]);
+        let mut next=Session::new(example()).unwrap();
+        app.sync_puzzle_position(&mut next).unwrap();
+        assert_ne!(app.move_notes[0],"Keep this puzzle note");
+    }
+
     #[test]
     fn starting_a_normal_game_exits_puzzles_and_routes_moves_to_the_game() {
         for side in [PlayerSide::White, PlayerSide::Black] {

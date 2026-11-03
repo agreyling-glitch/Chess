@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 title: "Saving and sharing analysis"
 description: "Understand saved games, PGN, analysis JSON, and printable reports."
 category: "using-ironwood"
@@ -25,4 +25,4 @@ For instructions on Starting notes, move notes, and manual symbols, see [Taking 
 
 ## Save a game opened from a player profile
 
-A Lichess profile’s **Review on Ironwood** opens the game temporarily. Choose **Play → Save current game** to add the complete game to Saved Games, even when viewing the initial position. A game with no moves is excluded. Watching it in the larger preview alone does not save or replace the current game.
+A Lichess profile’s **Review on Ironwood** opens the game temporarily. Choose **Play → Save current game** to add the complete game to Saved Games, even when viewing the initial position. An ordinary game with no moves is excluded; puzzles and studies can be saved at their initial position, including annotations. **Save current game** confirms a successful save or reports a failure. Companion saves can report local pending synchronization separately. Watching it in the larger preview alone does not save or replace the current game.

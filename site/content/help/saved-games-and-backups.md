@@ -4,10 +4,10 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-02T00:00:00-06:00
 ---
 
-Use **Play → Save current game** to keep the current game, and **Game library → Saved games** to open the library. Ironwood also restores the current board and related preferences when you return to the same browser and site.
+Use **Play → Save current game** to keep the current game, and **Game library → Saved games** to open the library. A confirmation appears after saving succeeds. Errors are reported instead of a success message; a Companion save can report that the local copy is safe while synchronization is pending. Ironwood also restores the current board and related preferences when you return to the same browser and site.
 
 While signed in to Lichess, loading a saved game does not open the lobby. If you are playing correspondence, Ironwood puts that online game aside and keeps your connection; resume it from **Your ongoing games** later. During a live online game, loading a saved game disconnects online play without resigning on Lichess. Its clock continues. See [Play on Lichess](/help/play-on-lichess/).
 
@@ -17,7 +17,7 @@ Full-game analyses are saved as separate runs. Use the dropdown beside **Saved A
 
 Use [Import Games](/help/import-games/) to paste PGN or Analysis JSON, fetch completed games from Lichess or Chess.com, or enter a scoresheet. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
 
-Imported Lichess studies appear in the Browser library's **Studies** category, with one entry for each study and its chapter count. Older separate chapter saves from the same Lichess study are combined while keeping notes, analysis, favorites, and collection membership. Original chapter records remain inside the consolidated record in browser backups. Open the study card to return to its chapters in the **Study** tab. [Read and practice studies](/help/lichess-studies/).
+Imported Lichess studies appear in the Browser library's **Studies** category, with one entry for each study and its chapter count. Older separate chapter saves from the same Lichess study are combined while keeping notes, analysis, favorites, and collection membership. Original chapter records remain inside the consolidated record in browser backups. Open the study entry to return to its chapters in **Study mode**. [Read and practice studies](/help/lichess-studies/).
 
 Open **Game library → Backup and Restore…**, choose **Backup** or **Restore**, then select **Game History Location**. The list includes **Browser** and each configured Companion under its saved name; disconnected Companions cannot be selected. Each action affects only the chosen location.
 
@@ -37,9 +37,32 @@ Games with a Starting note show a short preview in the library. Click that note 
 
 ## Find and select games
 
-Use the **Category** dropdown and expand **Filters** to access the **Player**, **Source**, **Date**, **Opening** and **Analysis** filters to narrow the library. Player, Source, Date and Opening each have a searchable dropdown; type inside it, then select an entry. Opening entries show the ECO code and opening name together, and you can search using either. Dates appear newest first. Source uses the saved import source, or the PGN Site value when no source was saved. Choose **All** to clear a filter or **Unknown** for missing information. Choose a sort order and use **Previous** and **Next** to move through pages. **Select page** selects the displayed page; **Select all matching** selects all games matching the current filters. **Clear selection** unselects games across all pages. Export or delete the selected games using the controls above the list. Click a game title to open it directly, or choose **Open Game** at the top of its **☰** options menu. The same menu offers **Export PGN**, Favorite, **Edit metadata…**, category moves where available, Delete, collection actions, and Companion copy and move actions. **Export PGN** downloads that game as a plain PGN file. Deletion asks for confirmation.
+The Search console has **Search games or players** and **Manage library** on its top row. **Show** selects a category. **Filters** starts collapsed each time you open the library, even if it was expanded before.
 
-Drag the Saved games title to move the window, drag an edge or corner to resize it, or use the title-bar maximize/restore button. Choose **Open saved games in a new window** (↗) to browse in a separate window. Your filters and selection carry over, and the game cards adjust to the available width. Saved Games remembers its size and position, as well as whether Filters is expanded. The game list scrolls within the window.
+Expand Filters for aligned **Player**, **Source**, **Date**, **Opening**, **Analysis**, **Game length**, and **Folder** fields. Training adds a **Profile** field. Player, Source, Date and Opening retain searchable dropdowns. Opening combines the ECO code and opening name; dates are newest first. Choose All to clear a field or Unknown for missing information.
+
+Active filters appear as removable gold chips outside the collapsed grid. Remove one chip or use **Clear all** to reset the view while keeping your sort order. An active **Not analyzed** filter removes newly analyzed games from the results and fills the page with the next matching games. Clear it to see completed analyses.
+
+The table's **Analysis** column shows **Complete**, **Partial**, or **Not analyzed**, taking retained saved runs into account. Hover for the number of analyzed positions. An unfinished critical verification pass remains Partial. Click **Moves** or **Saved** to sort; other sorting choices, refresh and folder management remain under **Manage library**.
+
+Click a game title to open it directly. Select another part of the row to inspect its preview. Checkboxes select games independently of the preview: **Select page**, **Select all matching**, and **Clear selection** work across pages. The grouped selection console provides **Export** (PGN, annotated PGN, Analysis JSON), **Organize** (folder and available Companion transfer actions), and **More** (Delete selected). Deletion still asks for confirmation. Each row's menu retains the individual game actions.
+
+Drag the title or window edges to move or resize Saved Games, maximize/restore it, or use **Open saved games in a new window**. The table keeps stable column widths across pages. Size and position are remembered; filters reopen collapsed.
+
+## Batch analysis
+
+1. Select at least two saved games using their checkboxes, **Select page**, or **Select all matching**.
+2. In the inset analysis section, choose **Stockfish 19 · Browser** or an available engine from a connected Companion.
+3. Leave **Verify critical moves** checked for the deeper second pass, or uncheck it for a first pass only.
+4. Choose **Analyze N games**.
+
+The modal reports the current game, pass, position and overall progress. Pass 1 analyzes each position for one second. Pass 2 uses Ironwood's critical-move criteria to check positions before and after flagged moves for five seconds each. It covers inaccuracies, mistakes, blunders and mate-related changes, with duplicate positions checked once.
+
+Games are processed sequentially without replacing the current board. Existing notes and analysis runs are preserved. Each saved result is read back before the game is counted as complete. The final report lists complete, partial and failed games; failures include an explanation. Companion connection or revision conflicts are reported rather than silently overwriting another edit.
+
+**Cancel analysis** stops the batch and saves available first-pass and verification results. Completed games remain saved; an unfinished verification pass remains Partial. The dialog can be closed after saving finishes. Keep the browser tab open while the batch runs. Study workspaces require individual chapter analysis rather than batch analysis of the whole study.
+
+If **Not analyzed** is selected, successful games disappear from that filtered view. This does not delete them. Remove that chip, or choose **Fully analyzed**, to find them again. Reopen a game to inspect its saved run and critical-pass status. [Compare saved analyses](/help/saved-analysis/).
 
 ## Larger board preview
 
@@ -59,15 +82,15 @@ A **Browser** backup from **Game library → Backup and Restore…** includes [t
 
 The saved-game library uses a table with a selected-game preview alongside it. Select a row to inspect its board, players, result, analysis details and notes, then choose **Open game**. Click the preview board for the full playback viewer. On narrow windows the preview appears below the table.
 
-Use **Search games or players** to find a game, **Show** to choose a game category, and **Filter** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker appears when you have folders (the library's collections). **Manage library** contains folder management, refresh and sorting options. You can also sort by clicking **Moves** or **Saved** in the table header.
+Use **Search games or players** to find a game, **Show** to choose a game category, and **Filters** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker selects the library's collections. **Manage library** contains folder management, refresh and sorting options. You can also sort by clicking **Moves** or **Saved** in the table header.
 
 **Source** groups links as **Lichess games**, **Lichess puzzles**, **Lichess studies**, and **Chess.com**. Each game's original source URL remains in its details and exports. Other source names remain unchanged. Older Companion builds may need an update to filter these groups across the archive.
 
-Checkboxes select games for batch operations independently of the preview. Each row's options menu and the preview's **More options** retain export, metadata, collection, category, favorite, deletion and available Companion transfer actions. **Storage** switches between Browser and named Companion libraries; **Companion…** manages connections. Category, collection and all existing filters remain available. Click **Moves** or **Saved** in the table header to sort, or use the **Sort** selector.
+Checkboxes select games for batch operations independently of the preview. Each row's options menu and the preview's **More options** retain export, metadata, collection, category, favorite, deletion and available Companion transfer actions. **Game location** switches between Browser and named Companion libraries; **Manage connections** opens their settings. Category, collection and all existing filters remain available. Click **Moves** or **Saved** in the table header to sort, or use sorting choices under **Manage library**.
 
 ## Sort and review your library
 
-Use the move-count sort to find short or long games, or return to the most recent order. Games with zero moves are not added to Saved Games.
+Use the move-count sort to find short or long games, or return to the most recent order. Ordinary games with zero moves are not added. Studies and puzzles can be saved at their initial position, including their annotations.
 
 Hover a small board for the gold outline and magnifying-glass indicator. The larger move viewer identifies White, Black, and the game result. The same viewer is available from recent games in [Lichess player profiles](/help/play-on-lichess/#player-profiles-and-followed-players).
 
@@ -81,7 +104,7 @@ The **Puzzles** category stores puzzle move history separately from ordinary gam
 
 Open **Game library → Storage information** for local record counts and the browser’s reported storage estimate. Drag the title to move the window and its edges or corners to resize it. The record sections scroll inside the gold-bordered window. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.
 
-Use **ECO code** to filter an exact code (for example, `B90`) or a prefix (`B`), and **Opening name** to search part of a name (for example, `Sicilian`). The filters work together with player, category and analysis filters. Games without opening tags are classified from their moves using the deepest recognized opening position, including transpositions. Existing opening tags are preserved; custom starting positions and unrecognized lines can remain unclassified.
+Use the searchable **Opening** dropdown to find an ECO code (for example, `B90`) or an opening name (for example, `Sicilian`). Choose an individual opening or an available **All [ECO] games** entry. The filters work together with player, category and analysis filters. Games without opening tags are classified from their moves using the deepest recognized opening position, including transpositions. Existing opening tags are preserved; custom starting positions and unrecognized lines can remain unclassified.
 
 
 ## Edit game metadata
@@ -103,9 +126,9 @@ Copies retain metadata, notes, timings and saved analyses. Browser originals and
 
 ## Collections in Browser and Companion storage
 
-Use the **Collection** selector beside Category to show **All games** or one named collection in the current storage location. Browser and each Companion own separate collections; switching storage switches the available list.
+Use **Filters → Folder** to show **All games** or one named collection in the current storage location. Browser and each Companion own separate collections; switching storage switches the available list.
 
-Choose **New collection**, **Rename collection**, or **Delete collection** above the list. Deleting a collection keeps its games and analyses. A game can belong to multiple collections. Select games and use **Add to collection** or **Remove from collection**, or use those actions from a single game's menu.
+Choose **New folder**, **Rename folder**, or **Delete folder** under **Manage library**. Deleting a collection keeps its games and analyses. A game can belong to multiple collections. Select games and use **Organize → Add to folder…** or **Organize → Remove from folder**, or use those actions from a single game's menu.
 
 Copy and move actions ask for a destination collection, including **No collection**. They add destination membership before removing any source for a move. **Copy to Browser** keeps archive originals. Browser backups preserve collection names and membership; Merge resolves conflicting collection IDs, and Replace restores the backup's collection list. Companion database backups already include their collections. Companion filtering requires Companion 0.1.7 or later. The older **Your game archive** window has been removed; Saved Games is the shared management window.
 

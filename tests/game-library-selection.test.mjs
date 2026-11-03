@@ -182,9 +182,9 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.equal(fullNote.querySelector('img'), null);
   document.querySelector('#game-preview-dialog').close();
   assert.equal(button('Clear selection').disabled,true);
-  assert.equal(button('Export ▾').disabled, true);
+  assert.equal(button('Export').disabled, true);
   const samples = [{json:'first'}, {json:'second'}];
-  const exporter = (json, format) => format === 'json' ? JSON.stringify({game:json}) : `[Event "${json}"]\n\n1. e4 *\n`;
+  const exporter = (json, format) => format === 'preview' ? JSON.stringify({positions:[]}) : format === 'json' ? JSON.stringify({game:json}) : `[Event "${json}"]\n\n1. e4 *\n`;
   assert.equal(buildGameExport(samples,'pgn',exporter).content.split('[Event').length,3);
   assert.equal(buildGameExport([samples[0]],'json',exporter).filename,'ironwood-game.json');
   const archive = buildGameExport(samples,'json',exporter);
@@ -194,13 +194,13 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   const checked = spawnSync('python', ['-c', 'import sys,io,zipfile,json; z=zipfile.ZipFile(io.BytesIO(sys.stdin.buffer.read())); assert z.testzip() is None; assert z.namelist()==["game-1.json","game-2.json"]; assert json.loads(z.read("game-2.json"))["game"]=="second"'], {input:archive.content});
   assert.equal(checked.status,0,checked.stderr.toString());
   document.querySelector('.game-library-select').click();
-  click('Export ▾');
+  click('Export');
   assert.equal(button('Annotated PGN').closest('.game-library-export-options').hidden,false);
   button('Annotated PGN').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
   assert.equal(button('Annotated PGN').closest('.game-library-export-options').hidden,true);
   const downloads=[];window.ironwoodExportSavedGame=exporter;
   window.HTMLAnchorElement.prototype.click=function(){downloads.push(this.download);};
-  click('Export ▾');click('PGN');
+  click('Export');click('PGN');
   assert.equal(document.querySelector('.game-export-progress').hidden,false);
   assert.equal(document.querySelector('[role=progressbar]').getAttribute('aria-valuenow'),'0');
   assert.equal(document.querySelector('.game-library-browser').inert,true);
@@ -224,7 +224,7 @@ test('saved-game bulk selection, confirmation, atomic failure, and pagination', 
   assert.equal(records.has('10'), false);
   assert.match(document.querySelector('.game-library-pager').textContent, /Page 1 of 1/);
   click('Select all 10 matching');
-  click('Clear selection');assert.equal(button('Delete selected (0)').disabled,true);assert.equal(button('Export ▾').disabled,true);
+  click('Clear selection');assert.equal(button('Delete selected (0)').disabled,true);assert.equal(button('Export').disabled,true);
   click('Select all 10 matching');
   document.querySelector('[aria-label="Player"]').click();
   const search=document.querySelector('[aria-label="Find a player"]');search.value='Player11';search.dispatchEvent(new window.Event('input'));document.querySelector('.library-player-option').click();

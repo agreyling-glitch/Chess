@@ -461,6 +461,10 @@ function installFallbacks(target) {
   target.ironwoodManageArchiveAnalyses ??= () => {};
 
   target.ironwoodTrainingProfilesAction ??= () => JSON.stringify({error:'Training profile storage is unavailable. Reload and try again.'});
+  target.ironwoodStudyPicker ??= () => JSON.stringify({studies:[],locations:[],loading:false,error:'Saved study storage is unavailable. Reload and try again.'});
+  target.ironwoodTakeStudyPanelOpen ??= () => false;
+  for(const name of ['SetStudyPickerLocation','RefreshStudyPicker','OpenPickedStudy','BeginSaveConfirmation'])target[`ironwood${name}`] ??= () => {};
+  target.ironwoodFinishSaveConfirmation ??= () => target.alert('Saved game storage is unavailable. Reload and try again.');
   target.ironwoodBatchImportStatus ??= () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';
   target.ironwoodVersionDiagnostics ??= () => '{"status":"Version diagnostics are loading"}';
   target.ironwoodExplorer ??= () => '{"error":"Opening Explorer is unavailable. Please reload Ironwood."}';

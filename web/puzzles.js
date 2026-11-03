@@ -19,8 +19,9 @@ window.ironwoodPuzzles = (command, payload = '') => {
     }
     let options;
     try { options = JSON.parse(payload); } catch { return JSON.stringify({ error: 'Invalid puzzle request.' }); }
-    const url = new URL(options.daily ? '/api/puzzle/daily' : '/api/puzzle/next', 'https://lichess.org');
-    if (!options.daily) {
+    if(options.id&&!/^[a-zA-Z0-9]{5,12}$/.test(options.id)){state={error:'Invalid saved puzzle ID.'};return JSON.stringify(state);}
+    const url = new URL(options.id ? `/api/puzzle/${options.id}` : options.daily ? '/api/puzzle/daily' : '/api/puzzle/next', 'https://lichess.org');
+    if (!options.daily&&!options.id) {
       if (options.theme && options.theme !== 'mix') url.searchParams.set('angle', options.theme);
       url.searchParams.set('difficulty', options.difficulty || 'normal');
     }

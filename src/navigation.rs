@@ -3,8 +3,27 @@ use super::*;
 const RAIL_WIDTH: f32 = 56.0;
 const DRAWER_WIDTH: f32 = 288.0;
 const COLLAPSE_DELAY: f64 = 0.25;
-const SECTIONS: [&str; 6] = [
+const SHORTCUTS: [&str;8] = ["New game","Analysis","Saved games","Lichess puzzles","Save current game","Lichess Profiles","Board Theme","Study"];
+const SHORTCUT_KEY: &str = "ironwood.quick-access.v1";
+
+#[derive(Clone,Debug,PartialEq,serde::Serialize,serde::Deserialize)]
+struct QuickAccess {
+    enabled: [bool;8],
+    order: [usize;8],
+}
+impl Default for QuickAccess {
+    fn default()->Self {Self{enabled:[true,true,true,true,true,false,false,false],order:[0,1,2,3,4,5,6,7]}}
+}
+impl QuickAccess {
+    fn parse(value:&str)->Option<Self> {
+        let config:Self=serde_json::from_str(value).ok()?;
+        let mut order=config.order;order.sort_unstable();
+        (order==[0,1,2,3,4,5,6,7]).then_some(config)
+    }
+}
+const SECTIONS: [&str; 7] = [
     "Play",
+    "Analysis",
     "Training",
     "Game library",
     "Settings",
@@ -21,6 +40,8 @@ pub(super) struct NavigationState {
     keyboard: bool,
     suppress_hover: bool,
     touch_open: bool,
+    shortcuts: QuickAccess,
+    shortcuts_loaded: bool,
 }
 
 impl NavigationState {
@@ -109,6 +130,25 @@ fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::R
             line((-4.0, -1.0), (4.0, -1.0));
             line((4.0, -1.0), (4.0, -7.0));
         }
+        9 => {
+            line((-9.0, 9.0), (-9.0, -8.0));
+            line((-9.0, 9.0), (10.0, 9.0));
+            line((-6.0, 4.0), (-1.0, -2.0));
+            line((-1.0, -2.0), (3.0, 1.0));
+            line((3.0, 1.0), (9.0, -7.0));
+        }
+        10 => {
+            p.circle_stroke(point(0.0,-5.0),4.0,stroke);
+            p.add(egui::Shape::line(vec![point(-8.0,8.0),point(-7.0,3.0),point(-3.0,0.0),point(3.0,0.0),point(7.0,3.0),point(8.0,8.0)],stroke));
+        }
+        11 => {
+            p.rect_stroke(egui::Rect::from_center_size(c,Vec2::splat(18.0)),2,stroke,egui::StrokeKind::Inside);
+            for row in 0..3 {for col in 0..3 {if (row+col)%2==0 {p.rect_filled(egui::Rect::from_min_size(point(-8.0+col as f32*5.4,-8.0+row as f32*5.4),Vec2::splat(5.4)),0,color);}}}
+        }
+        12 => {
+            p.add(egui::Shape::closed_line(vec![point(0.0,-6.0),point(-9.0,-8.0),point(-9.0,6.0),point(0.0,8.0),point(9.0,6.0),point(9.0,-8.0)],stroke));
+            line((0.0,-6.0),(0.0,8.0));
+        }
         _ => {}
     }
     if selected {
@@ -132,6 +172,63 @@ fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::R
 }
 
 impl ChessApp {
+    fn navigation_shortcut(&mut self,ui:&mut egui::Ui,index:usize)->egui::Response {
+        let enabled=match index {
+            1=>!self.training_live()&&!(self.fics_active&&self.fics_playing),
+            2=>self.navigation_library_enabled(),3|7=>self.navigation_puzzles_enabled(),
+            4=>!self.fics_active||self.fics_game_finished,_=>true,
+        };
+        let selected=match index {0=>self.new_game_dialog_open,7=>ui.ctx().data(|d|d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false),_=>false};
+        let response=ui.add_enabled_ui(enabled,|ui|icon(ui,[7,9,2,1,8,10,11,12][index],SHORTCUTS[index],selected)).inner;
+        if response.clicked() {
+            let ctx=ui.ctx().clone();
+            match index {
+                0=>{self.navigation.section=0;self.navigation_new_game(false);}
+                1=>{self.navigation.section=1;self.navigation_open_analysis(&ctx);}
+                2=>{self.navigation.section=3;self.navigation_open_library();}
+                3=>{self.navigation.section=2;ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzles_open"),true);d.insert_temp(egui::Id::new("navigation_action_selected"),"Lichess puzzles".to_owned());});}
+                4=>self.save_current_game(),
+                5=>{self.open_lichess_history();}
+                6=>self.open_board_theme_dialog(),
+                7=>{self.navigation_enter_study(&ctx);ctx.data_mut(|d|d.insert_temp(egui::Id::new("navigation_action_selected"),"Study".to_owned()));}
+                _=>{}
+            }
+        }
+        response
+    }
+
+    fn navigation_shortcut_settings(&mut self,ui:&mut egui::Ui)->bool {
+        let gear=ui.add_sized([40.0,40.0],egui::Button::new("").frame(false)).on_hover_text("Choose and reorder shortcuts");
+        gear.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,true,"Choose and reorder shortcuts"));
+        let c=gear.rect.center();let color=Color32::from_rgb(215,185,121);let stroke=Stroke::new(1.5,color);
+        ui.painter().circle_stroke(c,6.0,stroke);ui.painter().circle_stroke(c,2.5,stroke);
+        for n in 0..8 {let v=Vec2::angled(n as f32*std::f32::consts::TAU/8.0);ui.painter().line_segment([c+v*6.0,c+v*9.0],stroke);}
+        let before=self.navigation.shortcuts.clone();
+        let popup=egui::Popup::menu(&gear).close_behavior(egui::containers::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+            Self::stable_panel_button_style(ui);
+            ui.label("Show shortcuts · change order");ui.separator();
+            let order=self.navigation.shortcuts.order;
+            let mut swap=None;
+            for (position,&index) in order.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.allocate_ui_with_layout(Vec2::new(170.0,30.0),Layout::left_to_right(Align::Center),|ui| {
+                        ui.set_min_width(170.0);
+                        ui.checkbox(&mut self.navigation.shortcuts.enabled[index],SHORTCUTS[index]);
+                    });
+                    if ui.add_enabled(position>0,egui::Button::new("Up")).clicked(){swap=Some((position,position-1));}
+                    if ui.add_enabled(position<7,egui::Button::new("Down")).clicked(){swap=Some((position,position+1));}
+                });
+            }
+            if let Some((a,b))=swap {self.navigation.shortcuts.order.swap(a,b);}
+        });
+        if before!=self.navigation.shortcuts {
+            #[cfg(target_arch="wasm32")]
+            if let Some(storage)=web_sys::window().and_then(|w|w.local_storage().ok().flatten()) {
+                if let Ok(json)=serde_json::to_string(&self.navigation.shortcuts){let _=storage.set_item(SHORTCUT_KEY,&json);}
+            }
+        }
+        popup.is_some()
+    }
     pub(super) fn navigation_action(
         ui: &mut egui::Ui,
         enabled: bool,
@@ -161,6 +258,9 @@ impl ChessApp {
             "Solving puzzles"
         } else if self.training_live() {
             "Training against AI"
+        } else if self.study.is_some() && self.puzzle_context.data(|d|
+            d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false) {
+            "Studying"
         } else if self.lichess.active {
             if self.fics_playing {
                 "Playing on Lichess"
@@ -182,7 +282,28 @@ impl ChessApp {
         }
     }
 
+    pub(super) fn navigation_enter_study(&mut self, ctx: &egui::Context) {
+        self.navigation.section = 2;
+        ctx.data_mut(|d| {
+            d.insert_temp(egui::Id::new("puzzles_open"), false);
+            d.insert_temp(egui::Id::new("study_window_open"), true);
+        });
+    }
+
+    pub(super) fn navigation_enter_puzzles(&mut self,ctx:&egui::Context) {
+        self.navigation.section=2;
+        ctx.data_mut(|d|{d.insert_temp(egui::Id::new("study_window_open"),false);d.insert_temp(egui::Id::new("puzzles_open"),true);});
+    }
+
     pub(super) fn navigation_ui(&mut self, root_ui: &mut egui::Ui) {
+        if !self.navigation.shortcuts_loaded {
+            #[cfg(target_arch="wasm32")]
+            if let Some(config)=web_sys::window().and_then(|w|w.local_storage().ok().flatten())
+                .and_then(|s|s.get_item(SHORTCUT_KEY).ok().flatten()).and_then(|s|QuickAccess::parse(&s)) {
+                self.navigation.shortcuts=config;
+            }
+            self.navigation.shortcuts_loaded=true;
+        }
         let ctx = root_ui.ctx().clone();
         let now = ctx.input(|i| i.time);
         // The release frame produces the click after the last finger has lifted.
@@ -194,6 +315,7 @@ impl ChessApp {
         });
         let mut focused = false;
         let mut rail_toggle = false;
+        let mut shortcut_popup_open=false;
         let rail = egui::Panel::left("navigation_rail")
             .resizable(false)
             .exact_size(RAIL_WIDTH)
@@ -215,6 +337,7 @@ impl ChessApp {
                     Stroke::new(1.0, Color32::from_rgb(223, 190, 119));
                 egui::ScrollArea::vertical()
                     .id_salt("navigation_rail_scroll")
+                    .max_height((ui.available_height()-48.0).max(40.0))
                     .show(ui, |ui| {
                         let toggle = icon(
                             ui,
@@ -226,7 +349,7 @@ impl ChessApp {
                         rail_toggle = toggle.clicked();
                         ui.separator();
                         for (index, label) in SECTIONS.iter().enumerate() {
-                            let response = icon(ui, index, label, self.navigation.section == index);
+                            let response = icon(ui, [0, 9, 1, 2, 3, 4, 5][index], label, self.navigation.section == index);
                             focused |= response.has_focus();
                             if response.clicked() {
                                 self.navigation.section = index;
@@ -237,49 +360,15 @@ impl ChessApp {
                             }
                         }
                         ui.separator();
-                        let new = icon(ui, 7, "New game", self.new_game_dialog_open);
-                        focused |= new.has_focus();
-                        if new.clicked() {
-                            self.navigation.section = 0;
-                            self.navigation_new_game(false);
-                        }
-                        let saved = ui
-                            .add_enabled_ui(self.navigation_library_enabled(), |ui| {
-                                icon(ui, 2, "Saved games", false)
-                            })
-                            .inner;
-                        focused |= saved.has_focus();
-                        if saved.clicked() {
-                            self.navigation.section = 2;
-                            self.navigation_open_library();
-                        }
-                        let puzzles = ui
-                            .add_enabled_ui(self.navigation_puzzles_enabled(), |ui| {
-                                icon(ui, 1, "Lichess puzzles", false)
-                            })
-                            .inner;
-                        focused |= puzzles.has_focus();
-                        if puzzles.clicked() {
-                            self.navigation.section = 1;
-                            ctx.data_mut(|d| {
-                                d.insert_temp(egui::Id::new("puzzles_open"), true);
-                                d.insert_temp(
-                                    egui::Id::new("navigation_action_selected"),
-                                    "Lichess puzzles".to_owned(),
-                                );
-                            });
-                        }
-                        let save = ui
-                            .add_enabled_ui(!self.fics_active || self.fics_game_finished, |ui| {
-                                icon(ui, 8, "Save current game", false)
-                            })
-                            .inner;
-                        focused |= save.has_focus();
-                        if save.clicked() {
-                            self.save_current_game();
-                            self.engine_status = "Game saved on this device".into();
+                        let config=self.navigation.shortcuts.clone();
+                        for index in config.order {
+                            if config.enabled[index] {
+                                focused |= self.navigation_shortcut(ui,index).has_focus();
+                            }
                         }
                     });
+                ui.add_space((ui.available_height()-40.0).max(0.0));
+                shortcut_popup_open=self.navigation_shortcut_settings(ui);
             })
             .response
             .rect;
@@ -329,7 +418,7 @@ impl ChessApp {
             if !self.navigation.expanded {
                 self.navigation.pinned = false;
             }
-        } else if (in_rail && !self.navigation.suppress_hover)
+        } else if (in_rail && !self.navigation.suppress_hover && !shortcut_popup_open)
             || (focused && self.navigation.keyboard)
         {
             self.navigation.expanded = true;
@@ -340,6 +429,7 @@ impl ChessApp {
         if self.new_game_dialog_open {
             self.navigation.expanded = false;
         }
+        if shortcut_popup_open { self.navigation.expanded=false; }
         let mut inside = in_rail;
         if self.navigation.expanded {
             let width = DRAWER_WIDTH.min((ctx.content_rect().width() - RAIL_WIDTH).max(180.0));
@@ -403,10 +493,11 @@ impl ChessApp {
                                             ui.indent(index, |ui| {
                                                 ui.vertical(|ui| match index {
                                                     0 => self.navigation_play(ui),
-                                                    1 => self.navigation_training(ui),
-                                                    2 => self.navigation_library(ui),
-                                                    3 => self.navigation_settings(ui),
-                                                    4 => self.navigation_tools(ui),
+                                                    1 => self.navigation_analysis(ui),
+                                                    2 => self.navigation_training(ui),
+                                                    3 => self.navigation_library(ui),
+                                                    4 => self.navigation_settings(ui),
+                                                    5 => self.navigation_tools(ui),
                                                     _ => self.navigation_help(ui),
                                                 });
                                             });
@@ -516,6 +607,31 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shortcut_defaults_and_saved_custom_order_are_preserved() {
+        let mut config=QuickAccess::default();
+        assert_eq!(config.enabled,[true,true,true,true,true,false,false,false]);
+        config.enabled[5]=true;config.enabled[0]=false;config.order.swap(0,7);
+        let json=serde_json::to_string(&config).unwrap();
+        assert_eq!(QuickAccess::parse(&json),Some(config.clone()));
+        config.order[0]=config.order[1];
+        assert!(QuickAccess::parse(&serde_json::to_string(&config).unwrap()).is_none());
+        assert!(QuickAccess::parse("{}").is_none());
+        assert!(QuickAccess::parse("not JSON").is_none());
+    }
+
+    #[test]
+    fn opening_a_study_selects_training_and_reports_study_mode() {
+        let ctx = egui::Context::default();
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.open_study("[Event \"Study\"]\n[StudyName \"Test study\"]\n[ChapterName \"First chapter\"]\n[ChapterURL \"https://lichess.org/study/abcdefgh/12345678\"]\n\n1. e4 e5 *").unwrap();
+        app.navigation_enter_study(&ctx);
+        assert_eq!(app.navigation.section, 2);
+        assert_eq!(app.navigation_game_mode(), "Studying");
+        assert_eq!(ctx.data(|d|d.get_temp::<bool>(egui::Id::new("study_window_open"))), Some(true));
+        assert_eq!(ctx.data(|d|d.get_temp::<bool>(egui::Id::new("puzzles_open"))), Some(false));
+    }
+
     #[test]
     fn hover_exit_has_grace_period_and_respects_pin_and_focus() {
         let mut state = NavigationState {

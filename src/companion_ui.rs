@@ -32,12 +32,19 @@ impl ChessApp {
         }
         let mut chosen=None;
         ui.horizontal(|ui| {
-            ui.set_height(36.0);
+            ui.set_height(40.0);
             let width=(ui.available_width()-38.0-ui.spacing().item_spacing.x).max(60.0);
             let running=self.analysis_running;
-            if ui.add_enabled(!busy,egui::Button::new(RichText::new(
-                if busy {"Preparing engine…"}else if running {"Stop analysis"}else{"Analyze position"})
-                .color(Color32::from_rgb(25,29,35))).min_size(Vec2::new(width,34.0)).truncate().raised_gold())
+            let label=if busy {"Preparing engine…"}else if running {"Stop analysis"}else{"Analyze position"};
+            let action=ui.add_enabled(!busy,egui::Button::new("").min_size(Vec2::new(width,40.0)).raised_gold());
+            let ink=Color32::from_rgb(34,29,19);
+            let text=ui.painter().layout_no_wrap(label.into(),FontId::proportional(14.0),ink);
+            let center=action.rect.center();
+            let text_left=center.x-(text.size().x+24.0)/2.0;
+            Self::prediction_console_icon(ui,egui::Rect::from_center_size(egui::pos2(text_left+7.0,center.y),Vec2::splat(16.0)),if running{9}else{2},ink);
+            ui.painter().galley(egui::pos2(text_left+24.0,center.y-text.size().y/2.0),text,ink);
+            action.widget_info(||egui::WidgetInfo::labeled(egui::WidgetType::Button,action.enabled(),label));
+            if action
                 .on_hover_text(format!("{} with {} (Space)",if running {"Stop analysis"}else{"Analyze this position"},self.analysis_config.label()))
                 .clicked() {
                 #[cfg(target_arch="wasm32")]
@@ -45,12 +52,12 @@ impl ChessApp {
             }
             let menu=ui.add_enabled(!busy && !self.engine_settings_locked()
                 && !(self.fics_active && !self.fics_game_finished),
-                egui::Button::new("").min_size(Vec2::new(34.0,34.0)).raised_gold())
+                egui::Button::new("").min_size(Vec2::new(38.0,40.0)).fill(Color32::from_rgb(32,42,46)).stroke(Stroke::new(1.0,Color32::from_rgb(58,71,75))).corner_radius(5))
                 .on_hover_text("Choose analysis engine");
             let center=menu.rect.center();
             ui.painter().add(egui::Shape::line(vec![center+Vec2::new(-4.0,-2.0),
                 center+Vec2::new(0.0,3.0),center+Vec2::new(4.0,-2.0)],
-                Stroke::new(2.0,Color32::from_rgb(46,39,24))));
+                Stroke::new(1.5,Color32::from_rgb(231,233,226))));
             egui::Popup::from_toggle_button_response(&menu).show(|ui| {
                 ui.set_max_width(340.0);
                 ui.label(RichText::new("Analysis engine").strong());
@@ -72,14 +79,23 @@ impl ChessApp {
                 }
             });
         });
-        ui.label(RichText::new(format!("Engine: {}",self.analysis_config.label())).size(12.0).weak());
+        ui.horizontal(|ui| {
+            ui.spacing_mut().interact_size.y=18.0;
+            let depth=self.analysis_variations.get(self.selected_variation).map(|line|line.depth).unwrap_or(self.analysis_depth);
+            ui.add(egui::Label::new(RichText::new(format!("{} · Depth {depth}",self.analysis_config.label())).size(12.0).color(Color32::from_rgb(168,179,174))).truncate());
+            ui.with_layout(Layout::right_to_left(Align::Center),|ui| {
+                Frame::new().fill(Color32::from_rgb(35,55,44)).corner_radius(4).inner_margin(Margin::symmetric(7,3)).show(ui,|ui| {
+                    ui.label(RichText::new(if busy{"Preparing"}else if self.analysis_running{"Analyzing"}else{"Ready"}).size(11.0).color(Color32::from_rgb(159,210,170)));
+                });
+            });
+        });
         if let Some(identity)=chosen.filter(|id|id!=&current) {
             self.reset_prediction_for_engine_switch(identity.clone());
             #[cfg(target_arch="wasm32")]
             {select_companion_engine(&identity);self.poll_companion_provider();}
         }
         if busy {ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));}
-        if let Some(status)=catalog["status"].as_str().filter(|status|!status.is_empty()) {
+        if let Some(status)=catalog["status"].as_str().filter(|status|!status.is_empty()&&(busy||self.analysis_config.opponent==OpponentEngine::Companion)) {
             ui.add(egui::Label::new(status).truncate()).on_hover_text(status);
         }
     }

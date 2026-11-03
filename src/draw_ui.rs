@@ -237,7 +237,13 @@ impl ChessApp {
     }
 
     pub(super) fn drawings_tab_active(ctx: &egui::Context) -> bool {
-        ctx.data(|d| d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))) == Some(6)
+        ctx.data(|d| {
+            if d.get_temp::<bool>(egui::Id::new("puzzles_open")).unwrap_or(false) {
+                d.get_temp::<usize>(egui::Id::new("puzzle_workspace_tab"))==Some(1)
+            } else if d.get_temp::<bool>(egui::Id::new("study_window_open")).unwrap_or(false) {
+                d.get_temp::<usize>(egui::Id::new("study_workspace_tab"))==Some(1)
+            } else {d.get_temp::<usize>(egui::Id::new("game_sidebar_tab"))==Some(6)}
+        })
             && ctx.data(|d| d.get_temp::<usize>(egui::Id::new("annotations_tab"))).unwrap_or(0) == 0
     }
 
