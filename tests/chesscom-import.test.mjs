@@ -42,6 +42,34 @@ test('empty, malformed and error responses produce useful messages',async()=>{
   await assert.rejects(fetchChessComGames('Ada',async()=>({ok:true,status:200,json:async()=>({})})),/unexpected archive/);
   for(const status of [404,429,500])await assert.rejects(fetchChessComGames('Ada',async()=>({ok:false,status})),status===404?/not found/:status===429?/rate limit/:/500/);
 });
+
+test('skips missing monthly archives and continues through earlier months',async()=>{
+  const calls=[];
+  const pgn=await fetchChessComGames('Ada',async url=>{
+    calls.push(url);
+    if(url.endsWith('/archives'))return {ok:true,status:200,json:async()=>({archives:['08','09','10','11'].map(month=>`${base}/2026/${month}`)})};
+    if(url.endsWith('/11'))return {ok:false,status:404,json:async()=>{throw Error('Do not parse an unavailable archive');}};
+    if(url.endsWith('/09'))return {ok:false,status:410};
+    return {ok:true,status:200,json:async()=>({games:Array.from({length:10},(_,i)=>game(i+(url.endsWith('/10')?11:1)))})};
+  });
+  assert.deepEqual(calls,[`${base}/archives`,`${base}/2026/11`,`${base}/2026/10`,`${base}/2026/09`,`${base}/2026/08`]);
+  assert.equal((pgn.match(/\[Event /g)||[]).length,20);
+  assert.ok(pgn.startsWith('[Event "Game 20"]'));
+});
+
+test('unavailable archives give useful errors without hiding other failures or ignoring date bounds',async()=>{
+  for(const status of [404,410,429,403,500]){
+    const calls=[];
+    const request=async url=>{
+      calls.push(url);
+      if(url.endsWith('/archives'))return {ok:true,status:200,json:async()=>({archives:[`${base}/2026/10`,`${base}/2026/11`]})};
+      return {ok:false,status};
+    };
+    await assert.rejects(fetchChessComGames('Ada',request,{from:'2026-11-01'}),
+      [404,410].includes(status)?/monthly archives are unavailable/:status===429?/rate limit/:new RegExp(String(status)));
+    assert.deepEqual(calls,[`${base}/archives`,`${base}/2026/11`]);
+  }
+});
 test('date and speed filters skip irrelevant months and include the entire end date',async()=>{
   const calls=[];
   const timed = (date,speed='blitz') => ({...game(Date.parse(date)/1000),time_class:speed});

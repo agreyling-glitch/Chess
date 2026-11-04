@@ -408,6 +408,28 @@ export function lichessExportUrl(input, options = {}) {
   return url.href;
 }
 
+const importUsernameKey = provider => `ironwood.import-usernames.${provider}`;
+export function recentImportUsernames(provider) {
+  if (!['lichess','chesscom'].includes(provider)) return [];
+  try {
+    const stored = JSON.parse(localStorage.getItem(importUsernameKey(provider)) || '[]');
+    if (!Array.isArray(stored)) return [];
+    const seen = new Set();
+    return stored.filter(name => {
+      if (typeof name !== 'string' || !/^[a-zA-Z0-9_-]{2,30}$/.test(name) || seen.has(name.toLowerCase())) return false;
+      seen.add(name.toLowerCase()); return true;
+    }).slice(0,20);
+  } catch { return []; }
+}
+export function rememberImportUsername(provider, input) {
+  if (!['lichess','chesscom'].includes(provider) || typeof input !== 'string') return;
+  const name = input.trim();
+  if (!/^[a-zA-Z0-9_-]{2,30}$/.test(name)) return;
+  const recent = [name, ...recentImportUsernames(provider).filter(previous => previous.toLowerCase() !== name.toLowerCase())].slice(0,20);
+  try { localStorage.setItem(importUsernameKey(provider), JSON.stringify(recent)); } catch {}
+}
+window.ironwoodRecentImportUsernames = provider => JSON.stringify(recentImportUsernames(provider));
+
 window.ironwoodLichessStatus = () => lichessStatus;
 window.ironwoodPollLichess = () => {
   const pgn = lichessPgn;
@@ -415,6 +437,7 @@ window.ironwoodPollLichess = () => {
   return pgn;
 };
 window.ironwoodFetchLichess = async (input, options = {}) => {
+  rememberImportUsername('lichess', input);
   if (lichessBusy || lichessPgn) return;
   if (Date.now() < lichessRetryAt) {
     lichessStatus = 'Lichess rate limit: wait a full minute before trying again.';
@@ -464,9 +487,10 @@ export async function fetchChessComGames(input, request = fetch, options = {}) {
   const filters = importFilters(options);
   const username = chessComUsername(input);
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(username)}/games`;
-  const get = async url => {
+  const get = async (url, monthly = false) => {
     const response = await request(url, { headers: { Accept: 'application/json' }, credentials: 'omit', signal: AbortSignal.timeout(30000) });
     if (response.status === 429) throw new Error('Chess.com rate limit: wait a full minute before trying again.');
+    if (monthly && [404,410].includes(response.status)) return null;
     if (response.status === 404) throw new Error('Chess.com user or game archive not found.');
     if (!response.ok) throw new Error(`Chess.com request failed (${response.status}). Try again later.`);
     return response.json();
@@ -477,13 +501,15 @@ export async function fetchChessComGames(input, request = fetch, options = {}) {
   const archives = [...new Set(listing.archives)].filter(url => typeof url === 'string' && url.startsWith(`${base}/`)
     && /^\d{4}\/(?:0[1-9]|1[0-2])$/.test(url.slice(base.length + 1))).sort().reverse();
   const games = [];
+  let unavailableMonths = 0;
   const seen = new Set();
   for (const archive of archives) {
     const monthStart = Date.parse(`${archive.slice(-7).replace('/','-')}-01T00:00:00Z`);
     const nextMonth = new Date(monthStart); nextMonth.setUTCMonth(nextMonth.getUTCMonth()+1);
     if (filters.until !== null && monthStart > filters.until) continue;
     if (filters.since !== null && nextMonth.getTime() <= filters.since) break;
-    const month = await get(archive); // Serial requests respect the Published Data API guidance.
+    const month = await get(archive, true); // Serial requests respect the Published Data API guidance.
+    if (month === null) { unavailableMonths++; continue; }
     if (!Array.isArray(month.games)) throw new Error('Chess.com returned an unexpected game format.');
     for (const game of month.games) {
       if (!['chess', 'chess960'].includes(game.rules) || typeof game.pgn !== 'string'
@@ -498,7 +524,9 @@ export async function fetchChessComGames(input, request = fetch, options = {}) {
     games.sort((a,b) => b.end_time - a.end_time);
     if (games.length >= filters.limit) break;
   }
-  if (!games.length) throw new Error('No completed standard chess or Chess960 games match these filters.');
+  if (!games.length) throw new Error(unavailableMonths
+    ? 'No completed games found in the available archives. Some Chess.com monthly archives are unavailable; try again later or choose an earlier date range.'
+    : 'No completed standard chess or Chess960 games match these filters.');
   return games.slice(0,filters.limit).map(game => game.pgn.trim()).join('\n\n');
 }
 
@@ -509,6 +537,7 @@ window.ironwoodPollChessCom = () => {
   return pgn;
 };
 window.ironwoodFetchChessCom = async (input, options = {}) => {
+  rememberImportUsername('chesscom', input);
   if (chessComBusy || chessComPgn) return;
   if (Date.now() < chessComRetryAt) { chessComStatus = 'Chess.com rate limit: wait a full minute before trying again.'; return; }
   chessComBusy = true;

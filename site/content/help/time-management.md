@@ -4,10 +4,14 @@ description: "Read time-per-move bars, remaining-clock lines, and the time-versu
 category: "analysis"
 keywords: [time, clocks, increment, time trouble, quadrant, CPL, rushed errors, budget]
 weight: 23
-lastmod: 2026-10-31T00:00:00-05:00
+lastmod: 2026-11-04T00:00:00-06:00
 ---
 
 Open **Analysis** and choose a timing tab below the evaluation graph. The views use recorded move timings and the selected analysis run. Hover chart marks for move details; click to review that position. Missing data is left unavailable rather than invented.
+
+On smaller screens, choose **Hide controls & graph** beside the **Analysis** heading. This hides the engine controls, Saved results row, and evaluation graph together, giving Summary, Critical Analysis, and the timing tabs more vertical room. Analysis progress and errors remain visible. Choose **Show controls & graph** to restore the section.
+
+Imported Chess.com games with clock comments and a simple time control now supply calculated time spent, including each player's first move and any increment. Existing explicit elapsed times are preserved. Missing clock history remains unavailable. See [Chess.com import](/help/import-from-chess-com/).
 
 ## Time per move
 

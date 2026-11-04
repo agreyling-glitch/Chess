@@ -4,7 +4,7 @@ description: "Filter completed Lichess games by date and time control, fetch up 
 category: "using-ironwood"
 keywords: [Lichess, import, username, profile, game URL, PGN, recent games, completed games, duplicates, analyze]
 weight: 13
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-04T00:00:00-06:00
 ---
 
 Bring completed Lichess games into Ironwood without downloading a PGN file first. You do not need to sign in to Lichess or provide an API token. Fetching games requires an internet connection.
@@ -21,6 +21,8 @@ Bring completed Lichess games into Ironwood without downloading a PGN file first
 Ironwood skips games that are already in Saved Games. Importing a collection saves the selected games; analyze them individually after opening them.
 
 Enter `Dr_Tiger`, rather than the profile URL `https://lichess.org/@/Dr_Tiger`. The import field currently accepts usernames and individual game links, but not profile links.
+
+Use **Recent usernames** to select one of the last 20 distinct usernames submitted with Fetch. Newest names appear first, and using a name again moves it to the top. The history stays in this browser on this device, separately from Chess.com history. Game and study links are not added to the username list.
 
 ## Filter a username import
 

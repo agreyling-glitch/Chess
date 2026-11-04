@@ -409,6 +409,8 @@ extern "C" {
 
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFetchLichess)]
     fn fetch_lichess(input: &str, options: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRecentImportUsernames)]
+    fn recent_import_usernames(provider: &str) -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRefreshStudy)]
     fn refresh_study(input: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollStudyRefresh)]
@@ -4667,6 +4669,18 @@ impl ChessApp {
                                 ui.label(RichText::new(if chess_com { "Enter the username shown on your Chess.com profile." }
                                     else { "Enter a username for recent games, or paste a game, study or chapter link." }).size(14.0).weak());
                                 let narrow = ui.available_width() < 420.0;
+                                let provider = if chess_com { "chesscom" } else { "lichess" };
+                                let recent = serde_json::from_str::<Vec<String>>(&recent_import_usernames(provider)).unwrap_or_default();
+                                ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                                    egui::ComboBox::from_id_salt(("recent_import_usernames",provider))
+                                        .selected_text("Recent usernames").width(ui.available_width().min(300.0))
+                                        .show_ui(ui, |ui| {
+                                            let input = if chess_com { &mut self.chess_com_input } else { &mut self.lichess_input };
+                                            for username in recent {
+                                                ui.selectable_value(input, username.clone(), &username);
+                                            }
+                                        });
+                                });
                                 let single_game = !chess_com && self.lichess_input.trim().starts_with("https://");
                                 ui.add_enabled_ui(!single_game, |ui| {
                                     ui.horizontal_wrapped(|ui| {
@@ -9938,7 +9952,31 @@ impl ChessApp {
     fn parse_pgn_timings_with_positions(text:&str,positions:&[Board])->Vec<MoveTiming> {
         let mut timings=Self::parse_pgn_timing_comments(text,positions);
         Self::lichess_timings_from_pgn(text,&mut timings,positions);
+        Self::chesscom_timings_from_pgn(text,&mut timings,positions);
         timings
+    }
+
+    fn chesscom_timings_from_pgn(text:&str,timings:&mut [MoveTiming],positions:&[Board]) {
+        let Some(site)=Self::pgn_tag(text,"Site") else{return;};
+        let site=site.to_ascii_lowercase();
+        if site!="chess.com" && !["https://chess.com/","http://chess.com/","https://www.chess.com/","http://www.chess.com/"].iter().any(|prefix|site.starts_with(prefix)) {return;}
+        let Some((initial,increment))=Self::simple_time_control(text) else{return;};
+        // Chess.com clocks include the increment after every move, including
+        // the first. Only seed initial clocks when the entire game is present.
+        let full_game=Self::pgn_tag(text,"FEN").is_none();
+        let mut previous=[full_game.then_some(initial);2];
+        for index in 1..timings.len().min(positions.len()) {
+            let side=usize::from(positions[index-1].side_to_move()==Color::Black);
+            let remaining=timings[index].remaining.as_deref().and_then(Self::pgn_seconds);
+            if timings[index].elapsed.is_none() {
+                if let Some(spent)=previous[side].zip(remaining).map(|(before,after)|before-after+increment)
+                    .filter(|n|n.is_finite()&&*n>=-0.001) {
+                    timings[index].elapsed=Some(Self::pgn_time(spent.max(0.0)));
+                }
+            }
+            // A missing clock breaks this player's chain until the next clock.
+            previous[side]=remaining;
+        }
     }
 
     fn parse_pgn_timings(text:&str)->Vec<MoveTiming> {
@@ -18910,6 +18948,42 @@ mod tests {
     }
 
     #[test]
+    fn chesscom_move_durations_use_initial_clocks_and_increment() {
+        // First moves from MagnusCarlsen–puz2010, 2026-11-03.
+        let pgn="[Site \"Chess.com\"]\n[TimeControl \"180\"]\n\n1. c4 {[%clk 0:02:58.4]} e5 {[%clk 0:02:50.8]} 2. g3 {[%clk 0:02:58.3]} g6 {[%clk 0:02:49]} *";
+        let timing=ChessApp::parse_pgn_timings(pgn);
+        for (index,expected) in [(1,"0:00:01.600"),(2,"0:00:09.200"),(3,"0:00:00.100"),(4,"0:00:01.800")] {
+            assert_eq!(timing[index].elapsed.as_deref(),Some(expected));
+        }
+        assert_eq!(timing[1].remaining.as_deref(),Some("0:02:58.4"));
+        let timing=ChessApp::parse_pgn_timings("[Site \"https://www.chess.com/\"]\n[TimeControl \"180+2\"]\n\n1. e4 {[%clk 0:03:01]} e5 {[%clk 0:03:00]} 2. Nf3 {[%clk 0:03:02] [%emt 0:00:00.750]} Nc6 {[%clk 0:03:01]} *");
+        for (index,expected) in [(1,"0:00:01.000"),(2,"0:00:02.000"),(3,"0:00:00.750"),(4,"0:00:01.000")] {
+            assert_eq!(timing[index].elapsed.as_deref(),Some(expected));
+        }
+    }
+
+    #[test]
+    fn chesscom_move_durations_handle_missing_clocks_and_partial_games() {
+        let pgn="[Site \"Chess.com\"]\n[TimeControl \"60\"]\n\n1. e4 {[%clk 0:00:59]} e5 {[%clk 0:00:58]} 2. Nf3 Nc6 {[%clk 0:00:57]} 3. Bb5 {[%clk 0:00:55]} a6 {[%clk 0:00:59]} 4. Ba4 {[%clk 0:00:54]} *";
+        let timing=ChessApp::parse_pgn_timings(pgn);
+        assert!(timing[3].elapsed.is_none());
+        assert!(timing[5].elapsed.is_none());
+        assert!(timing[6].elapsed.is_none()); // Negative duration is unavailable.
+        assert_eq!(timing[4].elapsed.as_deref(),Some("0:00:01.000"));
+        assert_eq!(timing[7].elapsed.as_deref(),Some("0:00:01.000"));
+        let partial="[Site \"Chess.com\"]\n[TimeControl \"60+2\"]\n[SetUp \"1\"]\n[FEN \"rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 19\"]\n\n19... e5 {[%clk 0:00:40]} 20. Nf3 {[%clk 0:00:35]} Nc6 {[%clk 0:00:39]} *";
+        let timing=ChessApp::parse_pgn_timings(partial);
+        assert!(timing[1].elapsed.is_none());
+        assert!(timing[2].elapsed.is_none());
+        assert_eq!(timing[3].elapsed.as_deref(),Some("0:00:03.000"));
+        for control in ["?","1/86400","40/7200:3600"] {
+            let timing=ChessApp::parse_pgn_timings(&pgn.replace("\"60\"",&format!("\"{control}\"")));
+            assert!(timing.iter().all(|t|t.elapsed.is_none()));
+        }
+        assert!(ChessApp::parse_pgn_timings(&pgn.replace("Chess.com","chess.com.evil.example")).iter().all(|t|t.elapsed.is_none()));
+    }
+
+    #[test]
     fn move_table_time_column_stacks_players_and_fits_narrow_panels() {
         assert_eq!(ChessApp::move_time_label(Some("0:00:16.6")),"16.6s");
         assert_eq!(ChessApp::move_time_label(Some("0:00:00")),"0.0s");
@@ -21621,9 +21695,23 @@ impl ChessApp {
                     let engine_selection_busy = crate::companion::enabled() && serde_json::from_str::<serde_json::Value>(&companion_engine_catalog()).unwrap_or_default()["busy"] == true;
                     #[cfg(not(target_arch = "wasm32"))]
                     let engine_selection_busy = false;
-                    let (heading,_) = ui.allocate_exact_size(Vec2::new(150.0,24.0),Sense::hover());
-                    Self::analysis_icon_text(ui,heading,"Analysis",4,Color32::from_rgb(215,185,121));
+                    let collapse_id=egui::Id::new("analysis_controls_collapsed");
+                    let mut controls_collapsed=ui.data_mut(|data|data.get_persisted::<bool>(collapse_id)).unwrap_or(false);
+                    ui.horizontal(|ui| {
+                        let heading_width=ui.painter().layout_no_wrap("Analysis".to_owned(),FontId::proportional(14.0),Color32::WHITE).size().x+54.0;
+                        let (heading,_) = ui.allocate_exact_size(Vec2::new(heading_width,24.0),Sense::hover());
+                        Self::analysis_icon_text(ui,heading,"Analysis",4,Color32::from_rgb(215,185,121));
+                        ui.with_layout(Layout::right_to_left(Align::Center),|ui| {
+                            let label=if controls_collapsed {"Show controls & graph"} else {"Hide controls & graph"};
+                            if Self::compact_panel_button(ui,label,false)
+                                .on_hover_text("Make more room for analysis details by hiding the engine controls, saved results and evaluation graph.").clicked() {
+                                controls_collapsed=!controls_collapsed;
+                                ui.data_mut(|data|data.insert_persisted(collapse_id,controls_collapsed));
+                            }
+                        });
+                    });
                     ui.add_space(8.0);
+                    if !controls_collapsed {
                     Self::grained_outer_section(ui, |ui| {
                     Self::stable_panel_button_style(ui);
                     ui.spacing_mut().interact_size.y=38.0;
@@ -21685,6 +21773,7 @@ impl ChessApp {
                     });
                     });
                     ui.add_space(16.0);
+                    }
                     if let Some((fraction, progress_text)) = &progress {
                         Self::full_analysis_progress(ui, *fraction, progress_text);
                     }
@@ -21693,10 +21782,12 @@ impl ChessApp {
                     {
                         ui.colored_label(Color32::LIGHT_RED, &self.engine_status);
                     }
-                    if let Some(destination) = self.analysis_graph(ui, false) {
-                        self.review_to(destination);
+                    if !controls_collapsed {
+                        if let Some(destination) = self.analysis_graph(ui, false) {
+                            self.review_to(destination);
+                        }
+                        ui.add_space(16.0);
                     }
-                    ui.add_space(16.0);
                     }
                     let details_min_height = (ui.clip_rect().bottom() - ui.cursor().top() - 26.0).max(0.0);
                     let mut details_grain=None;
