@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-11-02T00:00:00-06:00
+lastmod: 2026-11-05T00:00:00-06:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -61,13 +61,13 @@ Click the gray raised **Expand** button beneath Engine prediction in the **Predi
 
 Open your account or any username from **Lichess lobby → Player profile**. Browse biography links, ratings, game record, rating graphs by time control, and recent games. Follow or unfollow players and open profiles from your following list. Compare players in separate gold-bordered windows, each with independent graph filters and a sunken paper-grain chart. The raised **↗** title-bar button opens a profile in its own browser window for another monitor, sharing the main window’s Lichess connection; full-board reviews return to the main board.
 
-Click a time-control rating chip for detailed performance: peak and lowest ratings, rank and percentile, opponent averages, record, streaks, and playing time. Best wins and worst losses show up to five games each with the same enlarged playback and full-board review controls as recent games. Statistics are cached separately by player window and time control, with refresh controls for retrying loads. The Puzzles chip does not open performance details.
+Click a time-control rating chip for detailed performance: peak and lowest ratings, rank and percentile, opponent averages, record, streaks, and playing time. Best wins and worst losses show up to five games each with the same enlarged playback and full-board review controls as recent games. Statistics are shared across windows for the same player and time control, with refresh controls for requesting fresh data. The Puzzles chip does not open performance details.
 
 Expand or collapse **Recent games** to show the latest 12 completed games across time controls. Hover a mini board for its gold outline and magnifying-glass indicator, then click for enlarged playback with player colors and outcome, or choose **Review on Ironwood** for the full board. Reviews stay temporary until **Save current game** adds the complete game to your library. [Player profile help](/help/lichess-player-profiles/).
 
 ## Follow player activity
 
-Expand **Activity** in a Lichess profile to load recent daily results, grouped by date and time control. See wins, losses, draws, before/after ratings when available, and puzzle results supplied by Lichess. Activity loads on demand, with its own refresh control and per-window cache. Expand **Following** to search your followed players and open their profiles directly; Follow and Unfollow update your list on Lichess after authorization. Public biography and website links, FIDE links, and original game links open in new tabs. [Profiles and activity](/help/lichess-player-profiles/).
+Expand **Activity** in a Lichess profile to load recent daily results, grouped by date and time control. See wins, losses, draws, before/after ratings when available, and puzzle results supplied by Lichess. Activity loads on demand with its own refresh control and a cache shared across profiles of the same player. Rating history loads when expanded; recent games load independently. Cached profiles, charts, statistics, and game lists stay visible during updates. Expand **Following** to search your followed players and open their profiles directly; Follow and Unfollow update your list on Lichess after authorization. Public biography and website links, FIDE links, and original game links open in new tabs. [Profiles and activity](/help/lichess-player-profiles/).
 
 ## Train against an adaptive opponent
 
@@ -167,7 +167,7 @@ Filter Lichess and Chess.com username imports by time control and an optional da
 
 Open **Game library → Import…** for four tabs: **Paste a game or collection**, **Lichess**, **Chess.com**, and **Scoresheet**. Move or resize the gold-bordered window to fit your workspace; the tab row wraps on narrower windows. The paste area grows with the window, with Clear and Continue directly below it. Paste PGN or Analysis JSON, fetch online games, or enter a handwritten scoresheet. Move or resize the collection review window, filter by player and choose which games to keep; duplicate games are skipped. A beveled progress bar shows games processed and percentage during large imports. PGN imports discard games with fewer than **two full moves (four half-moves)**. The result separates saved games, duplicates, discarded games and failures, and reports any games not attempted. Start full-game analysis when ready, or restore saved results immediately with Analysis JSON. [Import Games guide](/help/import-games/).
 
-Use **Browse…** to select a PGN, Analysis JSON or ZIP file. A ZIP can contain one or more PGN files, including files in folders; Ironwood combines them for the normal import flow. Browse fills the paste area, then **Continue** opens the game or collection. You can also drag a ZIP onto the app. ZIP imports run locally, check file integrity, and use the existing duplicate detection. The ZIP and its combined uncompressed PGNs can each be up to **64 MiB**, with at most **1,000 entries**. [ZIP import help](/help/import-games/#import-a-zip-collection).
+Use **Browse…** to select a PGN, Analysis JSON or ZIP file. A ZIP can contain one or more PGN files, including files in folders; Ironwood combines them for the normal import flow. Browsed collections open game selection directly. A single browsed game or Analysis JSON fills the paste area; choose **Continue** for those. You can also drag a ZIP onto the app. ZIP imports run locally, check file integrity, and use the existing duplicate detection. The ZIP and its combined uncompressed PGNs can each be up to **64 MiB**, with at most **1,000 entries**. [ZIP import help](/help/import-games/#import-a-zip-collection).
 
 PGN imports use a single pass to count moves through comments and variations. File size, game count, move count and nesting limits protect the app from excessively large or malformed notation. PGN collections can contain up to **100,000 games** within **64 MiB**, with a **1 MiB** limit per game.
 
@@ -175,11 +175,11 @@ The online import panels provide clear username fields, gold **Fetch games** but
 
 ## Import games from Lichess
 
-Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch up to the chosen number of matching completed games (20 by default), or paste an individual game link. No Lichess login or API token is needed. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and start Stockfish analysis from Game Analysis. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
+Bring your Lichess games into Ironwood for review and analysis. Enter a player's username to fetch up to the chosen number of matching completed games (20 by default), or paste an individual game link. No Lichess login or API token is needed. Fetched collections go straight to game selection, and single games continue directly to review or destination selection. Choose the games you want to keep; Ironwood skips duplicates and saves imported games in your local library. Open a game to explore its moves and start Stockfish analysis from Game Analysis. See [Import games from Lichess](/help/import-from-lichess/) for the steps. Fetching games requires an internet connection.
 
 ## Import games from Chess.com
 
-Select **Chess.com** in the tabbed Import window and enter a username to fetch up to the chosen number of completed standard chess or Chess960 games (20 by default). Ironwood reads recent monthly archives sequentially, then lets you choose games to save through its existing duplicate-aware import workflow. No account connection or API token is needed. Chess.com’s cached archives may take time to include a just-finished game. The same window provides **Paste a game or collection**, **Lichess**, and **Scoresheet** tabs. [Import games from Chess.com](/help/import-from-chess-com/).
+Select **Chess.com** in the tabbed Import window and enter a username to fetch up to the chosen number of completed standard chess or Chess960 games (20 by default). Ironwood reads recent monthly archives sequentially, then lets you choose games to save through its existing duplicate-aware import workflow. No account connection or API token is needed. Chess.com’s cached archives may take time to include a just-finished game. Fetched collections open selection directly, without the Paste tab and Continue step. Open Import from **Manage library → Import games…** inside Saved Games as well. The same window provides **Paste a game or collection**, **Lichess**, and **Scoresheet** tabs. [Import games from Chess.com](/help/import-from-chess-com/).
 
 ## Import handwritten scoresheets
 
@@ -289,7 +289,7 @@ Lichess account sign-in can remain available alongside FICS without replacing th
 
 ## Keep control of your data
 
-Use **Game History** for Saved Games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. **Settings** starts with Engine settings and Companion connection. There is no separate Storage menu or Companion archive window. Browser storage keeps games, annotations, backgrounds, and display preferences locally. **Game library → Backup and Restore…** creates Browser JSON backups with Merge or Replace restore, or server-side database snapshots in the selected Companion’s configured backup folder. Move and resize Storage Information to inspect game counts and browser usage in scrollable recessed sections. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
+Use **Game library** for Saved Games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. **Settings** starts with Engine settings and Companion connection. There is no separate Storage menu or Companion archive window. Browser storage keeps games, annotations, backgrounds, and display preferences locally. **Game library → Backup and Restore…** creates Browser JSON backups with Merge or Replace restore, or server-side database snapshots in the selected Companion’s configured backup folder. Move and resize Storage Information to inspect game counts and browser usage in scrollable recessed sections. Install the app and explicitly store the engine for offline play and analysis without an account. Lichess play and chat, and FICS play, spectating, and chat require an internet connection and send game activity and messages to the server; local engine analysis and screenshot processing run on your device.
 
 ## Optional usage statistics
 
@@ -304,3 +304,7 @@ Ironwood is currently designed for desktop and laptop screens. Use a current bro
 ## Searchable help and recovery guides
 
 The [Help center](/help/) covers play, training, puzzles, online connections, imports, analysis, annotations, themes, and local storage. Search article text with multiple terms, filter by topic, and use each article’s contents links to reach a specific control. Dedicated guides cover Lichess profiles, expanded graphs, and recovery from loading problems or a frozen page.
+
+## Resize the board workspace
+
+Drag the divider between the live board and the right panel to change their widths. Moving it left widens the panel and shrinks the board. Game, study, and puzzle panels share the divider position. The compact prediction table leaves more room for the rest of the panel.

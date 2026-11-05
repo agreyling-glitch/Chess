@@ -4,10 +4,10 @@ description: "Filter completed Chess.com games by date and time control, fetch u
 category: "using-ironwood"
 keywords: [Chess.com, chesscom, import, username, PGN, archives, recent games, duplicates]
 weight: 19
-lastmod: 2026-11-04T00:00:00-06:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
-Open **Game library → Import…** and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
+Open **Game library → Import…**, or **Manage library → Import games…** in Saved Games, and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
 
 Enter just the username, such as `hikaru`, rather than a profile URL. **Recent usernames** lets you reuse the last 20 distinct usernames submitted with Fetch. The newest is first; using a name again moves it to the top. The list stays in this browser on this device and is separate from Lichess history.
 
@@ -19,7 +19,7 @@ If no games match, widen the date range or choose another time control. Invalid 
 
 If Chess.com lists a monthly archive that returns Not Found (404) or Gone (410), Ironwood skips it and tries earlier months within your date range. The returned games may therefore be older than expected. If no games are found and some months were unavailable, the message explains this; try again later or choose an earlier range. Rate limits, connection failures, and other server errors still stop the request.
 
-When fetching finishes, **Paste a game or collection** opens with the PGNs. Click **Continue**, choose the games you want to keep, and use the existing import flow to save them. Duplicate games already in your library are skipped.
+When fetching finishes, collections open game selection directly. Choose the games you want to keep and import them. A single returned game proceeds directly to review or the destination’s selection screen. You do not need to pass through the PGN text box or click **Continue**. Duplicate games already in your library are skipped.
 
 Open an imported game and choose **Analysis** to analyze it. Import does not automatically start engine analysis.
 

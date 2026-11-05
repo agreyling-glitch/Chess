@@ -54,12 +54,12 @@ adds no third-party code or asset license to Ironwood's distribution.
 
 ## Import from Lichess
 
-In the browser app, choose **Game History → Import…** and enter a Lichess username
+In the browser app, choose **Game library → Import…** or **Saved Games → Manage library → Import games…** and enter a Lichess username
 or an `https://lichess.org/…` game link, then click **Fetch games**. Username
-imports fetch the latest 20 completed games without requiring login. Click
-**Continue** to choose games in the existing batch importer, which skips
-duplicates. A single game opens for review; enable **Analyze the full game
-after import** to analyze it immediately. Imported games remain available in
+imports fetch up to the selected number of completed games (20 by default) without requiring login.
+Collections open game selection directly, without a Paste/Continue step, and the
+batch importer skips duplicates. A single game proceeds to review or destination
+selection. Start engine analysis afterward from Analysis. Imported games remain available in
 Saved Games for later review and analysis.
 
 Fetching requires an internet connection. Ironwood makes one Lichess request
@@ -69,8 +69,8 @@ games cannot be imported. No additional libraries or Lichess assets are bundled.
 ### Lichess studies
 
 The Lichess import field also accepts `https://lichess.org/study/STUDY_ID`
-and chapter links ending in `/CHAPTER_ID`. Click **Fetch study**, then
-**Continue** to choose chapters. Public, downloadable studies need no login.
+and chapter links ending in `/CHAPTER_ID`. Click **Fetch study** to open the study
+directly. Public, downloadable studies need no login.
 For private studies, export PGN from your Lichess account and use the Paste tab.
 Import only studies you own or have permission to use; study content is not
 bundled with Ironwood or assumed to carry Lichess's software license.
@@ -366,7 +366,7 @@ Games enter Saved Games after their first move; a zero-move board can still be r
 
 Open **Lichess-Online → Player profile…**, then expand **Following** to search the players followed by your signed-in account and open their profiles. **Follow** and **Unfollow** update your actual Lichess list. The profile window title includes the player’s name and account ID. New sign-ins request `follow:read` and `follow:write`; older sessions can use **Sign in again for follow access** if Lichess reports missing permissions. Requests use the existing session-only token and add no dependencies or assets.
 
-Player profiles support multiple independent windows for comparison. Use **Load in new window** with the desired username, or open **Lichess-Online → Player profile…** again. Each window keeps its own player, graph filters, size, and position, with a fluorescent green border. Record counters wrap as complete blocks on narrow windows. Follow status stays synchronized across open profiles.
+Player profiles support multiple independent windows for comparison. Use **Load in new window** with the desired username, or open **Lichess-Online → Player profile…** again. Each window keeps its own player, graph filters, size, and position, with a gold border. Record counters wrap as complete blocks on narrow windows. Follow status stays synchronized across open profiles.
 
 Profile biography and website links open in new tabs. The FIDE rating opens the linked FIDE player profile when Lichess provides an ID, or the FIDE ratings directory otherwise. Click a recent-game mini board to use the Saved Games move viewer directly from memory, with step controls and autoplay. **Review on Ironwood** closes profile overlays and opens a temporary analysis session without adding the game to Saved Games; **Play → Save current game** explicitly saves the full reviewed game, even from its starting position. Starting or importing a normal game resumes normal saving. Active online play and training must finish first.
 
@@ -378,7 +378,7 @@ The gray raised **Expand** button beneath Engine prediction opens a snapshot wit
 
 Use the raised **↗** button beside Close in a player profile’s header to move it into a separate browser window. Pop-outs retain player, time-control, range, and performance selections and fill the browser area; in-app profile headers remain draggable. The main window owns the Lichess connection and publishes profile data to its same-origin companions. Profile requests are forwarded to that connection, and **Review on Ironwood** queues a review on the main board with its normal active-play guards. Keep the main window open. Blocked pop-ups leave the original profile available.
 
-Rating chips open detailed performance, including records, peaks, streaks, and up to five best wins/worst losses. Notable games use a batch export request for browser-compatible previews. Recent games can be collapsed. Activity loads on demand with daily games, puzzle results, and rating changes, cached per profile window.
+Rating chips open detailed performance, including records, peaks, streaks, and up to five best wins/worst losses. Notable games use a batch export request for browser-compatible previews. Recent games can be collapsed. Activity loads on demand with daily games, puzzle results, and rating changes. Profile data is shared across windows for the same player. Expand Rating history to fetch its chart; Recent games loads independently. Cached profiles, charts, statistics, and games stay visible during refresh.
 
 ### Expanded game graph
 
@@ -394,8 +394,30 @@ The Help center supports article-text search with multiple terms, topic filters,
 
 ### Current menus and library tools
 
-Play opens vs AI Engine, Online via Lichess, Online via FICS, and Self-play. Online choices open their lobby directly; opening the signed-out Lichess lobby does not start OAuth. Training contains Train against AI and Lichess Puzzles. Game History contains Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. Settings starts with Engine settings and Companion connection. The former Storage menu and Your game archive window are retired.
+Play opens vs AI Engine, Online via Lichess, Online via FICS, and Self-play. Online choices open their lobby directly; opening the signed-out Lichess lobby does not start OAuth. Training contains Train against AI and Lichess Puzzles. Game library contains Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. Settings starts with Engine settings and Companion connection. The former Storage menu and Your game archive window are retired.
 
 The AI setup dropdown lists Built-in Stockfish and installed engines from named Companions. A refresh icon reloads the catalog. Live play prevents duplicate search requests while a search is active. Game Moves shows elapsed times in its Time column and available remaining clocks on hover; wheel navigation keeps visible rows stationary. PGN timing preservation also applies to Lichess reviews and FICS history when their clock data is available.
 
 Saved Games manages Browser and Companion collections, metadata, and copies/moves with destination collection choices. A game in multiple collections remains one stored record. Browser backups preserve collections; Companion database snapshots run in the selected server’s configurable backup folder. The gallery includes updated analysis charts, move times, library, online, training, and puzzle-progress screenshots.
+
+### Lichess request coordination and caches
+
+Ordinary Lichess API requests from online play, imports, and study refresh use one
+queue per app window through response-body consumption. Account, game, and seek
+streams remain independent, but share a cooldown of at least 60 seconds after
+HTTP 429, honoring longer Retry-After seconds or HTTP dates. Disconnecting does
+not clear the cooldown. Opening Explorer and tablebases use their separate hosts
+and request controls.
+
+Profile reads coalesce identical in-flight requests and share bounded in-memory
+caches across profile windows in the same signed-in session: recent games for
+1 minute; profiles, activity, and performance for 5 minutes; rating history and
+completed-game previews for 30 minutes. Preview batches request only missing
+games. Public single-game PGN imports also cache completed games for 30 minutes;
+username imports and studies are fetched fresh. Explicit section refresh bypasses
+its cache. Signed-in caches clear on disconnect; all caches clear on page reload.
+
+The live board and right panel now have a draggable shared divider. Moving it
+left widens the panel and shrinks the board; game, study, and puzzle workspaces
+reuse that position. The top branding strip is removed and prediction-table rows
+and viewport are slightly shorter.

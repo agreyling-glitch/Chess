@@ -1,13 +1,13 @@
 ---
 title: "Import games"
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 description: "Import PGN, ZIP and Scid databases, fetch online games, or enter a handwritten scoresheet."
 category: "using-ironwood"
 keywords: [import, tabs, PGN, ZIP, Scid, si4, si5, database, compressed, drag and drop, JSON, collection, Lichess, Chess.com, scoresheet]
 weight: 12
 ---
 
-Open **Game library → Import…** to choose among four tabs. Drag the title or outer background to move the window; drag an edge or corner to resize it. The tab row wraps on narrow windows, and panel contents scroll vertically when needed. The gold-bordered window has a heavy paper-grain outer background and recessed content sections. Close it with **×** or Escape.
+Open **Game library → Import…**, or **Manage library → Import games…** inside Saved Games, to choose among four tabs. In a separate Saved Games window, this focuses the main app and opens its Import window; keep the main window open. If no main app is available, the Saved Games window opens the app’s import page. Drag the title or outer background to move the window; drag an edge or corner to resize it. The tab row wraps on narrow windows, and panel contents scroll vertically when needed. The gold-bordered window has a heavy paper-grain outer background and recessed content sections. Close it with **×** or Escape.
 
 ## Paste a game or collection
 
@@ -64,7 +64,7 @@ Enter a Chess.com username and click **Fetch games** for up to the chosen number
 
 Both panels offer **Games** (20, 50, 100, or 200), **Time control**, and optional **From** and **Through** dates in `YYYY-MM-DD` format. Dates use UTC and include the entire Through date; leave either blank for an open range. The newest matching games are fetched first, up to your chosen count. **Reset filters** restores 20 games, all time controls, and no date limits. Filters apply to usernames, not individual Lichess game links. Chess.com uses game completion dates. Lichess uses its game-date filters. Selecting a specific Lichess speed restricts results to that performance category.
 
-Both online sources require an internet connection. After fetching, **Paste a game or collection** opens with the game text; choose **Continue** to review and import it.
+Both online sources require an internet connection. Fetched collections go directly to game selection, where you choose which games to import. A single game proceeds directly to review or the destination’s selection screen, and a Lichess study opens in Study mode. The Paste tab and **Continue** step are used for manual text entry, not for successful online fetches.
 
 ## Scoresheet
 

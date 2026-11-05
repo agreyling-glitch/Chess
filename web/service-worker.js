@@ -37,6 +37,7 @@ const SHELL_URLS = [
   '/fics/protocol.js',
   '/lichess/bridge.js',
   '/lichess/client.js',
+  '/lichess/requests.js',
   '/features/',
   '/blog/',
   '/blog/stockfish-in-your-browser/',

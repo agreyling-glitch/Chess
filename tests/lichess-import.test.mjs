@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 globalThis.window = globalThis;
-const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../web/game-storage.js', import.meta.url), 'utf8')
+  .replaceAll("import('./lichess/requests.js')", `import(${JSON.stringify(new URL('../web/lichess/requests.js',import.meta.url).href)})`);
 const { lichessExportUrl, importFilters, gameDetails, libraryMetadataDetails, importFingerprint } = await import(`data:text/javascript,${encodeURIComponent(source)}`);
 
 test('filters validate dates and generate inclusive UTC bounds', () => {
@@ -40,6 +41,20 @@ test('study links export all chapters or one chapter with annotations', () => {
   for (const link of ['https://lichess.org/study/abcd1234/short','https://lichess.org/study/abcd1234/WXYZ5678/extra','https://user@lichess.org/study/abcd1234']) assert.throws(()=>lichessExportUrl(link));
 });
 
+test('completed single games are cached, bounded, expiring and refreshable without caching studies or collections', async t => {
+  const originalFetch=globalThis.fetch,originalNow=Date.now;let clock=originalNow(),calls=0;
+  t.after(()=>{globalThis.fetch=originalFetch;Date.now=originalNow;});Date.now=()=>clock;
+  const body='[Event "Completed"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0';
+  globalThis.fetch=async()=>{calls++;return new Response(body);};
+  const load=async(input,options={})=>{await window.ironwoodFetchLichess(input,options);assert.equal(window.ironwoodPollLichess(),body);};
+  await load('https://lichess.org/cache001');await load('https://lichess.org/cache001ABCD/black');assert.equal(calls,1);
+  await load('https://lichess.org/cache001',{refresh:true});assert.equal(calls,2);
+  clock+=30*60000+1;await load('https://lichess.org/cache001');assert.equal(calls,3);
+  await load('Ada');await load('Ada');assert.equal(calls,5);
+  await load('https://lichess.org/study/cache001');await load('https://lichess.org/study/cache001');assert.equal(calls,7);
+  for(let i=0;i<32;i++)await load(`https://lichess.org/cache${String(i+10).padStart(3,'0')}`);
+  const before=calls;await load('https://lichess.org/cache001');assert.equal(calls,before+1);
+});
 test('fetch hands PGN off once, rejects ongoing games, and honors rate limits', async () => {
   let calls = 0;
   let body = '[Event "Rated blitz"]\n[Result "1-0"]\n\n1. e4 1-0';
@@ -60,7 +75,7 @@ test('fetch hands PGN off once, rejects ongoing games, and honors rate limits', 
   body = '[Event "Study: Chapter"]\n[StudyName "Study"]\n[ChapterName "Chapter"]\n[Result "*"]\n\n1. e4 {note} (1. d4) *';
   await window.ironwoodFetchLichess('https://lichess.org/study/abcd1234');
   assert.equal(window.ironwoodPollLichess(),body);
-  assert.match(window.ironwoodLichessStatus(),/choose chapters/);
+  assert.match(window.ironwoodLichessStatus(),/Opening study/);
   status = 403;
   await window.ironwoodFetchLichess('https://lichess.org/study/abcd1234');
   assert.equal(window.ironwoodPollLichess(),'');

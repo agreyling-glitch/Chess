@@ -1,13 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createClient, readNdjson } from '../web/lichess/client.js';
+import {createRequestCoordinator} from '../web/lichess/requests.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const json = (body, status = 200, headers) => new Response(JSON.stringify(body), { status, headers });
 function fixture() {
   const calls = [], events = [], streams = new Map(), replies = new Map(), retries = [];
   let clock = 1000;
-  const client = createClient({ emit: event => events.push(structuredClone(event)), now: () => clock,
+  const client = createClient({ emit: event => events.push(structuredClone(event)), now: () => clock, requests: createRequestCoordinator({now:()=>clock}),
     delay: (_ms, signal) => new Promise(resolve => { retries.push(resolve); signal.addEventListener('abort', resolve, { once: true }); }),
     fetch: async (url, options) => {
       const path = new URL(url).pathname;
@@ -30,6 +31,9 @@ function fixture() {
       return json({ ok: true });
     } });
   return { client, calls, events, replies, streams, retries, advance: ms => { clock += ms; } };
+}
+async function openProfileSections(f, username, windowId = '') {
+  await Promise.all([f.client.recentGames(false, username, windowId), f.client.ratingHistory(false, username, windowId)]);
 }
 const full = (moves = '', status = 'started') => ({ type: 'gameFull', id: 'abcd1234', initialFen: 'startpos',
   variant: { key: 'standard' }, speed: 'rapid', white: { id: 'alice', name: 'Alice' },
@@ -327,13 +331,17 @@ test('another player history replaces the cache without changing signed-in accou
 });
 
 
-test('player profile loads public data, lowercase history and bounded NDJSON games', async t => {
+test('player profile loads only its summary until recent games or history are opened', async t => {
   const f = fixture(); t.after(() => f.client.disconnect());
   await f.client.connect('secret'); await tick();
   f.replies.set('/api/user/cutemouse83', () => json({username:'cutemouse83',title:'GM',profile:{bio:'Biography'},count:{all:19642}}));
   f.replies.set('/api/user/cutemouse83/rating-history', () => json([{name:'blitz',points:[[2026,9,14,2997]]}]));
   f.replies.set('/api/games/user/cutemouse83', () => new Response(Array.from({length:15},(_,i)=>JSON.stringify({id:`game${i}`,speed:'blitz'})).join('\n')));
   await f.client.playerProfile(false, 'cutemouse83');
+  assert.equal(f.client.snapshot().recentGames,null);assert.equal(f.client.snapshot().ratingHistory,null);
+  assert.ok(!f.calls.some(call=>call.path.includes('/rating-history')||call.path==='/api/games/user/cutemouse83'));
+  await f.client.recentGames(false,'cutemouse83');
+  assert.equal(f.client.snapshot().ratingHistory,null);
   const state=f.client.snapshot();
   assert.equal(state.playerProfile.profile.bio,'Biography');
   assert.equal(state.profileUsername,'cutemouse83'); assert.equal(state.account,'Alice');
@@ -351,8 +359,9 @@ test('profile retains successful sections on recent-game errors and clears data 
   f.replies.set('/api/user/Alice/rating-history',()=>json([]));
   f.replies.set('/api/games/user/Alice',()=>json({error:'Unavailable'},503));
   await f.client.playerProfile();
+  await f.client.recentGames(false,'Alice');
   assert.equal(f.client.snapshot().playerProfile.username,'Alice');
-  assert.match(f.client.snapshot().profileError,/Recent games/); assert.equal(f.client.snapshot().connected,true);
+  assert.match(f.client.snapshot().recentError,/Unavailable/); assert.equal(f.client.snapshot().connected,true);
   f.replies.set('/api/user/Missing',()=>json({error:'No such player'},404));
   await f.client.playerProfile(false,'Missing');
   assert.equal(f.client.snapshot().playerProfile,null); assert.equal(f.client.snapshot().recentGames,null);
@@ -427,6 +436,7 @@ test('comparison windows load concurrently without replacing each other and shar
     f.replies.set(`/api/games/user/${username}`,()=>new Response(JSON.stringify({id:username+'game'})));
   }
   await Promise.all([f.client.playerProfile(false,'Bob','one'),f.client.playerProfile(false,'Carol','two')]);
+  await Promise.all([openProfileSections(f,'Bob','one'),openProfileSections(f,'Carol','two')]);
   let windows=f.client.snapshot().profileWindows;
   assert.equal(windows.one.playerProfile.username,'Bob'); assert.equal(windows.two.playerProfile.username,'Carol');
   assert.equal(windows.one.ratingHistory[0].points[0][3],2000); assert.equal(windows.two.ratingHistory[0].points[0][3],2500);
@@ -548,4 +558,126 @@ test('late activity cannot cross players or sessions, and failed loads can be re
   f.replies.set('/api/user/Carol/activity',()=>new Promise(r=>{resolve=r;}));
   const closed=f.client.activity('Carol','perf',true);await tick();f.client.disconnect();resolve(json([]));await closed;
   assert.deepEqual(f.client.snapshot().profileWindows,{});
+});
+
+test('profile windows share in-flight reads and retain fresh data after closing', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();
+  await performanceProfile(f);await openProfileSections(f,'Bob','perf');
+  const count=path=>f.calls.filter(call=>call.path===path).length;
+  f.client.closeProfileWindow('perf');
+  await Promise.all([f.client.playerProfile(false,'Bob','one'),f.client.playerProfile(false,'bob','two')]);
+  await Promise.all([openProfileSections(f,'Bob','one'),openProfileSections(f,'Bob','two')]);
+  assert.equal(count('/api/user/Bob'),1);assert.equal(count('/api/user/Bob/rating-history'),1);assert.equal(count('/api/games/user/Bob'),1);
+  assert.equal(f.client.snapshot().profileWindows.two.playerProfile.username,'Bob');
+  // A new uncached player requested simultaneously must also produce only three reads.
+  f.replies.set('/api/user/Carol',()=>json({id:'carol',username:'Carol'}));
+  f.replies.set('/api/user/Carol/rating-history',()=>json([]));f.replies.set('/api/games/user/Carol',()=>new Response(''));
+  await Promise.all([f.client.playerProfile(false,'Carol','three'),f.client.playerProfile(false,'Carol','four')]);
+  await Promise.all([openProfileSections(f,'Carol','three'),openProfileSections(f,'Carol','four')]);
+  for(const path of ['/api/user/Carol','/api/user/Carol/rating-history','/api/games/user/Carol'])assert.equal(count(path),1);
+  // A follow change in one window must not mutate the other window's profile by reference.
+  await f.client.setFollowing('Bob',true);
+  assert.equal(f.client.snapshot().profileWindows.one.playerProfile.following,true);
+  assert.equal(f.client.snapshot().profileWindows.two.playerProfile.following,true);
+});
+
+test('profile caches expire independently and explicit refresh bypasses them', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);await openProfileSections(f,'Bob','perf');
+  const count=path=>f.calls.filter(call=>call.path===path).length;
+  f.advance(61000);await f.client.playerProfile(false,'Bob','perf');await openProfileSections(f,'Bob','perf');
+  assert.equal(count('/api/user/Bob'),1);assert.equal(count('/api/user/Bob/rating-history'),1);assert.equal(count('/api/games/user/Bob'),2);
+  f.advance(5*60000);await f.client.playerProfile(false,'Bob','perf');await openProfileSections(f,'Bob','perf');
+  assert.equal(count('/api/user/Bob'),2);assert.equal(count('/api/user/Bob/rating-history'),1);
+  await f.client.playerProfile(true,'Bob','perf');await openProfileSections(f,'Bob','perf');
+  assert.equal(count('/api/user/Bob'),3);assert.equal(count('/api/user/Bob/rating-history'),2);assert.equal(count('/api/games/user/Bob'),4);
+  f.client.disconnect();await f.client.connect('other-account-token');await f.client.playerProfile(false,'Bob','new-session');await openProfileSections(f,'Bob','new-session');
+  assert.equal(count('/api/user/Bob'),4);assert.equal(count('/api/user/Bob/rating-history'),3);
+});
+
+test('failed shared profile requests are not cached and can be retried', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();
+  f.replies.set('/api/user/Bob',()=>json({error:'Temporary failure'},503));
+  await Promise.all([f.client.playerProfile(false,'Bob','one'),f.client.playerProfile(false,'Bob','two')]);
+  assert.equal(f.calls.filter(call=>call.path==='/api/user/Bob').length,1);
+  assert.match(f.client.snapshot().profileWindows.one.profileError,/Temporary/);
+  await performanceProfile(f,'Bob','one');
+  assert.equal(f.calls.filter(call=>call.path==='/api/user/Bob').length,2);
+  assert.equal(f.client.snapshot().profileWindows.one.profileError,'');
+});
+
+test('completed-game exports coalesce across windows, reuse games and honor refresh and expiry', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f,'Bob','one');await f.client.playerProfile(false,'Bob','two');
+  for(const perf of ['blitz','rapid','classical'])f.replies.set(`/api/user/Bob/perf/${perf}`,()=>json(perfStats()));
+  let resolve;
+  const records=['best1234','loss1234'].map(id=>({id,status:'mate',pgn:'1. e4 e5 2. Nf3 *'}));
+  f.replies.set('/api/games/export/_ids',()=>new Promise(r=>{resolve=r;}));
+  const pending=Promise.all([f.client.performance('Bob','blitz','one'),f.client.performance('Bob','blitz','two')]);await tick();
+  resolve(new Response(records.map(JSON.stringify).join('\n')));await pending;
+  const exports=()=>f.calls.filter(call=>call.path==='/api/games/export/_ids');
+  assert.equal(exports().length,1);assert.equal(Object.keys(f.client.snapshot().profileWindows.two.performance.blitz.games).length,2);
+  f.replies.set('/api/games/export/_ids',()=>new Response(records.map(JSON.stringify).join('\n')));
+  await f.client.performance('Bob','rapid','one');assert.equal(exports().length,1);
+  await f.client.performance('Bob','rapid','one',true);assert.equal(exports().length,2);
+  f.advance(30*60000+1);await f.client.performance('Bob','classical','one');assert.equal(exports().length,3);
+});
+test('notable-game exports fetch only missing completed games and retry unfinished responses', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();
+  f.replies.set('/api/user/Bob',()=>json({id:'bob',username:'Bob'}));f.replies.set('/api/user/Bob/rating-history',()=>json([]));
+  f.replies.set('/api/games/user/Bob',()=>new Response(JSON.stringify({id:'best1234',status:'mate',pgn:'1. e4 e5 *'})));
+  await f.client.playerProfile(false,'Bob','perf');await f.client.recentGames(false,'Bob','perf');
+  f.replies.set('/api/user/Bob/perf/blitz',()=>json(perfStats()));
+  let status='started';
+  f.replies.set('/api/games/export/_ids',options=>{
+    assert.equal(options.body,'loss1234');return new Response(JSON.stringify({id:'loss1234',status,pgn:'1. d4 d5 *'}));
+  });
+  await f.client.performance('Bob','blitz','perf');
+  let entry=f.client.snapshot().profileWindows.perf.performance.blitz;
+  assert.ok(entry.games.best1234);assert.equal(entry.games.loss1234,undefined);assert.ok(entry.gameErrors.loss1234);
+  status='mate';await f.client.performance('Bob','blitz','perf');
+  entry=f.client.snapshot().profileWindows.perf.performance.blitz;assert.ok(entry.games.loss1234);assert.deepEqual(entry.gameErrors,{});
+  assert.equal(f.calls.filter(call=>call.path==='/api/games/export/_ids').length,2);
+});
+
+test('cached profile and recent games stay visible while reopened windows refresh stale data', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  f.replies.set('/api/games/user/Bob',()=>new Response(JSON.stringify({id:'best1234',status:'mate',pgn:'1. e4 *'})));
+  await f.client.recentGames(false,'Bob','perf');f.client.closeProfileWindow('perf');f.advance(6*60000);
+  let profileReply;f.replies.set('/api/user/Bob',()=>new Promise(resolve=>{profileReply=resolve;}));
+  const profile=f.client.playerProfile(false,'Bob','reopened');await tick();
+  let window=f.client.snapshot().profileWindows.reopened;
+  assert.equal(window.profileLoading,true);assert.equal(window.playerProfile.username,'Bob');assert.equal(window.recentGames[0].id,'best1234');
+  profileReply(json({username:'Bob',title:'IM'}));await profile;
+  let gamesReply;f.replies.set('/api/games/user/Bob',()=>new Promise(resolve=>{gamesReply=resolve;}));
+  const games=f.client.recentGames(false,'Bob','reopened');await tick();
+  window=f.client.snapshot().profileWindows.reopened;assert.equal(window.recentLoading,true);assert.equal(window.recentGames[0].id,'best1234');
+  gamesReply(new Response(JSON.stringify({id:'newg1234',status:'mate',pgn:'1. d4 *'})));await games;
+  assert.equal(f.client.snapshot().profileWindows.reopened.recentGames[0].id,'newg1234');
+});
+
+test('history refresh retains its chart and late replies cannot overwrite a changed or closed profile', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  const history=[{name:'blitz',points:[[2026,0,1,1800]]}];
+  f.replies.set('/api/user/Bob/rating-history',()=>json(history));await f.client.ratingHistory(false,'Bob','perf');
+  let reply;f.replies.set('/api/user/Bob/rating-history',()=>new Promise(resolve=>{reply=resolve;}));
+  const pending=f.client.ratingHistory(true,'Bob','perf');await tick();
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.ratingHistory,history);
+  assert.equal(f.client.snapshot().profileWindows.perf.historyLoading,true);
+  const changed=performanceProfile(f,'Carol','perf');await tick();
+  reply(json([{name:'blitz',points:[[2026,0,1,999]]}]));await Promise.all([pending,changed]);
+  assert.equal(f.client.snapshot().profileWindows.perf.profileUsername,'Carol');assert.equal(f.client.snapshot().profileWindows.perf.ratingHistory,null);
+  f.replies.set('/api/user/Carol/rating-history',()=>new Promise(resolve=>{reply=resolve;}));
+  const closed=f.client.ratingHistory(false,'Carol','perf');await tick();f.client.closeProfileWindow('perf');reply(json(history));await closed;
+  assert.equal(f.client.snapshot().profileWindows.perf,undefined);
+});
+
+test('activity and performance keep previously displayed data while refreshing', async t => {
+  const f=fixture();t.after(()=>f.client.disconnect());await f.client.connect('secret');await tick();await performanceProfile(f);
+  const days=[{interval:{start:123}}];f.replies.set('/api/user/Bob/activity',()=>json(days));await f.client.activity('Bob','perf');
+  let reply;f.replies.set('/api/user/Bob/activity',()=>new Promise(resolve=>{reply=resolve;}));
+  const activity=f.client.activity('Bob','perf',true);await tick();
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.activity.days,days);reply(json(days));await activity;
+  const stats={perf:{glicko:{rating:2000}},stat:{}};f.replies.set('/api/user/Bob/perf/blitz',()=>json(stats));await f.client.performance('Bob','blitz','perf');
+  f.replies.set('/api/user/Bob/perf/blitz',()=>new Promise(resolve=>{reply=resolve;}));
+  const performance=f.client.performance('Bob','blitz','perf',true);await tick();
+  assert.deepEqual(f.client.snapshot().profileWindows.perf.performance.blitz.data,stats);reply(json(stats));await performance;
 });

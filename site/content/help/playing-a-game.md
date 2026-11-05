@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -26,7 +26,7 @@ For an online game, choose **Play → Online → Lichess lobby** or **Play → O
 
 ## Navigation sidebar
 
-The icon rail on the left replaces the top menus. Hover over it to expand navigation; move away to collapse it after a short delay. The selected section stays highlighted, and the game mode is shown above the board independently of the selected navigation section. On wider screens, it stays visible beside the expanded sidebar. Expanding navigation overlays the workspace without moving or resizing the board.
+The icon rail on the left replaces the top menus. Hover over it to expand navigation; move away to collapse it after a short delay. The selected section stays highlighted. Expanding navigation overlays the workspace without moving or resizing the board.
 
 Use **Pin** to keep navigation expanded and **Close** or **Escape** to collapse it. On a touch screen, tap the navigation toggle or a section icon, then tap outside to dismiss it. Keyboard users can Tab through the rail and expanded controls. The shortcuts below the divider open **New game**, **Saved games**, **Lichess puzzles**, and **Save current game** directly. Hover an icon for its label. Settings expand into groups such as **Settings → Board → Theme…**.
 

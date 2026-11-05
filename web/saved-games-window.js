@@ -24,6 +24,11 @@ export function installLibraryWindow(target) {
     if(parent){parent.location.reload();if(focus)parent.focus();}
     else if(focus)target.location.assign('/play/');
   };
+  target.ironwoodOpenImportGames=()=>{
+    const parent=opener();
+    if(typeof parent?.ironwoodOpenImportGames==='function'){parent.ironwoodOpenImportGames();parent.focus();}
+    else target.location.assign('/play/?import=games');
+  };
   return {opener};
 }
 export async function loadLibraryApp(target=window) {

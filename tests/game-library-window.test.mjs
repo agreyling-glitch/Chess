@@ -37,5 +37,16 @@ test('library selection tray is separate and the popout carries current selectio
  dialog.querySelector('.game-library-select').click();let opened,focused=0;target.open=(...args)=>{opened=args;return {focus(){focused++;}};};
  dialog.querySelector('[aria-label="Open saved games in a new window"]').click();assert.equal(opened[0],'/saved-games/');assert.match(opened[2],/resizable=yes/);assert.equal(focused,1);assert.equal(dialog.open,false);
  const state=await target.ironwoodLibraryPopupState();assert.deepEqual(state.selected,['one']);assert.equal(state.storageSource,'browser');assert.equal(state.records[0].json,undefined);
- await target.ironwoodOpenGameLibrary();target.open=()=>null;dialog.querySelector('[aria-label="Open saved games in a new window"]').click();assert.equal(dialog.open,true);assert.match(dialog.querySelector('.game-library-notice').textContent,/Allow pop-ups/);dialog.close();
+ await target.ironwoodOpenGameLibrary();target.open=()=>null;dialog.querySelector('[aria-label="Open saved games in a new window"]').click();assert.equal(dialog.open,true);assert.match(dialog.querySelector('.game-library-notice').textContent,/Allow pop-ups/);
+ target.focus=()=>{};assert.equal(target.ironwoodTakeImportGames(),false);
+ dialog.querySelector('[aria-label="Manage library"]').click();
+ [...dialog.querySelectorAll('button')].find(button=>button.textContent==='Import games…').click();
+ assert.equal(dialog.open,false);assert.equal(target.ironwoodTakeImportGames(),true);assert.equal(target.ironwoodTakeImportGames(),false);
+});
+
+test('library import opens the existing same-origin app without reloading it',()=>{
+ const target=environment();let imports=0,focused=0;
+ target.opener={closed:false,location:{origin:'https://test.local'},ironwoodOpenImportGames(){imports++;},focus(){focused++;}};
+ installLibraryWindow(target);target.ironwoodOpenImportGames();
+ assert.equal(imports,1);assert.equal(focused,1);target.close();
 });

@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-11-02T00:00:00-06:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
 ## Open a game
@@ -103,7 +103,9 @@ Select a move in **Moves**, then open **Prediction** to see the selected engine'
 
 Open [Lichess player profiles](/help/lichess-player-profiles/) to compare accounts, ratings and notable games. Click a game’s mini board to watch its moves, or **Review on Ironwood** to analyze it on the full board. Choose **Play → Save current game** to keep a temporary profile review.
 
-In [Saved Games](/help/saved-games-and-backups/), browse the categories or sort by move count. Puzzle playback is separate from puzzle progress, and training profiles keep their completed results separately from the replay library. Back up local data before changing browsers or devices.
+Drag the divider beside the live board left to make the right panel wider and the board smaller. Drag it right to give the board more room.
+
+In [Saved Games](/help/saved-games-and-backups/), browse the categories or sort by move count. Choose **Manage library → Import games…** to bring in more games. Puzzle playback is separate from puzzle progress, and training profiles keep their completed results separately from the replay library. Back up local data before changing browsers or devices.
 
 ## Find the right guide
 

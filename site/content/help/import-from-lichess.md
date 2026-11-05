@@ -4,17 +4,17 @@ description: "Filter completed Lichess games by date and time control, fetch up 
 category: "using-ironwood"
 keywords: [Lichess, import, username, profile, game URL, PGN, recent games, completed games, duplicates, analyze]
 weight: 13
-lastmod: 2026-11-04T00:00:00-06:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
 Bring completed Lichess games into Ironwood without downloading a PGN file first. You do not need to sign in to Lichess or provide an API token. Fetching games requires an internet connection.
 
 ## Import a player's recent games
 
-1. Open **Game library → Import…**.
+1. Open **Game library → Import…**, or **Manage library → Import games…** in Saved Games.
 2. On the **Lichess** tab, enter the player's **username**, such as `Dr_Tiger`.
 3. Click the gold **Fetch games** button. Follow the status below the input while Ironwood retrieves up to the chosen number of matching completed games (20 by default).
-4. **Paste a game or collection** opens with the game text. Click **Continue** to open the game-selection window.
+4. A collection opens the game-selection window directly. There is no Paste tab or **Continue** step.
 5. Select the games you want, or use **Select matching** to select all games matching the current player filter. Click **Import selected**.
 6. Open **Game library → Saved games** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
 
@@ -34,9 +34,9 @@ Optionally enter **From** and **Through** dates in `YYYY-MM-DD` format. Dates us
 
 Filters apply to usernames. When you paste a game link, the filter controls are disabled and Ironwood fetches that single game.
 
-Paste the game's link, such as `https://lichess.org/abcdefgh`, on the **Lichess** tab and click **Fetch games**. Replace the example with a real completed-game link. Click **Continue** to open the game for review.
+Paste the game's link, such as `https://lichess.org/abcdefgh`, on the **Lichess** tab and click **Fetch games**. Replace the example with a real completed-game link. The fetched game proceeds directly to review, or to game selection when the chosen destination requires it.
 
-After fetching, the **Paste a game or collection** tab opens with the PGN. Click **Continue** to review and import it. Start analysis afterward from **Analysis**, using the same controls as any imported game.
+Start analysis afterward from **Analysis**, using the same controls as any imported game. Repeated downloads of the same completed-game link can reuse a copy held in memory for up to 30 minutes. Username collections and study refreshes still fetch fresh data.
 
 ## Paste PGN or restore analysis JSON
 
@@ -50,7 +50,7 @@ You can still paste a [PGN game or collection](/help/pgn/) directly into **Paste
 - **No completed games found:** the player may have no completed games available to import.
 - **Game still in progress:** wait until it finishes, then fetch it again.
 - **Connection error or timeout:** check your internet connection and try again.
-- **Rate limit:** wait a full minute before trying again.
+- **Rate limit:** wait at least a full minute, or longer if Lichess supplies a longer retry interval. Online play requests, imports, and study refresh share this pause; disconnecting does not clear it.
 
 Imported games are stored locally in this browser on this device. Use a [backup](/help/saved-games-and-backups/) to keep a separate copy.
 

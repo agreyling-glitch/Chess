@@ -4,7 +4,7 @@ description: "Find your games, understand local browser storage, and preserve a 
 category: "using-ironwood"
 keywords: [save, saved games, library, backup, restore, browser storage, data]
 weight: 14
-lastmod: 2026-11-02T00:00:00-06:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
 Use **Play → Save current game** to keep the current game, and **Game library → Saved games** to open the library. A confirmation appears after saving succeeds. Errors are reported instead of a success message; a Companion save can report that the local copy is safe while synchronization is pending. Ironwood also restores the current board and related preferences when you return to the same browser and site.
@@ -82,7 +82,7 @@ A **Browser** backup from **Game library → Backup and Restore…** includes [t
 
 The saved-game library uses a table with a selected-game preview alongside it. Select a row to inspect its board, players, result, analysis details and notes, then choose **Open game**. Click the preview board for the full playback viewer. On narrow windows the preview appears below the table.
 
-Use **Search games or players** to find a game, **Show** to choose a game category, and **Filters** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker selects the library's collections. **Manage library** contains folder management, refresh and sorting options. You can also sort by clicking **Moves** or **Saved** in the table header.
+Use **Search games or players** to find a game, **Show** to choose a game category, and **Filters** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker selects the library's collections. **Manage library** contains **Import games…**, folder management, refresh and sorting options. Import opens the same four-tab window used by **Game library → Import…**. A separate Saved Games window focuses the main app for import; keep it open. If that app is no longer available, the library window opens the app’s import page. You can also sort by clicking **Moves** or **Saved** in the table header.
 
 **Source** groups links as **Lichess games**, **Lichess puzzles**, **Lichess studies**, and **Chess.com**. Each game's original source URL remains in its details and exports. Other source names remain unchanged. Older Companion builds may need an update to filter these groups across the archive.
 

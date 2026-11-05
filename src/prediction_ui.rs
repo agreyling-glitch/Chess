@@ -153,19 +153,21 @@ impl ChessApp {
             let col=((ui.available_width()-number_width-2.0*gap)/2.0).max(40.0);
             ui.horizontal(|ui|{ui.spacing_mut().item_spacing.x=gap;for (label,width) in [("#",number_width),("White",col),("Black",col)] {ui.add_sized([width,22.0],egui::Label::new(RichText::new(label).size(12.0).color(MUTED)));}});
             ui.separator();
-            egui::ScrollArea::vertical().id_salt("prediction_move_rows").max_height(228.0).min_scrolled_height(228.0).auto_shrink([false,false]).show_gold(ui,|ui| {
+            egui::ScrollArea::vertical().id_salt("prediction_move_rows").max_height(204.0).min_scrolled_height(204.0).auto_shrink([false,false]).show_gold(ui,|ui| {
                 if self.prediction_moves.is_empty(){ui.label(RichText::new("Analyze this position to see its continuation.").size(12.0).color(MUTED));}
                 let col=((ui.available_width()-number_width-2.0*gap)/2.0).max(40.0);
                 egui::Grid::new("prediction_move_table").num_columns(3).min_col_width(0.0).spacing(Vec2::new(gap,2.0)).show(ui,|ui| {
+                    ui.spacing_mut().interact_size.y=30.0;
+                    ui.spacing_mut().button_padding.y=6.0;
                     let black_first=self.prediction_positions.first().is_some_and(|b|b.side_to_move()==Color::Black);
                     for (i,san) in self.prediction_moves.iter().enumerate() {
                         let ply=i+usize::from(black_first);
                         if ply%2==0||i==0 {
-                            ui.add_sized([number_width,34.0],egui::Label::new(RichText::new(format!("{}.",ply/2+1)).color(MUTED)));
-                            if black_first&&i==0 {ui.add_sized([col,34.0],egui::Label::new("…"));}
+                            ui.add_sized([number_width,30.0],egui::Label::new(RichText::new(format!("{}.",ply/2+1)).color(MUTED)));
+                            if black_first&&i==0 {ui.add_sized([col,30.0],egui::Label::new("…"));}
                         }
                         let selected=self.prediction_index==i+1;
-                        let mut response=ui.add_sized([col,34.0],egui::Button::selectable(selected,self.display_san(san)).frame(selected));
+                        let mut response=ui.add_sized([col,30.0],egui::Button::selectable(selected,self.display_san(san)).frame(selected));
                         if self.show_move_hover_text {if let (Some(board),Some(mv))=(self.prediction_positions.get(i),self.prediction_chess_moves.get(i)) {response=response.on_hover_text(Self::move_hover_text(board,*mv));}}
                         if response.clicked(){jump=Some(i+1);}
                         if selected&&self.prediction_scroll_to_selected {response.scroll_to_me(Some(Align::Center));}

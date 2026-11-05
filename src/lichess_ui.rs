@@ -1522,7 +1522,7 @@ impl ChessApp {
                     let username=window.username.clone();
                     window.username=data["profileUsername"].as_str().unwrap_or(&username).to_owned(); window.load(true);
                 }
-                if loading { ui.spinner(); ui.label("Loading player profile…"); }
+                if loading { ui.spinner(); ui.label(if data["playerProfile"].is_null() {"Loading player profile…"} else {"Updating player profile…"}); }
             });
             });
             ui.add_space(8.0);
@@ -1568,7 +1568,7 @@ impl ChessApp {
                         ui.spacing_mut().item_spacing.x = panel_gap;
                         let graph_panel = ui.allocate_ui_with_layout(Vec2::new(graph_width,0.0),Layout::top_down(Align::Min),|ui| {
                             ui.set_width(graph_width);
-                            Self::lichess_profile_section(ui, |ui| self.lichess_profile_graph(ui, window, &data));
+                            Self::lichess_profile_section(ui, |ui| self.lichess_profile_history(ui, window, &data));
                         });
                         ui.vertical(|ui| {
                             ui.set_width(bio_width);
@@ -1579,7 +1579,7 @@ impl ChessApp {
                         });
                     });
                 } else {
-                    Self::lichess_profile_section(ui, |ui| self.lichess_profile_graph(ui, window, &data));
+                    Self::lichess_profile_section(ui, |ui| self.lichess_profile_history(ui, window, &data));
                     ui.add_space(10.0);
                     Self::lichess_profile_section(ui, |ui| lichess_profile_bio(ui,&profile));
                 }
@@ -1590,9 +1590,16 @@ impl ChessApp {
                 ui.add_space(10.0);
                 egui::CollapsingHeader::new(RichText::new("Recent games").heading())
                     .id_salt(("lichess_recent_games",window.id)).default_open(true).show(ui, |ui| {
+                        let username=data["profileUsername"].as_str().unwrap_or(window.username.trim());
+                        let recent_loading=data["recentLoading"].as_bool()==Some(true);
+                        let request=|refresh|lichess_command(serde_json::json!({"type":"recentGames","windowId":window.id.to_string(),"username":username,"refresh":refresh}));
+                        if data["recentRequested"].as_bool()!=Some(true) && !recent_loading {request(false);}
                         ui.small("Latest 12 completed games · all time controls");
+                        if ui.add_enabled(!recent_loading,egui::Button::new("Refresh recent games")).clicked() {request(true);}
+                        if recent_loading || data["recentRequested"].as_bool()!=Some(true) {ui.spinner();}
+                        if let Some(error)=data["recentError"].as_str().filter(|s|!s.is_empty()) {ui.colored_label(Color32::LIGHT_RED,error);}
                         let games = data["recentGames"].as_array().cloned().unwrap_or_default();
-                        if games.is_empty() && !loading { ui.label("No recent games available."); }
+                        if games.is_empty() && data["recentGames"].is_array() && !recent_loading { ui.label("No recent games available."); }
                         for game in &games { self.lichess_profile_game(ui, game); }
                     });
             });
@@ -1817,6 +1824,17 @@ impl ChessApp {
         });
     }
 
+    fn lichess_profile_history(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
+        egui::CollapsingHeader::new(RichText::new("Rating history").heading())
+            .id_salt(("lichess_rating_history",window.id)).default_open(false).show(ui, |ui| {
+                let loading=data["historyLoading"].as_bool()==Some(true);
+                let request=|refresh|lichess_command(serde_json::json!({"type":"ratingHistory","windowId":window.id.to_string(),"username":data["profileUsername"].as_str().unwrap_or(window.username.trim()),"refresh":refresh}));
+                if data["historyRequested"].as_bool()!=Some(true) && !loading {request(false);}
+                if ui.add_enabled(!loading,egui::Button::new("Refresh rating history")).clicked() {request(true);}
+                self.lichess_profile_graph(ui, window, data);
+            });
+    }
+
     fn lichess_profile_graph(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
         let loading = data["historyLoading"].as_bool().unwrap_or(false);
             let controls = ["Bullet", "Blitz", "Rapid", "Classical", "Correspondence"];
@@ -1832,7 +1850,7 @@ impl ChessApp {
                 ui.selectable_value(&mut window.control, i, format!("{name}"));
             }});
 
-            if loading { ui.spinner(); ui.label("Loading rating history…"); }
+            if loading { ui.spinner(); ui.label(if data["ratingHistory"].is_array() {"Updating rating history…"} else {"Loading rating history…"}); }
             if let Some(error) = data["historyError"].as_str().filter(|s| !s.is_empty()) { ui.label(error); }
             let name = controls[window.control.min(4)];
             ui.horizontal_wrapped(|ui| {
@@ -2640,5 +2658,31 @@ mod computer_setup_layout_tests {
             }
             assert!((widths[23] - widths[5]).abs() < 1.0, "{variant}: {widths:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod player_profile_loading_tests {
+    use super::*;
+    #[test]
+    fn rating_history_starts_collapsed_and_keeps_cached_chart_during_refresh() {
+        let ctx=egui::Context::default();ctx.style_mut_of(ctx.theme(),|style|style.animation_time=0.0);
+        let mut app=ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        let mut window=PlayerProfileWindow::new(42,"Bob");
+        let mut data=serde_json::json!({"profileUsername":"Bob","historyUsername":"Bob","historyRequested":true,"ratingHistory":[{"name":"Blitz","points":[[2026,0,1,1800],[2026,1,1,1900]]}]});
+        let texts=|output:egui::FullOutput|output.shapes.into_iter().filter_map(|shape|if let egui::Shape::Text(text)=shape.shape{Some(text.galley.job.text.clone())}else{None}).collect::<Vec<_>>();
+        let closed_output=run_test_ui(&ctx,egui::RawInput::default(),|ui|app.lichess_profile_history(ui,&mut window,&data));
+        let click=closed_output.shapes.iter().find_map(|shape|if let egui::Shape::Text(text)=&shape.shape{(text.galley.job.text=="Rating history").then_some(text.pos+Vec2::new(10.0,8.0))}else{None}).unwrap();
+        let closed=texts(closed_output);
+        assert!(closed.iter().any(|text|text=="Rating history"));assert!(!closed.iter().any(|text|text.contains("Latest")));
+        for pressed in [true,false] {
+            run_test_ui(&ctx,egui::RawInput{events:vec![egui::Event::PointerMoved(click),egui::Event::PointerButton{pos:click,button:egui::PointerButton::Primary,pressed,modifiers:egui::Modifiers::default()}],..Default::default()},|ui|app.lichess_profile_history(ui,&mut window,&data));
+        }
+        ctx.clear_animations();
+        run_test_ui(&ctx,egui::RawInput::default(),|ui|app.lichess_profile_history(ui,&mut window,&data));
+        data["historyLoading"]=true.into();
+        let refreshing=texts(run_test_ui(&ctx,egui::RawInput::default(),|ui|app.lichess_profile_history(ui,&mut window,&data)));
+        assert!(refreshing.iter().any(|text|text.contains("Latest 1900")),"Cached chart disappeared: {refreshing:?}");
+        assert!(refreshing.iter().any(|text|text=="Updating rating history…"));
     }
 }

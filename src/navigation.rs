@@ -373,28 +373,6 @@ impl ChessApp {
             .response
             .rect;
 
-        // Mode describes the game, independently of whichever settings section is open.
-        egui::Panel::top("game_mode_header")
-            .resizable(false)
-            .frame(Frame::new().inner_margin(Margin::symmetric(12, 6)))
-            .show(root_ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new("IRONWOOD CHESS")
-                            .color(Color32::from_rgb(207, 172, 93))
-                            .strong(),
-                    );
-                    if ui.available_width() > DRAWER_WIDTH {
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.label(self.navigation_game_mode());
-                        });
-                    } else {
-                        ui.separator();
-                        ui.label(self.navigation_game_mode());
-                    }
-                });
-            });
-
         if ctx.input(|i| {
             i.events
                 .iter()

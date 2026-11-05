@@ -139,7 +139,7 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     target.ironwoodLichessCommand = raw => {
       try {
         const cmd = JSON.parse(raw);
-        if (!['playerProfile', 'following', 'setFollowing', 'performance', 'activity', 'closeProfileWindow'].includes(cmd.type)) return;
+        if (!['playerProfile', 'recentGames', 'ratingHistory', 'following', 'setFollowing', 'performance', 'activity', 'closeProfileWindow'].includes(cmd.type)) return;
         if (!target.opener || target.opener.closed) return;
         target.opener.ironwoodLichessCommand(raw);
       } catch { /* The main window may have closed. */ }
@@ -463,6 +463,8 @@ function installFallbacks(target) {
   target.ironwoodTrainingProfilesAction ??= () => JSON.stringify({error:'Training profile storage is unavailable. Reload and try again.'});
   target.ironwoodStudyPicker ??= () => JSON.stringify({studies:[],locations:[],loading:false,error:'Saved study storage is unavailable. Reload and try again.'});
   target.ironwoodTakeStudyPanelOpen ??= () => false;
+  target.ironwoodTakeImportGames ??= () => false;
+  target.ironwoodRecentImportUsernames ??= () => '[]';
   for(const name of ['SetStudyPickerLocation','RefreshStudyPicker','OpenPickedStudy','BeginSaveConfirmation'])target[`ironwood${name}`] ??= () => {};
   target.ironwoodFinishSaveConfirmation ??= () => target.alert('Saved game storage is unavailable. Reload and try again.');
   target.ironwoodBatchImportStatus ??= () => '{"pending":0,"saved":0,"failed":0,"firstError":null}';

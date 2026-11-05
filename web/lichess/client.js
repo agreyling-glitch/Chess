@@ -1,4 +1,5 @@
 // Original Ironwood client. Uses the public Lichess API; no SDK or assets bundled.
+import {lichessRequests} from './requests.js';
 export const HOST = 'https://lichess.org';
 export const SCOPES = 'board:play challenge:read challenge:write follow:read follow:write';
 export const CLIENT_ID = 'ironwood-chess';
@@ -32,30 +33,77 @@ export async function readNdjson(response, onEvent, signal, onChunk = () => {}) 
   } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-export function createClient({ fetch: request = globalThis.fetch, emit, now = Date.now,
+export function createClient({ fetch: request = globalThis.fetch, emit, now = Date.now, requests = lichessRequests,
   delay = (ms, signal) => new Promise(resolve => {
     if (signal?.aborted) return resolve();
     const timer = setTimeout(finish, ms);
     function finish() { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); }
     signal?.addEventListener('abort', finish, { once: true });
   }), invalidToken = () => {} }) {
-  let token = '', account = null, generation = 0, cooldown = 0;
+  let token = '', account = null, generation = 0;
   let eventStream = null, gameStream = null, seekStream = null, game = null;
-  let tail = Promise.resolve(), pendingMove = false, outgoing = [];
+  let pendingMove = false, outgoing = [];
   let sessionController = new AbortController();
+  // Shared by every profile window in this signed-in session, never by accounts.
+  const readCache = new Map(), pendingReads = new Map(), completedGames = new Map(), pendingGames = new Map();
+  function remember(cache, key, value, ttl) {
+    if (JSON.stringify(value).length > 262144) return;
+    cache.delete(key);
+    while (cache.size >= 100) cache.delete(cache.keys().next().value);
+    cache.set(key, { value: structuredClone(value), expires: now() + ttl });
+  }
+  function cachedRead(path, ttl, refresh = false, accept = 'application/json', validate = () => true) {
+    const key = `${accept}:${path.toLowerCase()}`;
+    const cached = readCache.get(key);
+    if (!refresh && cached?.expires > now()) return Promise.resolve(structuredClone(cached.value));
+    if (pendingReads.has(key)) return pendingReads.get(key).then(structuredClone);
+    const session = generation;
+    const task = api(path, null, 'GET', accept).then(value => {
+      if (!validate(value)) throw new Error('Invalid Lichess response');
+      if (session === generation) remember(readCache, key, value, ttl);
+      return value;
+    });
+    pendingReads.set(key, task);
+    return task.finally(() => { if (pendingReads.get(key) === task) pendingReads.delete(key); }).then(structuredClone);
+  }
+  function cachedValue(path, accept = 'application/json') {
+    const entry = readCache.get(`${accept}:${path.toLowerCase()}`);
+    return entry ? structuredClone(entry.value) : null;
+  }
+  const recentPath = username => `/api/games/user/${encodeURIComponent(username)}?max=12&opening=true&lastFen=true&moves=true&pgnInJson=true&clocks=true&ongoing=false`;
+  function rememberGames(games) {
+    for (const game of games) {
+      if (game && /^[a-zA-Z0-9]{8}$/.test(game.id) && typeof game.pgn === 'string' && game.pgn && game.status && !ACTIVE.has(game.status))
+        remember(completedGames, game.id, game, 30 * 60000);
+    }
+  }
+  async function completedGameExports(ids) {
+    const missing = ids.filter(id => !pendingGames.has(id));
+    if (missing.length) {
+      const session = generation;
+      const task = api('/api/games/export/_ids?moves=true&pgnInJson=true&opening=true&clocks=true',
+        missing.join(','), 'POST', 'application/x-ndjson', missing.length).then(games => {
+        if (session === generation) rememberGames(games);
+        return games;
+      });
+      for (const id of missing) {
+        const result = task.then(games => games.find(game => game.id === id));
+        pendingGames.set(id, result);
+        // Every rejection is observed by the caller below.
+        void result.finally(() => { if (pendingGames.get(id) === result) pendingGames.delete(id); }).catch(() => {});
+      }
+    }
+    return (await Promise.all(ids.map(id => pendingGames.get(id)))).filter(Boolean).map(game => structuredClone(game));
+  }
   const state = { connected: false, account: '', profile: null, status: 'Sign in to play on Lichess',
-    seeking: false, challenges: [], outgoing: [], games: [], chat: [], game: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {} };
+    seeking: false, challenges: [], outgoing: [], games: [], chat: [], game: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyRequested: false, recentRequested: false, recentLoading: false, recentError: '', sectionsRefresh: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {} };
   const publish = () => emit({ type: 'lobby', ...state, outgoing: [...outgoing] });
   const headers = () => ({ Authorization: `Bearer ${token}` });
   async function checked(path, options = {}) {
     // Public game exports reject OPTIONS preflights, so never attach the OAuth header.
     const publicExport = path.startsWith('/game/export/') || path.startsWith('/api/games/export/_ids');
-    if (now() < cooldown) throw new Error('Lichess rate limit: wait at least one minute before retrying');
-    const response = await request(HOST + path, { credentials: 'omit', cache: 'no-store', ...options,
-      headers: { ...(publicExport ? {} : headers()), ...options.headers } });
-    if (response.status === 429) {
-      cooldown = now() + Math.max(60000, (Number(response.headers.get('Retry-After')) || 0) * 1000);
-    }
+    const response = await requests.fetch(HOST + path, { credentials: 'omit', cache: 'no-store', ...options,
+      headers: { ...(publicExport ? {} : headers()), ...options.headers } }, request);
     if (response.status === 401) { invalidToken(); disconnect(); }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
@@ -70,7 +118,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
   // Serialize finite requests. The account/game/seek streams must remain open concurrently.
   function api(path, params, method = 'POST', accept = 'application/json', maxRecords = 12) {
     const session = generation;
-    const task = tail.then(async () => {
+    return requests.run(async () => {
       if (session !== generation || !token) throw new Error('Lichess session changed');
       const response = await checked(path, { method, headers: { Accept: accept },
         signal: sessionController.signal,
@@ -82,9 +130,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
         return records;
       }
       return response.status === 204 ? {} : response.json();
-    });
-    tail = task.catch(() => {});
-    return task;
+    }, {signal: sessionController.signal});
   }
   function error(err) {
     if (err.name === 'AbortError') return;
@@ -118,7 +164,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       if (controller.signal.aborted || !isCurrent()) break;
       state.status = 'Reconnecting to Lichess…'; publish();
       if (controller === eventStream) { state.connected = false; publish(); }
-      await delay(Math.max(backoff, cooldown - now()), controller.signal);
+      await delay(Math.max(backoff, requests.retryAt() - now()), controller.signal);
       backoff = Math.min(30000, backoff * 2);
     }
   }
@@ -164,7 +210,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
   }
   function readOngoingMetadata(id) {
     const session = generation;
-    const task = tail.then(async () => {
+    return requests.run(async () => {
       if (session !== generation || !token) throw new Error('Lichess session changed');
       const controller = new AbortController();
       const signal = AbortSignal.any([controller.signal, sessionController.signal, AbortSignal.timeout(20000)]);
@@ -178,9 +224,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       finally { controller.abort(); }
       if (session !== generation || !details) throw new Error('Could not read game details');
       return details;
-    });
-    tail = task.catch(() => {});
-    return task;
+    }, {signal: sessionController.signal});
   }
   async function enrichOngoingGames() {
     const session = generation;
@@ -189,7 +233,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       try {
         let details;
         try { details = await api(`/game/export/${item.gameId}?moves=false&clocks=false&evals=false&opening=false&division=false`, null, 'GET'); }
-        catch (error) { if (error.status === 401 || now() < cooldown || session !== generation) throw error; }
+        catch (error) { if (error.status === 401 || now() < requests.retryAt() || session !== generation) throw error; }
         if (!Number.isFinite(details?.createdAt)) details = await readOngoingMetadata(item.gameId);
         if (session !== generation) return;
         const current = state.games.find(g => g.gameId === item.gameId);
@@ -198,7 +242,7 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
         if (details.daysPerTurn) current.daysPerTurn = details.daysPerTurn;
         if (details.clock) current.clock = details.clock;
         publish();
-      } catch { if (session !== generation || now() < cooldown) return; }
+      } catch { if (session !== generation || now() < requests.retryAt()) return; }
     }
   }
   function openGame(id) {
@@ -312,55 +356,74 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
         if (follow) state.following.push(viewed);
         state.following.sort((a,b) => a.username.localeCompare(b.username));
       }
+      // Keep account-specific relations fresh without discarding unrelated reads.
+      for (const {value} of readCache.values()) {
+        if (value?.username?.toLowerCase() === username.toLowerCase()) value.following = follow;
+      }
     } catch (err) { if (session === generation) followFailure(err); }
     finally { if (session === generation) { state.followBusy = false; publish(); } }
   }
   async function playerProfile(refresh = false, username = '', windowId = '') {
     windowId = String(windowId || '');
-    const target = windowId ? state.profileWindows[windowId] ||= {playerProfile:null,recentGames:null,ratingHistory:null,profileUsername:'',historyUsername:'',profileLoading:false,historyLoading:false,profileError:'',historyError:''} : state;
-    if (!account || target.profileLoading || target.historyLoading) return;
+    const target = windowId ? state.profileWindows[windowId] ||= {playerProfile:null,recentGames:null,ratingHistory:null,profileUsername:'',historyUsername:'',profileLoading:false,historyLoading:false,historyRequested:false,recentRequested:false,recentLoading:false,recentError:'',sectionsRefresh:false,profileError:'',historyError:''} : state;
+    if (!account || target.profileLoading) return;
     username = String(username || account.username).trim();
     if (!/^[a-zA-Z0-9_-]{2,30}$/.test(username)) {
       target.profileError = 'Enter a valid Lichess username.'; publish(); return;
     }
-    if (!refresh && target.profileUsername.toLowerCase() === username.toLowerCase()
-      && target.playerProfile && target.recentGames !== null && target.ratingHistory !== null && !target.profileError && !target.historyError) return;
     const session = generation;
-    const current = () => session === generation && (!windowId || state.profileWindows[windowId] === target);
+    const current = () => session === generation && (!windowId || state.profileWindows[windowId] === target)
+      && target.profileUsername.toLowerCase() === username.toLowerCase();
     const changed = target.profileUsername.toLowerCase() !== username.toLowerCase();
     if (changed) target.performance = {};
-    if (changed || refresh) target.activity = null;
-    if (changed) { target.playerProfile = null; target.recentGames = null; target.ratingHistory = null; }
+    if (changed) {
+      target.activity = null;
+      target.playerProfile = cachedValue(`/api/user/${encodeURIComponent(username)}?fideId=true`);
+      target.recentGames = cachedValue(recentPath(username), 'application/x-ndjson');
+      target.ratingHistory = cachedValue(`/api/user/${encodeURIComponent(username)}/rating-history`);
+      target.historyLoading = false; target.recentLoading = false; target.recentError = '';
+    }
+    target.historyRequested = false; target.recentRequested = false; target.sectionsRefresh = refresh;
     target.profileUsername = username; target.historyUsername = username;
     target.profileLoading = true; target.profileError = ''; target.historyError = ''; publish();
-    // Keep requests sequential, and preserve successful sections if another section fails.
+    // Load the summary first; visible sections request their own data independently.
     try {
-      const profile = await api(`/api/user/${encodeURIComponent(username)}?fideId=true`, null, 'GET');
+      const profile = await cachedRead(`/api/user/${encodeURIComponent(username)}?fideId=true`, 5 * 60000, refresh, 'application/json', value => !!value?.username);
       if (!current()) return;
       if (!profile.username) throw new Error('Invalid player profile response');
+      if (state.following !== null) profile.following = state.following.some(user => user.username.toLowerCase() === username.toLowerCase());
       target.playerProfile = profile; publish();
-      await ratingHistory(refresh, username, target);
-      if (!current()) return;
-      try {
-        const games = await api(`/api/games/user/${encodeURIComponent(username)}?max=12&opening=true&lastFen=true&moves=true&pgnInJson=true&clocks=true&ongoing=false`, null, 'GET', 'application/x-ndjson');
-        if (!current()) return;
-        target.recentGames = games;
-      } catch (err) { if (current()) target.profileError = `Recent games: ${err.message}`; }
     } catch (err) { if (current()) target.profileError = err.message; }
     finally { if (current()) { target.profileLoading = false; publish(); } }
+  }
+  async function recentGames(refresh = false, username = '', windowId = '') {
+    const target = windowId ? state.profileWindows[String(windowId)] : state;
+    username = String(username || account?.username || '').trim();
+    if (!account || !target || target.recentLoading || target.profileUsername.toLowerCase() !== username.toLowerCase()) return;
+    const session = generation;
+    const current = () => session === generation && (!windowId || state.profileWindows[String(windowId)] === target)
+      && target.profileUsername.toLowerCase() === username.toLowerCase();
+    target.recentRequested = true; target.recentLoading = true; target.recentError = '';
+    target.recentGames ??= cachedValue(recentPath(username), 'application/x-ndjson'); publish();
+    try {
+      const games = await cachedRead(recentPath(username), 60000, refresh || target.sectionsRefresh, 'application/x-ndjson', Array.isArray);
+      if (!current()) return;
+      rememberGames(games); target.recentGames = games;
+    } catch (err) { if (current()) target.recentError = err.message; }
+    finally { if (current()) { target.recentLoading = false; publish(); } }
   }
   async function activity(username, windowId, refresh = false) {
     const target = state.profileWindows[String(windowId)];
     username = String(username || '').trim();
     if (!account || !target || target.profileUsername.toLowerCase() !== username.toLowerCase()) return;
-    if (target.activity?.loading || (!refresh && target.activity?.days && !target.activity.error)) return;
-    const entry = target.activity = { loading: true, error: '', days: null };
+    if (target.activity?.loading) return;
+    const entry = target.activity = { loading: true, error: '', days: target.activity?.days ?? cachedValue(`/api/user/${encodeURIComponent(username)}/activity`) };
     const session = generation;
     const current = () => session === generation && state.profileWindows[String(windowId)] === target
       && target.profileUsername.toLowerCase() === username.toLowerCase() && target.activity === entry;
     publish();
     try {
-      const days = await api(`/api/user/${encodeURIComponent(username)}/activity`, null, 'GET');
+      const days = await cachedRead(`/api/user/${encodeURIComponent(username)}/activity`, 5 * 60000, refresh, 'application/json', Array.isArray);
       if (!current()) return;
       if (!Array.isArray(days)) throw new Error('Invalid player activity response.');
       entry.days = days.sort((a,b) => (b.interval?.start || 0) - (a.interval?.start || 0));
@@ -374,23 +437,25 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     if (!['bullet', 'blitz', 'rapid', 'classical', 'correspondence'].includes(perf)) return;
     target.performance ||= {};
     const previous = target.performance[perf];
-    if (previous?.loading || (!refresh && previous?.data && !previous.error && !Object.keys(previous.gameErrors || {}).length)) return;
-    const entry = target.performance[perf] = { loading: true, error: '', data: null, games: {}, gameErrors: {} };
+    if (previous?.loading) return;
+    const entry = target.performance[perf] = { loading: true, error: '', data: previous?.data ?? cachedValue(`/api/user/${encodeURIComponent(username)}/perf/${perf}`), games: {...previous?.games}, gameErrors: {} };
     const session = generation;
     const current = () => session === generation && state.profileWindows[String(windowId)] === target
       && target.profileUsername.toLowerCase() === username.toLowerCase() && target.performance?.[perf] === entry;
     publish();
     try {
-      const data = await api(`/api/user/${encodeURIComponent(username)}/perf/${perf}`, null, 'GET');
+      const data = await cachedRead(`/api/user/${encodeURIComponent(username)}/perf/${perf}`, 5 * 60000, refresh, 'application/json', value => !!value?.stat && !!value?.perf);
       if (!current()) return;
       if (!data.stat || !data.perf) throw new Error('No performance statistics available for this time control.');
       entry.data = data; publish();
       const ids = [...new Set(['bestWins', 'worstLosses'].flatMap(key =>
         (data.stat[key]?.results || []).slice(0, 5).map(result => result.gameId)))].filter(id => /^[a-zA-Z0-9]{8}$/.test(id));
+      entry.games = Object.fromEntries(Object.entries(entry.games).filter(([id]) => ids.includes(id)));
       if (ids.length) {
+        const missing = ids.filter(id => refresh || !(completedGames.get(id)?.expires > now()));
+        for (const id of ids) if (!missing.includes(id)) entry.games[id] = structuredClone(completedGames.get(id).value);
         // The /api route supports browser requests and returns all notable games at once.
-        const games = await api('/api/games/export/_ids?moves=true&pgnInJson=true&opening=true&clocks=true',
-          ids.join(','), 'POST', 'application/x-ndjson', ids.length);
+        const games = missing.length ? await completedGameExports(missing) : [];
         if (!current()) return;
         for (const game of games) {
           if (ids.includes(game.id) && game.pgn && !['started', 'created'].includes(game.status)) entry.games[game.id] = game;
@@ -403,27 +468,33 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     } catch (err) { if (current()) entry.error = err.name === 'TypeError' ? 'Game previews could not be loaded. Select Refresh to retry.' : err.message; }
     finally { if (current()) { entry.loading = false; publish(); } }
   }
-  async function ratingHistory(refresh = false, username = '', target = state) {
-    if (!account || target.historyLoading) return;
+  async function ratingHistory(refresh = false, username = '', windowId = '') {
+    const target = windowId ? state.profileWindows[String(windowId)] : state;
+    if (!account || !target || target.historyLoading) return;
     username = String(username || account.username).trim();
+    if (windowId && target.profileUsername.toLowerCase() !== username.toLowerCase()) return;
     if (!/^[a-zA-Z0-9_-]{2,30}$/.test(username)) {
       target.historyError = 'Enter a valid Lichess username.'; publish(); return;
     }
-    if (target.ratingHistory !== null && target.historyUsername.toLowerCase() === username.toLowerCase() && !refresh) return;
     if (target.historyUsername.toLowerCase() !== username.toLowerCase()) target.ratingHistory = null;
     target.historyUsername = username;
     const session = generation;
+    const current = () => session === generation && (!windowId || state.profileWindows[String(windowId)] === target)
+      && target.historyUsername.toLowerCase() === username.toLowerCase()
+      && (!windowId || target.profileUsername.toLowerCase() === username.toLowerCase());
+    target.historyRequested = true;
+    target.ratingHistory ??= cachedValue(`/api/user/${encodeURIComponent(username)}/rating-history`);
     target.historyLoading = true; target.historyError = ''; publish();
     try {
-      const data = await api(`/api/user/${encodeURIComponent(username)}/rating-history`, null, 'GET');
-      if (session !== generation) return;
+      const data = await cachedRead(`/api/user/${encodeURIComponent(username)}/rating-history`, 30 * 60000, refresh || target.sectionsRefresh, 'application/json', Array.isArray);
+      if (!current()) return;
       if (!Array.isArray(data)) throw new Error('Invalid rating history response');
       target.ratingHistory = data;
     } catch (err) {
-      if (session !== generation) return;
+      if (!current()) return;
       target.historyError = err.message;
     } finally {
-      if (session === generation) { target.historyLoading = false; publish(); }
+      if (current()) { target.historyLoading = false; publish(); }
     }
   }
   function cancelSeek() { seekStream?.abort(); seekStream = null; state.seeking = false; publish(); }
@@ -432,8 +503,9 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
     sessionController.abort(); sessionController = new AbortController();
     eventStream = gameStream = seekStream = null; token = ''; account = null; game = null;
     pendingMove = false; outgoing = [];
+    readCache.clear(); pendingReads.clear(); completedGames.clear(); pendingGames.clear();
     Object.assign(state, { connected: false, account: '', profile: null, seeking: false, challenges: [], outgoing: [],
-      games: [], chat: [], game: null, opponentGone: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {}, status: 'Disconnected from Lichess' }); publish();
+      games: [], chat: [], game: null, opponentGone: null, ratingHistory: null, historyUsername: '', historyLoading: false, historyRequested: false, recentRequested: false, recentLoading: false, recentError: '', sectionsRefresh: false, historyError: '', playerProfile: null, recentGames: null, profileUsername: '', profileLoading: false, profileError: '', following: null, followingLoading: false, followBusy: false, followError: '', followPermissionNeeded: false, profileWindows: {}, status: 'Disconnected from Lichess' }); publish();
   }
   async function seek(options) {
     if (!state.connected || state.seeking || isPlaying(game?.state)) throw new Error('Connect before finding a new game');
@@ -501,6 +573,6 @@ export function createClient({ fetch: request = globalThis.fetch, emit, now = Da
       throw new Error('Unsupported game action');
     await api(`/api/board/game/${game.id}/${action}`, action === 'chat' ? { room: 'player', text: text.slice(0, 140) } : null);
   }
-  return { connect, disconnect, closeProfileWindow: id => { delete state.profileWindows[String(id)]; publish(); }, loadFollowing, setFollowing, playerProfile, activity, performance, ratingHistory, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
+  return { connect, disconnect, closeProfileWindow: id => { delete state.profileWindows[String(id)]; publish(); }, loadFollowing, setFollowing, playerProfile, recentGames, activity, performance, ratingHistory, seek, cancelSeek, openGame, leaveCorrespondence, move, challenge, challengeAi, challengeAction, action,
     revoke: () => api('/api/token', null, 'DELETE'), reportError: error, snapshot: () => structuredClone(state) };
 }

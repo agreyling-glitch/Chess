@@ -1,4 +1,5 @@
 import { createClient, HOST, SCOPES, CLIENT_ID } from './client.js';
+import {lichessRequests} from './requests.js';
 
 // Session-only credentials: never included in game storage, exports, or the service worker cache.
 const TOKEN_KEY = 'ironwood.lichess.token';
@@ -40,11 +41,16 @@ async function initialize() {
     if (!saved || state !== saved.state || Date.now() - saved.created > 600000)
       throw new Error('Lichess sign-in could not be verified. Please sign in again.');
     if (oauthError) throw new Error('Lichess sign-in was canceled or denied');
-    const response = await fetch(HOST + '/api/token', { method: 'POST', credentials: 'omit', cache: 'no-store',
-      body: new URLSearchParams({ grant_type: 'authorization_code', client_id: CLIENT_ID, code,
-        code_verifier: saved.verifier, redirect_uri: saved.redirect }) });
-    if (!response.ok) throw new Error('Lichess sign-in failed. Please sign in again.');
-    const result = await response.json();
+    const result = await lichessRequests.run(async () => {
+      const response = await lichessRequests.fetch(HOST + '/api/token', { method: 'POST', credentials: 'omit', cache: 'no-store',
+        body: new URLSearchParams({ grant_type: 'authorization_code', client_id: CLIENT_ID, code,
+          code_verifier: saved.verifier, redirect_uri: saved.redirect }) });
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
+        throw new Error('Lichess sign-in failed. Please sign in again.');
+      }
+      return response.json();
+    });
     if (!result.access_token || !result.scope?.split(' ').includes('board:play') && result.scope !== undefined)
       throw new Error('Lichess did not grant permission to play');
     sessionStorage.setItem(TOKEN_KEY, result.access_token);
@@ -74,7 +80,8 @@ window.ironwoodLichessCommand = raw => run(async () => {
     case 'playerProfile': return client.playerProfile(!!cmd.refresh, cmd.username, cmd.windowId);
     case 'activity': return client.activity(cmd.username, cmd.windowId, !!cmd.refresh);
     case 'performance': return client.performance(cmd.username, cmd.perf, cmd.windowId, !!cmd.refresh);
-    case 'ratingHistory': return client.ratingHistory(!!cmd.refresh, cmd.username);
+    case 'ratingHistory': return client.ratingHistory(!!cmd.refresh, cmd.username, cmd.windowId);
+    case 'recentGames': return client.recentGames(!!cmd.refresh, cmd.username, cmd.windowId);
     case 'seek': return client.seek(cmd.options);
     case 'cancelSeek': return client.cancelSeek();
     case 'open': return client.openGame(cmd.id);

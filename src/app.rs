@@ -499,6 +499,8 @@ extern "C" {
     fn end_batch_import_storage();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenGameLibrary)]
     fn open_game_library();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTakeImportGames)]
+    fn take_import_games() -> bool;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenHistoryBackup)]
     fn open_history_backup();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenStorageInfo)]
@@ -4575,12 +4577,17 @@ impl ChessApp {
                 }
                 if let Some(error)=result["error"].as_str(){self.pgn_error=Some(error.into());}
             }
-            for text in [poll_lichess(), poll_chess_com(), poll_scoresheet()] {
+            for text in [poll_lichess(), poll_chess_com()] {
                 if !text.is_empty() {
-                    self.import_input = text;
-                    self.pgn_error = None;
-                    self.import_tab = 0;
+                    self.accept_online_import(text);
+                    if !self.pgn_dialog_open { return; }
                 }
+            }
+            let text = poll_scoresheet();
+            if !text.is_empty() {
+                self.import_input = text;
+                self.pgn_error = None;
+                self.import_tab = 0;
             }
         }
         let mut import = false;
@@ -4740,7 +4747,7 @@ impl ChessApp {
                                 });
                                 ui.add_space(8.0);
                                 ui.label(RichText::new("Next: review your games").size(16.0).strong());
-                                ui.label(RichText::new("Fetched PGN opens in the Paste tab. Choose Continue to review the collection and select games or chapters to import.").size(14.0).weak());
+                                ui.label(RichText::new("Fetched collections open directly for review. Select the games to import. A single game or study opens immediately.").size(14.0).weak());
                                 if !chess_com {
                                     ui.label(RichText::new("Public studies with downloads enabled can be imported without signing in. For private studies, export PGN on Lichess and paste it here. Notes, glyphs and board markings are supported. Open Training → Study to navigate chapters and variations, add local notes, and practice the moves.").size(13.0).weak());
                                 }
@@ -10383,6 +10390,11 @@ impl ChessApp {
         }
     }
 
+    fn accept_online_import(&mut self, text: String) {
+        self.import_input = text;
+        self.pgn_error = None;
+        self.begin_import();
+    }
     fn accept_browsed_import(&mut self, text: String) {
         self.pgn_error = None;
         self.import_tab = 0;
@@ -17501,6 +17513,32 @@ mod tests {
     }
 
     #[test]
+    fn wider_sidebar_keeps_its_right_edge_and_shrinks_live_board() {
+        use eframe::App as _;
+        let ctx = egui::Context::default();
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.board_3d_active = false;
+        let mut frame = eframe::Frame::_new_kittest();
+        let id = egui::Id::new("game_sidebar_height_fit_panel");
+        let mut board_sizes = Vec::new();
+        for width in [500.0, 800.0] {
+            ctx.data_mut(|d| d.insert_persisted(id, egui::containers::panel::PanelState {
+                outer_rect: egui::Rect::from_min_size(egui::pos2(1600.0 - width, 0.0), egui::vec2(width, 1000.0)),
+            }));
+            for _ in 0..3 {
+                run_test_ui(&ctx, egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1000.0))),
+                    ..Default::default()
+                }, |ui| app.ui(ui, &mut frame));
+                let rect = egui::containers::panel::PanelState::load(&ctx, id).unwrap().outer_rect;
+                assert!((rect.width() - width).abs() < 1.0, "sidebar changed width: {rect:?}");
+                assert!((rect.right() - 1600.0).abs() < 1.0, "right edge drifted: {rect:?}");
+            }
+            board_sizes.push(ctx.data(|d| d.get_temp::<f32>(egui::Id::new("live_board_height"))).unwrap());
+        }
+        assert!(board_sizes[1] < board_sizes[0], "board did not shrink: {board_sizes:?}");
+    }
+    #[test]
     fn switching_board_dimension_preserves_live_board_footprint() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
@@ -20782,6 +20820,30 @@ mod tests {
     }
 
     #[test]
+    fn online_import_skips_paste_for_collections_and_single_games() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        let game = "[Event \"Online game\"]\n[White \"Ada\"]\n[Black \"Ben\"]\n\n1. e4 e5 2. Nf3 Nc6 *";
+        app.pgn_dialog_open = true;
+        app.import_tab = 1;
+        app.accept_online_import(format!("{game}\n\n{game}"));
+        assert!(!app.pgn_dialog_open);
+        assert!(app.batch_pgn_dialog_open);
+        assert_eq!(app.batch_pgn_games.len(), 2);
+        assert!(app.batch_pgn_games.iter().all(|game| !game.selected));
+        assert!(app.import_input.is_empty());
+        assert_eq!(app.batch_pgn_total, 0);
+
+        let mut app = ChessApp::new(&context);
+        app.pgn_dialog_open = true;
+        app.import_tab = 2;
+        app.accept_online_import(game.to_owned());
+        assert!(!app.pgn_dialog_open);
+        assert!(!app.batch_pgn_dialog_open);
+        assert_eq!(app.review_moves, ["e4", "e5", "Nf3", "Nc6"]);
+        assert!(app.pgn_error.is_none());
+    }
+    #[test]
     fn browsed_single_game_and_json_stay_available_for_continue() {
         let context = eframe::CreationContext::_new_kittest(egui::Context::default());
         let mut app = ChessApp::new(&context);
@@ -22328,6 +22390,11 @@ impl eframe::App for ChessApp {
         self.fics_observe_open_this_frame = false;
         #[cfg(target_arch = "wasm32")]
         {
+            if take_import_games() {
+                self.pgn_dialog_open = true;
+                self.import_tab = 0;
+                self.pgn_error = None;
+            }
             let fen = poll_position_editor();
             if !fen.is_empty() {
                 self.new_game_training = false;
@@ -22673,15 +22740,17 @@ impl eframe::App for ChessApp {
             self.navigation_enter_study(ctx);
         }
         let study_open = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false);
-        // All workspaces share the same board boundary, including after a resize.
+        // Share a draggable board boundary across the game, study, and puzzle workspaces.
         let available=root_ui.available_size();
         let chrome=self.live_board_vertical_chrome(root_ui.spacing().item_spacing.y,available.x,true);
         let balance=if !self.focus_mode&&!self.training_live()&&(!self.fics_active||self.fics_game_finished){44.0}else{0.0};
         let workspace_width=Self::game_sidebar_width(available,chrome,balance);
         if study_open && !self.puzzle_mode() {
-            egui::Panel::right("study_window").exact_size(workspace_width).resizable(false)
+            egui::Panel::right("game_sidebar_height_fit_panel").default_size(workspace_width)
+                .size_range(300.0..=(available.x - 240.0).max(300.0)).resizable(true)
                 .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
                 .show(root_ui, |ui| {
+                    ui.take_available_width();
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("Study").size(19.0).strong());
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -22702,14 +22771,22 @@ impl eframe::App for ChessApp {
                 });
         }
         if !self.puzzle_mode() && !sidebar_detached && !study_open {
-            egui::Panel::right("game_sidebar_height_fit_panel").exact_size(workspace_width).resizable(false)
+            egui::Panel::right("game_sidebar_height_fit_panel").default_size(workspace_width)
+                .size_range(300.0..=(available.x - 240.0).max(300.0)).resizable(true)
                 .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
-                .show(root_ui,|ui|self.sidebar_contents_ui(ui, false));
+                .show(root_ui,|ui| {
+                    ui.take_available_width();
+                    self.sidebar_contents_ui(ui, false);
+                });
         }
         if self.puzzle_mode() {
-            egui::Panel::right("puzzle_panel").exact_size(workspace_width).resizable(false)
+            egui::Panel::right("game_sidebar_height_fit_panel").default_size(workspace_width)
+                .size_range(300.0..=(available.x - 240.0).max(300.0)).resizable(true)
                 .frame(Frame::side_top_panel(&ctx.style_of(ctx.theme())).fill(Color32::TRANSPARENT))
-                .show(root_ui, |ui| self.puzzles_panel(ui));
+                .show(root_ui, |ui| {
+                    ui.take_available_width();
+                    self.puzzles_panel(ui);
+                });
         }
 
         }

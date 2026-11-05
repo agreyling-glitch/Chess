@@ -4,7 +4,7 @@ description: "Browse any player, compare ratings, inspect performance and activi
 category: "using-ironwood"
 keywords: [lichess, profile, username, biography, ratings, FIDE, follow, following, performance, best wins, worst losses, activity, recent games]
 weight: 25
-lastmod: 2026-10-16T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
 ## Open your account or another player
@@ -27,7 +27,9 @@ Overall Games, Rated, Wins, Losses, and Draws are account-wide counts. They can 
 
 ## Rating history
 
-Select **Bullet**, **Blitz**, **Rapid**, **Classical**, or **Correspondence**, then **1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**. Hover the graph for a date and rating. The graph has its own recessed paper surface.
+Expand **Rating history** to load the graph; it starts collapsed so opening a profile does not first download its history. Select **Bullet**, **Blitz**, **Rapid**, **Classical**, or **Correspondence**, then **1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**. Hover the graph for a date and rating. The graph has its own recessed paper surface.
+
+Use **Refresh rating history** to request an update. The existing chart stays visible while it refreshes.
 
 A player can have many casual games but little rated history. Try **ALL** or another time control if the graph is empty. You can load another username to explore the interface without changing your account or rating.
 
@@ -35,11 +37,11 @@ A player can have many casual games but little rated history. Try **ALL** or ano
 
 Click a time-control rating chip to open **Performance details**. Available statistics include rating, rank, percentile, average opponent rating, highest and lowest ratings, games and results, playing time, disconnects, and current/longest win and loss streaks. Not every player or category has all fields. The Puzzles chip does not open these details.
 
-**Best wins** and **Worst losses** show up to five games each. Their mini boards use the same playback and review controls as recent games. **Refresh** reloads that performance section and retries previews; **Close details** hides it. Results are cached separately by time control and profile window.
+**Best wins** and **Worst losses** show up to five games each. Their mini boards use the same playback and review controls as recent games. **Refresh** reloads that performance section and retries previews; **Close details** hides it. Results are shared across profile windows for the same player and time control. Existing statistics and previews stay visible while refreshing.
 
 ## Recent games and playback
 
-Expand or collapse **Recent games** using its heading. It lists the latest 12 completed games across time controls, with player colors, ratings when available, result, time control, and opening information.
+Expand or collapse **Recent games** using its heading. It starts expanded and loads independently of rating history. **Refresh recent games** requests an update while keeping the previous list visible. It lists the latest 12 completed games across time controls, with player colors, ratings when available, result, time control, and opening information.
 
 Hover a mini board to see its gold border and magnifying-glass indicator. Click it for the larger move viewer, which identifies White, Black, and the result. Use step controls or autoplay to watch the game without replacing your current board or adding it to Saved Games.
 
@@ -58,10 +60,16 @@ Expand **Following**, search the list, and select a player to open their profile
 
 ## Daily activity
 
-Expand **Activity** to load recent daily game and puzzle results. Dates show wins, losses, and draws by time control, with before/after ratings when supplied, and puzzle results when available. **Refresh activity** reloads this section. It loads on demand and is cached separately for each window.
+Expand **Activity** to load recent daily game and puzzle results. Dates show wins, losses, and draws by time control, with before/after ratings when supplied, and puzzle results when available. **Refresh activity** reloads this section. It loads on demand, shares cached results across profiles of the same player, and keeps existing results visible during refresh.
 
 This is activity reported by Lichess. It does not represent your local Ironwood training profiles or puzzle progress.
 
+## Cached data and refresh
+
+Profile windows share data within the main app’s signed-in session, including detached profiles that use that connection. Reopening a player can show cached information immediately while an expired entry is updated. Simultaneous requests for the same data share one download.
+
+Recent-game lists can be reused for 1 minute; profile details, activity, and performance statistics for 5 minutes; rating history and completed-game previews for 30 minutes. Preview downloads request only games not already cached. Each section’s Refresh control bypasses its cache. These bounded caches are held in memory and clear on disconnect or page reload; they are not Saved Games or a backup.
+
 ## Loading problems
 
-Use the affected section's Refresh control to retry. If Lichess is limiting requests, wait before retrying. A failed game preview does not necessarily mean the profile statistics failed; the game link can still open on Lichess. Empty history and a network error are different conditions. See [Troubleshooting](/help/troubleshooting/) for browser and storage precautions.
+Use the affected section's Refresh control to retry. Imports, study refresh, and ordinary online-play requests share a request queue and rate-limit pause; live game streams remain independent. If Lichess is limiting requests, wait at least a full minute, or longer when its retry interval requires it. A failed game preview does not necessarily mean the profile statistics failed; the game link can still open on Lichess. Empty history and a network error are different conditions. See [Troubleshooting](/help/troubleshooting/) for browser and storage precautions.

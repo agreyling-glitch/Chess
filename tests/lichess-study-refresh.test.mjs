@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import test from 'node:test';
 globalThis.window=globalThis;
-await import(`data:text/javascript,${encodeURIComponent(readFileSync(new URL('../web/game-storage.js',import.meta.url),'utf8'))}`);
+const source=readFileSync(new URL('../web/game-storage.js',import.meta.url),'utf8')
+  .replaceAll("import('./lichess/requests.js')", `import(${JSON.stringify(new URL('../web/lichess/requests.js',import.meta.url).href)})`);
+await import(`data:text/javascript,${encodeURIComponent(source)}`);
 const pgn='[Event "Study"]\n[StudyName "Study"]\n[ChapterName "One"]\n\n1. e4 *';
 test('study refresh fetches public PGN without credentials and preserves error details',async()=>{
   let status=200,calls=0,body=pgn;

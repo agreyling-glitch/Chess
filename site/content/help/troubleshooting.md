@@ -4,7 +4,7 @@ description: "Recover from a frozen page, diagnose loading problems, and protect
 category: "settings"
 keywords: [freeze, frozen, stuck, loading, network, refresh, retry, backup, browser, offline, errors]
 weight: 80
-lastmod: 2026-10-15T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 ---
 
 ## A frozen page
@@ -21,7 +21,7 @@ Full-game analysis works through positions and may then verify critical moves at
 
 ## Online information does not load
 
-Check your connection and refresh the affected Lichess profile section, activity list, or game preview. Wait before repeated retries if the service is limiting requests. Public data may be absent for a player even when the connection works. Sign in again when an account action explicitly requires renewed authorization.
+Check your connection and refresh the affected Lichess profile section, activity list, or game preview. If Lichess is limiting requests, wait at least a full minute or its longer retry interval. Ordinary play requests, imports, and study refresh share this pause, which is not reset by disconnecting. Cached profile information can remain visible while a refresh is pending; use the affected section’s Refresh button for a new request. Public data may be absent for a player even when the connection works. Sign in again when an account action explicitly requires renewed authorization.
 
 An online game's clock or correspondence deadline continues on its server while Ironwood is closed or disconnected. Reopen the lobby and resume the game; reloading does not resign it. See [Play on Lichess](/help/play-on-lichess/) and [FICS](/help/online-play/).
 

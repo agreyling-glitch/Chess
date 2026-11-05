@@ -1,3 +1,19 @@
+let importGamesRequested = !!window.location?.href && new URL(window.location.href).searchParams.get('import') === 'games';
+if (!window.ironwoodLibraryWindowMode) {
+  window.ironwoodOpenImportGames = () => { importGamesRequested = true; window.focus(); };
+}
+window.ironwoodTakeImportGames = () => {
+  const requested = importGamesRequested;
+  importGamesRequested = false;
+  if (requested) {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('import') === 'games') {
+      url.searchParams.delete('import');
+      window.history.replaceState(window.history.state, '', url);
+    }
+  }
+  return requested;
+};
 const gameCountFormat=new Intl.NumberFormat('en-US');
 function formatGameCount(value){return gameCountFormat.format(value);}
 // Original line geometry, shared by the grouped selection console.
@@ -287,9 +303,10 @@ let batchImport = null;
 let storageStatus = 'Checking browser storage…';
 
 let lichessBusy = false;
-let lichessRetryAt = 0;
 let lichessStatus = '';
 let lichessPgn = '';
+// Public, completed single-game PGNs only. Studies and user collections stay fresh.
+const lichessCompletedGames = new Map();
 let studyRefreshResult = '';
 let studyRefreshBusy = false;
 let studyPicker = {loading:false,error:'',items:[]};
@@ -338,21 +355,25 @@ window.ironwoodTakeStudyPanelOpen = () => {
 window.ironwoodPollStudyRefresh = () => { const result=studyRefreshResult; studyRefreshResult=''; return result; };
 window.ironwoodRefreshStudy = async input => {
   studyRefreshResult='';
-  if (studyRefreshBusy || lichessBusy) {studyRefreshResult=JSON.stringify({error:'A Lichess request is already running. Try refresh again shortly.'});return;}
-  studyRefreshBusy=true;lichessBusy=true;
+  if (studyRefreshBusy) {studyRefreshResult=JSON.stringify({error:'A study refresh is already running. Try refresh again shortly.'});return;}
+  studyRefreshBusy=true;
   try {
     const url=new URL(lichessExportUrl(input));
     if (!/^\/api\/study\/[a-zA-Z0-9]{8}\.pgn$/.test(url.pathname)) throw Error('Refresh requires a whole-study Lichess link.');
-    if (Date.now()<lichessRetryAt) throw Error('Lichess rate limit: wait a full minute before trying again.');
-    const response=await fetch(url.href,{headers:{Accept:'application/x-chess-pgn'},credentials:'omit',signal:AbortSignal.timeout(30000),cache:'no-store'});
-    if(response.status===429){lichessRetryAt=Date.now()+60000;throw Error('Lichess rate limit: wait a full minute before trying again.');}
-    if([401,403,404].includes(response.status))throw Error('Study unavailable. Check that it is public and downloads are enabled. Your local copy was kept.');
-    if(!response.ok)throw Error(`Study refresh failed (${response.status}). Your local copy was kept.`);
-    const pgn=await response.text();
-    if(!/^\[StudyName\s/m.test(pgn)||!/^\[ChapterName\s/m.test(pgn)||pgn.length>64*1024*1024)throw Error('Lichess returned an invalid study. Your local copy was kept.');
+    const {lichessRequests:requests}=await import('./lichess/requests.js');
+    const pgn=await requests.run(async()=>{
+      const response=await requests.fetch(url.href,{headers:{Accept:'application/x-chess-pgn'},credentials:'omit',signal:AbortSignal.timeout(30000),cache:'no-store'});
+      if(!response.ok)await response.body?.cancel().catch(()=>{});
+      if(response.status===429)throw Error('Lichess rate limit: wait a full minute before trying again.');
+      if([401,403,404].includes(response.status))throw Error('Study unavailable. Check that it is public and downloads are enabled. Your local copy was kept.');
+      if(!response.ok)throw Error(`Study refresh failed (${response.status}). Your local copy was kept.`);
+      const pgn=await response.text();
+      if(!/^\[StudyName\s/m.test(pgn)||!/^\[ChapterName\s/m.test(pgn)||pgn.length>64*1024*1024)throw Error('Lichess returned an invalid study. Your local copy was kept.');
+      return pgn;
+    });
     studyRefreshResult=JSON.stringify({pgn,url:input});
   } catch(error){studyRefreshResult=JSON.stringify({error:error.name==='TimeoutError'?'Study refresh timed out. Your local copy was kept.':error.message});}
-  finally{studyRefreshBusy=false;lichessBusy=false;}
+  finally{studyRefreshBusy=false;}
 };
 
 export function importFilters(options = {}) {
@@ -439,20 +460,26 @@ window.ironwoodPollLichess = () => {
 window.ironwoodFetchLichess = async (input, options = {}) => {
   rememberImportUsername('lichess', input);
   if (lichessBusy || lichessPgn) return;
-  if (Date.now() < lichessRetryAt) {
-    lichessStatus = 'Lichess rate limit: wait a full minute before trying again.';
-    return;
-  }
   lichessBusy = true;
   const study = /^https:\/\/lichess\.org\/study\//i.test(input.trim());
   lichessStatus = study ? 'Fetching study chapters from Lichess…' : 'Fetching completed games from Lichess…';
   try {
-    const response = await fetch(lichessExportUrl(input, options), {
-      headers: { Accept: 'application/x-chess-pgn' }, credentials: 'omit',
-      signal: AbortSignal.timeout(30000), cache: 'no-store',
+    const url = lichessExportUrl(input, options);
+    const singleGame = new URL(url).pathname.startsWith('/game/export/');
+    const refresh = (typeof options === 'string' ? JSON.parse(options) : options).refresh === true;
+    const cached = singleGame && lichessCompletedGames.get(url);
+    if (!refresh && cached?.expires > Date.now()) {
+      lichessPgn = cached.pgn;
+      lichessStatus = 'Completed game loaded from cache.';
+      return;
+    }
+    const {lichessRequests:requests}=await import('./lichess/requests.js');
+    const pgn = await requests.run(async () => {
+      const response = await requests.fetch(url, {
+        headers: { Accept: 'application/x-chess-pgn' }, credentials: 'omit',
+        signal: AbortSignal.timeout(30000), cache: 'no-store',
     });
     if (response.status === 429) {
-      lichessRetryAt = Date.now() + 60000;
       throw new Error('Lichess rate limit: wait a full minute before trying again.');
     }
     if (study && [401,403,404].includes(response.status)) throw new Error('Study unavailable. Use a public study with downloads enabled, or paste a PGN exported from your Lichess account.');
@@ -462,8 +489,15 @@ window.ironwoodFetchLichess = async (input, options = {}) => {
     if (!pgn.trim()) throw new Error(study ? 'This study has no downloadable chapters.' : 'No completed games match these filters. Try a wider date range or another time control.');
     if (!/^\[Event\s/m.test(pgn)) throw new Error('Lichess returned an unexpected game format.');
     if (!study && /^\[Result "\*"\]/m.test(pgn)) throw new Error('This game is still in progress. Import it after it finishes.');
+    return pgn;
+    });
+    if (singleGame && /^\[Result "(?:1-0|0-1|1\/2-1\/2)"\]/m.test(pgn) && pgn.length <= 262144) {
+      lichessCompletedGames.delete(url);
+      while (lichessCompletedGames.size >= 32) lichessCompletedGames.delete(lichessCompletedGames.keys().next().value);
+      lichessCompletedGames.set(url, {pgn, expires: Date.now() + 30 * 60000});
+    }
     lichessPgn = pgn;
-    lichessStatus = study ? 'Study fetched. Continue to choose chapters to import.' : 'Games fetched. Continue to choose games to import.';
+    lichessStatus = study ? 'Study fetched. Opening study…' : 'Games fetched. Opening review…';
   } catch (error) {
     lichessStatus = error.name === 'TimeoutError' ? 'Lichess request timed out. Try again.' :
       error instanceof TypeError ? 'Could not reach Lichess. Check your connection and try again.' : error.message;
@@ -1392,6 +1426,7 @@ window.ironwoodTrainingProfilesAction = (command, payload = '') => {
         input.addEventListener('cancel', () => resolve(null), { once: true });
         input.click();
       });
+      if (!response.ok) await response.body?.cancel().catch(() => {});
       if (!file) return { message: 'Import cancelled.' };
       if (file.size > 100 * 1024 * 1024) throw new Error('Profile export exceeds 100 MB.');
       const bundle = validateTrainingProfileImport(JSON.parse(await file.text()));
@@ -3336,6 +3371,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       for(const group of [{id:'',name:'All games'},...groups]){const option=document.createElement('option');option.value=group.id;option.textContent=group.name;collectionSelect.append(option);}
       collectionSelect.value=collectionFilter;collectionSelect.onchange=()=>{collectionFilter=collectionSelect.value;selectedIds.clear();selectedRecords.clear();page=0;render();};collectionLabel.append(collectionSelect);folders.append(collectionLabel);
       const libraryOptions=document.createElement('div');libraryOptions.className='game-library-actions';
+      const importGames=document.createElement('button');importGames.type='button';importGames.textContent='Import games…';importGames.disabled=operationBusy;
+      importGames.onclick=()=>{if(operationBusy)return;if(!window.ironwoodLibraryWindowMode)dialog.close();window.ironwoodOpenImportGames();};libraryOptions.append(importGames);
       for(const [label,action] of [['New folder','create'],['Rename folder','rename'],['Delete folder','delete']]){const button=document.createElement('button');button.type='button';button.textContent=label;button.disabled=operationBusy||(action!=='create'&&!groups.length);button.onclick=()=>void manageCollection(action);libraryOptions.append(button);}
       const libraryMenu=createGameActionMenu(libraryOptions,'Library');libraryMenu.classList.add('game-library-options-trigger');libraryMenu.replaceChildren(libraryConsoleIcon('library'),document.createTextNode('Manage library'));libraryMenu.setAttribute('aria-label','Manage library');libraryManagement.replaceChildren(libraryMenu,libraryOptions);
 

@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-01T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 title: "Play on Lichess"
 description: "Use the Lichess lobby, set up computer games, resume correspondence games, and chat during play."
 category: "using-ironwood"
@@ -118,7 +118,7 @@ Only one game controls the board. An active FICS game cannot be replaced by a ba
 
 See the dedicated [Lichess player profiles guide](/help/lichess-player-profiles/) for browsing, comparison windows, performance statistics, following, activity, and game playback.
 
-Click the bottom **Lichess** button and choose **Player profile**, or click your connected username. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID.
+Click the bottom **Lichess** button and choose **Player profile**, or click your connected username. Load **My account** or enter any Lichess username to view their public biography, ratings, game record, rating history, and latest 12 completed games. Public details depend on what the player has shared. The title includes the player's name and account ID. Expand **Rating history** when you want the chart. Recent games load independently, and cached content remains visible during refresh. See [profile loading and caches](/help/lichess-player-profiles/#cached-data-and-refresh).
 
 Choose Bullet, Blitz, Rapid, Classical, or Correspondence and a date range (**1M**, **3M**, **6M**, **YTD**, **1Y**, or **ALL**). Hover the graph to inspect a date and rating. If a period has no history, try **ALL** or another time control. The graph has its own sunken paper-grain surface. Game-record counters and recent-game cards adapt to narrow windows.
 
@@ -144,4 +144,4 @@ Hover a recent-game mini board for its gold outline and magnifying-glass indicat
 
 ### Daily activity
 
-Expand **Activity** beneath the profile graph to load recent daily game and puzzle results. Each date lists wins, losses, and draws by time control, plus solved and missed puzzles. Rating changes show the before/after ratings when Lichess supplies them. Activity loads only when expanded and is cached separately for each profile window. Use **Refresh activity** to reload it. This is the player's Lichess activity, separate from Ironwood's local puzzle progress.
+Expand **Activity** beneath the profile graph to load recent daily game and puzzle results. Each date lists wins, losses, and draws by time control, plus solved and missed puzzles. Rating changes show the before/after ratings when Lichess supplies them. Activity loads only when expanded and shares cached data across profile windows for the same player. Use **Refresh activity** to reload it. This is the player's Lichess activity, separate from Ironwood's local puzzle progress.

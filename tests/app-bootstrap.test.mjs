@@ -101,7 +101,7 @@ test('companion startup leaves account restoration and background tools idle', (
 });
 
 test('core fetch/compile overlaps restoration; optional modules wait for the painted board or use', async () => {
-  const { dom, target } = environment();
+  const { dom, target, warnings } = environment();
   const restored = deferred(), compiled = deferred(), painted = deferred();
   const requests = [], module = {}, app = { export_saved_game() {}, validate_scoresheet_pgn() {}, preview_scoresheet() {} };
   let initialized = false, storageReady = false, clipboardReady = false;
@@ -134,7 +134,7 @@ test('core fetch/compile overlaps restoration; optional modules wait for the pai
   await flush();
   assert.equal(initialized, false);
   restored.resolve();
-  assert.equal(await start, true);
+  assert.equal(await start, true, JSON.stringify(warnings, (_key,value)=>value instanceof Error?value.message:value));
   assert.equal(target.document.getElementById('loading'), null);
   assert.equal(target.ironwoodExportSavedGame, app.export_saved_game);
   assert.equal(requests.length, 4);
@@ -406,8 +406,10 @@ test('player profile pop-outs preserve independent selections and share only the
   main.target.ironwoodPublishProfileState('{"connected":true}');
   assert.equal(view.target.ironwoodReadProfileState(), '{"connected":true}');
   view.target.ironwoodLichessCommand('{"type":"playerProfile","windowId":"7","username":"other"}');
+  view.target.ironwoodLichessCommand('{"type":"recentGames","windowId":"7","username":"other"}');
+  view.target.ironwoodLichessCommand('{"type":"ratingHistory","windowId":"7","username":"other"}');
   view.target.ironwoodLichessCommand('{"type":"seek"}');
-  assert.equal(commands.length, 1);
+  assert.deepEqual(commands.map(command=>command.type), ['playerProfile','recentGames','ratingHistory']);
   assert.equal(view.target.ironwoodReviewProfileInMain('1. e4 *'), true);
   assert.deepEqual(JSON.parse(main.target.ironwoodTakeProfileReviews()), ['1. e4 *']);
   assert.deepEqual(JSON.parse(main.target.ironwoodTakeProfileReviews()), []);

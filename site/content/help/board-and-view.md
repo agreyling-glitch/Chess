@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-27T00:00:00-05:00
+lastmod: 2026-11-05T00:00:00-06:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -22,6 +22,8 @@ Capture dissolve is used for live captures only. Stepping through or replaying a
 For 3D camera controls, **right-drag** rotates and tilts the board. Add **Shift** to lock rotation and change only the viewing height/tilt; **Shift + right mouse button + wheel** still zooms. See [Rotate, zoom, and reset the 3D board](/help/board-themes/#rotate-zoom-and-reset-the-3d-board).
 
 The workspace has the live board on the left and **Moves**, **Prediction**, and **Analysis** tabs on the right. **Moves** contains Game Moves; **Prediction** contains Engine Prediction; **Analysis** contains the full-game graph and review tools. **Settings → Move notation** chooses letters such as `Qf3` or piece pictures such as `♕f3`. Both show the same move; see [How to read chess moves](/help/chess-notation/).
+
+Drag the vertical divider between the live board and the right-hand panel to change their widths. Drag it left to widen the panel and shrink the board, or right to give the board more room. The same divider position is used for game, study, and puzzle panels, within their minimum sizes.
 
 Open **Settings → Board → Theme…** for a movable, resizable chooser with **2D Pieces** and **3D Boards** tabs. It always opens on **2D Pieces**; select **3D Boards** to load and browse the 3D previews. Click a preview to apply that piece set or theme and switch to its board view. The selected card has a gold border. Double-click a preview to apply it and close the chooser, or use the close button or Escape. You can also right-click the **2D/3D** icon above the live board to open the chooser.
 
