@@ -60,11 +60,11 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   const companionEngines = tool('/companion-engines.js', 'Companion engines');
   for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine', 'ironwoodManageCompanionEngines']) companionEngines.action(method);
   let catalogRequested = false;
-  target.ironwoodCompanionEngineCatalog = () => {
+  target.ironwoodCompanionEngineCatalog = (chess960 = false) => {
     if (!target.ironwoodCompanionFeatureEnabled()) return '{"engines":[],"busy":false,"status":""}';
     if (!catalogRequested) {
       catalogRequested = true;
-      void companionEngines.load().then(() => target.ironwoodCompanionEngineCatalog()).catch(error => {
+      void companionEngines.load().then(() => target.ironwoodCompanionEngineCatalog(chess960)).catch(error => {
         catalogRequested = false;
         report('Companion engines', error);
       });
@@ -136,6 +136,11 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     }
   }
   if (target.ironwoodProfileCompanionMode()) {
+    target.ironwoodLichessConnect = () => {
+      try {
+        if (target.opener && !target.opener.closed) target.opener.ironwoodLichessConnect();
+      } catch { /* The main window may have closed. */ }
+    };
     target.ironwoodLichessCommand = raw => {
       try {
         const cmd = JSON.parse(raw);
@@ -446,7 +451,7 @@ export function install3dCompanion(target) {
 function installFallbacks(target) {
   for (const name of ['StoreCurrentGame', 'StoreObservedGame', 'StoreImportedGame', 'StartNewStoredGame',
     'EnsureImportedIndex', 'RefreshStorageStatus', 'BeginBatchImport', 'EndBatchImport',
-    'RefreshVersionDiagnostics', 'UpdateAndReload', 'TrackUsage', 'ExplorerRetry', 'ExplorerRefresh'])
+    'RefreshVersionDiagnostics', 'UpdateAndReload', 'TrackUsage', 'OpenBugReport', 'ExplorerRetry', 'ExplorerRefresh'])
     target[`ironwood${name}`] ??= () => {};
   for (const name of ['IsImportedDuplicate', 'ImportedIndexReady', 'ArchiveImportAvailable', 'HasDeferredUpdate', 'ExplorerSignedIn'])
     target[`ironwood${name}`] ??= () => false;
@@ -483,14 +488,34 @@ function installFallbacks(target) {
     target[`ironwood${name}`] ??= () => target.alert('Saved game storage is unavailable. Please reload Ironwood.');
 }
 
+class WasmFetchError extends Error {
+  constructor(message, reason, { cause, status } = {}) {
+    super(message, { cause });
+    this.reason = reason;
+    this.status = status;
+  }
+}
+
 export async function compileAppWasm(url, fetcher = fetch, wasm = WebAssembly) {
-  const response = await fetcher(url);
-  if (!response.ok) throw new Error(`Could not fetch the chess app (${response.status})`);
+  let response;
+  try {
+    response = await fetcher(url);
+  } catch (cause) {
+    throw new WasmFetchError('Could not fetch the chess app', 'fetch_rejected', { cause });
+  }
+  if (!response.ok) throw new WasmFetchError(
+    `Could not fetch the chess app (${response.status})`, 'http_error', { status: response.status });
   // Compilation has no app side effects; instantiation must wait for restored
   // storage and all synchronous bindings. Retain non-WASM-MIME server support.
   if (typeof wasm.compileStreaming === 'function' && response.headers.get('Content-Type')?.split(';')[0].trim() === 'application/wasm')
     return wasm.compileStreaming(response);
-  return wasm.compile(await response.arrayBuffer());
+  let bytes;
+  try {
+    bytes = await response.arrayBuffer();
+  } catch (cause) {
+    throw new WasmFetchError('Could not read the chess app download', 'body_read_error', { cause });
+  }
+  return wasm.compile(bytes);
 }
 
 export async function startChessApp({
@@ -503,6 +528,31 @@ export async function startChessApp({
   const token = Date.now();
   const asset = path => local ? `${path}?v=${token}` : path;
   const loading = target.document.getElementById('loading');
+  let startupReported = false;
+  let startupDiagnostics;
+  const wasmStartup = async (stage, reason, operation) => {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!startupReported) {
+        startupReported = true;
+        const fetchError = stage === 'wasm_compile' && error instanceof WasmFetchError;
+        startupDiagnostics = {
+          startup_stage: fetchError ? 'wasm_fetch' : stage,
+          failure_reason: fetchError ? error.reason : reason,
+          ...(fetchError && Number.isInteger(error.status) && error.status >= 100 && error.status <= 599
+            ? { http_status: error.status } : {}),
+        };
+        void Promise.resolve().then(() => loadModule('/analytics.js'))
+          .then(module => module.reportWasmStartupFailure(
+            startupDiagnostics.startup_stage,
+            startupDiagnostics.failure_reason,
+            startupDiagnostics.http_status,
+          )).catch(() => {});
+      }
+      throw error;
+    }
+  };
   installFallbacks(target);
   const tools = installDeferredTools(target, loadModule, asset);
   const firstFrame = new Promise(resolve => { target.ironwoodFirstFrame = resolve; });
@@ -514,8 +564,8 @@ export async function startChessApp({
   try {
     const callback = new URLSearchParams(target.location.search);
     const [app, wasm] = await Promise.all([
-      loadModule(asset('/pkg/battle_chess.js')),
-      compile(asset('/pkg/battle_chess_bg.wasm')),
+      wasmStartup('js_module_load', 'module_load_error', () => loadModule(asset('/pkg/battle_chess.js'))),
+      wasmStartup('wasm_compile', 'compile_error', () => compile(asset('/pkg/battle_chess_bg.wasm'))),
       loadModule(asset('/game-storage.js')).then(module => module.initializeGameStorage())
         .catch(error => target.console.warn('Ironwood game library is unavailable:', error)),
       // Clipboard entry points must be ready before any possible board click;
@@ -526,7 +576,7 @@ export async function startChessApp({
       // diagnostics start. It does not wait for the remote token exchange.
       callback.has('code') || callback.has('error') ? tools.lichess.load() : undefined,
     ]);
-    await app.default({ module_or_path: wasm });
+    await wasmStartup('wasm_init', 'init_error', () => app.default({ module_or_path: wasm }));
     target.ironwoodExportSavedGame = app.export_saved_game;
     target.ironwoodPrepareArchivedPgn = app.prepare_archived_pgn;
     target.ironwoodMergeSavedStudies = app.merge_saved_studies;
@@ -566,7 +616,8 @@ export async function startChessApp({
     return true;
   } catch (error) {
     target.console.error('Ironwood could not start:', error);
-    if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
+    if (target.ironwoodShowStartupError) target.ironwoodShowStartupError(startupDiagnostics);
+    else if (loading) loading.textContent = 'Ironwood could not start. Please reload the page.';
     return false;
   }
 }

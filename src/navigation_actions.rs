@@ -262,6 +262,13 @@ impl ChessApp {
         if Self::navigation_action(ui, true, "Contents…").clicked() {
             ui.ctx().open_url(egui::OpenUrl::new_tab(HELP_URL));
         }
+        #[cfg(target_arch = "wasm32")]
+        if Self::navigation_action(ui, true, "Report a bug…").clicked() {
+            open_bug_report(
+                wasm_bindgen::JsValue::UNDEFINED,
+                &self.clipboard_pgn(self.review_moves.len()),
+            );
+        }
         if Self::navigation_action(ui, true, "Companion setup…").clicked() {
             ui.ctx().open_url(egui::OpenUrl::new_tab(
                 "https://ironwoodchess.com/downloads/companion/",

@@ -1503,7 +1503,21 @@ impl ChessApp {
     }
 
     fn lichess_profile_contents(&mut self, ui: &mut egui::Ui, window: &mut PlayerProfileWindow, data: &serde_json::Value) {
-            if !data["connected"].as_bool().unwrap_or(false) { ui.label("Reconnect to view a player profile."); return; }
+            if !data["connected"].as_bool().unwrap_or(false) {
+                Self::lichess_profile_section(ui, |ui| {
+                    ui.label("Reconnect to view a player profile.");
+                    let status = data["status"].as_str().unwrap_or_default();
+                    let connecting = matches!(status, "Connecting to Lichess…" | "Reconnecting to Lichess…");
+                    if ui.add_enabled(!connecting, Self::lichess_profile_button("Reconnect to Lichess")).clicked() {
+                        #[cfg(target_arch = "wasm32")]
+                        lichess_connect();
+                    }
+                    if !status.is_empty() {
+                        ui.label(RichText::new(status).small().weak());
+                    }
+                });
+                return;
+            }
             let loading = data["profileLoading"].as_bool().unwrap_or(false);
             Self::lichess_profile_section(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::new(10.0, 10.0);
@@ -2365,7 +2379,7 @@ mod player_profile_follow_tests {
 fn lichess_profile_window_data(lobby: &serde_json::Value, id: u64) -> serde_json::Value {
     let mut data=if lobby["profileWindows"].is_object() {lobby["profileWindows"][id.to_string()].clone()} else {lobby.clone()};
     if !data.is_object() {data=serde_json::json!({});}
-    for key in ["connected","account","following","followingLoading","followBusy","followError","followPermissionNeeded"] {
+    for key in ["connected","status","account","following","followingLoading","followBusy","followError","followPermissionNeeded"] {
         data[key]=lobby[key].clone();
     }
     data

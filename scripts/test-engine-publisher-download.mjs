@@ -24,7 +24,9 @@ try{
  const settings=await request(`engine-management/${result.engine_id}`);assert.equal(settings.can_uninstall,true);
  const executable=settings.executable;
  const probe=spawn(executable,settings.args,{cwd:join(root,'engines',p.id),windowsHide:true,stdio:['pipe','pipe','pipe']});
- await new Promise((yes,no)=>{let output='';const timer=setTimeout(()=>{probe.kill();no(Error('No bestmove: '+output));},60000);probe.once('error',no);probe.stdout.on('data',b=>{output+=b;if(/bestmove [a-h][1-8][a-h][1-8]/.test(output)){clearTimeout(timer);probe.stdin.end('quit\n');yes();}});probe.stdin.write('uci\nisready\nposition startpos\ngo depth 1\n');});
+ const legalOpeningMove=/^bestmove (?:([a-h])2\1[34]|b1[ac]3|g1[fh]3)(?:\s|$)/m;
+ await new Promise((yes,no)=>{let output='';const timer=setTimeout(()=>{probe.kill();no(Error('No legal opening bestmove: '+output));},60000);probe.once('error',no);probe.stdout.on('data',b=>{output+=b;if(legalOpeningMove.test(output)){clearTimeout(timer);probe.stdin.end('quit\n');yes();}});probe.stdin.write('uci\nisready\nposition startpos\ngo depth 1\n');});
  await shutdown();await start();const persisted=(await request('engine-downloads')).jobs.find(j=>j.id===p.id);assert.equal(persisted.phase,'ready');assert.equal(persisted.engine_id,result.engine_id);
+ assert.ok(JSON.stringify(await request('engines')).includes(result.engine_id));
  console.log(JSON.stringify({root,package:p.id,downloaded:result.downloaded,registered:result.engine_id,restart:'ready',publisher:p.url}));
 }finally{if(child)await shutdown();}

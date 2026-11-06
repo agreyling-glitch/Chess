@@ -140,6 +140,9 @@ export class CompanionEngineAdapter {
       const [fen, moves = ''] = text.replace(/^fen /, '').split(' moves ');
       this.position = { fen, moves: moves.trim() ? moves.trim().split(/\s+/) : [] };
     } else if (line.startsWith('go ')) {
+      if (this.chess960 && !this.details.options.some(option => option.name === 'UCI_Chess960' && option.kind === 'check')) {
+        throw new Error('Select a Chess960-compatible engine for this game');
+      }
       const words = line.split(/\s+/).slice(1);
       let limit;
       if (words[0] === 'infinite') limit = { kind: 'infinite' };

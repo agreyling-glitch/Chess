@@ -87,6 +87,12 @@ hashTree(target, shellHash);
 const shellVersion = shellHash.digest('hex').slice(0, 20);
 
 const pwaPath = join(target, 'pwa.js');
+const analyticsPath = join(target, 'analytics.js');
+writeFileSync(analyticsPath, readFileSync(analyticsPath, 'utf8')
+  .replaceAll('__PACKAGE_VERSION__', packageVersion));
+const bugReportPath = join(target, 'bug-report.js');
+writeFileSync(bugReportPath, readFileSync(bugReportPath, 'utf8')
+  .replaceAll('__PACKAGE_VERSION__', packageVersion));
 writeFileSync(pwaPath, readFileSync(pwaPath, 'utf8')
   .replaceAll('__APP_SHELL_VERSION__', shellVersion)
   .replaceAll('__PACKAGE_VERSION__', packageVersion)

@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-11-05T00:00:00-06:00
+lastmod: 2026-11-06T00:00:00-06:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -16,6 +16,10 @@ Start a game as White or Black, or let Ironwood choose a side at random. When yo
 The live board stays on the left, with a configurable row of icon tabs on the right: **Analysis**, **Prediction**, **Moves**, **Position**, **Explore**, **Tactical**, and **Annotations**. Use the gold gear at the end of the row to turn panels on or off and change their order. Your choices are remembered; Analysis comes first for new users. Study has its own workspace under **Training → Study**, below Lichess Puzzles.
 
 The sidebar can collapse to icons while keeping the selected mode visible. Move the pointer over it to expand navigation. The gold gear at its bottom lets you hide and reorder quick-access shortcuts, including optional Lichess Profiles, Board Theme, and Study shortcuts. [Workspace guide](/help/getting-started/#find-your-way-around).
+
+## Report a problem from the app
+
+Choose **Help → Report a bug…**, or use the report button if Ironwood fails to start. Review the diagnostics before sending. From the board, you can also preview and attach the current game as PGN. You can send a report with usage statistics turned off. [Reporting bugs](/help/optional-usage-statistics/#report-a-bug)
 
 ## Read and practice Lichess studies
 

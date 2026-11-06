@@ -39,8 +39,9 @@ struct Package {
     license: &'static str,
     source: &'static str,
     networks: &'static str,
+    chess960: bool,
 }
-const PACKAGES: [Package; 5] = [
+const PACKAGES: [Package; 7] = [
     Package {
         id: "stockfish-19-windows-x64",
         name: "Stockfish",
@@ -53,6 +54,7 @@ const PACKAGES: [Package; 5] = [
         license: "GPL-3.0",
         source: "https://github.com/official-stockfish/Stockfish/releases/tag/sf_19",
         networks: "Included in the publisher's engine package",
+        chess960: true,
     },
     Package {
         id: "stockfish-19-windows-arm64",
@@ -66,6 +68,7 @@ const PACKAGES: [Package; 5] = [
         license: "GPL-3.0",
         source: "https://github.com/official-stockfish/Stockfish/releases/tag/sf_19",
         networks: "Included in the publisher's engine package",
+        chess960: true,
     },
     Package {
         id: "arasan-26-1-windows-x64", name: "Arasan", version: "26.1", platform: "windows-x64",
@@ -74,6 +77,7 @@ const PACKAGES: [Package; 5] = [
         bytes: 29832657, executable: "arasanx-64.exe", license: "MIT",
         source: "https://github.com/jdart1/arasan-chess/releases/tag/v26.1",
         networks: "Includes the publisher's NNUE network and opening book; standard x64/SSE2 build",
+        chess960: false,
     },
     Package {
         id: "weiss-2-0-windows-x64", name: "Weiss", version: "2.0", platform: "windows-x64",
@@ -82,6 +86,7 @@ const PACKAGES: [Package; 5] = [
         bytes: 471176, executable: "weiss-nopopcnt.exe", license: "GPL-3.0",
         source: "https://github.com/TerjeKir/weiss/tree/v2.0",
         networks: "Classical evaluation; no neural-network download required; compatible x64 build",
+        chess960: true,
     },
     Package {
         id: "lc0-0-32-1-cpu-windows-x64", name: "Lc0 (CPU)", version: "0.32.1", platform: "windows-x64",
@@ -90,8 +95,37 @@ const PACKAGES: [Package; 5] = [
         bytes: 24001097, executable: "lc0.exe", license: "GPL-3.0-or-later; T1 network: creator permission",
         source: "https://github.com/LeelaChessZero/lc0/releases/tag/v0.32.1",
         networks: "Includes T1-256x10-distilled-swa-2432500 by masterkni6; CPU version, no GPU required",
+        chess960: true,
+    },
+    Package {
+        id: "laser-1-7-windows-x64", name: "Laser", version: "1.7", platform: "windows-x64",
+        url: "https://github.com/jeffreyan11/laser-chess-engine/releases/download/v1.7/Laser-1_7-NOPOPCNT.exe",
+        sha256: "f22b9d81cd201bf2f3224bca2dcd9aa91d6b94b1c6640b580eb8d4822c123c0c",
+        bytes: 1116160, executable: "Laser-1_7-NOPOPCNT.exe", license: "GPL-3.0",
+        source: "https://github.com/jeffreyan11/laser-chess-engine/tree/v1.7",
+        networks: "Classical evaluation; baseline x64 build without POPCNT",
+        chess960: false,
+    },
+    Package {
+        id: "supernova-2-4-windows-x64", name: "Supernova", version: "2.4", platform: "windows-x64",
+        url: "https://github.com/MichaeltheCoder7/Supernova/releases/download/v2.4/Supernova_2.4.exe",
+        sha256: "98312ef10d8ddfee04539f8c1d8bdde2baa2348f19f988ff0f577ba71202beb5",
+        bytes: 460335, executable: "Supernova_2.4.exe", license: "MIT",
+        source: "https://github.com/MichaeltheCoder7/Supernova/tree/v2.4",
+        networks: "Classical evaluation; no neural-network download required",
+        chess960: false,
     },
 ];
+// Keep the original package identity and digest for verification and uninstall.
+const RETIRED_EQUES: Package = Package {
+    id: "eques-1-0-0-windows-x64", name: "Eques", version: "1.0.0", platform: "windows-x64",
+    url: "https://github.com/deanmchris/eques/releases/download/v1.0.0/builds.zip",
+    sha256: "5816b93fc79b08074b70ea5325697e989dbaa3b677c95b6e5f255c51432e5163",
+    bytes: 21299598, executable: "builds/windows/eques-1.0.0-windows-default.exe", license: "MIT",
+    source: "https://github.com/deanmchris/eques/tree/v1.0.0",
+    networks: "Classical evaluation; baseline Windows x64 build. Use a game clock; fixed depth and fixed movetime are unsupported.",
+    chess960: false,
+};
 const T1_NAME: &str = "t1-256x10-distilled-swa-2432500.pb.gz";
 const T1_PERMISSION: &str = "T1-256x10-distilled-swa-2432500\nCreator: masterkni6\nSource: https://storage.lczero.org/files/networks-contrib/t1-256x10-distilled-swa-2432500.pb.gz\nPermission: https://github.com/orgs/LeelaChessZero/discussions/2430\nThe creator stated on 2026-08-05: I did make that net. Anyone can use it however they want\nThis permission applies to this specific network, not all Lc0 networks.\n";
 fn network(p: &Package) -> Option<Package> {
@@ -120,7 +154,11 @@ fn platform() -> &'static str {
     }
 }
 fn package(id: &str) -> Option<&'static Package> {
-    PACKAGES.iter().find(|p| p.id == id)
+    PACKAGES.iter().chain([&RETIRED_EQUES]).find(|p| p.id == id)
+}
+pub(crate) fn installed_chess960(engine: &crate::config::EngineConfig) -> Option<bool> {
+    let package = package(engine.id.strip_prefix("download-")?)?;
+    engine.executable.ends_with(package.executable).then_some(package.chess960)
 }
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Job {
@@ -343,7 +381,7 @@ struct Start {
     package: String,
 }
 async fn start(State(shared): State<Shared>, Json(command): Json<Start>) -> Response {
-    let Some(p) = package(&command.package).filter(|p| p.platform == platform()) else {
+    let Some(p) = PACKAGES.iter().find(|p| p.id == command.package && p.platform == platform()) else {
         return failure(
             StatusCode::BAD_REQUEST,
             "invalid_request",
@@ -695,6 +733,36 @@ fn extract(
         files,
     })
 }
+fn stage_package(
+    p: &Package,
+    path: &Path,
+    destination: &Path,
+    check: impl Fn() -> Result<()>,
+) -> Result<Receipt> {
+    let license = match p.id {
+        "laser-1-7-windows-x64" => include_bytes!("../licenses/engines/laser-1.7.txt").as_slice(),
+        "supernova-2-4-windows-x64" => include_bytes!("../licenses/engines/supernova-2.4.txt").as_slice(),
+        _ => return extract(p, path, destination, check),
+    };
+    // These publishers ship standalone executables with the license in tagged source.
+    check()?;
+    let executable = destination.join(p.executable);
+    fs::copy(path, &executable).map_err(|e| e.to_string())?;
+    check()?;
+    let name = "LICENSE.txt";
+    let mut file = fs::OpenOptions::new().write(true).create_new(true)
+        .open(destination.join(name)).map_err(|e| e.to_string())?;
+    file.write_all(license).and_then(|_| file.sync_all()).map_err(|e| e.to_string())?;
+    Ok(Receipt {
+        package: p.id.into(),
+        sha256: p.sha256.into(),
+        files: BTreeMap::from([
+            (p.executable.into(), hash(&executable)?),
+            (name.into(), format!("{:x}", Sha256::digest(license))),
+        ]),
+    })
+}
+
 fn verify_install(p: &Package, directory: &Path) -> Result<()> {
     real(directory, true)?;
     let receipt_path = directory.join(".ironwood-package.json");
@@ -814,7 +882,7 @@ async fn run(shared: &Shared, p: &'static Package) -> Result<()> {
         let manager2 = manager.clone();
         let control = shared.control.clone();
         let mut receipt = match tokio::task::spawn_blocking(move || {
-            extract(&p2, &path, &stage2, || manager2.check(p2.id, &control))
+            stage_package(&p2, &path, &stage2, || manager2.check(p2.id, &control))
         })
         .await
         .map_err(|_| "Extraction worker failed")?

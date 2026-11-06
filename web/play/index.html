@@ -91,6 +91,26 @@
   </script>
   <script type="module">
     import { isMobileDevice } from '/device-support.js';
+    window.ironwoodOpenBugReport = (diagnostics, pgn) => {
+      void import('/bug-report.js').then(module => module.openBugReport(diagnostics, pgn)).catch(error => {
+        console.error('Ironwood bug reporting is unavailable:', error);
+        window.alert('Could not open the bug report. Check your connection and try again.');
+      });
+    };
+    window.ironwoodShowStartupError = (diagnostics = { startup_stage: 'app_bootstrap', failure_reason: 'startup_error' }) => {
+      const message = document.getElementById('loading');
+      if (!message) return;
+      const report = document.createElement('button');
+      report.type = 'button';
+      report.textContent = 'Report a bug…';
+      report.onclick = () => window.ironwoodOpenBugReport(diagnostics);
+      const panel = document.createElement('div');
+      panel.style.cssText = 'padding:24px;text-align:center';
+      const description = document.createElement('p');
+      description.textContent = 'Ironwood could not start. Please reload the page.';
+      panel.append(description, report);
+      message.replaceChildren(panel);
+    };
     if (isMobileDevice()) {
       document.getElementById('chess_canvas').hidden = true;
       const message = document.getElementById('loading');
@@ -111,7 +131,7 @@
         await startChessApp();
       } catch (error) {
         console.error('Ironwood could not start:', error);
-        document.getElementById('loading').textContent = 'Ironwood could not start. Please reload the page.';
+        window.ironwoodShowStartupError();
       }
     }
   </script>

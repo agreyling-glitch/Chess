@@ -673,3 +673,113 @@ canvas { display:block; }
   #game-library-dialog .library-search-console-top { flex-wrap:wrap; }
   #game-library-dialog .library-search-console-field { flex-basis:200px; }
 }
+
+/* Bug report dialog */
+#ironwood-bug-report {
+  box-sizing: border-box;
+  width: min(35rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 2rem);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #655338;
+  border-radius: 1rem;
+  background: #1c2024;
+  color: #f4efe5;
+  color-scheme: dark;
+  box-shadow: 0 1rem 4rem #0008;
+  font: 0.9375rem/1.45 system-ui, sans-serif;
+}
+
+#ironwood-bug-report::backdrop { background: #080a0cbb; }
+#ironwood-bug-report header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #45413a;
+  background: #252622;
+}
+#ironwood-bug-report h2 { margin: 0.15rem 0; font: 1.85rem/1.15 Georgia, serif; }
+#ironwood-bug-report p { margin: 0; }
+#ironwood-bug-report header p,
+#ironwood-bug-report small,
+#ironwood-bug-report .report-attachment p,
+#ironwood-bug-report .report-disclosure { color: #cec6b9; }
+#ironwood-bug-report .report-eyebrow {
+  color: #edc47a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#ironwood-bug-report form { display: grid; gap: 1rem; padding: 1.25rem 1.5rem; }
+#ironwood-bug-report .report-field { display: grid; gap: 0.35rem; font-weight: 600; }
+#ironwood-bug-report small { margin-inline-start: 0.35rem; font-weight: 400; }
+#ironwood-bug-report textarea,
+#ironwood-bug-report input[type="email"] {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #66635b;
+  border-radius: 0.5rem;
+  background: #14171a;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+}
+#ironwood-bug-report textarea { resize: vertical; }
+#ironwood-bug-report .report-attachment {
+  padding: 0.75rem;
+  border: 1px solid #60543d;
+  border-radius: 0.6rem;
+  background: #2b2821;
+}
+#ironwood-bug-report .report-attachment label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+#ironwood-bug-report input[type="checkbox"] { width: 1.15rem; height: 1.15rem; margin: 0; accent-color: #edc47a; }
+#ironwood-bug-report .report-file-type {
+  margin-inline-start: auto;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  background: #493b28;
+  color: #ffe1ac;
+  font-size: 0.75rem;
+}
+#ironwood-bug-report .report-attachment p { margin-top: 0.25rem; }
+#ironwood-bug-report .report-attachment details { margin-top: 0.5rem; }
+#ironwood-bug-report summary { cursor: pointer; color: #edc47a; }
+#ironwood-bug-report pre {
+  max-height: 9rem;
+  overflow: auto;
+  margin: 0.4rem 0 0;
+  padding: 0.6rem;
+  background: #14171a;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+#ironwood-bug-report .report-disclosure,
+#ironwood-bug-report .report-attachment p { font-size: 0.8125rem; }
+#ironwood-bug-report [role="status"]:empty { margin-top: -1rem; }
+#ironwood-bug-report [role="status"] { overflow-wrap: anywhere; }
+#ironwood-bug-report footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #45413a;
+}
+#ironwood-bug-report button {
+  min-height: 2.75rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #66635b;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+#ironwood-bug-report button[type="submit"] {
+  border-color: #edc47a;
+  background: #edc47a;
+  color: #21190f;
+  font-weight: 700;
+}
+#ironwood-bug-report button:disabled { opacity: 0.6; cursor: default; }
+#ironwood-bug-report :focus-visible { outline: 2px solid #edc47a; outline-offset: 2px; }

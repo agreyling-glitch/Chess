@@ -10,6 +10,7 @@ import {browserDocuments} from '../web/companion-archive-client.js';
 const records=new Map(),local=new Map();
 let failWrite=false,networkCalls=0,enabled=false;
 const dom=new JSDOM('<body></body>',{url:'http://localhost:8788/play/'});
+test.after(() => dom.window.close());
 globalThis.window=dom.window;globalThis.document=dom.window.document;
 globalThis.localStorage={getItem:key=>local.get(key)||null,setItem:(key,value)=>local.set(key,String(value)),removeItem:key=>local.delete(key)};
 window.ironwoodCompanionFeatureEnabled=()=>enabled;
@@ -137,7 +138,6 @@ test('quota failures leave prior run and game intact; legacy results migrate wit
   const legacy=records.get('legacy-game').archiveAnalysisRuns;
   assert.equal(legacy.length,2);assert.equal(legacy.find(run=>run.id.startsWith('legacy-')).metadata.engine_name,'Previous analysis (engine unverified)');
   assert.equal(networkCalls,0);
-  dom.window.close();
 });
 
 

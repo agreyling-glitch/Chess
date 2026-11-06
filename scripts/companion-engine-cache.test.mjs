@@ -19,7 +19,9 @@ test('capability cache is session-scoped, shows pending choices, and never cache
     starts++;
     if (delayNext) { delayNext = false; await new Promise(resolve => { release = resolve; }); }
     if (fail) throw Error('Engine unavailable');
-    return {name:`Engine ${engineId}`,options:[{name:'Threads',kind:'spin',default:'2',min:1,max:8}]};
+    const options = [{name:'Threads',kind:'spin',default:'2',min:1,max:8}];
+    if (engineId === 'a') options.push({name:'UCI_Chess960',kind:'check',default:'false'});
+    return {name:`Engine ${engineId}`,options};
   };
   CompanionEngineAdapter.prototype.release = async function() {};
   try {
@@ -81,6 +83,17 @@ test('capability cache is session-scoped, shows pending choices, and never cache
     window.ironwoodCompanionPollChange();
     await window.ironwoodSelectCompanionEngine('');
     assert.deepEqual(JSON.parse(window.ironwoodCompanionPollChange()),{provider:'builtin'});
+
+    await window.ironwoodRefreshCompanionEngines();
+    window.ironwoodCompanionEngineCatalog(true);
+    for (let i = 0; i < 20 && catalog().checking_chess960; i++) {
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    assert.deepEqual(catalog().engines.map(engine => engine.chess960), [true, false]);
+    assert.equal(window.ironwoodCompanionPollChange(), '', 'probing must not change the selection');
+    assert.equal(starts, 10);
+    await window.ironwoodSelectCompanionEngine(a);
+    assert.equal(starts, 10, 'selection can reuse the Chess960 handshake');
   } finally {
     disconnectCompanion();
     CompanionEngineAdapter.prototype.connect = originalConnect;

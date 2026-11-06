@@ -1,6 +1,32 @@
 use super::*;
 
 impl ChessApp {
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn engine_picker_catalog(chess960: bool, ctx: &egui::Context) -> serde_json::Value {
+        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog_raw(chess960)).unwrap_or_default();
+        if catalog["busy"] == true || catalog["checking_chess960"] == true {
+            ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        }
+        catalog
+    }
+
+    pub(super) fn engine_supports_chess960(&self, config: &EngineConfig) -> bool {
+        if config.opponent == OpponentEngine::Stockfish {
+            return true;
+        }
+        let key = Self::verification_engine_key(config);
+        if let Some(options) = self.engine_uci_catalog.get(&key) {
+            return options.iter().any(|option| option.name == "UCI_Chess960" && option.kind == "check");
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let catalog = serde_json::from_str(&companion_engine_catalog_raw(true)).unwrap_or_default();
+            compatible_companion_engines(&catalog, true).any(|engine| engine["identity"] == config.companion_identity)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        false
+    }
+
     fn reset_prediction_for_engine_switch(&mut self, identity: String) {
         let running=self.analysis_running;
         #[cfg(target_arch="wasm32")]
@@ -19,7 +45,7 @@ impl ChessApp {
     pub(super) fn prediction_analyze_control_ui(&mut self,ui:&mut egui::Ui) {
         #[cfg(target_arch="wasm32")]
         let catalog:serde_json::Value=if crate::companion::enabled() {
-            serde_json::from_str(&companion_engine_catalog()).unwrap_or_default()
+            Self::engine_picker_catalog(self.board.is_chess960(), ui.ctx())
         }else{serde_json::Value::Null};
         #[cfg(not(target_arch="wasm32"))]
         let catalog=serde_json::Value::Null;
@@ -36,7 +62,9 @@ impl ChessApp {
             let width=(ui.available_width()-38.0-ui.spacing().item_spacing.x).max(60.0);
             let running=self.analysis_running;
             let label=if busy {"Preparing engine…"}else if running {"Stop analysis"}else{"Analyze position"};
-            let action=ui.add_enabled(!busy,egui::Button::new("").min_size(Vec2::new(width,40.0)).raised_gold());
+            let compatible = !self.board.is_chess960() || self.engine_supports_chess960(&self.analysis_config);
+            let action=ui.add_enabled(!busy && (running || compatible),egui::Button::new("").min_size(Vec2::new(width,40.0)).raised_gold())
+                .on_disabled_hover_text("Select a Chess960-compatible engine to analyze this position.");
             let ink=Color32::from_rgb(34,29,19);
             let text=ui.painter().layout_no_wrap(label.into(),FontId::proportional(14.0),ink);
             let center=action.rect.center();
@@ -64,13 +92,11 @@ impl ChessApp {
                 if ui.selectable_label(current.is_empty(),"Stockfish 19 (browser)").clicked() {
                     chosen=Some(String::new());ui.close();
                 }
-                if let Some(engines)=catalog["engines"].as_array() {
-                    for engine in engines {
+                    for engine in compatible_companion_engines(&catalog, self.board.is_chess960()) {
                         if let (Some(id),Some(label))=(engine["identity"].as_str(),engine["label"].as_str()) {
                             if ui.selectable_label(current==id,label).clicked(){chosen=Some(id.to_owned());ui.close();}
                         }
                     }
-                }
                 #[cfg(target_arch="wasm32")]
                 {
                     ui.separator();
@@ -157,7 +183,8 @@ impl ChessApp {
     #[cfg(target_arch = "wasm32")]
     pub(super) fn analysis_engine_selector(&mut self, ui: &mut egui::Ui) {
         if !crate::companion::enabled() { ui.label(self.analysis_config.label()); return; }
-        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let chess960 = self.board.is_chess960();
+        let catalog = Self::engine_picker_catalog(chess960, ui.ctx());
         let busy = catalog["busy"] == true;
         let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
         let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
@@ -184,13 +211,11 @@ impl ChessApp {
                         ui.separator();
                         if ui.button("Connect engines with Companion…").clicked() { manage_companion_connection();ui.close(); }
                     }
-                    if let Some(engines) = catalog["engines"].as_array() {
-                        for engine in engines {
+                        for engine in compatible_companion_engines(&catalog, chess960) {
                             if let (Some(id), Some(label)) = (engine["identity"].as_str(), engine["label"].as_str()) {
                                 ui.selectable_value(&mut identity, id.to_owned(), label);
                             }
                         }
-                    }
                 });
             ui.painter().set(background,egui::Shape::Noop);
             Self::analysis_icon_text(ui,selector.response.rect,engine_label,0,Color32::from_rgb(228,231,226));
@@ -207,7 +232,8 @@ impl ChessApp {
     #[cfg(target_arch = "wasm32")]
     pub(super) fn new_game_engine_selector(&mut self, ui: &mut egui::Ui, width: f32) {
         let draft=self.new_game_engine_draft.clone().unwrap_or_else(||self.engine_config.clone());
-        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let chess960 = self.quick_position_is_chess960();
+        let catalog = Self::engine_picker_catalog(chess960 || self.new_game_opponent == OpponentEngine::Companion, ui.ctx());
         let busy = catalog["busy"] == true;
         let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
             if self.new_game_opponent == OpponentEngine::Companion { draft.companion_identity.clone() } else { String::new() }
@@ -227,11 +253,11 @@ impl ChessApp {
                     ui.visuals_mut().widgets.inactive.bg_stroke = Stroke::NONE;
                     let menu = ui.menu_button(RichText::new("Change engine    ").size(12.0).color(Color32::from_rgb(215,185,121)),|ui| {
                         if ui.selectable_value(&mut identity,String::new(),"Built-in Stockfish").clicked(){ui.close();}
-                        if let Some(engines)=catalog["engines"].as_array(){for engine in engines {
+                        for engine in compatible_companion_engines(&catalog, chess960) {
                             if let (Some(id),Some(label))=(engine["identity"].as_str(),engine["label"].as_str()) {
                                 if ui.selectable_value(&mut identity,id.to_owned(),label).clicked(){ui.close();}
                             }
-                        }}
+                        }
                         ui.separator();
                         if ui.button("Refresh installed engines").clicked(){refresh_companion_engines();ui.close();}
                         if ui.button("Connect Companion…").clicked(){manage_companion_connection();ui.close();}
@@ -254,7 +280,8 @@ impl ChessApp {
 
     #[cfg(target_arch = "wasm32")]
     pub(super) fn companion_engine_selector(&mut self, ui: &mut egui::Ui) {
-        let catalog: serde_json::Value = serde_json::from_str(&companion_engine_catalog()).unwrap_or_default();
+        let chess960 = self.board.is_chess960();
+        let catalog = Self::engine_picker_catalog(chess960, ui.ctx());
         let busy = catalog["busy"].as_bool().unwrap_or(false);
         let allowed = !self.engine_settings_locked() && !(self.fics_active && !self.fics_game_finished) && !busy;
         let mut identity = catalog["pending_identity"].as_str().map(str::to_owned).unwrap_or_else(|| {
@@ -276,13 +303,11 @@ impl ChessApp {
                     .selected_text(catalog["engines"].as_array().and_then(|engines| engines.iter().find(|engine| engine["identity"] == identity)).and_then(|engine| engine["label"].as_str()).unwrap_or(self.analysis_config.label())).width(240.0)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(&mut identity, String::new(), "Built-in Stockfish");
-                        if let Some(engines) = catalog["engines"].as_array() {
-                            for engine in engines {
+                            for engine in compatible_companion_engines(&catalog, chess960) {
                                 if let (Some(id), Some(label)) = (engine["identity"].as_str(), engine["label"].as_str()) {
                                     ui.selectable_value(&mut identity, id.to_owned(), label);
                                 }
                             }
-                        }
                     });
             });
             if Self::companion_settings_icon(ui, allowed, "Add engine", 0).clicked() { add_companion_engine(); }

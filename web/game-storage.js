@@ -1933,10 +1933,13 @@ export function gameDetails(json) {
   const chapterName = pgnTag(game.review_pgn, 'ChapterName') || null;
   const chapterUrl = pgnTag(game.review_pgn, 'ChapterURL') || null;
   const startingNote = typeof game.move_notes?.[0] === 'string' ? game.move_notes[0].trim() : '';
+  const chess960 = /^(?:chess\s*960|fischer\s*random)$/i.test(pgnTag(game.review_pgn, 'Variant') || '')
+    || [pgnTag(game.review_pgn, 'FEN'), game.live_positions?.[0], game.final_board, game.board]
+      .some(fen => /[A-Ha-h]/.test(fen?.split(/\s+/)[2] || ''));
   return { ...gameOpening(game), studyName, studyChapters, studyAuthor, chapterName, chapterUrl, startingNote, analysisStatus, puzzleId, title: studyChapters ? `${studyName} · ${studyChapters} ${studyChapters===1?'chapter':'chapters'}` : puzzle ? `Lichess puzzle${puzzleId ? ` ${puzzleId}` : ''}` : `${white} vs ${black}`, white, black, whiteFideId, blackFideId, playedAt, venue, event:pgnTag(game.review_pgn, 'Event') || null, result, moves, analyzed,
     trainingProfileId: training?.profile_id || null, trainingProfileName: profileName, trainingSide: training?.side || null,
     trainingOpponentElo: training?.opponent_elo, trainingOpponentLevel:training?.difficulty_level, trainingNodeBudget:training?.node_budget, trainingEngineKind:training?.engine?.kind || 'stockfish', ratingBefore: training?.rating_before, ratingAfter: training?.rating_after,
-    finalFen: game.final_board || game.board, category: studyName ? 'studies' : puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
+    chess960, finalFen: game.final_board || game.board, category: studyName ? 'studies' : puzzle ? 'puzzles' : training ? 'training' : imported ? 'imported' : 'mine' };
 }
 
 // Library metadata is independent of the move timeline and saved analysis.
@@ -3619,17 +3622,30 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
       const moreTrigger=createGameActionMenu(moreActions,'Selected games');moreTrigger.className='game-library-menu-button library-console-menu-trigger';moreTrigger.setAttribute('aria-label','More selection actions');moreTrigger.title='More selection actions';moreTrigger.replaceChildren(libraryConsoleIcon('more'));
       exportButton.replaceChildren(libraryConsoleIcon('download'),document.createTextNode('Export'),libraryConsoleIcon('chevron'));
       const analysisEngine=document.createElement('select');analysisEngine.setAttribute('aria-label','Batch analysis engine');
+      const chess960Selection=selectedGames().some(game=>game.chess960===true || /[A-Ha-h]/.test(game.finalFen?.split(/\s+/)[2]||''));
       const addAnalysisEngines=()=>{
         const selected=analysisEngine.value;analysisEngine.replaceChildren();
         const builtin=document.createElement('option');builtin.value='';builtin.textContent='Stockfish 19 · Browser';analysisEngine.append(builtin);
         if(window.ironwoodCompanionFeatureEnabled?.()===true){
-          let catalog;try{catalog=JSON.parse(window.ironwoodCompanionEngineCatalog?.()||'{}');}catch{}
-          for(const engine of catalog?.engines||[]){const option=document.createElement('option');option.value=engine.identity;option.textContent=engine.label;analysisEngine.append(option);}
+          let catalog;try{catalog=JSON.parse(window.ironwoodCompanionEngineCatalog?.(chess960Selection)||'{}');}catch{}
+          for(const engine of catalog?.engines||[]){if(chess960Selection&&engine.chess960!==true)continue;const option=document.createElement('option');option.value=engine.identity;option.textContent=engine.label;analysisEngine.append(option);}
         }
         if([...analysisEngine.options].some(option=>option.value===selected))analysisEngine.value=selected;
       };
       addAnalysisEngines();
-      analysisEngine.addEventListener('focus',async()=>{if(window.ironwoodCompanionFeatureEnabled?.()===true){try{await import('./companion-engines.js');await window.ironwoodRefreshCompanionEngines?.();for(let attempt=0;attempt<120&&analysisEngine.isConnected&&JSON.parse(window.ironwoodCompanionEngineCatalog?.()||'{}').busy;attempt++)await new Promise(resolve=>setTimeout(resolve,100));if(analysisEngine.isConnected)addAnalysisEngines();}catch(error){message(`Could not refresh engines: ${error.message}`,true);}}});
+      analysisEngine.addEventListener('focus',async()=>{
+        if(window.ironwoodCompanionFeatureEnabled?.()!==true)return;
+        try {
+          await import('./companion-engines.js');
+          await window.ironwoodRefreshCompanionEngines?.();
+          for(let attempt=0;attempt<120&&analysisEngine.isConnected;attempt++){
+            const catalog=JSON.parse(window.ironwoodCompanionEngineCatalog?.(chess960Selection)||'{}');
+            if(!catalog.busy&&!catalog.checking_chess960)break;
+            await new Promise(resolve=>setTimeout(resolve,100));
+          }
+          if(analysisEngine.isConnected)addAnalysisEngines();
+        }catch(error){message(`Could not refresh engines: ${error.message}`,true);}
+      });
       const analyzeSelected=document.createElement('button');analyzeSelected.type='button';analyzeSelected.className='game-library-analyze-selected';analyzeSelected.textContent='Analyze selected';
       const verifyLabel=document.createElement('label');verifyLabel.className='batch-analysis-verify';
       const verifyCritical=document.createElement('input');verifyCritical.type='checkbox';verifyCritical.checked=true;verifyLabel.append(verifyCritical,' Verify critical moves');

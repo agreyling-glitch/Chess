@@ -87,7 +87,18 @@ impl ChessApp {
         )
     }
     fn quick_position_valid(&self) -> bool {
-        self.new_game_position != 2 || Board::from_str(self.new_game_fen.trim()).is_ok()
+        (self.new_game_position != 2 || Board::from_str(self.new_game_fen.trim()).is_ok())
+            && (!self.quick_position_is_chess960() || self.quick_engine_supports_chess960())
+    }
+
+    pub(super) fn quick_position_is_chess960(&self) -> bool {
+        self.new_game_position == 1 || (self.new_game_position == 2
+            && Board::from_str(self.new_game_fen.trim()).is_ok_and(|board| board.is_chess960()))
+    }
+
+    fn quick_engine_supports_chess960(&self) -> bool {
+        self.new_game_both_sides || self.new_game_opponent == OpponentEngine::Stockfish
+            || self.engine_supports_chess960(self.new_game_engine_draft.as_ref().unwrap_or(&self.engine_config))
     }
 
     fn quick_time_label(&self) -> String {
@@ -499,6 +510,7 @@ impl ChessApp {
                 });
             });
         ui.separator();
+        let chess960_allowed = self.quick_engine_supports_chess960();
         egui::CollapsingHeader::new(format!(
             "Starting position · {}",
             ["Standard", "Chess960", "Custom FEN"][self.new_game_position.min(2)]
@@ -508,9 +520,15 @@ impl ChessApp {
         .show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 for (index, label) in ["Standard", "Chess960", "Custom FEN"].iter().enumerate() {
-                    ui.selectable_value(&mut self.new_game_position, index, *label);
+                    ui.add_enabled_ui(index != 1 || chess960_allowed, |ui| {
+                        ui.selectable_value(&mut self.new_game_position, index, *label)
+                            .on_disabled_hover_text("Select a Chess960-compatible engine.");
+                    });
                 }
             });
+            if self.quick_position_is_chess960() && !chess960_allowed {
+                ui.label("Select a Chess960-compatible engine to start this position.");
+            }
             if self.new_game_position == 1 {
                 ui.add(
                     egui::Label::new(
@@ -526,7 +544,7 @@ impl ChessApp {
                         .desired_rows(3)
                         .hint_text("Paste a complete FEN"),
                 );
-                let valid = self.quick_position_valid();
+                let valid = Board::from_str(self.new_game_fen.trim()).is_ok();
                 ui.label(if valid {
                     "Valid position"
                 } else {
@@ -614,6 +632,30 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chess960_start_requires_compatible_opponent() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.new_game_opponent = OpponentEngine::Companion;
+        app.engine_config.opponent = OpponentEngine::Companion;
+        app.engine_config.companion_identity = "local/engine".into();
+        app.new_game_position = 1;
+        assert!(!app.quick_position_valid());
+
+        app.new_game_position = 2;
+        app.new_game_fen = Board::chess960(0).to_string();
+        assert!(!app.quick_position_valid());
+        app.new_game_both_sides = true;
+        assert!(app.quick_position_valid());
+
+        app.new_game_both_sides = false;
+        let key = ChessApp::verification_engine_key(&app.engine_config);
+        app.engine_uci_catalog.insert(key, vec![
+            engine_uci_settings::parse_option("option name UCI_Chess960 type check default false").unwrap(),
+        ]);
+        assert!(app.quick_position_valid());
+    }
 
     #[test]
     fn quick_setup_height_tracks_content_not_desktop_height() {

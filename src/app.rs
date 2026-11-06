@@ -272,7 +272,7 @@ extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodManageCompanionEngines)]
     fn manage_companion_engines(identity: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionEngineCatalog)]
-    fn companion_engine_catalog() -> String;
+    fn companion_engine_catalog_raw(chess960: bool) -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodInitializeCompanionEngine)]
     fn initialize_companion_engine(worker: &web_sys::Worker, init: &JsValue, identity: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodManageCompanionConnection)]
@@ -531,6 +531,8 @@ extern "C" {
     fn update_and_reload();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTrackUsage)]
     fn track_usage(event: &str);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenBugReport)]
+    fn open_bug_report(diagnostics: wasm_bindgen::JsValue, pgn: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFicsConnect)]
     fn fics_connect();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFicsConnectRegistered)]
@@ -1063,6 +1065,15 @@ fn default_best_move_arrows() -> bool {
 const STORAGE_KEY: &str = "ironwood.chess.game.v1";
 #[cfg(target_arch = "wasm32")]
 const PREFERENCES_KEY: &str = "ironwood.chess.preferences.v1";
+#[cfg(target_arch = "wasm32")]
+fn companion_engine_catalog() -> String {
+    companion_engine_catalog_raw(false)
+}
+
+fn compatible_companion_engines(catalog: &serde_json::Value, chess960: bool) -> impl Iterator<Item = &serde_json::Value> {
+    catalog["engines"].as_array().into_iter().flatten()
+        .filter(move |engine| !chess960 || engine["chess960"] == true)
+}
 #[cfg(target_arch = "wasm32")]
 const ENGINE_CACHE_KEY: &str = "ironwood.chess.engine.stockfish-19.ready";
 
@@ -8782,7 +8793,7 @@ impl ChessApp {
         }
         if format == "batch-positions" {
             if saved.study.is_some() {return Err("Analyze individual study chapters separately".into());}
-            return Ok(serde_json::json!({"positions":positions.iter().map(|board|serde_json::json!({"fen":board.to_string(),"terminal":match board.status(){BoardStatus::Checkmate=>Some("mate"),BoardStatus::Stalemate=>Some("draw"),_=>None}})).collect::<Vec<_>>()}).to_string());
+            return Ok(serde_json::json!({"positions":positions.iter().map(|board|serde_json::json!({"fen":board.to_string(),"chess960":board.is_chess960(),"terminal":match board.status(){BoardStatus::Checkmate=>Some("mate"),BoardStatus::Stalemate=>Some("draw"),_=>None}})).collect::<Vec<_>>()}).to_string());
         }
         if format == "batch-normalize" {
             if saved.game_analysis.len()!=positions.len(){return Err("Analysis does not match the saved timeline".into());}
@@ -10972,8 +10983,11 @@ impl ChessApp {
             if let Some(value) = value_after("nps").and_then(|value| value.parse().ok()) {
                 self.analysis_nps = value;
             }
-            self.analysis_eval_cp = eval_cp;
-            self.analysis_mate = mate;
+            // Engines can report search statistics separately from the score.
+            if eval_cp.is_some() || mate.is_some() {
+                self.analysis_eval_cp = eval_cp;
+                self.analysis_mate = mate;
+            }
         }
         if let Some(pv_index) = fields.iter().position(|field| *field == "pv") {
             let (positions, moves, chess_moves) =
@@ -11544,6 +11558,10 @@ impl ChessApp {
     fn start_analysis(&mut self) {
         if self.focus_mode { self.focus_resume_realtime = true; return; }
         if self.training_live() { return; }
+        if self.board.is_chess960() && !self.engine_supports_chess960(&self.analysis_config) {
+            self.engine_status = "Select a Chess960-compatible engine to analyze this position.".into();
+            return;
+        }
         if self.fics_active && !self.fics_game_finished {
             return;
         }
@@ -12028,6 +12046,10 @@ impl ChessApp {
     fn start_game_analysis(&mut self) {
         self.finish_saved_line_preview();
         if self.training_live() { return; }
+        if self.board.is_chess960() && !self.engine_supports_chess960(&self.analysis_config) {
+            self.engine_status = "Select a Chess960-compatible engine to analyze this game.".into();
+            return;
+        }
         if self.fics_active && !self.fics_game_finished {
             return;
         }
@@ -12112,6 +12134,11 @@ impl ChessApp {
         let Some(root) = self.review_positions.get(index).copied() else {
             return;
         };
+        if root.is_chess960() && !self.engine_supports_chess960(&self.analysis_config) {
+            self.stop_game_analysis();
+            self.engine_status = "Select a Chess960-compatible engine to analyze this game.".into();
+            return;
+        }
         self.clear_analysis_result();
         let Some(engine) = &self.engine else { return };
         engine.command("stop");
@@ -13251,6 +13278,10 @@ impl ChessApp {
             if !self.engine_ready {
                 self.engine_start_failed = false;
                 self.resume_engine_after_ready = true;
+                return;
+            }
+            if self.board.is_chess960() && !self.engine_supports_chess960(&self.engine_config) {
+                self.engine_status = "Select a Chess960-compatible engine to continue play.".into();
                 return;
             }
             if let Some(engine) = &self.engine {
@@ -16654,11 +16685,15 @@ impl ChessApp {
                 Self::set_menu_item_font(ui);
                 #[cfg(target_arch = "wasm32")]
                 let catalog = if crate::companion::enabled() {
-                    serde_json::from_str(&companion_engine_catalog()).unwrap_or_default()
+                    Self::engine_picker_catalog(self.review_positions[index].is_chess960(), ui.ctx())
                 } else { serde_json::Value::Null };
                 #[cfg(not(target_arch = "wasm32"))]
                 let catalog = serde_json::Value::Null;
                 for (label, config) in self.position_play_engine_choices(crate::companion::enabled(), &catalog) {
+                    if self.review_positions[index].is_chess960()
+                        && config.opponent == OpponentEngine::Companion
+                        && !compatible_companion_engines(&catalog, true).any(|engine| engine["identity"] == config.companion_identity)
+                    { continue; }
                     if ui.button(label).clicked() {
                         self.review_index = Some(index);
                         self.engine_config = config;
@@ -21180,6 +21215,26 @@ mod tests {
     }
 
     #[test]
+    fn analysis_statistics_keep_the_last_score_for_the_current_position() {
+        let context = eframe::CreationContext::_new_kittest(egui::Context::default());
+        let mut app = ChessApp::new(&context);
+        app.update_analysis_from_info("info depth 17 nodes 1490056 score cp -40 pv e2e4");
+        app.update_analysis_from_info("info depth 17 nodes 1670143");
+        assert_eq!(app.analysis_eval_cp, Some(-40));
+        assert_eq!(app.analysis_nodes, 1670143);
+
+        app.update_analysis_from_info("info depth 18 score mate 4");
+        app.update_analysis_from_info("info depth 18 nodes 1900000");
+        assert_eq!(app.analysis_eval_cp, None);
+        assert_eq!(app.analysis_mate, Some(4));
+
+        app.clear_analysis_result();
+        app.update_analysis_from_info("info depth 1 nodes 20");
+        assert_eq!(app.analysis_mate, None);
+        assert_eq!(app.analysis_eval_cp, None);
+    }
+
+    #[test]
     fn graph_score_keeps_terminal_checkmate_on_winning_side() {
         let terminal = PositionAnalysis {
             mate: Some(0),
@@ -21785,7 +21840,17 @@ impl ChessApp {
                             #[cfg(target_arch = "wasm32")]
                             {
                                 self.analysis_engine_selector(ui);
-                                if self.game_analysis_running {
+                                let eques = self.analysis_config.opponent == OpponentEngine::Companion
+                                    && (self.analysis_config.companion_identity.ends_with("/download-eques-1-0-0-windows-x64")
+                                        || self.analysis_config.companion_name == "Eques 1.0.0");
+                                if !self.game_analysis_running && self.board.is_chess960()
+                                    && !self.engine_supports_chess960(&self.analysis_config)
+                                {
+                                    ui.label("Chess960 engine required")
+                                        .on_hover_text("Select a Chess960-compatible engine to analyze this game.");
+                                } else if eques && !self.game_analysis_running {
+                                    ui.label("Eques 1.0.0 is for clocked play. Select another engine for full-game analysis.");
+                                } else if self.game_analysis_running {
                                     if ui.add(egui::Button::new(RichText::new("Stop").color(Color32::WHITE))
                                         .corner_radius(CornerRadius::same(5))).clicked() {
                                         self.stop_game_analysis();

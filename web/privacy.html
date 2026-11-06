@@ -5,8 +5,10 @@
 <p>Ironwood's chess engine and local analysis run on your device. Optional usage analytics are separate from your saved games.</p>
 <p>If you allow statistics, Ironwood sends selected events to PostHog Cloud in the United States: opening the app, starting a game or full-game analysis, and active usage time. PostHog uses cookies and browser storage to recognize returning browsers and sessions. These are browser counts, not verified people.</p>
 <p>Active time counts while the app is visible, focused, and has received input within the previous two minutes. Offline and blocked requests may not be counted.</p>
+<p>If the chess app fails to load, Ironwood sends a fixed error code, startup stage, failure category, HTTP status when available, and app build. The report excludes the original error message and stack trace.</p>
 <p>Analytics do not include game positions, move lists, notes, imported games, player names, page titles, or full URLs. Session replay and automatic interaction capture are disabled. PostHog receives network information such as your IP address and browser information when events are sent.</p>
 <p>You can decline statistics and continue using the app. Use <strong>Analytics settings</strong> to change your choice at any time. Declining stops future collection and clears the SDK's analytics persistence; it does not delete previously submitted events. We store your preference locally.</p>
 <p>Online features contact their respective services independently of analytics. See <a href="https://posthog.com/privacy">PostHog's privacy policy</a>.</p>
+<p>Report a bug sends your description, any reply email you enter, and the diagnostics shown in the form to Ironwood through PostHog. If you choose to attach the current game, the report also includes the PGN shown in the preview, which can contain moves and player names. You can submit a report with usage statistics off. A report can reference a matching startup error collected with your analytics permission.</p>
 <p><a href="/play/" id="return-to-app">Return to Ironwood</a></p><script type="module" src="/analytics.js"></script>
 </body></html>

@@ -330,7 +330,7 @@ the startup handshake and worker-loading barrier.
 
 ### Optional PostHog analytics
 
-Analytics require explicit acceptance and are disabled on localhost and preview hosts by default.
+Analytics require explicit acceptance. Other preview hosts have usage analytics disabled.
 Localhost and `127.0.0.1` enable the statistics choice automatically, without a special URL parameter. Open `http://127.0.0.1:8788/play/`, then choose **Allow statistics**. Unanswered or declined consent sends no events.
 Test events go to the configured project with `environment = local_test`; filter production dashboards to `environment = production`.
 Use **Analytics settings** to decline or allow again. Do not use a personal API key in frontend code.
@@ -343,7 +343,9 @@ Events: `$pageview`, `app_opened`, `game_started` (local new games), `game_analy
 and `active_usage` with `active_seconds`. Active time requires a focused, visible app with input in the last two minutes.
 For active minutes, sum active_seconds / 60, grouped by PostHog session ID; average or take the median across sessions.
 Unique visitors represent browsers that accepted analytics, not all people. Blocked/offline activity is not queued by Ironwood.
-Session replay, automatic interaction capture, surveys, performance capture, and exception capture are disabled.
+Session replay, automatic interaction capture, surveys, performance capture, and automatic exception capture are disabled. Ironwood explicitly captures sanitized WASM startup exceptions after consent. Reports include the build, startup stage, failure category, and a numeric HTTP status when available.
+
+**Help → Report a bug…** and the startup error screen use a separate, explicit `bug_report_submitted` event. This works with analytics off and includes the description, optional reply email, previewed diagnostics, and any PGN the user chooses to attach. A matching consented startup exception can be linked by event ID. Use the saved [Ironwood Bug Reports view](https://us.posthog.com/project/658773/insights/RJWReyxs) to review submissions.
 Maintain separate Production and Local Test dashboards. Use `environment = production` and
 `environment = local_test` respectively, including filters embedded in SQL queries. Use separate
 copies of insights so changing a test chart does not change the production chart.

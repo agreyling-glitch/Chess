@@ -8,6 +8,9 @@ let state = {engines:[], busy:false, status:''}, revision = 0, connection, catal
 // Session-only capabilities. Connections and explicit refreshes invalidate them;
 // credentials and capabilities are never persisted by this cache.
 const capabilityCache = new Map();
+const chess960Probes = new Set();
+let checkingChess960 = false;
+const supportsChess960 = options => options.some(option => option.name === 'UCI_Chess960' && option.kind === 'check');
 const enabled = () => window.ironwoodCompanionFeatureEnabled?.() !== false;
 const sameConnection = shared => {
   return companionEngineConnections().some(current => current.endpoint === shared.endpoint && current.credential === shared.credential);
@@ -15,20 +18,51 @@ const sameConnection = shared => {
 onCompanionConnectionsChange(() => {
   revision++; connection?.close(); connection = null;
   capabilityCache.clear();
+  chess960Probes.clear();
   change = '';
   catalogRequested = false;
   state = {engines:[], busy:false, status:'Connection changed. Refresh the engine list.'};
 });
 window.ironwoodCompanionPollChange = () => { const value = change; change = ''; return value; };
 window.ironwoodCompanionSetAllowed = value => { allowed = value; window.ironwoodCompanionAllowed = value; };
-window.ironwoodCompanionEngineCatalog = () => {
+window.ironwoodCompanionEngineCatalog = (chess960 = false) => {
   if (enabled() && !catalogRequested) void window.ironwoodRefreshCompanionEngines();
-  return JSON.stringify(enabled() ? {...state, has_engine_provider: companionEngineConnections().length > 0} : {engines:[],busy:false,status:''});
+  if (chess960 && enabled() && !state.busy && !checkingChess960
+      && state.engines.some(engine => engine.chess960 == null && !chess960Probes.has(engine.identity))) {
+    void discoverChess960();
+  }
+  return JSON.stringify(enabled() ? {...state, checking_chess960: checkingChess960, has_engine_provider: companionEngineConnections().length > 0} : {engines:[],busy:false,status:''});
 };
+
+async function discoverChess960() {
+  checkingChess960 = true;
+  const engines = state.engines;
+  try {
+    for (const engine of engines) {
+      if (state.engines !== engines || state.busy) break;
+      if (engine.chess960 != null || chess960Probes.has(engine.identity)) continue;
+      const shared = companionEngineConnections().find(item => item.endpoint === engine.provider_endpoint);
+      if (!shared) continue;
+      chess960Probes.add(engine.identity);
+      const adapter = new CompanionEngineAdapter(() => {}, () => {});
+      try {
+        const details = await adapter.connect({...shared, engineId: engine.id});
+        await adapter.release();
+        if (state.engines === engines) {
+          engine.chess960 = supportsChess960(details.options);
+          capabilityCache.set(engine.identity, structuredClone({name:details.name, options:details.options}));
+        }
+      } catch {
+        // A failed handshake leaves capability unknown until the next refresh.
+      } finally { adapter.close(); }
+    }
+  } finally { checkingChess960 = false; }
+}
 
 window.ironwoodRefreshCompanionEngines = async () => {
   if (!enabled() || state.busy) return;
   capabilityCache.clear();
+  chess960Probes.clear();
   catalogRequested = true;
   const providers = companionEngineConnections(), turn = ++revision;
   if (!providers.length) { state = {engines:[],busy:false,status:'Connect using Game → Companion connection… and enable an engine provider.'}; return; }
@@ -68,6 +102,7 @@ window.ironwoodSelectCompanionEngine = async identity => {
     const details = await adapter.connect({...shared,engineId:engine.id});
     await adapter.release();
     if (turn !== revision || !enabled() || !allowed || !sameConnection(shared)) return;
+    engine.chess960 = supportsChess960(details.options);
     capabilityCache.set(identity, structuredClone({name:details.name,options:details.options}));
     change = JSON.stringify({provider:'companion',name:details.name,identity,options:{},uci_options:details.options});
     state.status = '';

@@ -151,6 +151,8 @@ pub enum SearchLimit {
 pub struct EngineSummary {
     pub id: String,
     pub label: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chess960: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

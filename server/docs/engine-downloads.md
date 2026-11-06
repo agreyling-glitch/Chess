@@ -1,5 +1,17 @@
 # Private-preview publisher-direct engine downloads
 
+Windows x64 also supports Laser 1.7. It uses classical evaluation and needs
+no network files. The catalog pins the original publisher asset's byte size
+and SHA-256.
+
+- [Laser 1.7](https://github.com/jeffreyan11/laser-chess-engine/releases/tag/v1.7)
+  ships a standalone NOPOPCNT executable. Companion stages it directly after
+  verification and installs the GPL-3.0 text from the tagged source.
+
+[Eques 1.0.0](https://github.com/deanmchris/eques/releases/tag/v1.0.0) was
+removed from Auto-install because it requires a game clock. Companion still
+recognizes existing installations for file verification and uninstall.
+
 Catalog review (2026-10-25): Windows x64 now also offers Arasan 26.1 and Weiss 2.0.
 Arasan's official `arasan26.1.zip` SHA-256 is
 `57af9ca4d8a9f57662421c1b54652b246b02cce011f9e2ed26c2252813420690`.

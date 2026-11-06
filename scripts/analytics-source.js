@@ -5,6 +5,9 @@ const consentKey = testing ? 'ironwood.analytics.test-consent' : 'ironwood.analy
 let accepted = false;
 let client;
 let loading;
+let startupException;
+const posthogHost = 'https://us.i.posthog.com';
+const posthogToken = 'phc_xGARmvBxRvxAqazaoPAn7vzvhfuAveYFjhDGXvNtC2Wy';
 let lastInput = performance.now();
 let lastTick = performance.now();
 const allowedEvents = new Set(['$pageview', 'app_opened', 'game_started', 'game_analysis_started', 'active_usage']);
@@ -18,6 +21,65 @@ function capture(event, properties = {}) {
 }
 window.ironwoodTrackUsage = event => capture(event);
 
+const startupReasons = new Map([
+  ['js_module_load', ['module_load_error']],
+  ['wasm_fetch', ['fetch_rejected', 'http_error', 'body_read_error']],
+  ['wasm_compile', ['compile_error']],
+  ['wasm_init', ['init_error']],
+]);
+
+export async function reportWasmStartupFailure(stage, reason, status) {
+  if (!accepted || !startupReasons.get(stage)?.includes(reason)) return;
+  await loading;
+  if (!accepted || !client) return;
+  // Never pass the original exception or its stack to the SDK.
+  const error = new Error('Ironwood WASM startup failed');
+  error.name = 'IronwoodWasmStartupError';
+  error.stack = '';
+  const event = client.captureException(error, {
+    error_code: 'wasm_startup_failed',
+    startup_stage: stage,
+    failure_reason: reason,
+    ...(reason === 'http_error' && Number.isInteger(status) && status >= 100 && status <= 599
+      ? { http_status: status } : {}),
+    app_build: '__PACKAGE_VERSION__',
+    environment: testing ? 'local_test' : 'production',
+  });
+  if (event?.uuid && event.timestamp) {
+    const timestamp = new Date(event.timestamp).toISOString();
+    startupException = {
+      posthog_exception_id: event.uuid,
+      posthog_exception_url: `https://us.posthog.com/project/658773/events/${encodeURIComponent(event.uuid)}/${encodeURIComponent(timestamp)}?event=%24exception`,
+    };
+  }
+}
+
+export function matchingStartupException() {
+  return accepted ? startupException : undefined;
+}
+
+export async function submitBugReport(reportId, report) {
+  const response = await fetch(`${posthogHost}/i/v0/e/`, {
+    method: 'POST',
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+    headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+    body: JSON.stringify({
+      api_key: posthogToken,
+      event: 'bug_report_submitted',
+      distinct_id: reportId,
+      uuid: reportId,
+      properties: {
+        ...report,
+        environment: testing ? 'local_test' : 'production',
+        $process_person_profile: false,
+      },
+    }),
+  });
+  if (!response.ok) throw new Error('Bug report submission failed');
+}
+
 async function start() {
   if (!enabled || !accepted) return;
   try {
@@ -25,8 +87,8 @@ async function start() {
     const { default: posthog } = await loading;
     if (!accepted) return;
     if (!client) {
-      client = posthog.init('phc_xGARmvBxRvxAqazaoPAn7vzvhfuAveYFjhDGXvNtC2Wy', {
-        api_host: 'https://us.i.posthog.com',
+      client = posthog.init(posthogToken, {
+        api_host: posthogHost,
         defaults: '2026-05-30',
         person_profiles: 'identified_only',
         persistence: 'localStorage+cookie',
@@ -43,7 +105,15 @@ async function start() {
         save_referrer: false,
         save_campaign_params: false,
         before_send: event => {
-          if (!accepted || !allowedEvents.has(event.event)) return null;
+          if (!accepted) return null;
+          const startupFailure = event.event === '$exception' &&
+            event.properties.error_code === 'wasm_startup_failed';
+          if (!startupFailure && !allowedEvents.has(event.event)) return null;
+          if (startupFailure) {
+            for (const exception of event.properties.$exception_list ?? []) {
+              delete exception.stacktrace;
+            }
+          }
           // Page titles can contain player names; URLs can contain imported data.
           function clean(value) {
             if (!value || typeof value !== 'object') return;
@@ -69,6 +139,7 @@ async function start() {
 
 function choose(value) {
   accepted = value === 'accepted';
+  if (!accepted) startupException = undefined;
   try { localStorage.setItem(consentKey, value); } catch { /* Current page still respects the choice. */ }
   if (accepted) void start();
   else client?.opt_out_capturing();
@@ -85,7 +156,7 @@ function settings() {
     <details style="margin:12px 0">
       <summary style="color:#d3ad62;cursor:pointer">Privacy details</summary>
       <div style="max-height:35vh;overflow-y:auto;padding-right:8px">
-        <p>With your permission, selected usage events go to PostHog Cloud in the United States: app visits, local games started, full-game analyses, and active usage time. Cookies and browser storage recognize returning browsers and sessions.</p>
+        <p>With your permission, selected usage events go to PostHog Cloud in the United States: app visits, local games started, full-game analyses, and active usage time. If the chess app fails to load, Ironwood sends a fixed error code, startup stage, failure category, HTTP status when available, and app build. Cookies and browser storage recognize returning browsers and sessions.</p>
         <p>Active time counts while the app is visible, focused, and has received input within the last two minutes. Offline or blocked requests may not be counted.</p>
         <p>Game positions, move lists, notes, imported games, player names, page titles, and full URLs are excluded. Session recording and automatic interaction capture are disabled. PostHog receives network information such as your IP address and browser information.</p>
         <p>Choosing No thanks leaves the app fully usable. Analytics settings lets you change your choice later. Declining stops future collection and clears analytics persistence; previously submitted events remain. Your preference is stored locally.</p>
@@ -113,7 +184,11 @@ if (enabled) {
   window.addEventListener('storage', event => {
     if (event.key === consentKey) {
       accepted = event.newValue === 'accepted';
-      if (accepted) void start(); else client?.opt_out_capturing();
+      if (accepted) void start();
+      else {
+        startupException = undefined;
+        client?.opt_out_capturing();
+      }
     }
   });
   for (const event of ['pointerdown', 'keydown', 'wheel']) {

@@ -1,7 +1,7 @@
 {
   "format": 1,
   "repository": "https://github.com/lichess-org/chess-openings",
-  "revision": "3fd6ce992679e4d991a6bb4dade71f2b826c568a",
+  "revision": "3ba6b20d31b2e6125cb0e6a2e792f400717d9d39",
   "license": "CC0-1.0",
   "files": {
     "a.tsv": {
@@ -14,7 +14,7 @@
     },
     "c.tsv": {
       "rows": 1250,
-      "sha256": "45e843c7b7e79a0d04d5bda879c9bd23f5a10974488bd8615e4f4c5d0749986f"
+      "sha256": "447bbd4b15d68067b150faf12bf66aa14b18582cf80d736aaa7c0081131806ef"
     },
     "d.tsv": {
       "rows": 644,
@@ -25,5 +25,5 @@
       "sha256": "48c6f6645b031a5937c8386839debab0e2e48837251687ba1afb6369677f8546"
     }
   },
-  "downloaded_at": "2026-11-04T11:51:53.020Z"
+  "downloaded_at": "2026-11-06T18:25:11.606Z"
 }

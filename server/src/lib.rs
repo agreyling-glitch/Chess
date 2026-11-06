@@ -562,6 +562,7 @@ async fn engine_list(State(shared): State<Shared>) -> Json<Vec<EngineSummary>> {
             .map(|e| EngineSummary {
                 id: e.id.clone(),
                 label: e.label.clone(),
+                chess960: engine_downloads::installed_chess960(e),
             })
             .collect(),
     )

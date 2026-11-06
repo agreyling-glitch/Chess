@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 
-const source = readFileSync('scripts/analytics-source.js', 'utf8').replace("import('../node_modules/posthog-js/dist/module.mjs')", 'window.loadSDK()');
+const source = readFileSync('scripts/analytics-source.js', 'utf8')
+  .replace("import('../node_modules/posthog-js/dist/module.mjs')", 'window.loadSDK()')
+  .replace(/^export /gm, '');
 function setup(url) {
   const dom = new JSDOM('<body></body>', { url, runScripts: 'outside-only' });
   const w = dom.window;
@@ -15,6 +17,10 @@ function setup(url) {
     init(key, options) { config = options; return sdk; },
     opt_in_capturing() { stopped = false; },
     opt_out_capturing() { stopped = true; },
+    captureException(error, properties) {
+      sdk.capture('$exception', { ...properties, $exception_list: [{ value: error.message, stacktrace: {} }] });
+      return { uuid: 'test-exception', timestamp: '2026-11-06T17:00:00.000Z' };
+    },
     capture(event, properties) {
       if (!stopped) {
         const result = config.before_send({ event, properties: { ...properties, $current_url: url, $title: 'Private player', $referrer: 'secret' } });
@@ -87,6 +93,37 @@ test('declining initially never loads the SDK', async () => {
   await settle();
   assert.equal(s.loads(), 0);
   s.dom.window.close();
+});
+test('startup exceptions follow consent and explicit bug reports work after declining', async () => {
+  const s = setup('http://127.0.0.1:8788/play/?token=private');
+  try {
+    await s.w.reportWasmStartupFailure('wasm_fetch', 'http_error', 503);
+    assert.equal(s.events.length, 0);
+    s.w.document.querySelector('[data-accept]').click();
+    await settle();
+    await s.w.reportWasmStartupFailure('wasm_fetch', 'http_error', 503);
+    const event = s.events.at(-1);
+    assert.equal(event.event, '$exception');
+    assert.equal(event.properties.http_status, 503);
+    assert.equal(event.properties.$exception_list[0].stacktrace, undefined);
+    assert.equal(s.w.matchingStartupException().posthog_exception_id, 'test-exception');
+    s.w.document.querySelector('[data-decline]').click();
+    assert.equal(s.w.matchingStartupException(), undefined);
+
+    const count = s.events.length;
+    s.w.fetch = async (_url, options) => {
+      const submission = JSON.parse(options.body);
+      assert.equal(submission.event, 'bug_report_submitted');
+      assert.equal(submission.properties.environment, 'local_test');
+      assert.equal(options.credentials, 'omit');
+      return { ok: true };
+    };
+    await s.w.submitBugReport('test-report', { description: 'Test report' });
+    assert.equal(s.events.length, count);
+    assert.equal(s.w.localStorage.getItem('ironwood.analytics.test-consent'), 'declined');
+  } finally {
+    s.dom.window.close();
+  }
 });
 test('active time excludes hidden and unfocused app windows', async () => {
   const s = setup('http://127.0.0.1:8080/play/');

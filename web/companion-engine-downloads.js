@@ -21,6 +21,7 @@ export function mountEngineDownloads(target,container,client,{isCurrent=()=>true
    const card=document.createElement('div');card.className='engine-download-card';
    const title=document.createElement('strong');title.textContent=`${p.name} ${p.version}`;
    const description=document.createElement('p');description.textContent=`${bytes(p.bytes)} · ${p.license} · ${p.networks}`;
+   if(typeof p.chess960==='boolean')description.textContent+=p.chess960?' · Supports Chess960':' · Standard chess only';
    const link=document.createElement('a');link.textContent='Original publisher and source';if(/^https:\/\//.test(p.source)){link.href=p.source;link.target='_blank';link.rel='noopener noreferrer';}
    const networkLinks=document.createElement('p');networkLinks.hidden=!p.network_source;
    for(const [label,url] of [['Network source',p.network_source],['Network permission',p.network_permission]])if(/^https:\/\//.test(url||'')){const a=document.createElement('a');a.textContent=label;a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.style.marginRight='12px';networkLinks.append(a);}

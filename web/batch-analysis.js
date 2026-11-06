@@ -41,7 +41,8 @@ export async function createBatchEngine(engine,signal) {
     await ready;
     command('setoption name MultiPV value 1');
     command('setoption name UCI_LimitStrength value false');
-    return {newGame:()=>command('ucinewgame'),close,async search(fen,milliseconds=1000){
+    return {newGame:()=>command('ucinewgame'),close,async search(fen,milliseconds=1000,chess960=false){
+      if(chess960&&adapter&&!adapter.details.options.some(option=>option.name==='UCI_Chess960'&&option.kind==='check'))throw Error('Select a Chess960-compatible engine for this game');
       let latest=null;
       const result=wait((line,done)=>{
         const info=parseBatchInfo(line,fen);if(info)latest=info;
@@ -50,6 +51,7 @@ export async function createBatchEngine(engine,signal) {
           const best=line.split(/\s+/)[1];latest.best_move=['0000','(none)'].includes(best)?null:best;done(latest);
         }
       });
+      command(`setoption name UCI_Chess960 value ${chess960}`);
       command(`position fen ${fen}`);command(`go movetime ${milliseconds}`);return result;
     }};
   }catch(error){await close();throw error;}
@@ -70,7 +72,7 @@ export async function runBatchAnalysis({ids,engine,read,save,prepare,normalize,s
         for(let index=0;index<positions.length&&!signal.aborted;index++) {
           onProgress({gameIndex,total:ids.length,pass:1,position:index,positions:positions.length,title:record.title||`Game ${gameIndex+1}`});
           const position=positions[index];
-          values[index]=position.terminal?{eval_cp:position.terminal==='draw'?0:null,mate:position.terminal==='mate'?0:null,depth:0,nodes:0,best_move:null,pv:''}:await session.search(position.fen);
+          values[index]=position.terminal?{eval_cp:position.terminal==='draw'?0:null,mate:position.terminal==='mate'?0:null,depth:0,nodes:0,best_move:null,pv:''}:await session.search(position.fen,1000,position.chess960);
         }
         if(verify&&values.every(Boolean)&&!signal.aborted){
           targets=identifyCritical(JSON.stringify({...saved,game_analysis:values}));
@@ -78,7 +80,7 @@ export async function runBatchAnalysis({ids,engine,read,save,prepare,normalize,s
           targets=[...new Set(targets)].sort((a,b)=>a-b);verified=Array(positions.length).fill(null);
           for(let step=0;step<targets.length&&!signal.aborted;step++){
             const index=targets[step];onProgress({gameIndex,total:ids.length,pass:2,position:step,positions:targets.length,title:record.title||`Game ${gameIndex+1}`});
-            verified[index]=positions[index].terminal?values[index]:await session.search(positions[index].fen,5000);
+            verified[index]=positions[index].terminal?values[index]:await session.search(positions[index].fen,5000,positions[index].chess960);
           }
           if(targets.every(index=>verified[index]))for(const index of targets)values[index]=verified[index];
         }

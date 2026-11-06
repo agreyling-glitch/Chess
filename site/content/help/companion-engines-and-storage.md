@@ -16,6 +16,25 @@ Connect Companion using the [Windows setup guide](/help/companion-setup/). Open 
 
 **Manual** is for engines you already have. Keep the executable and its supporting files together under Companion's Engines folder. Choose the folder and executable, review the detected engine name, then choose **Save engine**. Expand the arguments section only if the engine needs additional launch arguments.
 
+## Windows x64 Auto-install engines
+
+The catalog depends on your Companion version. Open **Auto-install** to see which packages your connected Companion offers.
+
+| Engine | Standard chess | Chess960 |
+| --- | --- | --- |
+| Stockfish 19 | Yes | Yes |
+| Weiss 2.0 | Yes | Yes |
+| Lc0 CPU 0.32.1 | Yes | Yes |
+| Arasan 26.1 | Yes | No |
+| Laser 1.7 | Yes | No |
+| Supernova 2.4 | Yes | No |
+
+## Chess960 limitations
+
+- For local play against AI, select a Chess960-compatible opponent before choosing **Chess960** under **Starting position**. A custom Chess960 FEN also requires a compatible opponent.
+- Position and full-game analysis of Chess960 games require a compatible engine. Built-in browser Stockfish supports Chess960 without Companion.
+- Manually added engines qualify if they advertise `UCI_Chess960` when Companion connects to them.
+
 ## Manage an installed engine
 
 Select the engine in Engine settings, then choose the sliders icon, **Manage engines**. This opens the selected engine; you do not need to choose it again. Change its display name, executable, or launch arguments, then save and reselect the engine to start a new session.
