@@ -7,9 +7,9 @@ keywords: [new game, local, online, engine, Chess960, take back, resign, flip bo
 weight: 11
 ---
 
-The **Play** sidebar section offers **New game against AI**, **Online → Lichess lobby**, **Online → FICS lobby**, and **Self-play**. The online choices open their lobby directly; the local choices open a setup panel beside the icon rail. Local games run on your device; Self-play lets you make moves for both sides.
+The **Play** sidebar section offers **New game against Engine**, **Online → Lichess lobby**, **Online → FICS lobby**, and **Self-play**. The online choices open their lobby directly; the local choices open a setup panel beside the icon rail. Local games run on your device; Self-play lets you make moves for both sides.
 
-In **New game against AI**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against AI](/help/training-vs-ai/).
+In **New game against Engine**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against AI](/help/training-vs-ai/).
 
 Click a piece and then its destination, or **hold the left mouse button on a piece and drag it** to a legal square. A translucent piece follows the pointer while you drag. Release outside the board or on an illegal square to cancel; press **Escape** to cancel a drag. Promotion opens the usual piece chooser. You can also [type moves with the keyboard](/help/keyboard-input/), such as `e4` or `nc3`, then press Enter.
 
@@ -42,7 +42,7 @@ Open **Settings → Board → Theme…** to browse the available 2D piece sets a
 
 ## Local game setup
 
-**Play → New game against AI** or the **+** shortcut opens Quick setup beside the sidebar. The **+** icon remains highlighted while the panel is open. Choose the engine and strength, your side, and a time preset (**5 + 3**, **10 + 5**, **15 + 10**, or **Untimed**), or expand **Custom clock**. Expand **Starting position** for Standard, Chess960, or Custom FEN. Invalid FEN disables **Start game**; the position editor remains available for arranging pieces or importing a screenshot.
+**Play → New game against Engine** opens Quick setup beside the Play menu. The selected setup is highlighted in gold. Choose the engine and strength, your side, and a time preset (**5 + 3**, **10 + 5**, **15 + 10**, or **Untimed**), or expand **Custom clock**. Expand **Starting position** for Standard, Chess960, or Custom FEN. Invalid FEN disables **Start game**; the position editor remains available for arranging pieces or importing a screenshot.
 
 The panel fits its contents, with the summary and **Start game** / **Cancel** buttons immediately below the settings. The settings scroll only when needed to fit a shorter screen. Side choices show chess symbols, and time presets use outlined buttons. Starting applies the choices and closes the panel. Cancel, Escape, or clicking outside dismisses setup without replacing the current game; engine choices are applied only when starting. The panel overlays the workspace without resizing the board and becomes a full-width sheet on phones. **Self-play** uses the same panel without opponent controls. Online play and training retain their separate entries.
 

@@ -7,23 +7,21 @@ weight: 14
 lastmod: 2026-11-05T00:00:00-06:00
 ---
 
-Use **Play → Save current game** to keep the current game, and **Game library → Saved games** to open the library. A confirmation appears after saving succeeds. Errors are reported instead of a success message; a Companion save can report that the local copy is safe while synchronization is pending. Ironwood also restores the current board and related preferences when you return to the same browser and site.
+Use **Save current game** to keep the current game, and **Game Library** to open the library. A confirmation appears after saving succeeds. Errors are reported instead of a success message; a Companion save can report that the local copy is safe while synchronization is pending. Ironwood also restores the current board and related preferences when you return to the same browser and site.
 
-While signed in to Lichess, loading a saved game does not open the lobby. If you are playing correspondence, Ironwood puts that online game aside and keeps your connection; resume it from **Your ongoing games** later. During a live online game, loading a saved game disconnects online play without resigning on Lichess. Its clock continues. See [Play on Lichess](/help/play-on-lichess/).
+If you open Game Library during an active game, choose **Return to game** or **Resign and switch modes**. For online games, Ironwood waits for the server to confirm resignation before opening Saved Games.
 
 Saved games live in this browser's storage on this device. A different browser, private window, or device will not automatically share that library. Clearing browser site data can remove it.
 
-Full-game analyses are saved as separate runs. Use the dropdown beside **Saved Analysis** to switch between engines or settings without replacing previous results. **Manage analyses** lists each run's engine, settings, status and date; deleting selected runs asks for confirmation and keeps the game, notes and other runs. Runs are stored with the Browser game and included in Browser backups from **Game library → Backup and Restore…**.
+Full-game analyses are saved as separate runs. Use the dropdown beside **Saved Analysis** to switch between engines or settings without replacing previous results. **Manage analyses** lists each run's engine, settings, status and date; deleting selected runs asks for confirmation and keeps the game, notes and other runs. Runs are stored with the Browser game and included in Browser backups from **Settings → Storage → Backup and Restore**.
 
 Use [Import Games](/help/import-games/) to paste PGN or Analysis JSON, fetch completed games from Lichess or Chess.com, or enter a scoresheet. Selected games appear under **Imported Games** in the library, and duplicate imports are skipped.
 
 Imported Lichess studies appear in the Browser library's **Studies** category, with one entry for each study and its chapter count. Older separate chapter saves from the same Lichess study are combined while keeping notes, analysis, favorites, and collection membership. Original chapter records remain inside the consolidated record in browser backups. Open the study entry to return to its chapters in **Study mode**. [Read and practice studies](/help/lichess-studies/).
 
-Open **Game library → Backup and Restore…**, choose **Backup** or **Restore**, then select **Game History Location**. The list includes **Browser** and each configured Companion under its saved name; disconnected Companions cannot be selected. Each action affects only the chosen location.
+Open **Settings → Storage → Backup and Restore**, choose **Backup** or **Restore**, then select **Game History Location**. The list includes **Browser** and each configured Companion under its saved name; disconnected Companions cannot be selected. Each action affects only the chosen location.
 
-The Backup and Restore window uses a 3D gold frame, heavy outer grain, and a fine-grain sunken section for its controls.
-
-Browser backups include games, collections, training profiles and preferences. Browser restore lets you review the file and choose Merge or Replace.
+Browser backups include games, collections, training profiles and preferences. To restore one, select **Browser**, choose a backup file, and review its contents in the same Settings panel. **Merge** keeps existing games and adds entries from the backup. **Replace existing** removes existing games before restoring the backup.
 
 **Companion 0.1.6 and later** back up large archives directly on the server as SQLite database snapshots. Select a named Companion to see its **Backup folder** and available files. Choose **Configure backup folder…** to change the absolute path on that machine, or set **Backup folder** in Companion's Windows status window. Accessible NAS shares or mounted folders are supported when Companion's account has read/write permission. The default folder is `backups` beside its archive database.
 
@@ -47,7 +45,7 @@ The table's **Analysis** column shows **Complete**, **Partial**, or **Not analyz
 
 Click a game title to open it directly. Select another part of the row to inspect its preview. Checkboxes select games independently of the preview: **Select page**, **Select all matching**, and **Clear selection** work across pages. The grouped selection console provides **Export** (PGN, annotated PGN, Analysis JSON), **Organize** (folder and available Companion transfer actions), and **More** (Delete selected). Deletion still asks for confirmation. Each row's menu retains the individual game actions.
 
-Drag the title or window edges to move or resize Saved Games, maximize/restore it, or use **Open saved games in a new window**. The table keeps stable column widths across pages. Size and position are remembered; filters reopen collapsed.
+Saved Games opens beside the main menu bar and extends to the status bar. Use **Open saved games in a new window** if you want a separate window. The table keeps stable column widths across pages, and filters reopen collapsed.
 
 ## Batch analysis
 
@@ -76,13 +74,13 @@ After confirming a deletion, you return to Saved Games. Deleting the currently l
 
 ## Training profiles in backups
 
-A **Browser** backup from **Game library → Backup and Restore…** includes [training profiles](/help/training-vs-ai/), their completed results, per-color rating history, and progress statistics. Merge restores combine results by unique game ID so a repeated backup does not count the same result twice. Keep backups before clearing browser data or switching devices.
+A **Browser** backup from **Settings → Storage → Backup and Restore** includes [training profiles](/help/training-vs-ai/), their completed results, per-color rating history, and progress statistics. Merge restores combine results by unique game ID so a repeated backup does not count the same result twice. Keep backups before clearing browser data or switching devices.
 
 ## Saved-game windows
 
 The saved-game library uses a table with a selected-game preview alongside it. Select a row to inspect its board, players, result, analysis details and notes, then choose **Open game**. Click the preview board for the full playback viewer. On narrow windows the preview appears below the table.
 
-Use **Search games or players** to find a game, **Show** to choose a game category, and **Filters** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker selects the library's collections. **Manage library** contains **Import games…**, folder management, refresh and sorting options. Import opens the same four-tab window used by **Game library → Import…**. A separate Saved Games window focuses the main app for import; keep it open. If that app is no longer available, the library window opens the app’s import page. You can also sort by clicking **Moves** or **Saved** in the table header.
+Use **Search games or players** to find a game, **Show** to choose a game category, and **Filters** for player, source, date, opening, analysis status or game length. Active filters appear as removable chips; **Clear all** resets them. The **Folder** picker selects the library's collections. **Manage library** contains **Import games…**, folder management, refresh and sorting options. Import opens the same four-tab window used by **Import games**. A separate Saved Games window focuses the main app for import; keep it open. If that app is no longer available, the library window opens the app’s import page. You can also sort by clicking **Moves** or **Saved** in the table header.
 
 **Source** groups links as **Lichess games**, **Lichess puzzles**, **Lichess studies**, and **Chess.com**. Each game's original source URL remains in its details and exports. Other source names remain unchanged. Older Companion builds may need an update to filter these groups across the archive.
 
@@ -94,7 +92,7 @@ Use the move-count sort to find short or long games, or return to the most recen
 
 Hover a small board for the gold outline and magnifying-glass indicator. The larger move viewer identifies White, Black, and the game result. The same viewer is available from recent games in [Lichess player profiles](/help/play-on-lichess/#player-profiles-and-followed-players).
 
-A profile game's **Review on Ironwood** session stays temporary until you choose **Play → Save current game**. Saving keeps the complete game, regardless of the move currently displayed.
+A profile game's **Review on Ironwood** session stays temporary until you choose **Save current game**. Saving keeps the complete game, regardless of the move currently displayed.
 
 The **Puzzles** category stores puzzle move history separately from ordinary games and training games. Removing a saved puzzle playback entry does not reset puzzle progress counts.
 
@@ -102,7 +100,7 @@ The **Puzzles** category stores puzzle move history separately from ordinary gam
 
 {{< companion-help >}}
 
-Open **Game library → Storage information** for local record counts and the browser’s reported storage estimate. Drag the title to move the window and its edges or corners to resize it. The record sections scroll inside the gold-bordered window. A capacity chart compares estimated usage with quota when available; it describes this site’s browser storage, rather than the size of your exported backup or free disk space.
+Open **Settings → Storage → Information** for local record counts and the browser’s reported storage estimate. The record sections scroll inside Settings. A capacity chart compares estimated usage with quota when available. It reports this site’s browser storage usage.
 
 Use the searchable **Opening** dropdown to find an ECO code (for example, `B90`) or an opening name (for example, `Sicilian`). Choose an individual opening or an available **All [ECO] games** entry. The filters work together with player, category and analysis filters. Games without opening tags are classified from their moves using the deepest recognized opening position, including transpositions. Existing opening tags are preserved; custom starting positions and unrecognized lines can remain unclassified.
 
@@ -134,6 +132,6 @@ Copy and move actions ask for a destination collection, including **No collectio
 
 ## Storage and cleanup menus
 
-**Storage information** is in **Game library**. Cleanup actions are under **Settings → Local data → Clear saved games…** and **Settings → Local data → Reset all local data…**. Use **Game library → Backup and Restore…** for the chosen Browser or named Companion location. Read each cleanup confirmation before proceeding; resetting local data also removes local profiles and preferences.
+Cleanup actions are under **Settings → Storage → Local data**. Use **Clear saved games…** or **Reset all local data…** and review the confirmation. Resetting local data also removes local profiles and preferences.
 
 Collections are memberships of stored games, so a game in several collections keeps one stored game record. Categories describe the kind of game; collection filters can be combined with categories and other filters.

@@ -30,6 +30,7 @@ export const wasm_bindgen__convert__closures_____invoke__h223c697a3bbe7068_20: (
 export const wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14: (a: number, b: number, c: any) => void;
 export const wasm_bindgen__convert__closures_____invoke__h527fdb12970c4a14_23: (a: number, b: number, c: any) => void;
 export const wasm_bindgen__convert__closures_____invoke__hc86f24272c98cb0b: (a: number, b: number) => [number, number];
+export const wasm_bindgen__convert__closures_____invoke__h59a560c7333233e2: (a: number, b: number) => void;
 export const __wbindgen_malloc: (a: number, b: number) => number;
 export const __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
 export const __externref_table_alloc: () => number;

@@ -63,23 +63,68 @@
   <script>
     (() => {
       let context;
+      const boardTaps = new Map();
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      window.ironwoodPlayChessSound = kind => {
-        if (!AudioContext) return;
+      const styles = {
+        Classic: {wave: 'triangle', pitch: 1, level: 1, duration: 1, sweep: 1},
+        Wood: {wave: 'sine', pitch: 0.8, level: 1.15, duration: 0.62, sweep: 1.1},
+        Glass: {wave: 'sine', pitch: 3.1, level: 0.55, duration: 1.65, sweep: 0.22},
+        Soft: {wave: 'sine', pitch: 1.35, level: 0.48, duration: 1.2, sweep: 0.55},
+      };
+      // Model a piece landing on a board as a short impulse with damped resonances.
+      function playBoardTap(kind, level, octave, decay) {
+        const capture = kind === 'capture';
+        const cached = boardTaps.get(capture);
+        let buffer = cached?.buffer;
+        if (!cached || cached.octave !== octave || cached.decay !== decay) {
+          const rate = context.sampleRate;
+          const length = Math.ceil(rate * 0.075 * decay);
+          buffer = context.createBuffer(1, length, rate);
+          const samples = buffer.getChannelData(0);
+          const pitch = 2 ** octave * (capture ? 0.79 : 1);
+          for (let i = 0; i < length; i++) {
+            const t = i / rate;
+            const attack = Math.min(1, t / 0.00035);
+            const decayTime = t / decay;
+            const body = Math.sin(2 * Math.PI * 590 * pitch * t) * Math.exp(-decayTime / 0.0028);
+            const knock = Math.sin(2 * Math.PI * 940 * pitch * t) * Math.exp(-decayTime / 0.0015);
+            const tail = Math.sin(2 * Math.PI * 1470 * pitch * t) * Math.exp(-decayTime / 0.008);
+            const contact = (Math.random() * 2 - 1) * Math.exp(-decayTime / 0.001);
+            samples[i] = attack * (0.66 * body + 0.24 * knock + 0.05 * tail + 0.12 * contact);
+          }
+          boardTaps.set(capture, {buffer, octave, decay});
+        }
+        const source = context.createBufferSource();
+        const gain = context.createGain();
+        source.buffer = buffer;
+        gain.gain.value = level * (capture ? 0.76 : 0.65);
+        source.connect(gain).connect(context.destination);
+        source.start();
+      }
+      window.ironwoodPlayChessSound = (kind, style = 'Classic', volume = 1, octave = -1, decay = 1) => {
+        const level = Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : 1;
+        if (!AudioContext || level === 0) return;
         context ||= new AudioContext();
         const play = () => {
+          if (style === 'Board tap') {
+            playBoardTap(kind, level, octave, decay);
+            return;
+          }
           const now = context.currentTime;
           const oscillator = context.createOscillator();
           const gain = context.createGain();
-          oscillator.type = 'triangle';
-          oscillator.frequency.setValueAtTime(kind === 'check' ? 480 : kind === 'capture' ? 145 : 210, now);
-          oscillator.frequency.exponentialRampToValueAtTime(kind === 'check' ? 320 : 82, now + 0.06);
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.exponentialRampToValueAtTime(kind === 'capture' ? 0.24 : 0.18, now + 0.004);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + (kind === 'check' ? 0.15 : 0.09));
+          const preset = Object.hasOwn(styles, style) ? styles[style] : styles.Classic;
+          const start = (kind === 'mode' ? 392 : kind === 'check' ? 480 : kind === 'capture' ? 145 : 210) * preset.pitch;
+          const end = (kind === 'mode' ? 523 : kind === 'check' ? 320 : 82) * preset.pitch;
+          oscillator.type = preset.wave;
+          oscillator.frequency.setValueAtTime(start, now);
+          oscillator.frequency.exponentialRampToValueAtTime(start * (end / start) ** preset.sweep, now + 0.06 * preset.duration);
+          gain.gain.setValueAtTime(0.0001 * level, now);
+          gain.gain.exponentialRampToValueAtTime((kind === 'capture' ? 0.24 : 0.18) * preset.level * level, now + 0.004);
+          gain.gain.exponentialRampToValueAtTime(0.0001 * level, now + (kind === 'check' ? 0.15 : 0.09) * preset.duration);
           oscillator.connect(gain).connect(context.destination);
           oscillator.start(now);
-          oscillator.stop(now + 0.16);
+          oscillator.stop(now + 0.16 * preset.duration);
         };
         if (context.state === 'running') {
           play();

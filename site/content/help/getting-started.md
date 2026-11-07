@@ -11,27 +11,30 @@ lastmod: 2026-11-05T00:00:00-06:00
 
 Play a game in Ironwood or open one from your saved games. You can also import a PGN, the common text format for chess moves. The game review shows the move list and lets you step forward and backward through positions.
 
-Open **Game library → Import…** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
+Open **Import games** and choose **Paste a game or collection**, **Lichess**, **Chess.com**, or **Scoresheet**. Fetch recent games by username from either online source, or one completed Lichess game by its link. See [Import games](/help/import-games/) for the workflow.
 
-For a handwritten game, choose **Tools → Enter a scoresheet…** or **Game library → Import… → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
+For a handwritten game, choose **Tools → Enter a scoresheet…** or **Import games → Scoresheet → Enter scoresheet**. Type the moves beside your scoresheet photo, check them on the board, and import or download the PGN. Your unfinished draft saves on this device. See [Import a game from a scoresheet](/help/import-a-scoresheet/).
 
 ## Sidebar navigation
 
-The sidebar replaces the top menus. Its collapsed rail keeps the selected mode visible; move the pointer over it to expand the menu.
+Click a menu icon to see that section’s options. Click it again to close the menu. The active mode’s icon is gold, and the browser tab title shows that mode.
 
-- **Play:** New game against AI, online lobbies, Self-play, and Save current game.
+- **Play** offers **New game against Engine**, the online lobbies, and **Self-play**. **Save current game** has its own icon directly below Play.
 - **Analysis:** open the analysis workspace directly.
 - **Training:** Train against AI, Lichess Puzzles, then Study.
-- **Game library:** Saved games, imports, Backup and Restore, and Storage information.
-- **Settings:** engines, Companion connections, board appearance, and local-data controls.
+- **Game Library** opens Saved Games directly. Use the separate **Import games** icon to bring in new games.
+- **Settings** opens a searchable panel for engines, Companion connections, board appearance, and storage.
+- **Tools** opens Scoresheet Entry, Elo Calculator, or Position Editor. **Exit to home** sits above the shortcut divider.
 
-The gold gear at the bottom of the sidebar configures quick-access shortcuts: enable or hide each shortcut and move it up or down. Lichess Profiles, Board Theme, and Study are available but start disabled for new users. Choices are remembered.
+The gold gear at the bottom of the sidebar opens Quick access settings, where you can show, hide, or reorder Lichess Puzzles, Lichess Profiles, and Study.
 
-Online choices open their lobby without automatically signing in. Use the lobby's sign-in or reconnect control when needed. New game against AI opens a content-sized Quick setup panel connected to the sidebar.
+New game against Engine and Self-play open a full-height setup panel beside the Play menu on wide screens. Saved Games, Import Games, the Tools panels, and the Lichess lobby open beside the main menu bar. Use the lobby’s sign-in or reconnect control when needed.
+
+During an active game, switching modes brings up a warning. Choose **Return to game** to keep playing, or **Resign and switch modes** to enter the selected mode after resignation. Online games wait for the server to confirm the result.
 
 ## Find your way around
 
-The live board stays on the left. Choose a tab on the right:
+The live board stays on the left. In **Play**, the right panel shows **Moves** and **Prediction**, and the played move list is read-only. Enter **Analysis** to step through positions and use the full set of tabs, subject to your panel preferences.
 
 - **Moves:** Game Moves, notation, evaluations, annotations, playback, and per-move time spent. Hover the Time column for available remaining clocks.
 - **Prediction:** the current engine evaluation and expected continuation.
@@ -51,9 +54,9 @@ Select a move in Moves, then switch tabs to inspect that position. [Compare save
 
 ## Run game analysis
 
-Select the **Analysis** tab and click **Analyze full game with Stockfish 19**. After a completed analysis, the button becomes **Analyze again with Stockfish 19**. Ironwood asks Stockfish to examine each position in turn. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply.
+Click the main menu’s **Analysis** icon, choose an engine, and select **Analyze full game**. You can pause and resume the work. A second, deeper check may run on critical positions where a move appears to change the game sharply. The results section appears once analysis results are available.
 
-A Lichess sign-in or open lobby does not prevent analysis. Analysis is disabled while an online game is engaged. The **Analysis** tab shows **Game chat** during Lichess play and returns to analysis when the game ends. To review a saved game while a correspondence game remains ongoing, use **Game library → Saved games**.
+A Lichess sign-in or open lobby does not prevent analysis. Finish an active online game or use **Resign and switch modes** before entering Analysis.
 
 **Analysis → Summary** compares both players with accuracy and average CPL charts for Overall, Opening, Middlegame, and Endgame. **Critical Analysis** contains the turning point, the Move quality stacked bars (open by default), and Move Analysis with played and engine-preferred lines beside an evaluation-swing bar. **Time per move**, **Clock burn-down**, and **Time spent vs. move quality quadrant** help review recorded clock use. [Timing-chart guide](/help/time-management/).
 
@@ -101,7 +104,7 @@ Select a move in **Moves**, then open **Prediction** to see the selected engine'
 
 ## Watch, compare, and keep games
 
-Open [Lichess player profiles](/help/lichess-player-profiles/) to compare accounts, ratings and notable games. Click a game’s mini board to watch its moves, or **Review on Ironwood** to analyze it on the full board. Choose **Play → Save current game** to keep a temporary profile review.
+Open [Lichess player profiles](/help/lichess-player-profiles/) to compare accounts, ratings and notable games. Click a game’s mini board to watch its moves, or **Review on Ironwood** to analyze it on the full board. Choose **Save current game** to keep a temporary profile review.
 
 Drag the divider beside the live board left to make the right panel wider and the board smaller. Drag it right to give the board more room.
 

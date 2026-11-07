@@ -14,6 +14,20 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     return '';
   };
   const document = target.document;
+  const openTool = () => document.querySelector?.('#ironwood-scoresheet[open], #ironwood-position-editor[open]');
+  document.addEventListener?.('pointerdown', event => {
+    const panel = openTool();
+    if (panel && !panel.contains(event.target)) panel.close();
+  }, true);
+  document.addEventListener?.('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const panel = openTool();
+    if (panel) {
+      event.preventDefault();
+      event.stopPropagation();
+      panel.close();
+    }
+  }, true);
   const notice = (message, role) => {
     const status = document.createElement('div');
     status.setAttribute('role', role);
@@ -55,7 +69,28 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
     };
     return { load, action };
   };
-  tool('/history-backup.js', 'Backup and Restore').action('ironwoodOpenHistoryBackup');
+  const backup = tool('/history-backup.js', 'Backup and Restore');
+  let backupLoading = false;
+  let backupLayout;
+  const deferBackupLayout = (...layout) => {
+    backupLayout = layout;
+    if (!layout[0] || backupLoading) return;
+    backupLoading = true;
+    void backup.load().then(module => {
+      target.ironwoodLayoutHistoryBackup = (...args) => module.layoutHistoryBackup(target, ...args);
+      target.ironwoodLayoutHistoryBackup(...backupLayout);
+    }).catch(error => {
+      report('Backup and Restore', error);
+      // Retry on the next visit to the Settings page.
+      target.ironwoodLayoutHistoryBackup = (visible) => {
+        if (!visible) {
+          backupLoading = false;
+          target.ironwoodLayoutHistoryBackup = deferBackupLayout;
+        }
+      };
+    });
+  };
+  target.ironwoodLayoutHistoryBackup = deferBackupLayout;
   const fics = tool('/fics/bridge.js', 'FICS');
   const companionEngines = tool('/companion-engines.js', 'Companion engines');
   for (const method of ['ironwoodRefreshCompanionEngines', 'ironwoodSelectCompanionEngine', 'ironwoodAddCompanionEngine', 'ironwoodManageCompanionEngines']) companionEngines.action(method);
@@ -86,7 +121,33 @@ export function installDeferredTools(target, loadModule, asset = path => path) {
   target.ironwoodArchiveExplorerPage = () => {};
   target.ironwoodArchiveExplorerPreviewGame = () => {};
   const companionConnection = tool('/companion-connection.js', 'Companion connection');
-  companionConnection.action('ironwoodManageCompanionConnection');
+  target.ironwoodManageCompanionConnection = async () =>
+    (await companionConnection.load()).manageCompanionConnection();
+  target.ironwoodRegisterCompanionSettings = open => {
+    target.ironwoodOpenCompanionSettings = open;
+    if (new URLSearchParams(target.location.search).get('settings') === 'companion') {
+      const url = new URL(target.location.href);
+      url.searchParams.delete('settings');
+      target.history.replaceState(target.history.state, '', url);
+      open();
+    }
+  };
+  let companionSettingsBounds = null;
+  let companionSettingsLayout, companionSettingsLoading;
+  target.ironwoodLayoutCompanionSettings = (visible, x, y, width, height) => {
+    if (!visible && !companionSettingsBounds) return;
+    companionSettingsBounds = visible ? {x, y, width, height} : null;
+    if (companionSettingsLayout) {
+      companionSettingsLayout(companionSettingsBounds);
+    } else if (visible && !companionSettingsLoading) {
+      companionSettingsLoading = companionConnection.load().then(module => {
+        companionSettingsLayout = module.layoutCompanionSettings;
+        companionSettingsLayout(companionSettingsBounds);
+      }).catch(error => report('Companion settings', error));
+    } else if (!visible) {
+      companionSettingsLoading = null;
+    }
+  };
   const companionDiagnostics = tool('/companion-diagnostics.js', 'Companion diagnostics');
   target.ironwoodCompanionDiagnostics = () => {
     if (!target.ironwoodCompanionFeatureEnabled()) return '{}';
@@ -457,6 +518,8 @@ function installFallbacks(target) {
     target[`ironwood${name}`] ??= () => false;
   target.ironwoodImportLocationCatalog ??= () => JSON.stringify({selected:'browser',label:'Browser',locations:[{value:'browser',label:'Browser',enabled:true}],ready:true});
   target.ironwoodSetImportLocation ??= () => false;
+  target.ironwoodLayoutStorageInfo ??= () => {};
+  target.ironwoodLayoutHistoryBackup ??= () => {};
   target.ironwoodStorageStatus ??= () => 'Browser storage estimate unavailable';
   target.ironwoodArchiveAnalysisRuns ??= () => '{"available":false}';
   target.ironwoodBeginArchiveAnalysisRun ??= raw => JSON.stringify({...JSON.parse(raw),id:crypto.randomUUID(),created_at:Date.now()});
@@ -484,7 +547,7 @@ function installFallbacks(target) {
   for (const name of ['PollLichess', 'PollChessCom', 'PollStudyRefresh']) target[`ironwood${name}`] ??= () => '';
   for (const name of ['LichessStatus', 'ChessComStatus'])
     target[`ironwood${name}`] ??= () => 'Game import is unavailable. Please reload Ironwood.';
-  for (const name of ['OpenGameLibrary', 'BackupStorage', 'RestoreStorage', 'OpenStorageInfo', 'ClearSavedGames', 'ResetLocalData'])
+  for (const name of ['OpenGameLibrary', 'BackupStorage', 'RestoreStorage', 'ClearSavedGames', 'ResetLocalData'])
     target[`ironwood${name}`] ??= () => target.alert('Saved game storage is unavailable. Please reload Ironwood.');
 }
 

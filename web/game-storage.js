@@ -1219,16 +1219,14 @@ export function createGameExportProgress() {
 function ensureStorageLocationStyles() {
   if(document.getElementById('ironwood-location-styles'))return;
   const style=document.createElement('style');style.id='ironwood-location-styles';
-  style.textContent=`:is(#storage-management-dialog.storage-information,#game-library-dialog) .storage-location-field{display:flex;align-items:center;gap:8px;color:#d3ad62;font-weight:600;margin:0}
-:is(#storage-management-dialog.storage-information,#game-library-dialog) .storage-location-field select{width:170px;max-width:50vw;min-height:28px;padding:4px;border:1px solid #535d61;border-radius:4px;background:#080b0f;color:#ecebe4;font:13px system-ui;box-shadow:inset 1px 2px 3px #0008;color-scheme:dark;cursor:pointer}
-:is(#storage-management-dialog.storage-information,#game-library-dialog) .storage-location-field select:focus-visible{outline:2px solid #d3ad62;outline-offset:2px}
-:is(#storage-management-dialog.storage-information,#game-library-dialog) .storage-location-field option{background:#242b31;color:#eee9dd}`;
+  style.textContent=`:is(#storage-settings-info,#game-library-dialog) .storage-location-field{display:flex;align-items:center;gap:8px;color:#d3ad62;font-weight:600;margin:0}
+:is(#storage-settings-info,#game-library-dialog) .storage-location-field select{width:170px;max-width:50vw;min-height:28px;padding:4px;border:1px solid #535d61;border-radius:4px;background:#080b0f;color:#ecebe4;font:13px system-ui;box-shadow:inset 1px 2px 3px #0008;color-scheme:dark;cursor:pointer}
+:is(#storage-settings-info,#game-library-dialog) .storage-location-field select:focus-visible{outline:2px solid #d3ad62;outline-offset:2px}
+:is(#storage-settings-info,#game-library-dialog) .storage-location-field option{background:#242b31;color:#eee9dd}`;
   document.head.append(style);
 }
 
-let storageGrainUrl;
-function storageDialog(titleText) {
-  ensureStorageLocationStyles();
+function ensureStorageStyles() {
   if (!document.getElementById('ironwood-storage-styles')) {
     const style = document.createElement('style');
     style.id = 'ironwood-storage-styles';
@@ -1238,46 +1236,41 @@ function storageDialog(titleText) {
       #storage-management-dialog .game-library-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
       #storage-management-dialog .game-library-heading h2{margin:0 0 14px;font-size:21px;font-weight:600}
       #storage-management-dialog .game-library-heading button{border:0;background:transparent;color:#ecebe4;font-size:25px;cursor:pointer}
-      #storage-management-dialog .storage-guidance{color:#b9bdb8}
-      #storage-management-dialog .storage-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
-      #storage-management-dialog .storage-actions button{padding:8px 12px;border:1px solid #586068;border-radius:4px;color:#ecebe4;background:#293037;cursor:pointer}
-      #storage-management-dialog .storage-actions button.danger{border-color:#a85454;color:#ffb2ad}
-      #storage-management-dialog .storage-info-grid{display:grid;grid-template-columns:minmax(130px,max-content) 1fr;gap:9px 20px;align-items:baseline;padding:4px 0}
-      #storage-management-dialog .storage-info-grid strong{color:#b9bdb8;font-weight:600}
-      #storage-management-dialog .storage-info-grid span{min-width:0;overflow-wrap:anywhere}
-      #storage-management-dialog.storage-information{width:min(620px,calc(100vw - 24px));padding:22px;background:#171a1e;border-radius:12px}
-      #storage-management-dialog.storage-information .game-library-heading h2{margin:0;color:#ecebe4}
-      #storage-management-dialog.storage-information .game-library-heading button{width:34px;height:34px;display:grid;place-items:center;padding:0;line-height:1;box-sizing:border-box;border:1px solid #887044;border-radius:5px;font-size:22px;background:linear-gradient(#30363c,#1d2329)}
-      #storage-management-dialog.storage-information .game-library-title-group{display:flex;align-items:center;flex-wrap:wrap;gap:12px}
-      #storage-management-dialog.storage-information .game-library-sources{display:flex;gap:6px}
-      #storage-management-dialog.storage-information .game-library-heading .game-library-sources button{width:auto;height:auto;display:block;padding:8px 14px;border:1px solid;border-color:#77828a #11171c #11171c #77828a;border-radius:5px;background:linear-gradient(#48515a,#293139);color:#f0eee8;font:600 13px system-ui,sans-serif;box-shadow:inset 1px 1px 0 #ffffff26,inset -1px -1px 0 #0008,0 2px 2px #0008}
-      #storage-management-dialog.storage-information .game-library-heading .game-library-sources button[aria-pressed=true]{background:linear-gradient(#606b74,#3a444c);outline:1px solid #d3ad62;outline-offset:1px}
-      #storage-management-dialog.storage-information [hidden]{display:none!important}
-      #storage-management-dialog .storage-info-intro{margin:10px 0 18px;color:#aeb7bd}
-      #storage-management-dialog .storage-info-panel{margin-top:14px;padding:17px 18px;background:#0d1116;border:1px solid #30373c;border-top-color:#080b0e;border-left-color:#080b0e;border-bottom-color:#52595e;border-right-color:#52595e;border-radius:7px;box-shadow:inset 2px 3px 7px #0009,0 1px 0 #ffffff08}
-      #storage-management-dialog .storage-info-panel h3{margin:0 0 13px;color:#d3ad62;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
-      #storage-management-dialog .storage-info-panel .storage-info-grid{gap:10px 24px}
-      #storage-management-dialog .storage-info-panel .storage-info-grid strong{color:#aeb7bd;font-weight:400}
-      #storage-management-dialog .storage-info-panel .storage-info-grid span{color:#ecebe4;font-variant-numeric:tabular-nums}
-      #storage-management-dialog.storage-information{resize:both;min-width:min(440px,calc(100vw - 24px));min-height:min(340px,calc(100dvh - 24px));height:min(720px,calc(100dvh - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:hidden}
-      #storage-management-dialog.storage-information[open]{display:flex;flex-direction:column}
-      #storage-management-dialog.storage-information .game-library-heading{flex:none;cursor:grab;touch-action:none;user-select:none}
-      #storage-management-dialog.storage-information .game-library-heading.dragging{cursor:grabbing}
-      #storage-management-dialog.storage-information .storage-info-intro{flex:none}
-      #storage-management-dialog.storage-information .storage-info-toolbar{flex:none;justify-content:flex-start;flex-wrap:wrap;margin:0 0 12px}
-      #storage-management-dialog.storage-information .storage-info-body{flex:1;min-height:0;overflow:auto;padding:0 4px 5px 0;scrollbar-gutter:stable}
-      #storage-management-dialog.storage-information .storage-info-body .storage-info-panel:first-child{margin-top:0}
-      #storage-management-dialog .storage-capacity{display:flex;align-items:center;gap:22px;margin:4px 0 20px}
-      #storage-management-dialog .storage-pie{width:110px;height:110px;flex:0 0 110px;border-radius:50%;background:conic-gradient(#d3ad62 0 var(--used),#506675 var(--used) 100%);border:1px solid #73828a;box-shadow:0 4px 12px #0007}
-      #storage-management-dialog .storage-capacity strong{display:block;font-size:22px;color:#ecebe4;font-variant-numeric:tabular-nums}
-      #storage-management-dialog .storage-capacity p{margin:5px 0;color:#aeb7bd}
-      #storage-management-dialog .storage-capacity-key{display:flex;gap:18px;margin-top:12px;color:#c2cbd0}
-      #storage-management-dialog .storage-capacity-key span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;background:#d3ad62}
-      #storage-management-dialog .storage-capacity-key span+span::before{background:#506675}
-      @media(max-width:520px){#storage-management-dialog .storage-info-grid{grid-template-columns:1fr;gap:2px}#storage-management-dialog .storage-info-grid span{margin-bottom:8px}}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-guidance{color:#b9bdb8}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-actions button{padding:8px 12px;border:1px solid #586068;border-radius:4px;color:#ecebe4;background:#293037;cursor:pointer}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-actions button.danger{border-color:#a85454;color:#ffb2ad}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-grid{display:grid;grid-template-columns:minmax(130px,max-content) 1fr;gap:9px 20px;align-items:baseline;padding:4px 0}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-grid strong{color:#b9bdb8;font-weight:600}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-grid span{min-width:0;overflow-wrap:anywhere}
+      #storage-settings-info{position:fixed;z-index:10;box-sizing:border-box;display:flex;flex-direction:column;padding:0 8px 8px 0;color:#ecebe4;font:14px/1.45 system-ui,sans-serif;overflow:hidden;container-type:inline-size}
+      #storage-settings-info .storage-info-intro{margin:8px 0;flex:none}
+      @container (max-width:360px){#storage-settings-info .storage-info-grid{grid-template-columns:1fr;gap:3px}#storage-settings-info .storage-capacity{flex-wrap:wrap}}
+      #storage-settings-info [hidden]{display:none!important}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-intro{margin:10px 0 18px;color:#aeb7bd}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-panel{margin-top:14px;padding:17px 18px;background:#0d1116;border:1px solid #30373c;border-top-color:#080b0e;border-left-color:#080b0e;border-bottom-color:#52595e;border-right-color:#52595e;border-radius:7px;box-shadow:inset 2px 3px 7px #0009,0 1px 0 #ffffff08}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-panel h3{margin:0 0 13px;color:#d3ad62;font-size:12px;letter-spacing:.08em;text-transform:uppercase}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-panel .storage-info-grid{gap:10px 24px}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-panel .storage-info-grid strong{color:#aeb7bd;font-weight:400}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-info-panel .storage-info-grid span{color:#ecebe4;font-variant-numeric:tabular-nums}
+      #storage-settings-info .storage-info-toolbar{flex:none;justify-content:flex-start;flex-wrap:wrap;margin:0 0 12px}
+      #storage-settings-info .storage-info-body{flex:1;min-height:0;overflow:auto;padding:0 4px 5px 0;scrollbar-gutter:stable}
+      #storage-settings-info .storage-info-body .storage-info-panel:first-child{margin-top:0}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity{display:flex;align-items:center;gap:22px;margin:4px 0 20px}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-pie{width:110px;height:110px;flex:0 0 110px;border-radius:50%;background:conic-gradient(#d3ad62 0 var(--used),#506675 var(--used) 100%);border:1px solid #73828a;box-shadow:0 4px 12px #0007}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity strong{display:block;font-size:22px;color:#ecebe4;font-variant-numeric:tabular-nums}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity p{margin:5px 0;color:#aeb7bd}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity-key{display:flex;gap:18px;margin-top:12px;color:#c2cbd0}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity-key span::before{content:'';display:inline-block;width:10px;height:10px;margin-right:7px;border-radius:2px;background:#d3ad62}
+      :is(#storage-management-dialog,#storage-settings-info) .storage-capacity-key span+span::before{background:#506675}
+      @media(max-width:520px){:is(#storage-management-dialog,#storage-settings-info) .storage-info-grid{grid-template-columns:1fr;gap:2px}:is(#storage-management-dialog,#storage-settings-info) .storage-info-grid span{margin-bottom:8px}}
     `;
     document.head.append(style);
   }
+}
+
+function storageDialog(titleText) {
+  ensureStorageStyles();
   let dialog = document.getElementById('storage-management-dialog');
   if (!dialog) {
     dialog = document.createElement('dialog');
@@ -1285,31 +1278,7 @@ function storageDialog(titleText) {
     document.body.append(dialog);
   }
   dialog.replaceChildren();
-  if(dialog.classList.contains('storage-information')&&titleText!=='Storage information'){
-    for(const property of ['position','margin','inset','left','top','width','height'])dialog.style.removeProperty(property);
-  }
-  dialog.classList.toggle('storage-information', titleText === 'Storage information');
   dialog.classList.toggle('metadata-editor', titleText === 'Edit game metadata');
-  if (titleText === 'Storage information' && !storageGrainUrl) {
-    const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = 256;
-    const context = canvas.getContext('2d');
-    if (context) {
-      const pixels = context.createImageData(256, 256);
-      let seed = 19741029;
-      for (let i = 0; i < pixels.data.length; i += 4) {
-        seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
-        const light = seed & 1;
-        pixels.data[i] = light ? 238 : 0;
-        pixels.data[i + 1] = light ? 222 : 0;
-        pixels.data[i + 2] = light ? 194 : 0;
-        pixels.data[i + 3] = (seed >>> 8) % 18;
-      }
-      context.putImageData(pixels, 0, 0);
-      storageGrainUrl = canvas.toDataURL();
-    }
-  }
-  dialog.style.backgroundImage = titleText === 'Storage information' && storageGrainUrl ? `url("${storageGrainUrl}")` : '';
   const heading = document.createElement('div');
   heading.className = 'game-library-heading';
   const title = document.createElement('h2');
@@ -1487,18 +1456,24 @@ window.ironwoodBackupStorage = async () => {
   }
 };
 
-window.ironwoodRestoreStorage = () => {
+window.ironwoodRestoreStorage = (inlineReview) => {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json,application/json';
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
-    if (!file) return;
+    if (!file) { inlineReview?.remove(); return; }
     try {
       const raw = JSON.parse(await file.text());
       const backup = validateBackup(raw);
       const summary = backupSummary(raw);
-      const dialog = storageDialog('Restore backup');
+      if (inlineReview && !inlineReview.isConnected) return;
+      const dialog = inlineReview || storageDialog('Restore backup');
+      if (inlineReview) {
+        const heading = document.createElement('h3');
+        heading.textContent = 'Review browser backup';
+        dialog.append(heading);
+      }
       const message = document.createElement('p');
       message.textContent = `${file.name} contains ${formatGameCount(summary.games)} saved entries (${formatGameCount(summary.mine)} personal, ${formatGameCount(summary.imported)} imported, ${formatGameCount(summary.observed)} observed, ${formatGameCount(summary.training)} training, ${formatGameCount(summary.puzzles)} puzzles, ${formatGameCount(summary.studies)} studies, ${formatGameCount(summary.favorites)} favorites)${summary.hasPreferences ? ' and display preferences' : ''}.`;
       const guidance = document.createElement('p');
@@ -1512,7 +1487,11 @@ window.ironwoodRestoreStorage = () => {
         button.textContent = label;
         if (danger) button.className = 'danger';
         button.addEventListener('click', async () => {
-          if (replace === null) { dialog.close(); return; }
+          if (replace === null) {
+            if (inlineReview) dialog.remove();
+            else dialog.close();
+            return;
+          }
           for (const child of actions.children) child.disabled = true;
           message.textContent = 'Restoring backup…';
           try {
@@ -1537,75 +1516,87 @@ window.ironwoodRestoreStorage = () => {
         actions.append(button);
       }
       dialog.append(message, guidance, actions);
-      dialog.showModal();
+      if (!inlineReview) dialog.showModal();
     } catch (error) {
-      alert(`This backup could not be restored: ${error.message}`);
+      const errorMessage = `This backup could not be restored: ${error.message}`;
+      if (inlineReview) {
+        inlineReview.textContent = errorMessage;
+        inlineReview.setAttribute('role', 'alert');
+      } else {
+        alert(errorMessage);
+      }
     }
   }, { once: true });
+  if (inlineReview) input.addEventListener('cancel', () => inlineReview.remove(), { once: true });
   input.click();
 };
 
-window.ironwoodOpenStorageInfo = async () => {
-  const dialog = storageDialog('Storage information');
-  const heading=dialog.querySelector('.game-library-heading'),title=heading.querySelector('h2');
-  const titleGroup=document.createElement('div');titleGroup.className='game-library-title-group';
-  const locationField=document.createElement('label');locationField.className='storage-location-field';
-  const locationSelect=document.createElement('select');locationSelect.id='storage-info-location';locationSelect.setAttribute('aria-label','Storage location');
-  locationField.append(locationSelect);titleGroup.append(title,locationField);heading.prepend(titleGroup);
-  heading.title='Drag to move';let drag=null;
-  const stopDragging=()=>{drag=null;heading.classList.remove('dragging');};
-  heading.addEventListener('pointerdown',event=>{
-    if(event.button!==0||event.target.closest('button,input,select,a'))return;
-    const rect=dialog.getBoundingClientRect();
-    drag={pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top,width:rect.width,height:rect.height};
-    Object.assign(dialog.style,{position:'fixed',margin:'0',inset:'auto',left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`});
-    heading.classList.add('dragging');heading.setPointerCapture?.(event.pointerId);event.preventDefault();
+let storageInfoPane;
+window.ironwoodLayoutStorageInfo = (visible, x, y, width, height) => {
+  const canvas = document.getElementById('chess_canvas');
+  if (!visible || !canvas || width <= 0 || height <= 0) {
+    if (storageInfoPane) {
+      storageInfoPane.controller.abort();
+      storageInfoPane.host.remove();
+      storageInfoPane = undefined;
+    }
+    return;
+  }
+  const bounds = canvas.getBoundingClientRect();
+  if (!storageInfoPane) {
+    ensureStorageLocationStyles();
+    ensureStorageStyles();
+    const host = document.createElement('section');
+    host.id = 'storage-settings-info';
+    host.setAttribute('aria-label', 'Storage information');
+    const controller = new window.AbortController();
+    storageInfoPane = {host, controller};
+    document.body.append(host);
+    void renderStorageInfo(host, controller.signal);
+  }
+  Object.assign(storageInfoPane.host.style, {
+    left: `${bounds.left + x}px`, top: `${bounds.top + y}px`,
+    width: `${width}px`, height: `${height}px`,
   });
-  heading.addEventListener('pointermove',event=>{
-    if(!drag||drag.pointerId!==event.pointerId)return;
-    dialog.style.left=`${Math.max(0,Math.min(window.innerWidth-drag.width,drag.left+event.clientX-drag.x))}px`;
-    dialog.style.top=`${Math.max(0,Math.min(window.innerHeight-drag.height,drag.top+event.clientY-drag.y))}px`;
-  });
-  for(const type of ['pointerup','pointercancel','lostpointercapture'])heading.addEventListener(type,stopDragging);
-  const keepVisible=()=>{
-    if(dialog.style.position!=='fixed')return;
-    const rect=dialog.getBoundingClientRect();
-    dialog.style.left=`${Math.max(0,Math.min(window.innerWidth-rect.width,rect.left))}px`;
-    dialog.style.top=`${Math.max(0,Math.min(window.innerHeight-rect.height,rect.top))}px`;
-  };
-  const resizeObserver=window.ResizeObserver?new window.ResizeObserver(keepVisible):null;
-  resizeObserver?.observe(dialog);window.addEventListener('resize',keepVisible);
-  dialog.addEventListener('close',()=>{stopDragging();resizeObserver?.disconnect();window.removeEventListener('resize',keepVisible);},{once:true});
+};
 
-  let selected='browser',serverLoaded=false;
+async function renderStorageInfo(host, signal) {
+  const locationField = document.createElement('label');
+  locationField.className = 'storage-location-field';
+  locationField.textContent = 'Location';
+  const locationSelect = document.createElement('select');
+  locationSelect.id = 'storage-info-location';
+  locationSelect.setAttribute('aria-label', 'Storage location');
+  locationField.append(locationSelect);
+  host.append(locationField);
+  let selected = 'browser';
 
   const intro = document.createElement('p');
   intro.className = 'storage-info-intro';
   intro.textContent = 'Your game library and browser storage on this device.';
-  dialog.append(intro);
+  host.append(intro);
   const content = document.createElement('div');
   content.id='storage-info-browser-panel';content.setAttribute('role','region');content.setAttribute('aria-label','Browser storage information');
   content.textContent = 'Checking storage…';
   const archiveToolbar=document.createElement('div');archiveToolbar.className='storage-actions storage-info-toolbar';
   const body=document.createElement('div');body.className='storage-info-body';body.append(content);
-  dialog.append(archiveToolbar,body);
+  host.append(archiveToolbar,body);
   const serverPanel=document.createElement('section');serverPanel.className='storage-info-panel';
   serverPanel.id='storage-info-archive-panel';serverPanel.setAttribute('role','region');serverPanel.setAttribute('aria-label','Companion storage information');
   let serverEpoch=0;
   const serverEnabled=()=>window.ironwoodCompanionFeatureEnabled?.()===true;
-  async function refreshServer(interactive=false) {
-    const epoch=++serverEpoch;serverLoaded=false;
-    if(!serverEnabled()||selected==='browser'||!dialog.contains(serverPanel))return;
+  async function refreshServer() {
+    const epoch=++serverEpoch;
+    if(!serverEnabled()||selected==='browser'||!host.contains(serverPanel))return;
     serverPanel.replaceChildren();
     const heading=document.createElement('h3');heading.textContent=`${locations().find(item=>item.endpoint===selected)?.name||'Companion'} archive`;serverPanel.append(heading);
     const status=document.createElement('p');status.setAttribute('role','status');status.textContent='Checking server storage…';serverPanel.append(status);
     const actions=document.createElement('div');actions.className='storage-actions';
-    const connect=document.createElement('button');connect.textContent='Manage connection';connect.type='button';connect.onclick=async()=>{try{if(typeof window.ironwoodManageCompanionConnection==='function')await window.ironwoodManageCompanionConnection();else await archiveLibrary(true);await refreshServer(false);}catch(error){status.textContent=error.message;}};
-    const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh server';refresh.onclick=()=>void refreshServer(false);actions.append(connect,refresh);archiveToolbar.replaceChildren(...actions.childNodes);
+    const connect=document.createElement('button');connect.textContent='Manage connection';connect.type='button';connect.onclick=async()=>{try{const {manageCompanionConnection}=await import('./companion-connection.js');await manageCompanionConnection();}catch(error){status.textContent=error.message;}};
+    const refresh=document.createElement('button');refresh.type='button';refresh.textContent='Refresh server';refresh.onclick=()=>void refreshServer();actions.append(connect,refresh);archiveToolbar.replaceChildren(...actions.childNodes);
     try {
       const storage=await archiveLibrary(false,selected),stats=await storage.stats();
-      if(epoch!==serverEpoch||!dialog.open||!serverEnabled()||selected==='browser')return;
-      serverLoaded=true;
+      if(epoch!==serverEpoch||signal.aborted||!serverEnabled()||selected==='browser')return;
       status.textContent=`Connected to ${storage.endpoint}`;
       const format=value=>typeof value==='number'?value<1048576?`${(value/1024).toFixed(1)} KiB`:`${(value/1048576).toFixed(1)} MiB`:'Unavailable';
       const count=value=>Number.isFinite(value)?formatGameCount(value):'Unavailable';
@@ -1617,7 +1608,7 @@ window.ironwoodOpenStorageInfo = async () => {
       for(const [label,value]of rows){const term=document.createElement('strong'),detail=document.createElement('span');term.textContent=label;detail.textContent=value;grid.append(term,detail);}
       serverPanel.append(grid);
       const scope=document.createElement('p');scope.className='storage-guidance';scope.textContent='Archive database files only. Reusable SQLite space is inside the database, not free disk space. Engines and tablebase files are not included.';serverPanel.append(scope);
-    }catch(error){if(epoch===serverEpoch&&dialog.open&&serverEnabled()&&selected!=='browser')status.textContent=error.status===404?'Server storage statistics require an updated Companion build.':`Server storage is unavailable: ${error.message}`;}
+    }catch(error){if(epoch===serverEpoch&&!signal.aborted&&serverEnabled()&&selected!=='browser')status.textContent=error.status===404?'Server storage statistics require an updated Companion build.':`Server storage is unavailable: ${error.message}`;}
   }
   function locations(){return serverEnabled()?(window.ironwoodCompanionConnections?.()||[]).filter(item=>item.capabilities?.services?.archive!==false):[];}
   function updateLocations(){
@@ -1628,24 +1619,23 @@ window.ironwoodOpenStorageInfo = async () => {
     locationSelect.value=selected;content.hidden=selected!=='browser';serverPanel.hidden=selected==='browser';archiveToolbar.hidden=selected==='browser';
     intro.textContent=selected==='browser'?'Your game library and browser storage on this device.':`Archive storage on ${entries.find(item=>item.endpoint===selected)?.name||'Companion'}.`;
   }
-  locationSelect.onchange=()=>{serverEpoch++;serverLoaded=false;selected=locationSelect.value;updateLocations();if(selected!=='browser')void refreshServer(false);};
+  locationSelect.onchange=()=>{serverEpoch++;selected=locationSelect.value;updateLocations();if(selected!=='browser')void refreshServer();};
   const updateServer=()=>{
-    serverEpoch++;serverLoaded=false;
-    if(serverEnabled()&&typeof window.ironwoodCompanionConnections!=='function'){void import('./companion-connection.js').then(()=>{if(dialog.open)updateLocations();}).catch(()=>{});}
+    serverEpoch++;
+    if(serverEnabled()&&typeof window.ironwoodCompanionConnections!=='function'){void import('./companion-connection.js').then(()=>{if(!signal.aborted)updateLocations();}).catch(()=>{});}
     if(!serverEnabled())serverPanel.replaceChildren();
-    updateLocations();if(selected!=='browser')void refreshServer(false);
+    updateLocations();if(selected!=='browser')void refreshServer();
   };
   body.append(serverPanel);updateLocations();
-  window.addEventListener('ironwood-companion-feature-changed',updateServer);
-  window.addEventListener('ironwood-companion-connections-changed',updateServer);
-  dialog.addEventListener('close',()=>{serverEpoch++;window.removeEventListener('ironwood-companion-feature-changed',updateServer);window.removeEventListener('ironwood-companion-connections-changed',updateServer);},{once:true});
-  dialog.showModal();
-  if(serverEnabled()&&typeof window.ironwoodCompanionConnections!=='function')void import('./companion-connection.js').then(()=>{if(dialog.open)updateServer();}).catch(()=>{});
+  window.addEventListener('ironwood-companion-feature-changed', updateServer, {signal});
+  window.addEventListener('ironwood-companion-connections-changed', updateServer, {signal});
+  if(serverEnabled()&&typeof window.ironwoodCompanionConnections!=='function')void import('./companion-connection.js').then(()=>{if(!signal.aborted)updateServer();}).catch(()=>{});
 
   try {
     const games = await readAllGameRecords();
     const estimate = await navigator.storage?.estimate?.();
     const persisted = await navigator.storage?.persisted?.();
+    if (signal.aborted) return;
     const format = value => typeof value === 'number' ? `${(value / 1048576).toFixed(1)} MB` : 'Unavailable';
     const rows = [
       ['Database', `${DB_NAME} · schema 1`],
@@ -1708,7 +1698,7 @@ window.ironwoodOpenStorageInfo = async () => {
   } catch (error) {
     content.textContent = `Storage information is unavailable: ${error.message}`;
   }
-};
+}
 
 window.ironwoodClearSavedGames = async () => {
   const games = await readAllGameRecords().catch(() => []);
@@ -2926,13 +2916,15 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     document.body.append(dialog);
   }
   const remembered=readWindowState(window,'dialog');
-  if(!window.ironwoodLibraryWindowMode&&remembered.width){
+  const docked = !window.ironwoodLibraryWindowMode && Boolean(document.getElementById('chess_canvas'));
+  dialog.classList.toggle('docked', docked);
+  if(!docked&&!window.ironwoodLibraryWindowMode&&remembered.width){
     const width=Math.min(remembered.width,window.innerWidth),height=Math.min(remembered.height,window.innerHeight);
     Object.assign(dialog.style,{position:'fixed',margin:'0',inset:'auto',width:`${width}px`,height:`${height}px`,left:`${Math.max(0,Math.min(remembered.left,window.innerWidth-width))}px`,top:`${Math.max(0,Math.min(remembered.top,window.innerHeight-height))}px`});
   }
-  dialog.classList.toggle('maximized',Boolean(restore?.maximized??remembered.maximized));
+  dialog.classList.toggle('maximized',!docked && Boolean(restore?.maximized??remembered.maximized));
   let normalBounds=remembered;
-  const saveBounds=()=>{if(window.ironwoodLibraryWindowMode)return;if(!dialog.classList.contains('maximized')){const rect=dialog.getBoundingClientRect();if(rect.width&&rect.height)normalBounds={width:rect.width,height:rect.height,left:rect.left,top:rect.top};}writeWindowState(window,'dialog',{...normalBounds,maximized:dialog.classList.contains('maximized')});};
+  const saveBounds=()=>{if(docked||window.ironwoodLibraryWindowMode)return;if(!dialog.classList.contains('maximized')){const rect=dialog.getBoundingClientRect();if(rect.width&&rect.height)normalBounds={width:rect.width,height:rect.height,left:rect.left,top:rect.top};}writeWindowState(window,'dialog',{...normalBounds,maximized:dialog.classList.contains('maximized')});};
   const boundsObserver=window.ResizeObserver?new window.ResizeObserver(()=>{if(dialog.open)saveBounds();}):null;
   boundsObserver?.observe(dialog);dialog.addEventListener('close',()=>{saveBounds();boundsObserver?.disconnect();},{once:true});
   dialog.querySelector('#companion-archive')?.close();
@@ -2973,7 +2965,8 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     if(opened){opened.focus();dialog.close();}else{notice.hidden=false;notice.textContent='Allow pop-ups for Ironwood to open Saved Games in a new window.';}
   });
   const detached=Boolean(window.ironwoodLibraryWindowMode);
-  popout.hidden=maximize.hidden=detached;
+  popout.hidden=detached;
+  maximize.hidden=detached || docked;
   if(detached){dialog.classList.add('detached');dialog.addEventListener('close',()=>window.close(),{once:true});}
   windowControls.append(popout,maximize, close);
   const titleGroup = document.createElement('div'); titleGroup.className = 'game-library-title-group';
@@ -2989,11 +2982,11 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   libraryPath.setAttribute('d','M4 4V20M10 4V20M17 4V20M2 21H22');
   librarySvg.append(libraryPath);libraryIcon.append(librarySvg);
   titleCopy.append(eyebrow,title);titleGroup.append(libraryIcon,titleCopy);heading.append(titleGroup,sources,windowControls);
-  heading.title = 'Drag to move';
+  if (!docked) heading.title = 'Drag to move';
   let drag = null;
   const stopDragging = () => { if(drag)saveBounds();drag = null; heading.classList.remove('dragging'); };
   heading.addEventListener('pointerdown', event => {
-    if (event.button !== 0 || (dialog.classList.contains('maximized')||dialog.classList.contains('detached')) || event.target.closest('button,input,select,a')) return;
+    if (docked || event.button !== 0 || (dialog.classList.contains('maximized')||dialog.classList.contains('detached')) || event.target.closest('button,input,select,a')) return;
     const rect = dialog.getBoundingClientRect();
     drag = {pointerId:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top,width:rect.width,height:rect.height};
     Object.assign(dialog.style,{position:'fixed',margin:'0',inset:'auto',left:`${rect.left}px`,top:`${rect.top}px`,width:`${rect.width}px`,height:`${rect.height}px`});
@@ -3045,10 +3038,10 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   const notice=document.createElement('p');notice.className='game-library-notice';notice.setAttribute('role','status');notice.hidden=true;
   let source='browser', archiveLocation='', sourceEpoch=0, selectAllEpoch=0, ready=false, operationBusy=false, loadSource=async()=>{}, renderCurrent=()=>{}, saveCurrentView=()=>{};
   const companionVisible = () => window.ironwoodCompanionFeatureEnabled?.() === true;
-  const storageLabel=document.createElement('label');storageLabel.textContent='Game location';locationSelect.before(storageLabel);storageLabel.append(locationSelect);
+  const storageLabel=document.createElement('label');
+  const locationCaption=document.createElement('span');locationCaption.textContent='Location';
+  locationSelect.before(storageLabel);storageLabel.append(locationCaption,locationSelect);
   const storageHint=document.createElement('span');storageHint.className='game-library-location-hint';storageLabel.append(storageHint);
-  const connections=document.createElement('button');connections.type='button';connections.className='game-library-connections';connections.textContent='Connect Companion';sources.append(connections);
-  connections.onclick=async()=>{try{await import('./companion-connection.js');await window.ironwoodManageCompanionConnection?.();}catch(error){notice.hidden=false;notice.textContent=`Could not manage Companion: ${error.message}`;}};
   const locations=()=>companionVisible()?(window.ironwoodCompanionConnections?.()||[]).filter(item=>item.capabilities?.services?.archive!==false):[];
   const viewKey=()=>source==='browser'?'browser':`archive:${archiveLocation}`;
   function updateSourceButtons() {
@@ -3056,8 +3049,6 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
     for(const item of locations()){const option=document.createElement('option');option.value=item.endpoint;option.textContent=item.name+(item.connected?'':' (Disconnected)');option.disabled=!item.connected;locationSelect.append(option);}
     locationSelect.value=source==='browser'?'browser':archiveLocation;
     locationSelect.disabled=popout.disabled=!ready||operationBusy;
-    connections.hidden=!companionVisible();connections.disabled=operationBusy;
-    connections.textContent=locations().some(item=>item.connected)?'Manage connections':'Connect Companion';
     storageHint.textContent=source==='browser'?'Saved in this browser':'Connected Companion archive';
   }
   async function chooseSource(value) {
@@ -3079,6 +3070,16 @@ window.ironwoodOpenGameLibrary = async (restore = null) => {
   const exportProgress=createGameExportProgress();
   dialog.addEventListener('close',exportProgress.hide,{once:true});
   dialog.append(heading,notice,exportProgress.panel,browserContent);
+  if (docked) {
+    const backdrop = new window.AbortController();
+    dialog.addEventListener('click', event => {
+      if (event.target !== dialog) return;
+      const bounds = dialog.getBoundingClientRect();
+      if (event.clientX < bounds.left || event.clientX >= bounds.right
+          || event.clientY < bounds.top || event.clientY >= bounds.bottom) dialog.close();
+    }, { signal: backdrop.signal });
+    dialog.addEventListener('close', () => backdrop.abort(), { once: true });
+  }
   dialog.showModal();
   try {
     if(companionVisible()&&typeof window.ironwoodCompanionConnections!=='function')await import('./companion-connection.js');

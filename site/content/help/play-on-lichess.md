@@ -73,7 +73,7 @@ In the **Correspondence** tab, choose 1, 2, 3, 5, 7, 10, or 14 days per move, th
 
 While playing correspondence, choose **Return to lobby · keep this game ongoing** to put that game aside without resigning or signing out. You can resume another game or create a new one. Ironwood displays one online game at a time, while Lichess keeps your other games ongoing.
 
-**Game library → Saved games** also puts an active correspondence game aside and keeps your Lichess sign-in. The saved game remains on the board instead of being replaced by the correspondence game. Resume the online game manually from the lobby later. Loading a saved game during a live online game disconnects online play; it does not resign the game on Lichess, and its clock continues.
+If you choose **Game Library** while playing, Ironwood asks whether to return to the game or resign and switch. Saved Games opens after Lichess confirms the resignation.
 
 ## Moves, chat, and game controls
 
@@ -132,7 +132,7 @@ Use **Load in new window**, or reopen Player profile from the lobby, to compare 
 
 Click a **Bullet**, **Blitz**, **Rapid**, **Classical**, or **Correspondence** rating chip to open **Performance details**. The section shows rating, rank and percentile when available, highest and lowest ratings with dates, game record, average opponent rating, playing time, and current/longest win and loss streaks.
 
-**Best wins** and **Worst losses** load up to five games each. Click a mini board for enlarged playback or use the game's **Review on Ironwood** control to review it on Ironwood's full board. Reviewing stays temporary until **Play → Save current game** saves it. **Refresh** retries statistics and game loading; **Close details** hides the section. Statistics are cached separately for each time control and player-profile window. The Puzzles chip has no performance-details endpoint.
+**Best wins** and **Worst losses** load up to five games each. Click a mini board for enlarged playback or use the game's **Review on Ironwood** control to review it on Ironwood's full board. Reviewing stays temporary until **Save current game** saves it. **Refresh** retries statistics and game loading; **Close details** hides the section. Statistics are cached separately for each time control and player-profile window. The Puzzles chip has no performance-details endpoint.
 
 ### Preview or review a recent game
 
@@ -140,7 +140,7 @@ Click **Recent games** to collapse or expand the list.
 
 Hover a recent-game mini board for its gold outline and magnifying-glass indicator, then click to open the larger move viewer. It shows White and Black, the result, step controls, and autoplay without importing the game into Saved Games. The two controls in the right column offer **Open game on Lichess** in a new tab or **Review on Ironwood** on the full board.
 
-**Review on Ironwood** opens a temporary review. To keep it, choose **Play → Save current game**; this saves the full game even when you are viewing its starting position. Merely previewing or opening the review does not add it to Saved Games. Finish active online play or training before opening a full-board review.
+**Review on Ironwood** opens a temporary review. To keep it, choose **Save current game**; this saves the full game even when you are viewing its starting position. Merely previewing or opening the review does not add it to Saved Games. Finish active online play or training before opening a full-board review.
 
 ### Daily activity
 

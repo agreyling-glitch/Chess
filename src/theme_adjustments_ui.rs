@@ -42,31 +42,20 @@ impl ChessApp {
         appearance
     }
 
-    fn theme_adjustments_dialog(&mut self, ctx: &egui::Context) {
-        if !self.theme_adjustments_open { return; }
+    fn theme_adjustments_settings(&mut self, ui: &mut egui::Ui) {
         self.sync_theme_adjustments();
         let before = self.stored_piece_appearance();
-        let mut open = true;
-        let label = if self.board_3d_active { crate::board3d::Theme::ALL.iter().find(|(theme,_)| *theme == self.board_3d_theme).map_or("3D",|(_,label)| *label) } else { self.piece_set.label() };
-        egui::Window::new(format!("Theme adjustments - {label}"))
-            .id(egui::Id::new("theme_adjustments_window"))
-            .open(&mut open).resizable(false).default_width(500.0)
-            .frame(Self::dialog_frame()).show(ctx, |ui| {
-                ui.label(RichText::new("Changes appear on the board immediately.").small().weak());
-                ui.add_space(10.0);
-                egui::ScrollArea::vertical().max_height((ctx.content_rect().height()-160.0).max(200.0)).show(ui, |ui| {
-                    if self.board_3d_active { self.theme_adjustments_3d_ui(ui); } else { self.theme_adjustments_2d_ui(ui); }
-                    ui.add_space(12.0);
-                    ui.separator();
-                    ui.add_space(4.0);
-                    if ui.button("Reset this theme").clicked() { self.piece_appearance=Default::default(); self.piece_shadows=true; if self.board_3d_active { self.board_3d_appearance=85; self.board_3d_appearance_customized=true; self.show_radial_light=true; } }
-                });
-            });
-        self.theme_adjustments_open = open;
+        ui.label(RichText::new("Changes appear on the board immediately.").small().weak());
+        ui.add_space(10.0);
+        if self.board_3d_active { self.theme_adjustments_3d_ui(ui); } else { self.theme_adjustments_2d_ui(ui); }
+        ui.add_space(12.0);
+        ui.separator();
+        ui.add_space(4.0);
+        if ui.button("Reset this theme").clicked() { self.piece_appearance=Default::default(); self.piece_shadows=true; if self.board_3d_active { self.board_3d_appearance=85; self.board_3d_appearance_customized=true; self.show_radial_light=true; } }
         if before != self.stored_piece_appearance() {
             self.board_3d_gpu_key.clear(); self.board_3d_render_key.clear();
             self.theme_adjustments.insert(self.adjustment_theme_key.clone(),self.stored_piece_appearance());
-            self.save_preferences(); ctx.request_repaint();
+            self.save_preferences(); ui.ctx().request_repaint();
         }
     }
 

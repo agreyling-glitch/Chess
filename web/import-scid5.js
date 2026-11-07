@@ -203,7 +203,8 @@ export async function showScid5Import(target,files){
   const actions=make('div');actions.className='scid-actions';
   const preview=make('button','Preview first 100'),back=make('button','Previous 100'),next=make('button','Next 100'),review=make('button','Review selected games'),start=make('button','Import range'),resume=make('button','Resume last import'),stop=make('button','Stop'),close=make('button','Close');
   const destinationSelect=make('select');destinationSelect.setAttribute('aria-label','Import destination');destinationSelect.className='scid-location-select';
-  actions.append(destinationSelect,start,resume,stop);
+  const destinationField=make('label','Location');destinationField.className='scid-location-field';destinationField.append(destinationSelect);
+  actions.append(destinationField,start,resume,stop);
   const browseActions=make('div');browseActions.className='scid-actions scid-browse-actions';
   browseActions.append(preview,back,next,review);
   close.textContent='×';close.className='scid-close';close.setAttribute('aria-label','Close Scid import');close.title='Close';

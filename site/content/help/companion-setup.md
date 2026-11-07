@@ -64,9 +64,9 @@ Read [Engines and storage with Companion](/help/companion-engines-and-storage/) 
 
 ## Backup folder
 
-Companion 0.1.6 and later add a **Backup folder** setting in the Windows status window. Enter an absolute path and choose **Save folder**. You can also edit it through **Settings → Companion connection… → Backup folder…** for a connected server. Use a path on the machine running Companion, including an accessible NAS share or mounted volume. The account running Companion needs permission to read and write there.
+Companion 0.1.6 and later add a **Backup folder** setting in the Windows status window. Enter an absolute path and choose **Save folder**. You can also edit it through **Settings → Companion → Backup folder…** for a connected server. Use a path on the machine running Companion, including an accessible NAS share or mounted volume. The account running Companion needs permission to read and write there.
 
-Use **Game library → Backup and Restore…** to select a named Companion and create or restore a database snapshot in its backup folder. This keeps large archives out of browser memory. See [Saved games and backups](/help/saved-games-and-backups/). These tools are included in public Windows release 0.1.8.
+Use **Settings → Storage → Backup and Restore** to select a named Companion and create or restore a database snapshot in its backup folder. This keeps large archives out of browser memory. See [Saved games and backups](/help/saved-games-and-backups/). These tools are included in public Windows release 0.1.8.
 
 ## Update older installations
 

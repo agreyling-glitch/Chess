@@ -53,3 +53,4 @@
 
 #scid-import-dialog .scid-actions .scid-location-select{width:170px;max-width:100%;min-height:28px;padding:4px;border:1px solid #535d61;border-radius:4px;background:#080b0f;color:#ecebe4;font:13px system-ui;box-shadow:inset 1px 2px 3px #0008;color-scheme:dark;cursor:pointer}
 #scid-import-dialog .scid-location-select option{background:#242b31;color:#eee9dd}
+#scid-import-dialog .scid-location-field{display:flex;align-items:center;gap:8px;color:#d3ad62;font-weight:600}

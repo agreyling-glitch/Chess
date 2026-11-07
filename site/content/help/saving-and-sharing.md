@@ -9,7 +9,7 @@ weight: 80
 
 Ironwood keeps saved games in your browser's local storage. A **PGN** file is a portable text record of chess moves. You can import a PGN to review a game, and export one to share its moves and supported annotations. See [What is PGN?](/help/pgn/) for an example.
 
-To download one saved game, open **Game library → Saved games**, choose its **☰** options menu, and select **Export PGN**. The same option appears beside the close button in that saved game’s larger board preview. It exports the complete game as plain PGN, regardless of the preview position. For several games or other formats, select games in the library and use **Export → PGN**, **Annotated PGN**, or **Analysis JSON**.
+To download one saved game, open **Game Library**, choose its **☰** options menu, and select **Export PGN**. The same option appears beside the close button in that saved game’s larger board preview. It exports the complete game as plain PGN, regardless of the preview position. For several games or other formats, select games in the library and use **Export → PGN**, **Annotated PGN**, or **Analysis JSON**.
 
 An **Ironwood analysis JSON** file stores Ironwood's richer analysis data so you can restore results without rerunning Stockfish. JSON is a structured text file for software; you do not need to edit it by hand. If you share it, remember that game details and any notes in it may go with the file.
 
@@ -25,4 +25,4 @@ For instructions on Starting notes, move notes, and manual symbols, see [Taking 
 
 ## Save a game opened from a player profile
 
-A Lichess profile’s **Review on Ironwood** opens the game temporarily. Choose **Play → Save current game** to add the complete game to Saved Games, even when viewing the initial position. An ordinary game with no moves is excluded; puzzles and studies can be saved at their initial position, including annotations. **Save current game** confirms a successful save or reports a failure. Companion saves can report local pending synchronization separately. Watching it in the larger preview alone does not save or replace the current game.
+A Lichess profile’s **Review on Ironwood** opens the game temporarily. Choose **Save current game** to add the complete game to Saved Games, even when viewing the initial position. An ordinary game with no moves is excluded; puzzles and studies can be saved at their initial position, including annotations. **Save current game** confirms a successful save or reports a failure. Companion saves can report local pending synchronization separately. Watching it in the larger preview alone does not save or replace the current game.

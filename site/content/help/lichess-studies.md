@@ -11,7 +11,7 @@ Open **Training → Study**. Paste a public Lichess study URL into the import bo
 
 When no study is open, choose one of the selectable **Saved studies** cards. **Storage location** switches between Browser and a connected Companion; **Connections…** manages connections. **Choose another study…** returns to the picker, while **Return to current study** restores the loaded workspace. Opening a saved study from Saved Games also uses Study mode.
 
-The general **Game library → Import → Lichess** workflow, also available from **Saved Games → Manage library → Import games…**, accepts study or chapter links. A successful fetch opens the study directly, without a Paste tab or **Continue** step. For private study content, export PGN from Lichess and import it in Ironwood.
+The general **Import games → Lichess** workflow, also available from **Saved Games → Manage library → Import games…**, accepts study or chapter links. A successful fetch opens the study directly, without a Paste tab or **Continue** step. For private study content, export PGN from Lichess and import it in Ironwood.
 
 ## Read and explore
 

@@ -1,14 +1,15 @@
 import { companionConnections, onCompanionConnectionsChange } from './companion-connection.js';
 import { CompanionArchiveClient } from './companion-archive-client.js';
 
-export function openHistoryBackup(target = window, { connections = companionConnections, subscribe = onCompanionConnectionsChange, Client = CompanionArchiveClient } = {}) {
+export function openHistoryBackup(target = window, { connections = companionConnections, subscribe = onCompanionConnectionsChange, Client = CompanionArchiveClient, embedded = false } = {}) {
   const doc = target.document;
   const existing = doc.getElementById('history-backup');
   if (existing) { existing.focus(); return existing; }
-  const dialog = doc.createElement('dialog'); dialog.id = 'history-backup';
+  const dialog = doc.createElement(embedded ? 'section' : 'dialog'); dialog.id = 'history-backup';
   dialog.className = 'history-backup-dialog';
   const add = (tag, text, parent = dialog) => { const element = doc.createElement(tag); if (text) element.textContent = text; parent.append(element); return element; };
-  add('h2', 'Backup and Restore');
+  if (!embedded) add('h2', 'Backup and Restore');
+  else dialog.setAttribute('aria-label', 'Backup and Restore');
   const inner = add('section'); inner.className = 'history-backup-fields';
   const actionLabel = add('label', 'Action', inner);
   const action = add('select', '', actionLabel);
@@ -18,13 +19,17 @@ export function openHistoryBackup(target = window, { connections = companionConn
 
   const folder = add('p', '', inner); folder.style.cssText = 'overflow-wrap:anywhere;color:#d3ad62';
   const settings = add('button', 'Configure backup folder…', inner);
+  const folderEditor = add('div', '', inner);
   const fileLabel = add('label', 'Backup in Companion folder', inner);
   const file = add('select', '', fileLabel);
   const progress = add('progress', '', inner); progress.max = 100; progress.style.width = '100%'; progress.hidden = true;
   let files = [], folderReady = false, generation = 0, pollTimer;
   const guidance = add('p', '', inner); const status = add('p', '', inner); status.setAttribute('role', 'status');
+  const restoreReview = add('div', '', inner);
+  restoreReview.className = 'history-backup-restore-review';
   const controls = add('div'); controls.className = 'history-backup-actions';
-  const close = add('button', 'Close', controls), run = add('button', 'Download backup', controls);
+  if (!embedded) add('button', 'Close', controls).onclick = () => dialog.close();
+  const run = add('button', 'Download backup', controls);
   run.className = 'primary';
   let busy = false;
   const update = () => {
@@ -48,18 +53,34 @@ export function openHistoryBackup(target = window, { connections = companionConn
       option.value = item.endpoint; option.disabled = !item.connected;
     }
     location.value = [...location.options].some(option => option.value === selected && !option.disabled) ? selected : 'browser';
+    if (location.value !== selected) folderEditor.replaceChildren();
     update();
   };
   const unsubscribe = subscribe(() => { if (!busy) { refresh(); void load(); } });
   dialog.addEventListener('close', () => { unsubscribe(); dialog.remove(); generation++; target.clearTimeout(pollTimer); }, { once: true });
-  close.onclick = () => dialog.close();
-  action.onchange = () => { status.textContent = ''; update(); };
-  location.onchange = () => { status.textContent = ''; busy = false; void load(); update(); };
-  settings.onclick = async () => { await configureBackupFolder(target, location.value, {connections, Client}); void load(); };
+  action.onchange = () => { restoreReview.replaceChildren(); status.textContent = ''; update(); };
+  location.onchange = () => { restoreReview.replaceChildren(); folderEditor.replaceChildren(); status.textContent = ''; busy = false; void load(); update(); };
+  settings.onclick = () => {
+    if (!folderEditor.firstElementChild) {
+      void configureBackupFolder(target, location.value, {
+        connections, Client, parent: folderEditor, onSaved: () => void load(),
+      });
+    }
+  };
   file.onchange = update;
   run.onclick = async () => {
     if (location.value === 'browser') {
-      if (action.value === 'restore') { dialog.close(); target.ironwoodRestoreStorage(); }
+      if (action.value === 'restore') {
+        if (!embedded) dialog.close();
+        if (embedded) {
+          const review = doc.createElement('section');
+          review.className = 'history-backup-folder-editor';
+          restoreReview.replaceChildren(review);
+          target.ironwoodRestoreStorage(review);
+        } else {
+          target.ironwoodRestoreStorage();
+        }
+      }
       else { busy = true; update(); await target.ironwoodBackupStorage(); busy = false; update(); }
       return;
     }
@@ -100,33 +121,52 @@ export function openHistoryBackup(target = window, { connections = companionConn
     if (revision === generation) update();
   }
   dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
-  refresh(); doc.body.append(dialog); dialog.showModal(); void load(); return dialog;
+  refresh(); doc.body.append(dialog);
+  if (!embedded) dialog.showModal();
+  void load(); return dialog;
 }
 
-window.ironwoodOpenHistoryBackup = () => openHistoryBackup();
+export function layoutHistoryBackup(target, visible, x, y, width, height) {
+  let pane = target.document.getElementById('history-backup');
+  if (!pane && visible) pane = openHistoryBackup(target, { embedded: true });
+  if (!pane) return;
+  pane.hidden = !visible;
+  if (!visible) pane.querySelector('.history-backup-restore-review')?.replaceChildren();
+  if (visible) {
+    pane.style.left = `${x}px`;
+    pane.style.top = `${y}px`;
+    pane.style.width = `${width}px`;
+    pane.style.height = `${height}px`;
+  }
+}
 
-export async function configureBackupFolder(target = window, endpoint, {connections = companionConnections, Client = CompanionArchiveClient} = {}) {
+export async function configureBackupFolder(target = window, endpoint, {connections = companionConnections, Client = CompanionArchiveClient, parent, onSaved} = {}) {
   const selected = connections().find(item => item.endpoint === endpoint && item.connected);
   if (!selected) return;
-  const doc = target.document, dialog = doc.createElement('dialog');
-  dialog.style.cssText = 'width:min(560px,calc(100vw - 48px));padding:24px;background:#171d22;color:#ecebe4;border:2px solid #d3ad62;border-radius:10px;font:16px system-ui';
-  const heading = doc.createElement('h2'); heading.textContent = `Backup folder — ${selected.name}`;
+  const doc = target.document, editor = doc.createElement(parent ? 'section' : 'dialog');
+  if (parent) editor.className = 'history-backup-folder-editor';
+  else editor.style.cssText = 'width:min(560px,calc(100vw - 48px));padding:24px;background:#171d22;color:#ecebe4;border:2px solid #d3ad62;border-radius:10px;font:16px system-ui';
+  const heading = doc.createElement(parent ? 'h3' : 'h2'); heading.textContent = `Backup folder — ${selected.name}`;
   const label = doc.createElement('label'); label.textContent = 'Folder path on the Companion machine';
   const input = doc.createElement('input'); input.style.cssText = 'display:block;width:95%;padding:10px;margin:12px 0'; label.append(input);
   const hint = doc.createElement('p'); hint.textContent = 'Use an absolute local path or an accessible NAS/network share. Companion’s operating-system account needs read and write access.';
   const status = doc.createElement('p'); status.setAttribute('role','status');
   const save = doc.createElement('button'); save.textContent = 'Save backup folder'; save.disabled = true;
-  const close = doc.createElement('button'); close.textContent = 'Close'; close.onclick = () => dialog.close();
-  dialog.append(heading,label,hint,status,save,close); doc.body.append(dialog); dialog.showModal();
-  dialog.addEventListener('close', () => dialog.remove(), {once:true});
+  const close = doc.createElement('button'); close.textContent = 'Close'; close.onclick = () => parent ? editor.remove() : editor.close();
+  editor.append(heading,label,hint,status,save,close);
+  (parent || doc.body).append(editor);
+  const closed = parent ? undefined : new Promise(resolve => {
+    editor.addEventListener('close', () => { editor.remove(); resolve(); }, {once:true});
+    editor.showModal();
+  });
   const client = new Client(selected.endpoint, selected.credential);
   try { const settings = await client.request('archive/backups/settings'); input.value = settings.folder || ''; save.disabled = false; }
   catch(error) { status.textContent = error.status === 404 ? 'Update this Companion to configure its backup folder.' : error.message; }
   save.onclick = async () => {
     save.disabled = true;
-    try { const result = await client.request('archive/backups/settings', {folder:input.value}); input.value = result.folder; status.textContent = `Backup folder saved on ${selected.name}.`; }
+    try { const result = await client.request('archive/backups/settings', {folder:input.value}); input.value = result.folder; status.textContent = `Backup folder saved on ${selected.name}.`; if (editor.isConnected) onSaved?.(); }
     catch(error) { status.textContent = error.message; }
     finally { save.disabled = false; }
   };
-  await new Promise(resolve => dialog.addEventListener('close', resolve, {once:true}));
+  await closed;
 }

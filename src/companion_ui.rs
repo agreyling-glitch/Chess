@@ -130,6 +130,11 @@ impl ChessApp {
     pub(super) fn import_location_selector(ui: &mut egui::Ui) -> (bool,bool) {
         let catalog:serde_json::Value=serde_json::from_str(&import_location_catalog()).unwrap_or_default();
         let mut selected=catalog["selected"].as_str().unwrap_or("browser").to_owned();let previous=selected.clone();
+        ui.horizontal(|ui| {
+        ui.add_sized(
+            [0.0, 28.0],
+            egui::Label::new(RichText::new("Location").strong().color(Color32::from_rgb(211, 173, 98))),
+        );
         ui.add_enabled_ui(catalog["busy"]!=true,|ui|{
             ui.spacing_mut().interact_size.y=28.0;
             ui.spacing_mut().button_padding=Vec2::new(6.0,4.0);
@@ -150,6 +155,7 @@ impl ChessApp {
                 egui::Shape::rect_stroke(response.response.rect,4,Stroke::new(1.0,Color32::from_rgb(83,93,97)),egui::StrokeKind::Inside),
             ]));
             response.response.on_hover_text("Import destination");
+        });
         });
         if selected!=previous {set_import_location(&selected);}
         let current:serde_json::Value=serde_json::from_str(&import_location_catalog()).unwrap_or_default();
@@ -421,7 +427,7 @@ impl ChessApp {
             if self.player_side == PlayerSide::White { self.review_black_player = self.engine_config.label().into(); }
             else { self.review_white_player = self.engine_config.label().into(); }
         }
-        if self.strength_dialog_open { self.prepare_uci_settings(); }
+        if self.engine_settings_draft_ready { self.prepare_uci_settings(); }
         self.engine_status = format!("{} selected · start analysis or continue play", self.engine_config.label());
         self.save_game(); self.queue_live_engine_resume();
         if self.prediction_engine_switch.as_ref().is_some_and(|(target,_)| target==&identity) {

@@ -7,7 +7,7 @@ lastmod: 2026-11-02T00:00:00-06:00
 weight: 12
 ---
 
-Open **Training → Lichess Puzzles…**. Puzzles load into the main board. Ironwood saves the current ordinary game when linking a puzzle, but choose **Play → Save current game** first for any game you want to keep, especially a temporary player-profile review. Use Saved Games to reopen it afterward. Finish an active online or training game before opening puzzles.
+Open **Training → Lichess Puzzles…**. Puzzles load into the main board. Ironwood saves the current ordinary game when linking a puzzle, but choose **Save current game** first for any game you want to keep, especially a temporary player-profile review. Use Saved Games to reopen it afterward. Finish an active online or training game before opening puzzles.
 
 Choose **Daily puzzle**, or use **Practice** to choose a theme and difficulty and request a new puzzle. Loading requires an internet connection. No Lichess sign-in is needed; difficulty is relative to Lichess's anonymous baseline of 1500, rather than your personal rating.
 

@@ -93,35 +93,36 @@ test('legacy connection migrates without changing endpoint, credential or engine
 });
 
 test('connection manager edits roles and names, masks tokens and removes only the selected provider', async () => {
-  const dom = new JSDOM('<body></body>',{url:'http://localhost/play/'});
+  const dom = new JSDOM('<canvas id="chess_canvas"></canvas>',{url:'http://localhost/play/'});
   const previous = {window:globalThis.window,document:globalThis.document,fetch:globalThis.fetch};
   globalThis.window = dom.window; globalThis.document = dom.window.document;
   window.ironwoodCompanionFeatureEnabled = () => true;
-  window.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
-  window.HTMLDialogElement.prototype.close = function() { this.open = false; this.dispatchEvent(new window.Event('close')); };
   globalThis.fetch = async () => ({ok:true,json:async () => capabilities});
   try {
     const connections = await import('../web/companion-connection.js?named-manager');
     await connections.connectCompanion('http://nas:8790','token-a',{name:'Archive',engines:false});
     await connections.connectCompanion('http://gpu:8790','token-b',{name:'GPU',archive:false});
+    window.ironwoodOpenCompanionSettings = () =>
+      connections.layoutCompanionSettings({x:220, y:70, width:550, height:520});
     const closing = connections.manageCompanionConnection();
-    const dialog = document.querySelector('#companion-connection'), form = dialog.querySelector('form');
+    const editor = document.querySelector('#companion-settings-editor'), form = editor.querySelector('form');
+    assert.equal(document.querySelector('dialog'), null);
     assert.equal(form.elements.credential.type,'password');
-    form.elements.connection.value = 'http://gpu:8790';
-    form.elements.connection.dispatchEvent(new window.Event('change'));
+    editor.querySelectorAll('.connection-list button')[1].click();
     form.elements.connectionName.value = '<b>Windows GPU</b>';
     form.dispatchEvent(new window.Event('submit',{cancelable:true}));
     await flush();
     assert.equal(connections.companionConnection().endpoint,'http://nas:8790');
-    assert.match(form.elements.connection.selectedOptions[0].textContent,/<b>Windows GPU<\/b>/);
-    assert.equal(dialog.querySelector('b'),null);
-    dialog.querySelector('[data-disconnect]').click();
+    assert.match(editor.querySelector('[aria-pressed=true]').textContent,/<b>Windows GPU<\/b>/);
+    assert.equal(editor.querySelector('b'),null);
+    editor.querySelector('[data-disconnect]').click();
     assert.equal(connections.companionConnection().endpoint,'http://nas:8790');
     assert.equal(connections.companionEngineConnections().length,0);
-    dialog.querySelector('[data-forget]').click();
+    editor.querySelector('[data-forget]').click();
+    editor.querySelector('[data-confirm-remove]').click();
     assert.equal(connections.companionConnections().length,1);
-    dialog.querySelector('[data-close]').click();
-    await closing;
-    assert.equal(document.querySelector('#companion-connection'),null);
+    connections.layoutCompanionSettings(null);
+    assert.equal((await closing).endpoint, 'http://nas:8790');
+    assert.equal(document.querySelector('#companion-settings-editor'),null);
   } finally { Object.assign(globalThis,previous); dom.window.close(); }
 });

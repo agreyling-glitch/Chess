@@ -1,9 +1,11 @@
 use super::*;
 
-const RAIL_WIDTH: f32 = 56.0;
-const DRAWER_WIDTH: f32 = 288.0;
-const COLLAPSE_DELAY: f64 = 0.25;
+pub(super) const RAIL_WIDTH: f32 = 56.0;
+pub(super) const DRAWER_WIDTH: f32 = 288.0;
+const SETTINGS_SECTION: usize = 4;
 const SHORTCUTS: [&str;8] = ["New game","Analysis","Saved games","Lichess puzzles","Save current game","Lichess Profiles","Board Theme","Study"];
+// Keep the original indices so saved visibility and order still apply.
+const QUICK_ACCESS_INDICES: [usize; 3] = [3, 5, 7];
 const SHORTCUT_KEY: &str = "ironwood.quick-access.v1";
 
 #[derive(Clone,Debug,PartialEq,serde::Serialize,serde::Deserialize)]
@@ -33,27 +35,32 @@ const SECTIONS: [&str; 7] = [
 
 #[derive(Default)]
 pub(super) struct NavigationState {
-    expanded: bool,
-    pinned: bool,
-    section: usize,
-    last_inside: f64,
-    keyboard: bool,
-    suppress_hover: bool,
-    touch_open: bool,
+    pub(super) expanded: bool,
+    pub(super) section: usize,
+    pub(super) game_setup_attached: bool,
+    pending_switch: Option<ModeSwitch>,
+    waiting_for_resignation: bool,
+    pub(super) local_game_started: bool,
     shortcuts: QuickAccess,
     shortcuts_loaded: bool,
 }
 
-impl NavigationState {
-    fn should_collapse(&self, now: f64, inside: bool, focused: bool) -> bool {
-        self.expanded
-            && !self.pinned
-            && !self.touch_open
-            && !inside
-            && !focused
-            && now - self.last_inside >= COLLAPSE_DELAY
-    }
+#[derive(Clone, Copy)]
+pub(super) enum ModeSwitch {
+    Setup { self_play: bool, attached: bool },
+    OnlineLobby { lichess: bool },
+    Analysis,
+    Library,
+    Training,
+    Puzzles,
+    Study,
+    Import,
+    Settings(SettingsPage),
+    #[cfg(target_arch = "wasm32")]
+    Home,
 }
+
+
 
 // Original geometric icons: no font glyph or external asset dependency.
 fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::Response {
@@ -111,9 +118,12 @@ fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::R
             );
         }
         6 => {
+            line((1.0, -8.0), (-8.0, -8.0));
             line((-8.0, -8.0), (-8.0, 8.0));
-            line((-3.0, -6.0), (5.0, 0.0));
-            line((5.0, 0.0), (-3.0, 6.0));
+            line((-8.0, 8.0), (1.0, 8.0));
+            line((-3.0, 0.0), (8.0, 0.0));
+            line((3.0, -5.0), (8.0, 0.0));
+            line((8.0, 0.0), (3.0, 5.0));
         }
         7 => {
             line((-8.0, 0.0), (8.0, 0.0));
@@ -149,6 +159,14 @@ fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::R
             p.add(egui::Shape::closed_line(vec![point(0.0,-6.0),point(-9.0,-8.0),point(-9.0,6.0),point(0.0,8.0),point(9.0,6.0),point(9.0,-8.0)],stroke));
             line((0.0,-6.0),(0.0,8.0));
         }
+        13 => {
+            line((0.0, -9.0), (0.0, 3.0));
+            line((-4.0, -1.0), (0.0, 3.0));
+            line((0.0, 3.0), (4.0, -1.0));
+            line((-8.0, 2.0), (-8.0, 8.0));
+            line((-8.0, 8.0), (8.0, 8.0));
+            line((8.0, 8.0), (8.0, 2.0));
+        }
         _ => {}
     }
     if selected {
@@ -172,25 +190,81 @@ fn icon(ui: &mut egui::Ui, index: usize, label: &str, selected: bool) -> egui::R
 }
 
 impl ChessApp {
+    pub(super) fn playing_game_before_mode_switch(&self) -> bool {
+        self.board_game_actions_available()
+            && (self.fics_active
+                || (!self.analysis_workspace_active(&self.puzzle_context)
+                    && !self.training_live()
+                    && !self.puzzle_mode()
+                    && (self.navigation.local_game_started
+                        || self.local_clock.is_some()
+                        || !self.review_moves.is_empty())))
+    }
+
+    pub(super) fn request_mode_switch(&mut self, destination: ModeSwitch) {
+        if self.navigation.waiting_for_resignation {
+            return;
+        }
+        if self.playing_game_before_mode_switch() {
+            self.navigation.pending_switch = Some(destination);
+        } else {
+            self.enter_mode(destination);
+        }
+    }
+
+    fn enter_mode(&mut self, destination: ModeSwitch) {
+        let ctx = self.puzzle_context.clone();
+        self.navigation.expanded = false;
+        match destination {
+            ModeSwitch::Setup { self_play, attached } => {
+                self.navigation.section = 0;
+                self.navigation.expanded = attached;
+                self.navigation_new_game(self_play);
+                self.navigation.game_setup_attached = attached;
+            }
+            ModeSwitch::OnlineLobby { lichess } => self.open_online_lobby(lichess),
+            ModeSwitch::Analysis => self.navigation_open_analysis(&ctx),
+            ModeSwitch::Library => self.navigation_open_library(),
+            ModeSwitch::Training => {
+                self.settle_training();
+                self.training_dialog_open = true;
+            }
+            ModeSwitch::Puzzles => self.navigation_enter_puzzles(&ctx),
+            ModeSwitch::Study => self.navigation_enter_study(&ctx),
+            ModeSwitch::Import => {
+                if self.fics_active {
+                    self.stop_fics();
+                }
+                #[cfg(target_arch = "wasm32")]
+                ensure_imported_index();
+                self.import_input.clear();
+                self.pgn_dialog_open = true;
+                self.pgn_error = None;
+            }
+            ModeSwitch::Settings(page) => self.show_settings_page(page),
+            #[cfg(target_arch = "wasm32")]
+            ModeSwitch::Home => Self::exit_to_home(),
+        }
+    }
+
+    fn open_navigation_settings(&mut self) {
+        self.open_settings(SettingsPage::Appearance);
+        self.navigation.expanded = false;
+    }
+
     fn navigation_shortcut(&mut self,ui:&mut egui::Ui,index:usize)->egui::Response {
         let enabled=match index {
-            1=>!self.training_live()&&!(self.fics_active&&self.fics_playing),
-            2=>self.navigation_library_enabled(),3|7=>self.navigation_puzzles_enabled(),
+            3|7=>self.navigation_puzzles_enabled(),
             4=>!self.fics_active||self.fics_game_finished,_=>true,
-        };
-        let selected=match index {0=>self.new_game_dialog_open,7=>ui.ctx().data(|d|d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false),_=>false};
+        } || (matches!(index, 3 | 7) && self.playing_game_before_mode_switch());
+        let selected = index == 7 && ui.ctx().data(|d| d.get_temp::<bool>(egui::Id::new("study_window_open"))).unwrap_or(false);
         let response=ui.add_enabled_ui(enabled,|ui|icon(ui,[7,9,2,1,8,10,11,12][index],SHORTCUTS[index],selected)).inner;
         if response.clicked() {
-            let ctx=ui.ctx().clone();
             match index {
-                0=>{self.navigation.section=0;self.navigation_new_game(false);}
-                1=>{self.navigation.section=1;self.navigation_open_analysis(&ctx);}
-                2=>{self.navigation.section=3;self.navigation_open_library();}
-                3=>{self.navigation.section=2;ctx.data_mut(|d|{d.insert_temp(egui::Id::new("puzzles_open"),true);d.insert_temp(egui::Id::new("navigation_action_selected"),"Lichess puzzles".to_owned());});}
+                3 => self.request_mode_switch(ModeSwitch::Puzzles),
                 4=>self.save_current_game(),
                 5=>{self.open_lichess_history();}
-                6=>self.open_board_theme_dialog(),
-                7=>{self.navigation_enter_study(&ctx);ctx.data_mut(|d|d.insert_temp(egui::Id::new("navigation_action_selected"),"Study".to_owned()));}
+                7 => self.request_mode_switch(ModeSwitch::Study),
                 _=>{}
             }
         }
@@ -203,31 +277,34 @@ impl ChessApp {
         let c=gear.rect.center();let color=Color32::from_rgb(215,185,121);let stroke=Stroke::new(1.5,color);
         ui.painter().circle_stroke(c,6.0,stroke);ui.painter().circle_stroke(c,2.5,stroke);
         for n in 0..8 {let v=Vec2::angled(n as f32*std::f32::consts::TAU/8.0);ui.painter().line_segment([c+v*6.0,c+v*9.0],stroke);}
-        let before=self.navigation.shortcuts.clone();
-        let popup=egui::Popup::menu(&gear).close_behavior(egui::containers::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
-            Self::stable_panel_button_style(ui);
-            ui.label("Show shortcuts · change order");ui.separator();
-            let order=self.navigation.shortcuts.order;
-            let mut swap=None;
-            for (position,&index) in order.iter().enumerate() {
-                ui.horizontal(|ui| {
-                    ui.allocate_ui_with_layout(Vec2::new(170.0,30.0),Layout::left_to_right(Align::Center),|ui| {
-                        ui.set_min_width(170.0);
-                        ui.checkbox(&mut self.navigation.shortcuts.enabled[index],SHORTCUTS[index]);
-                    });
-                    if ui.add_enabled(position>0,egui::Button::new("Up")).clicked(){swap=Some((position,position-1));}
-                    if ui.add_enabled(position<7,egui::Button::new("Down")).clicked(){swap=Some((position,position+1));}
+        if gear.clicked() { self.open_settings(SettingsPage::QuickAccess); }
+        gear.clicked()
+    }
+
+    pub(super) fn quick_access_settings(&mut self, ui: &mut egui::Ui) {
+        let before = self.navigation.shortcuts.clone();
+        Self::stable_panel_button_style(ui);
+        ui.label("Show shortcuts · change order");ui.separator();
+        let order: Vec<_> = self.navigation.shortcuts.order.into_iter().enumerate()
+            .filter(|(_, index)| QUICK_ACCESS_INDICES.contains(index)).collect();
+        let mut swap=None;
+        for (position, &(_, index)) in order.iter().enumerate() {
+            ui.horizontal(|ui| {
+                ui.allocate_ui_with_layout(Vec2::new(170.0,30.0),Layout::left_to_right(Align::Center),|ui| {
+                    ui.set_min_width(170.0);
+                    ui.checkbox(&mut self.navigation.shortcuts.enabled[index],SHORTCUTS[index]);
                 });
-            }
-            if let Some((a,b))=swap {self.navigation.shortcuts.order.swap(a,b);}
-        });
+                if ui.add_enabled(position>0,egui::Button::new("Up")).clicked(){swap=Some((position,position-1));}
+                if ui.add_enabled(position+1<order.len(),egui::Button::new("Down")).clicked(){swap=Some((position,position+1));}
+            });
+        }
+        if let Some((a,b))=swap {self.navigation.shortcuts.order.swap(order[a].0,order[b].0);}
         if before!=self.navigation.shortcuts {
             #[cfg(target_arch="wasm32")]
             if let Some(storage)=web_sys::window().and_then(|w|w.local_storage().ok().flatten()) {
                 if let Ok(json)=serde_json::to_string(&self.navigation.shortcuts){let _=storage.set_item(SHORTCUT_KEY,&json);}
             }
         }
-        popup.is_some()
     }
     pub(super) fn navigation_action(
         ui: &mut egui::Ui,
@@ -305,16 +382,8 @@ impl ChessApp {
             self.navigation.shortcuts_loaded=true;
         }
         let ctx = root_ui.ctx().clone();
-        let now = ctx.input(|i| i.time);
-        // The release frame produces the click after the last finger has lifted.
-        let touch = ctx.input(|i| {
-            i.any_touches()
-                || i.events
-                    .iter()
-                    .any(|event| matches!(event, egui::Event::Touch { .. }))
-        });
-        let mut focused = false;
-        let mut rail_toggle = false;
+        let active_mode = self.active_mode_index(&ctx);
+        let mut open_settings = false;
         let mut shortcut_popup_open=false;
         let rail = egui::Panel::left("navigation_rail")
             .resizable(false)
@@ -339,31 +408,44 @@ impl ChessApp {
                     .id_salt("navigation_rail_scroll")
                     .max_height((ui.available_height()-48.0).max(40.0))
                     .show(ui, |ui| {
-                        let toggle = icon(
-                            ui,
-                            6,
-                            "Expand or collapse navigation",
-                            self.navigation.expanded,
-                        );
-                        focused |= toggle.has_focus();
-                        rail_toggle = toggle.clicked();
-                        ui.separator();
                         for (index, label) in SECTIONS.iter().enumerate() {
-                            let response = icon(ui, [0, 9, 1, 2, 3, 4, 5][index], label, self.navigation.section == index);
-                            focused |= response.has_focus();
+                            let response = icon(ui, [0, 9, 1, 2, 3, 4, 5][index], label, active_mode == index);
                             if response.clicked() {
+                                if index == 1 {
+                                    self.request_mode_switch(ModeSwitch::Analysis);
+                                    continue;
+                                }
+                                if index == 3 {
+                                    self.request_mode_switch(ModeSwitch::Library);
+                                    continue;
+                                }
+                                if index == SETTINGS_SECTION {
+                                    open_settings = true;
+                                    continue;
+                                }
+                                self.navigation.expanded =
+                                    !self.navigation.expanded || self.navigation.section != index;
                                 self.navigation.section = index;
-                                self.navigation.expanded = true;
-                                self.navigation.suppress_hover = false;
-                                self.navigation.touch_open = touch;
-                                self.navigation.last_inside = now;
+                            }
+                            if index == 0 {
+                                self.navigation_shortcut(ui, 4);
+                            }
+                        }
+                        if icon(ui, 13, "Import games", false).clicked() {
+                            self.request_mode_switch(ModeSwitch::Import);
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let exit = icon(ui, 6, "Exit to home", false);
+                            if exit.clicked() {
+                                self.request_mode_switch(ModeSwitch::Home);
                             }
                         }
                         ui.separator();
-                        let config=self.navigation.shortcuts.clone();
+                        let config = self.navigation.shortcuts.clone();
                         for index in config.order {
-                            if config.enabled[index] {
-                                focused |= self.navigation_shortcut(ui,index).has_focus();
+                            if QUICK_ACCESS_INDICES.contains(&index) && config.enabled[index] {
+                                self.navigation_shortcut(ui, index);
                             }
                         }
                     });
@@ -373,42 +455,13 @@ impl ChessApp {
             .response
             .rect;
 
-        if ctx.input(|i| {
-            i.events
-                .iter()
-                .any(|event| matches!(event, egui::Event::Key { pressed: true, .. }))
-        }) {
-            self.navigation.keyboard = true;
+        if open_settings {
+            self.open_navigation_settings();
         }
-        if ctx.input(|i| i.pointer.any_pressed()) {
-            self.navigation.keyboard = false;
-        }
-        let pointer = ctx.input(|i| i.pointer.hover_pos());
-        let in_rail = !touch && pointer.is_some_and(|p| rail.contains(p));
-        if !in_rail {
-            self.navigation.suppress_hover = false;
-        }
-        if rail_toggle {
-            self.navigation.expanded = !self.navigation.expanded;
-            self.navigation.touch_open = touch && self.navigation.expanded;
-            self.navigation.last_inside = now;
-            self.navigation.suppress_hover = !self.navigation.expanded;
-            if !self.navigation.expanded {
-                self.navigation.pinned = false;
-            }
-        } else if (in_rail && !self.navigation.suppress_hover && !shortcut_popup_open)
-            || (focused && self.navigation.keyboard)
-        {
-            self.navigation.expanded = true;
-            if in_rail {
-                self.navigation.touch_open = false;
-            }
-        }
-        if self.new_game_dialog_open {
+        let attached = self.new_game_dialog_open && self.navigation.game_setup_attached;
+        if (self.new_game_dialog_open && !attached) || self.settings.open || shortcut_popup_open {
             self.navigation.expanded = false;
         }
-        if shortcut_popup_open { self.navigation.expanded=false; }
-        let mut inside = in_rail;
         if self.navigation.expanded {
             let width = DRAWER_WIDTH.min((ctx.content_rect().width() - RAIL_WIDTH).max(180.0));
             let area = egui::Area::new(egui::Id::new("navigation_drawer"))
@@ -422,40 +475,25 @@ impl ChessApp {
                         Stroke::new(1.0, Color32::from_rgb(223, 190, 119));
                     Frame::new()
                         .fill(Color32::from_rgb(19, 24, 28))
-                        .stroke(Stroke::new(1.0, Color32::from_rgb(65, 69, 65)))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
                         .inner_margin(Margin::same(12))
                         .show(ui, |ui| {
-                            ui.set_width(width - 24.0);
+                            ui.set_width(width - 26.0);
                             ui.set_min_height((rail.height() - 24.0).max(120.0));
-                            let surface = egui::Rect::from_min_size(ui.min_rect().min, Vec2::new(width - 24.0, (rail.height() - 24.0).max(120.0))).expand(12.0);
+                            let surface = egui::Rect::from_min_size(ui.min_rect().min, Vec2::new(width - 26.0, (rail.height() - 24.0).max(120.0))).expand(12.0);
                             let grain = Self::paper_grain_texture(ui.ctx());
                             ui.painter().with_clip_rect(surface).image(grain.id(), surface,
                                 egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(surface.width() / 256.0, surface.height() / 256.0)),
                                 Color32::from_white_alpha(90));
-                            ui.horizontal(|ui| {
-                                ui.strong("Navigation");
-                                let pin = ui
-                                    .selectable_label(self.navigation.pinned, "Pin")
-                                    .on_hover_text("Keep navigation expanded");
-                                focused |= pin.has_focus();
-                                if pin.clicked() {
-                                    self.navigation.pinned = !self.navigation.pinned;
-                                }
-                                let close = ui.button("Close");
-                                focused |= close.has_focus();
-                                if close.clicked() {
-                                    self.navigation.expanded = false;
-                                    self.navigation.pinned = false;
-                                    self.navigation.suppress_hover = true;
-                                }
-                            });
-                            ui.separator();
                             egui::ScrollArea::vertical()
                                 .id_salt("navigation_drawer_scroll")
-                                .max_height((rail.height() - 80.0).max(120.0))
+                                .max_height((rail.height() - 26.0).max(120.0))
                                 .show(ui, |ui| {
                                     ui.style_mut().spacing.interact_size.y = 36.0;
                                     for (index, label) in SECTIONS.iter().enumerate() {
+                                        if index != self.navigation.section {
+                                            continue;
+                                        }
                                         let response = ui.add_sized(
                                             [ui.available_width(), 36.0],
                                             egui::Button::new("")
@@ -463,18 +501,19 @@ impl ChessApp {
                                                 .frame(false)
                                                 .selected(self.navigation.section == index),
                                         );
-                                        focused |= response.has_focus();
                                         if response.clicked() {
-                                            self.navigation.section = index;
+                                            if index == SETTINGS_SECTION {
+                                                self.open_navigation_settings();
+                                            } else {
+                                                self.navigation.section = index;
+                                            }
                                         }
                                         if self.navigation.section == index {
                                             ui.indent(index, |ui| {
                                                 ui.vertical(|ui| match index {
                                                     0 => self.navigation_play(ui),
-                                                    1 => self.navigation_analysis(ui),
                                                     2 => self.navigation_training(ui),
-                                                    3 => self.navigation_library(ui),
-                                                    4 => self.navigation_settings(ui),
+                                                    1 | 3 | SETTINGS_SECTION => {},
                                                     5 => self.navigation_tools(ui),
                                                     _ => self.navigation_help(ui),
                                                 });
@@ -484,53 +523,88 @@ impl ChessApp {
                                 });
                         });
                 });
-            inside |= !touch && pointer.is_some_and(|p| area.response.rect.contains(p));
-            // Descendant controls retain keyboard focus while the pointer is elsewhere.
-            focused |= self.navigation.keyboard
-                && ctx.memory(|m| m.focused()).is_some_and(|id| {
-                    ctx.read_response(id)
-                        .is_some_and(|r| area.response.rect.contains(r.rect.center()))
-                });
-            if ctx.input(|i| i.key_pressed(egui::Key::Escape))
-                || (!self.navigation.pinned
-                    && ctx.input(|i| i.pointer.any_pressed())
-                    && !pointer.is_some_and(|p| rail.contains(p) || area.response.rect.contains(p)))
-            {
+            let setup = if attached {
+                ctx.memory(|memory| memory.area_rect(egui::Id::new("new_game_window")))
+            } else {
+                None
+            };
+            if ctx.input(|input| {
+                input.key_pressed(egui::Key::Escape)
+                    || (input.pointer.any_pressed()
+                        && input.pointer.interact_pos().is_some_and(|pos| {
+                            !rail.contains(pos) && !area.response.rect.contains(pos)
+                                && !setup.is_some_and(|rect| rect.contains(pos))
+                        }))
+            }) {
                 self.navigation.expanded = false;
-                self.navigation.pinned = false;
-                self.navigation.suppress_hover = true;
-                if let Some(id) = ctx.memory(|m| m.focused()) {
-                    ctx.memory_mut(|m| m.surrender_focus(id));
-                }
             }
-        }
-        if inside || (focused && self.navigation.keyboard) {
-            self.navigation.last_inside = now;
-        }
-        if self
-            .navigation
-            .should_collapse(now, inside, focused && self.navigation.keyboard)
-        {
-            self.navigation.expanded = false;
         }
         if ctx
             .data_mut(|d| d.remove_temp::<String>(egui::Id::new("navigation_action_selected")))
             .is_some()
+            && !(self.new_game_dialog_open && self.navigation.game_setup_attached)
         {
             self.navigation.expanded = false;
-            self.navigation.suppress_hover = true;
-            self.navigation.touch_open = false;
         }
-        if self.navigation.expanded
-            && !inside
-            && !self.navigation.pinned
-            && !self.navigation.touch_open
-        {
-            ctx.request_repaint_after(std::time::Duration::from_millis(260));
+        if self.navigation.waiting_for_resignation && !self.playing_game_before_mode_switch() {
+            self.navigation.waiting_for_resignation = false;
+            if let Some(destination) = self.navigation.pending_switch.take() {
+                self.enter_mode(destination);
+            }
+        }
+        if let Some(destination) = self.navigation.pending_switch {
+            let waiting = self.navigation.waiting_for_resignation;
+            let warning = egui::Modal::new(egui::Id::new("resign_before_mode_switch"))
+                .frame(Self::dialog_frame())
+                .show(&ctx, |ui| {
+                    ui.set_width(ui.ctx().content_rect().width().min(424.0).max(80.0) - 40.0);
+                    let gold = Color32::from_rgb(215, 185, 121);
+                    ui.label(RichText::new("GAME IN PROGRESS").small().strong().color(gold));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("Finish your game first").size(22.0).strong());
+                    ui.add_space(10.0);
+                    Self::textured_sunken_section(ui, true, |ui| {
+                        ui.label(if waiting {
+                            "Waiting for the game server to confirm your resignation."
+                        } else {
+                            "Resign the current game before switching modes."
+                        });
+                    });
+                    ui.add_space(14.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let stay = ui.button("Return to game").clicked();
+                        let switch = ui.add_enabled(
+                            !waiting,
+                            egui::Button::new(
+                                RichText::new("Resign and switch modes").strong()
+                                    .color(Color32::from_rgb(24, 27, 31)),
+                            )
+                            .fill(gold)
+                            .corner_radius(6.0)
+                            .min_size(Vec2::new(130.0, 36.0)),
+                        ).clicked();
+                        (stay, switch)
+                    }).inner
+                });
+            let (stay, switch) = warning.inner;
+            if switch {
+                if self.playing_game_before_mode_switch() {
+                    self.resign_current_game();
+                }
+                if self.playing_game_before_mode_switch() {
+                    self.navigation.waiting_for_resignation = true;
+                } else {
+                    self.navigation.pending_switch = None;
+                    self.enter_mode(destination);
+                }
+            } else if stay || warning.should_close() {
+                self.navigation.pending_switch = None;
+                self.navigation.waiting_for_resignation = false;
+            }
         }
     }
-
     pub(super) fn navigation_new_game(&mut self, both_sides: bool) {
+        self.navigation.game_setup_attached = false;
         self.puzzle_context.data_mut(|d| {
             d.insert_temp(
                 egui::Id::new("navigation_action_selected"),
@@ -611,25 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn hover_exit_has_grace_period_and_respects_pin_and_focus() {
-        let mut state = NavigationState {
-            expanded: true,
-            last_inside: 1.0,
-            ..Default::default()
-        };
-        assert!(!state.should_collapse(1.1, false, false));
-        assert!(state.should_collapse(1.3, false, false));
-        assert!(!state.should_collapse(1.3, true, false));
-        assert!(!state.should_collapse(1.3, false, true));
-        state.pinned = true;
-        assert!(!state.should_collapse(10.0, false, false));
-        state.pinned = false;
-        state.touch_open = true;
-        assert!(!state.should_collapse(10.0, false, false));
-    }
-
-    #[test]
-    fn drawer_hover_and_pin_never_change_board_space() {
+    fn drawer_hover_stays_closed_and_never_changes_board_space() {
         for width in [320.0, 768.0, 1440.0] {
             let ctx = egui::Context::default();
             let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
@@ -640,12 +696,6 @@ mod tests {
                 } else {
                     egui::pos2(-10.0, 650.0)
                 };
-                if frame == 3 {
-                    app.navigation.pinned = true;
-                }
-                if frame == 5 {
-                    app.navigation.pinned = false;
-                }
                 let mut output = ctx.run_ui(
                     egui::RawInput {
                         screen_rect: Some(egui::Rect::from_min_size(
@@ -672,7 +722,7 @@ mod tests {
                 output.textures_delta.clear();
                 assert_eq!(
                     app.navigation.expanded,
-                    (1..=4).contains(&frame),
+                    false,
                     "Unexpected drawer state at frame {frame}, width {width}"
                 );
             }
@@ -680,7 +730,7 @@ mod tests {
     }
 
     #[test]
-    fn touch_toggle_stays_open_after_finger_release_and_dismisses_outside() {
+    fn touch_play_stays_open_after_finger_release_and_dismisses_outside() {
         let ctx = egui::Context::default();
         let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
         let pos = egui::pos2(25.0, 25.0);
@@ -749,7 +799,7 @@ mod tests {
     }
 
     #[test]
-    fn keyboard_focus_opens_navigation_and_escape_keeps_it_closed() {
+    fn keyboard_focus_does_not_open_navigation() {
         let ctx = egui::Context::default();
         let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
         for frame in 0..6 {
@@ -782,7 +832,7 @@ mod tests {
             );
             output.textures_delta.clear();
             if frame == 2 {
-                assert!(app.navigation.expanded);
+                assert!(!app.navigation.expanded);
             }
             if frame >= 3 {
                 assert!(

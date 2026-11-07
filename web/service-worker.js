@@ -50,6 +50,8 @@ const SHELL_URLS = [
   '/open-source-notices.html',
   '/404.html',
   '/landing.css',
+  '/home.css',
+  '/home.js',
   '/styles.css',
   '/site.css',
   '/pwa.js',

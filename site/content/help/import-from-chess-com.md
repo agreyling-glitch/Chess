@@ -7,7 +7,7 @@ weight: 19
 lastmod: 2026-11-05T00:00:00-06:00
 ---
 
-Open **Game library → Import…**, or **Manage library → Import games…** in Saved Games, and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
+Open **Import games**, or **Manage library → Import games…** in Saved Games, and select **Chess.com**. Enter a Chess.com username and click the gold **Fetch games** button. Status messages appear below the input. No login or API token is required; fetching needs an internet connection.
 
 Enter just the username, such as `hikaru`, rather than a profile URL. **Recent usernames** lets you reuse the last 20 distinct usernames submitted with Fetch. The newest is first; using a name again moves it to the top. The list stays in this browser on this device and is separate from Lichess history.
 

@@ -277,6 +277,10 @@ extern "C" {
     fn initialize_companion_engine(worker: &web_sys::Worker, init: &JsValue, identity: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodManageCompanionConnection)]
     fn manage_companion_connection();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLayoutCompanionSettings)]
+    fn layout_companion_settings(visible: bool, x: f32, y: f32, width: f32, height: f32);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRegisterCompanionSettings)]
+    fn register_companion_settings(callback: &wasm_bindgen::JsValue);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionPollChange)]
     fn companion_engine_change() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodCompanionSetAllowed)]
@@ -448,7 +452,7 @@ extern "C" {
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPollPositionEditor)]
     fn poll_position_editor() -> String;
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodPlayChessSound)]
-    fn play_chess_sound(kind: &str);
+    fn play_chess_sound(kind: &str, style: &str, volume: f32, octave: f32, decay: f32);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodStoreCurrentGame)]
     fn store_current_game(json: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodBeginSaveConfirmation)]
@@ -501,10 +505,10 @@ extern "C" {
     fn open_game_library();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTakeImportGames)]
     fn take_import_games() -> bool;
-    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenHistoryBackup)]
-    fn open_history_backup();
-    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodOpenStorageInfo)]
-    fn open_storage_info();
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLayoutHistoryBackup)]
+    fn layout_history_backup(visible: bool, x: f32, y: f32, width: f32, height: f32);
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodLayoutStorageInfo)]
+    fn layout_storage_info(visible: bool, x: f32, y: f32, width: f32, height: f32);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodClearSavedGames)]
     fn clear_saved_games();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodResetLocalData)]
@@ -563,6 +567,7 @@ extern "C" {
 
 include!("lichess_ui.rs");
 include!("theme_adjustments_ui.rs");
+include!("settings_ui.rs");
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 #[derive(Deserialize)]
@@ -1746,9 +1751,46 @@ struct PersistedGame {
     verification_time_ms: u64,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum BalanceBarLocation {
+    Left,
+    #[default]
+    Right,
+    AnalysisPanel,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum MoveSoundStyle {
+    #[default]
+    Classic,
+    Wood,
+    Glass,
+    Soft,
+    BoardTap,
+}
+
+impl MoveSoundStyle {
+    const ALL: [Self; 5] = [Self::Classic, Self::Wood, Self::Glass, Self::Soft, Self::BoardTap];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Classic => "Classic",
+            Self::Wood => "Wood",
+            Self::Glass => "Glass",
+            Self::Soft => "Soft",
+            Self::BoardTap => "Board tap",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 struct UserPreferences {
+    move_sound_style: MoveSoundStyle,
+    move_sound_volume: u8,
+    board_tap_octave: f32,
+    board_tap_decay: u16,
+    balance_bar_location: BalanceBarLocation,
     engine_uci_preferences: std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>,
     engine_verification_preferences: std::collections::BTreeMap<String, bool>,
     engine_full_game_preferences: std::collections::BTreeMap<String, FullGameAnalysisConfig>,
@@ -1785,6 +1827,11 @@ struct UserPreferences {
 impl Default for UserPreferences {
     fn default() -> Self {
         Self {
+            move_sound_style: MoveSoundStyle::default(),
+            move_sound_volume: 100,
+            board_tap_octave: -1.0,
+            board_tap_decay: 100,
+            balance_bar_location: BalanceBarLocation::default(),
             engine_uci_preferences: Default::default(),
             engine_verification_preferences: Default::default(),
             engine_full_game_preferences: Default::default(),
@@ -1821,6 +1868,11 @@ impl Default for UserPreferences {
 impl UserPreferences {
     fn from_game(game: &PersistedGame) -> Self {
         Self {
+            move_sound_style: MoveSoundStyle::default(),
+            move_sound_volume: 100,
+            board_tap_octave: -1.0,
+            board_tap_decay: 100,
+            balance_bar_location: BalanceBarLocation::default(),
             engine_uci_preferences: Default::default(),
             engine_verification_preferences: Default::default(),
             engine_full_game_preferences: Default::default(),
@@ -1872,7 +1924,20 @@ struct PredictionWindow {
     selected: Option<usize>,
 }
 
+#[cfg(target_arch = "wasm32")]
+struct ClockedSearch {
+    board: Board,
+    deadline: f64,
+    stop_sent: bool,
+    retried: bool,
+}
+
 pub struct ChessApp {
+    move_sound_style: MoveSoundStyle,
+    move_sound_volume: u8,
+    board_tap_octave: f32,
+    board_tap_decay: u16,
+    balance_bar_location: BalanceBarLocation,
     navigation: navigation::NavigationState,
     puzzle_context: egui::Context,
     highlight_checked_king: bool,
@@ -1924,7 +1989,6 @@ pub struct ChessApp {
     piece_appearance: crate::board3d::PieceAppearance,
     theme_adjustments: std::collections::BTreeMap<String, crate::board3d::PieceAppearance>,
     adjustment_theme_key: String,
-    theme_adjustments_open: bool,
     show_best_move_arrows: bool,
     show_prediction_best_move: bool,
     show_saved_comparison: bool,
@@ -2010,6 +2074,8 @@ pub struct ChessApp {
     local_start_ply: usize,
     transient_profile_review: bool,
     engine_searching: bool,
+    #[cfg(target_arch = "wasm32")]
+    clocked_search: Option<ClockedSearch>,
     engine_status: String,
     engine_progress: Option<(f32, String)>,
     engine_config: EngineConfig,
@@ -2026,7 +2092,7 @@ pub struct ChessApp {
     uci_draft_values: std::collections::BTreeMap<String, String>,
     uci_settings_error: String,
     engine_settings_tab: EngineSettingsTab,
-    strength_dialog_open: bool,
+    engine_settings_draft_ready: bool,
     about_dialog_open: bool,
     elo_calculator_open: bool,
     elo_your_rating: i32,
@@ -2066,6 +2132,7 @@ pub struct ChessApp {
     pgn_error: Option<String>,
     print_confirm_open: bool,
     background_dialog_open: bool,
+    settings: SettingsPanel,
     board_theme_open: bool,
     board_theme_3d_tab: bool,
     expanded_graph_open: bool,
@@ -2143,6 +2210,36 @@ pub struct ChessApp {
 }
 
 impl ChessApp {
+    fn resign_current_game(&mut self) {
+        if self.fics_active {
+            #[cfg(target_arch = "wasm32")]
+            {
+                if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"resign"})); }
+                else { fics_send("resign"); }
+            }
+            self.fics_status = "Resignation sent…".into();
+        } else {
+            self.local_resigned_white = Some(if self.engine_enabled {
+                self.player_side == PlayerSide::White
+            } else {
+                self.board.side_to_move() == Color::White
+            });
+            #[cfg(target_arch = "wasm32")]
+            self.stop_analysis();
+            #[cfg(target_arch = "wasm32")]
+            if let Some(engine) = &self.engine {
+                engine.command("stop");
+            }
+            self.engine_searching = false;
+            self.resume_engine_after_ready = false;
+            self.selected = None;
+            self.legal_targets.clear();
+            self.promotion = None;
+            self.engine_status = "Game ended by resignation".into();
+            self.save_game();
+        }
+    }
+
     fn board_game_actions_available(&self) -> bool {
         if self.fics_active {
             return self.fics_playing && !self.fics_observing && !self.fics_game_finished;
@@ -2453,8 +2550,19 @@ impl ChessApp {
             } else {
                 "move"
             };
-            play_chess_sound(sound);
+            self.play_move_sound(sound);
         }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn play_move_sound(&self, kind: &str) {
+        play_chess_sound(
+            kind,
+            self.move_sound_style.label(),
+            f32::from(self.move_sound_volume) / 100.0,
+            self.board_tap_octave,
+            f32::from(self.board_tap_decay) / 100.0,
+        );
     }
 
     fn show_observed_game(&mut self, game: i32) {
@@ -3115,6 +3223,15 @@ impl ChessApp {
     }
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        if !companion_mode() {
+            let ctx = cc.egui_ctx.clone();
+            let open = Closure::<dyn FnMut()>::new(move || {
+                ctx.data_mut(|data| data.insert_temp(egui::Id::new("open_companion_settings"), true));
+                ctx.request_repaint();
+            });
+            register_companion_settings(&open.into_js_value());
+        }
         egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style_of(cc.egui_ctx.theme())).clone();
         style.visuals.panel_fill = Color32::from_rgb(17, 20, 24);
@@ -3332,11 +3449,6 @@ impl ChessApp {
         let analysis_draft = analysis_config.clone();
         let full_game_analysis_draft = full_game_analysis_config.clone();
         let verification_draft = Self::verification_preference(&preferences.engine_verification_preferences, &analysis_config);
-        Self::set_page_title(
-            review_index.is_some(),
-            &review_white_player,
-            &review_black_player,
-        );
 
         #[allow(unused_mut)]
         let (training_profiles, training_error) = match Self::read_training_profiles() {
@@ -3393,13 +3505,17 @@ impl ChessApp {
             piece_appearance: preferences.theme_adjustments.get(&theme_adjustment_key(preferences.board_3d_active,preferences.piece_set,preferences.board_3d_theme)).copied().unwrap_or_else(|| if preferences.theme_adjustments.is_empty() { preferences.piece_appearance } else { Default::default() }).normalized(),
             adjustment_theme_key: theme_adjustment_key(preferences.board_3d_active,preferences.piece_set,preferences.board_3d_theme),
             theme_adjustments: preferences.theme_adjustments.clone(),
-            theme_adjustments_open: false,
             show_best_move_arrows,
             show_prediction_best_move,
             show_saved_comparison,
+            balance_bar_location: preferences.balance_bar_location,
             show_move_hover_text,
             figurine_notation,
             move_sounds,
+            move_sound_style: preferences.move_sound_style,
+            move_sound_volume: preferences.move_sound_volume.min(100),
+            board_tap_octave: preferences.board_tap_octave.clamp(-2.0, 1.0),
+            board_tap_decay: preferences.board_tap_decay.clamp(25, 300),
             animate_moves,
             move_animation: None,
             animate_captures,
@@ -3492,6 +3608,8 @@ impl ChessApp {
                     clock
                 }),
             engine_searching: false,
+            #[cfg(target_arch = "wasm32")]
+            clocked_search: None,
             engine_status: "Stockfish starts when needed".into(),
             engine_progress: None,
             engine_config: engine_config.clone(),
@@ -3508,7 +3626,7 @@ impl ChessApp {
             uci_draft_values: Default::default(),
             uci_settings_error: String::new(),
             engine_settings_tab: EngineSettingsTab::Play,
-            strength_dialog_open: false,
+            engine_settings_draft_ready: false,
             about_dialog_open: false,
             elo_calculator_open: false,
             elo_your_rating: 1200,
@@ -3551,6 +3669,7 @@ impl ChessApp {
             pgn_error: None,
             print_confirm_open: false,
             background_dialog_open: false,
+            settings: SettingsPanel::default(),
             board_theme_open: false,
             board_theme_3d_tab: false,
             expanded_graph_open: false,
@@ -3925,20 +4044,78 @@ impl ChessApp {
         ui.style_mut().spacing.button_padding.y = 2.0;
     }
 
-    #[cfg(target_arch = "wasm32")]
-    fn set_page_title(analyzing: bool, white: &str, black: &str) {
-        if let Some(document) = web_sys::window().and_then(|window| window.document()) {
-            let title = if analyzing {
-                format!("Analyze — {white} vs {black} — Ironwood Chess")
-            } else {
-                "Play — Ironwood Chess".to_owned()
-            };
-            document.set_title(&title);
+    fn analysis_workspace_active(&self, ctx: &egui::Context) -> bool {
+        ctx.data(|data| data.get_temp::<bool>(egui::Id::new("analysis_workspace")) == Some(true))
+            || self.review_index.is_some_and(|index| {
+                !self.pgn_input.is_empty() || index + 1 < self.review_positions.len()
+            })
+    }
+
+    fn active_mode_index(&self, ctx: &egui::Context) -> usize {
+        #[cfg(target_arch = "wasm32")]
+        let library_open = web_sys::window().and_then(|window| window.document())
+                .and_then(|document| document.get_element_by_id("game-library-dialog"))
+                .is_some_and(|dialog| dialog.has_attribute("open"));
+        #[cfg(not(target_arch = "wasm32"))]
+        let library_open = false;
+        if library_open {
+            ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        }
+        let study_open = ctx.data(|data| {
+            data.get_temp::<bool>(egui::Id::new("study_window_open")) == Some(true)
+        });
+        if self.settings.open {
+            4
+        } else if library_open {
+            3
+        } else if self.new_game_dialog_open {
+            0
+        } else if self.training_dialog_open || self.training_live() || self.puzzle_mode() || study_open {
+            2
+        } else if self.analysis_workspace_active(ctx) {
+            1
+        } else {
+            0
         }
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    fn set_page_title(_analyzing: bool, _white: &str, _black: &str) {}
+    #[cfg(target_arch = "wasm32")]
+    fn update_page_title(&self, ctx: &egui::Context, status_dock_top: f32) {
+        if let Some(document) = web_sys::window().and_then(|window| window.document()) {
+            if let Ok(Some(panel)) = document.query_selector(
+                "#game-library-dialog.docked[open], #ironwood-scoresheet[open], #ironwood-position-editor[open]",
+            ) {
+                let screen = ctx.content_rect();
+                let zoom = ctx.zoom_factor();
+                let rail = if screen.width() < 600.0 { 0.0 } else { navigation::RAIL_WIDTH };
+                let style = format!(
+                    "--library-left:{}px;--library-top:{}px;--library-height:{}px",
+                    (screen.left() + rail) * zoom,
+                    screen.top() * zoom,
+                    (status_dock_top - screen.top()) * zoom,
+                );
+                let current = panel.get_attribute("style").unwrap_or_default();
+                if !current.ends_with(&style) {
+                    let original = current.split(";--library-left:").next().unwrap_or_default();
+                    let _ = panel.set_attribute("style", &format!("{original};{style}"));
+                }
+            }
+            let mode = ["Play", "Analysis", "Training", "Game Library", "Settings"][self.active_mode_index(ctx)];
+            let title = format!("{mode} — Ironwood Chess");
+            let previous_mode = ctx.data_mut(|data| {
+                let id = egui::Id::new("browser_title_mode");
+                let previous = data.get_temp::<&'static str>(id);
+                data.insert_temp(id, mode);
+                previous
+            });
+            if self.move_sounds && previous_mode.is_some_and(|previous| previous != mode) {
+                play_chess_sound("mode", "Classic", f32::from(self.move_sound_volume) / 100.0, 0.0, 1.0);
+            }
+            if document.title() != title {
+                document.set_title(&title);
+            }
+        }
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn engine_thread_count() -> u32 {
@@ -4032,18 +4209,34 @@ impl ChessApp {
         close
     }
 
-    fn elo_calculator_dialog(&mut self, ctx: &egui::Context) {
+    fn elo_calculator_dialog(&mut self, ctx: &egui::Context, status_dock_top: f32) {
         if !self.elo_calculator_open {
             return;
         }
         let mut close = false;
-        let width = (ctx.content_rect().width() - 64.0).clamp(280.0, 540.0);
-        let response = egui::Modal::new(egui::Id::new("elo_calculator"))
-            .frame(Self::dialog_frame())
+        let screen = ctx.content_rect();
+        let left = screen.left() + if screen.width() < 600.0 { 0.0 } else { navigation::RAIL_WIDTH };
+        let size = Vec2::new((screen.right() - left).min(580.0), status_dock_top - screen.top());
+        let id = egui::Id::new("elo_calculator");
+        let area = egui::Area::new(id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(left, screen.top()))
+            .default_size(size)
+            .movable(false);
+        let frame = Self::dialog_frame()
+            .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
+            .corner_radius(CornerRadius::ZERO);
+        let content_size = size - frame.total_margin().sum();
+        let response = egui::Modal::new(id)
+            .area(area)
+            .frame(frame)
+            .backdrop_color(Color32::TRANSPARENT)
             .show(ctx, |ui| {
-                ui.set_width(width);
+                ui.set_min_size(content_size);
+                ui.set_max_size(content_size);
                 let grain_background = ui.painter().add(egui::Shape::Noop);
                 close = Self::dialog_header(ui, "Elo calculator");
+                egui::ScrollArea::vertical().show(ui, |ui| {
                 let gold = Color32::from_rgb(211, 173, 98);
                 let muted = Color32::from_rgb(164, 171, 180);
                 ui.spacing_mut().item_spacing = Vec2::new(12.0, 12.0);
@@ -4162,6 +4355,7 @@ impl ChessApp {
                 } else {
                     ui.label(RichText::new("Illustrative Elo estimate only. Chess.com and Lichess use Glicko-based systems, so actual changes depend on rating uncertainty and may differ.").small().weak());
                 }
+                });
                 let paper = Self::paper_grain_texture(ctx);
                 let surface = ui.min_rect().expand(6.0);
                 ui.painter().set(grain_background, egui::Shape::image(paper.id(), surface,
@@ -4574,7 +4768,7 @@ impl ChessApp {
         section
     }
 
-    fn pgn_dialog(&mut self, ctx: &egui::Context) {
+    fn pgn_dialog(&mut self, ctx: &egui::Context, status_dock_top: f32) {
         if !self.pgn_dialog_open { return; }
         #[cfg(target_arch = "wasm32")]
         {
@@ -4603,22 +4797,26 @@ impl ChessApp {
         }
         let mut import = false;
         let mut cancel = false;
-        let response = egui::Window::new("Import Games")
-            .id(egui::Id::new("import_pgn"))
-            .title_bar(false)
-            .drag_area(egui::WindowDrag::Anywhere)
-            .resizable(true)
-            .default_pos(egui::pos2(48.0, 48.0))
-            .default_size(Vec2::new(
-                (ctx.content_rect().width() - 72.0).clamp(240.0, 780.0),
-                (ctx.content_rect().height() - 96.0).clamp(280.0, 820.0),
-            ))
-            .min_size(Vec2::new(320.0, 360.0))
-            .max_width((ctx.content_rect().width() - 40.0).max(240.0))
-            .max_height((ctx.content_rect().height() - 40.0).max(280.0))
-            .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
-                offset: [4,6], blur: 14, spread: 2, color: Color32::from_black_alpha(160),
-            })).show(ctx, |ui| {
+        let screen = ctx.content_rect();
+        let left = screen.left() + if screen.width() < 600.0 { 0.0 } else { navigation::RAIL_WIDTH };
+        let size = Vec2::new((screen.right() - left).min(780.0), status_dock_top - screen.top());
+        let id = egui::Id::new("import_pgn");
+        let area = egui::Area::new(id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(left, screen.top()))
+            .default_size(size)
+            .movable(false);
+        let frame = Self::dialog_frame()
+            .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
+            .corner_radius(CornerRadius::ZERO);
+        let content_size = size - frame.total_margin().sum();
+        let response = egui::Modal::new(id)
+            .area(area)
+            .frame(frame)
+            .backdrop_color(Color32::TRANSPARENT)
+            .show(ctx, |ui| {
+                ui.set_min_size(content_size);
+                ui.set_max_size(content_size);
                 let outer_grain = ui.painter().add(egui::Shape::Noop);
                 let gold = Color32::from_rgb(211,173,98);
                 ui.spacing_mut().item_spacing = Vec2::new(12.0,12.0);
@@ -4878,11 +5076,8 @@ impl ChessApp {
                 #[cfg(target_arch = "wasm32")]
                 ctx.request_repaint_after(std::time::Duration::from_millis(200));
             });
-        if let Some(response) = response {
-            Self::paint_fics_window_border(&ctx.layer_painter(response.response.layer_id),response.response.rect);
-        }
         if import { self.begin_import(); }
-        else if cancel || ctx.input(|input| input.key_pressed(egui::Key::Escape)) {
+        else if cancel || response.should_close() {
             self.pgn_dialog_open = false;
             self.pgn_error = None;
         }
@@ -6493,6 +6688,7 @@ impl ChessApp {
 
     fn open_online_lobby(&mut self, lichess: bool) {
         self.new_game_dialog_open = false;
+        self.navigation.game_setup_attached = false;
         self.new_game_online = false;
         if lichess {
             // Opening the lobby must not start OAuth; its sign-in controls do that.
@@ -7448,12 +7644,17 @@ impl ChessApp {
         rect
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn background_dialog(&mut self, ctx: &egui::Context) {
-        if !self.background_dialog_open { return; }
+        if self.background_dialog_open { self.background_settings(ctx, None); }
+    }
+
+    fn background_settings(&mut self, ctx: &egui::Context, pane: Option<&mut egui::Ui>) {
+        let embedded = pane.is_some();
         let mut close = false;
         let mut changed = false;
         let mut detached = false;
-        let response = egui::Window::new("Background").id(egui::Id::new("background_window"))
+        let window = egui::Window::new("Background").id(egui::Id::new("background_window"))
             .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(true)
             .default_pos(egui::pos2(48.0,48.0)).default_size(Vec2::new(680.0,700.0))
             .min_size(Vec2::new(340.0,320.0))
@@ -7461,10 +7662,11 @@ impl ChessApp {
             .max_height((ctx.content_rect().height()-40.0).max(240.0))
             .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
                 offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160),
-            })).show(ctx, |ui| {
+            }));
+        let render = |ui: &mut egui::Ui| {
                 let outer_grain = ui.painter().add(egui::Shape::Noop);
                 Self::set_menu_item_font(ui);
-                ui.horizontal(|ui| {
+                if !embedded { ui.horizontal(|ui| {
                     ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
                         egui::Label::new(RichText::new("Background").size(21.0).strong()).selectable(false).truncate());
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -7474,6 +7676,9 @@ impl ChessApp {
                             .on_hover_text("Move Background to a separate window").clicked() { detached=open_background_companion(); }
                     });
                 });
+                }
+                #[cfg(target_arch = "wasm32")]
+                if embedded && ui.button("Open Background in a separate window").clicked() { detached = open_background_companion(); }
                 ui.label(RichText::new("Personalize the space around your board.").weak());
                 ui.add_space(16.0);
                 egui::ScrollArea::vertical().id_salt("background_settings_scroll")
@@ -7562,19 +7767,23 @@ impl ChessApp {
                     ui.add_space(12.0);
                     });
                 });
+                if !embedded {
                 ui.add_space(12.0);
                 ui.separator();
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.add(egui::Button::new(RichText::new("Done").strong().color(Color32::from_rgb(25, 29, 35)))
                         .min_size(Vec2::new(90.0, 36.0)).fill(Color32::from_rgb(211, 173, 98)).corner_radius(5.0).raised_gold()).clicked() { close = true; }
                 });
+                }
                 let paper = Self::paper_grain_texture(ui.ctx());
                 let surface = ui.min_rect().expand(12.0);
                 let grain = egui::Shape::image(paper.id(),surface,
                     egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE);
                 ui.painter().set(outer_grain,egui::Shape::Vec(vec![grain.clone(),grain]));
-            });
-        if let Some(response) = response {
+            };
+        if let Some(ui) = pane {
+            ui.scope(render);
+        } else if let Some(response) = window.show(ctx, render) {
             Self::paint_fics_window_border(&ctx.layer_painter(response.response.layer_id),response.response.rect);
         }
         if changed {
@@ -7588,6 +7797,7 @@ impl ChessApp {
             self.save_preferences();
             ctx.request_repaint();
         }
+        if detached && embedded { self.settings.open = false; }
         if close || detached || ctx.input(|input| input.key_pressed(egui::Key::Escape)) { self.background_dialog_open = false; }
         #[cfg(target_arch="wasm32")]
         if close && background_companion_mode() { close_background_companion(); }
@@ -7595,11 +7805,16 @@ impl ChessApp {
 
     fn open_board_theme_dialog(&mut self) {
         self.board_theme_3d_tab = false;
-        self.board_theme_open = true;
+        self.open_settings(SettingsPage::BoardTheme);
     }
 
+    #[cfg(target_arch = "wasm32")]
     fn board_theme_dialog(&mut self, ctx: &egui::Context) {
-        if !self.board_theme_open { return; }
+        if self.board_theme_open { self.board_theme_settings(ctx, None); }
+    }
+
+    fn board_theme_settings(&mut self, ctx: &egui::Context, pane: Option<&mut egui::Ui>) {
+        let embedded = pane.is_some();
         let mut close = false;
         let mut chosen_2d = None;
         let mut chosen_3d = None;
@@ -7621,9 +7836,9 @@ impl ChessApp {
                 offset:[4,6],blur:14,spread:2,color:Color32::from_black_alpha(160),
             }));
         if detached_view { window=window.fixed_rect(ctx.content_rect().shrink(8.0)).resizable(false).movable(false); }
-        let response=window.show(ctx, |ui| {
+        let render = |ui: &mut egui::Ui| {
                 let grain_background = ui.painter().add(egui::Shape::Noop);
-                ui.horizontal(|ui| {
+                if !embedded { ui.horizontal(|ui| {
                     ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
                         egui::Label::new(RichText::new("Board Theme").size(21.0).strong()).selectable(false).truncate());
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -7633,6 +7848,9 @@ impl ChessApp {
                             .on_hover_text("Move Board Theme to a separate window").clicked() { detached=open_theme_companion(); }
                     });
                 });
+                }
+                #[cfg(target_arch = "wasm32")]
+                if embedded && ui.button("Open Board Theme in a separate window").clicked() { detached = open_theme_companion(); }
                 ui.label(RichText::new("Choose the look of your board and pieces.").color(Color32::from_rgb(172, 185, 198)));
                 ui.add_space(12.0);
                 let controls = Frame::new().fill(Color32::from_rgb(13, 17, 22))
@@ -7748,13 +7966,16 @@ impl ChessApp {
                 let grain = egui::Shape::image(paper.id(),surface,
                     egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE);
                 ui.painter().set(grain_background,egui::Shape::Vec(vec![grain.clone(),grain]));
-            });
-        if let Some(response) = response {
+            };
+        if let Some(ui) = pane {
+            ui.scope(render);
+        } else if let Some(response) = window.show(ctx, render) {
             Self::paint_fics_window_border(&ctx.layer_painter(response.response.layer_id),response.response.rect);
         }
         if chosen_2d.is_some() || chosen_3d.is_some() {
             self.apply_board_theme_choice(ctx, chosen_2d, chosen_3d, configure_theme);
         }
+        if embedded && (close || detached) { self.settings.open = false; }
         if close || detached || ctx.input(|input| input.key_pressed(egui::Key::Escape)) { self.board_theme_open = false; }
         #[cfg(target_arch="wasm32")]
         if close && theme_companion_mode() { close_theme_companion(); }
@@ -7784,7 +8005,7 @@ impl ChessApp {
         }
         if chosen_2d.is_some() || chosen_3d.is_some() {
             self.sync_theme_adjustments();
-            self.theme_adjustments_open = configure_theme;
+            if configure_theme { self.open_settings(SettingsPage::ThemeAdjustments); }
             self.move_animation = None;
             #[cfg(target_arch="wasm32")]
             if theme_companion_mode() { return; }
@@ -7934,7 +8155,22 @@ impl ChessApp {
         }
     }
 
-    fn evaluation_bar(&self, ui: &egui::Ui, rect: egui::Rect) {
+    fn balance_bar_visible(&self) -> bool {
+        !self.focus_mode
+            && !self.training_live()
+            && !self.study.as_ref().is_some_and(|study| study.practice)
+            && (!self.fics_active || self.fics_game_finished)
+    }
+
+    fn board_balance_width(&self) -> f32 {
+        if self.balance_bar_visible() && self.balance_bar_location != BalanceBarLocation::AnalysisPanel {
+            44.0
+        } else {
+            0.0
+        }
+    }
+
+    fn evaluation_bar(&self, ui: &egui::Ui, rect: egui::Rect, horizontal: bool) {
         let state_id = egui::Id::new("balance_bar_last_score").with(
             (self.review_positions.first().map(ToString::to_string), &self.review_white_player, &self.review_black_player, self.study.as_ref().map(|s|(&s.name,s.chapter,s.node))),
         );
@@ -7960,7 +8196,15 @@ impl ChessApp {
             (fraction, score)
         };
         // The evaluation stays White-relative; only its screen placement follows the board.
-        let white_rect = if self.flipped {
+        let white_rect = if horizontal {
+            let mut white = rect;
+            if self.flipped {
+                white.min.x = rect.right() - rect.width() * white_fraction;
+            } else {
+                white.max.x = rect.left() + rect.width() * white_fraction;
+            }
+            white
+        } else if self.flipped {
             egui::Rect::from_min_max(rect.left_top(),
                 egui::pos2(rect.right(), rect.top() + rect.height() * white_fraction))
         } else {
@@ -7989,9 +8233,15 @@ impl ChessApp {
             (0.85, Color32::from_black_alpha(30)),
             (1.0, Color32::from_black_alpha(80)),
         ] {
-            let x = surface.left() + surface.width() * fraction;
-            sheen.colored_vertex(egui::pos2(x, surface.top()), color);
-            sheen.colored_vertex(egui::pos2(x, surface.bottom()), color);
+            let (start, end) = if horizontal {
+                let y = surface.top() + surface.height() * fraction;
+                (egui::pos2(surface.left(), y), egui::pos2(surface.right(), y))
+            } else {
+                let x = surface.left() + surface.width() * fraction;
+                (egui::pos2(x, surface.top()), egui::pos2(x, surface.bottom()))
+            };
+            sheen.colored_vertex(start, color);
+            sheen.colored_vertex(end, color);
         }
         for band in 0..4 {
             let i = band * 2;
@@ -8325,6 +8575,10 @@ impl ChessApp {
     }
 
     fn open_engine_settings(&mut self) {
+        self.open_settings(SettingsPage::Engine);
+    }
+
+    fn prepare_engine_settings(&mut self) {
         // The selector lazily discovers engines once per connection. Explicit
         // Refresh checks installations again and invalidates cached capabilities.
         self.strength_draft = self.engine_config.clone();
@@ -8338,7 +8592,7 @@ impl ChessApp {
         self.engine_settings_tab = if self.review_index.is_some() {
             EngineSettingsTab::Analysis
         } else { EngineSettingsTab::Play };
-        self.strength_dialog_open = true;
+        self.engine_settings_draft_ready = true;
     }
 
     fn engine_settings_shortcut(ui: &mut egui::Ui, label: &str, enabled: bool) -> egui::Response {
@@ -8355,208 +8609,181 @@ impl ChessApp {
         }).inner
     }
 
-    fn strength_dialog(&mut self, ctx: &egui::Context) {
-        if self.training_live() { self.strength_dialog_open = false; return; }
-        if !self.strength_dialog_open {
-            return;
-        }
-        if self.game_analysis_running || self.game_analysis_paused {
-            self.strength_dialog_open = false;
-            return;
-        }
-
+    fn engine_settings(&mut self, ui: &mut egui::Ui) {
         let mut apply = false;
         let mut close = false;
         let mut reset_defaults = false;
         let available_threads = Self::engine_thread_count();
-        let width = (ctx.content_rect().width() - 48.0).clamp(300.0, 660.0);
-        // Keep the chosen window size across tabs; let the settings table scroll
-        // within the space left by the header and footer.
-        let response =
-            egui::Window::new("Engine settings")
-                .id(egui::Id::new("stockfish_strength_settings"))
-                .title_bar(false).drag_area(egui::WindowDrag::Anywhere)
-                .resizable(true)
-                .default_size(Vec2::new(width, 600.0))
-                .min_size(Vec2::new(340.0, 360.0))
-                .max_size(ctx.content_rect().size() - Vec2::splat(24.0))
-                .default_pos(ctx.content_rect().center() - Vec2::new(width, 600.0) * 0.5)
-                .frame(Self::dialog_frame())
-                .show(ctx, |ui| {
-                    let grain=ui.painter().add(egui::Shape::Noop);
-                    let width = ui.available_width();
-                    let row_height = 36.0;
-                    close = Self::dialog_header(ui, "Engine settings");
-                    ui.add_space(4.0);
-                    #[cfg(target_arch = "wasm32")]
-                    if crate::companion::enabled() { self.companion_engine_selector(ui); }
-                    Self::linen_sunken_section(ui, |ui| {
-                    let context_index = match self.engine_settings_tab {
-                        EngineSettingsTab::Play => 0,
-                        EngineSettingsTab::Analysis => 1,
-                        EngineSettingsTab::FullGame => 2,
-                        EngineSettingsTab::Uci => 3,
-                    };
-                    let selected_context = Self::styled_settings_tabs(
-                        ui,
-                        &["Play", "Realtime Analysis", "Full game Analysis", "Engine options"],
-                        context_index,
-                        true,
-                    );
-                    self.engine_settings_tab = match selected_context {
-                        1 => EngineSettingsTab::Analysis,
-                        2 => EngineSettingsTab::FullGame,
-                        3 => EngineSettingsTab::Uci,
-                        _ => EngineSettingsTab::Play,
-                    };
-                    });
-                    ui.add_space(12.0);
-                    let analysis = self.engine_settings_tab == EngineSettingsTab::Analysis;
-                    let full_game = self.engine_settings_tab == EngineSettingsTab::FullGame;
-                    let clock =
-                        !analysis && !full_game && !self.fics_active && self.local_clock.is_some();
-                    let remote = self.analysis_draft.opponent == OpponentEngine::Companion;
-                    let rows: &[&str] = if full_game && remote && self.full_game_analysis_draft.budget == FullGameBudget::Seconds {
-                        &["Budget", "Seconds per position", "Second pass"]
-                    } else if full_game && remote {
-                        &["Budget", "Analysis quality", "Nodes per position", "Second pass"]
-                    } else if remote && analysis {
-                        &["Search limit", "Time limit", "Search depth", "Search nodes", "Candidate lines"]
-                    } else if remote && !full_game {
-                        &["Engine Elo", "Search limit", "Time per move", "Search depth", "Search nodes"]
-                    } else if full_game && self.full_game_analysis_draft.budget == FullGameBudget::Seconds {
-                        &["Budget", "Seconds per position", "Second pass", "Search threads", "Hash memory", "Candidate lines", "Strength", "Network"]
-                    } else if full_game {
-                        &[
-                            "Budget",
-                            "Analysis quality",
-                            "Nodes per position",
-                            "Second pass",
-                            "Search threads",
-                            "Hash memory",
-                            "Candidate lines",
-                            "Strength",
-                            "Network",
-                        ]
-                    } else if analysis {
-                        &[
-                            "Strength",
-                            "Search limit",
-                            "Time limit",
-                            "Search depth",
-                            "Search nodes",
-                            "Search threads",
-                            "Hash memory",
-                            "Candidate lines",
-                            "Network",
-                        ]
-                    } else {
-                        &[
-                            "Strength mode",
-                            "Skill level",
-                            "Target Elo",
-                            "Search limit",
-                            "Time per move",
-                            "Search depth",
-                            "Search nodes",
-                            "Search threads",
-                            "Hash memory",
-                            "Candidate lines",
-                            "Network",
-                        ]
-                    };
-                    let settings_frame = Frame::new().fill(Color32::from_rgb(13, 17, 22))
-                        .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
-                        ui.set_min_width(ui.available_width());
-                        ui.spacing_mut().item_spacing.y = 0.0;
-                        ui.spacing_mut().slider_width = (width - 310.0).max(75.0);
-                        // Measure the remaining space after the real header/tabs.
-                        // Reserving chrome from the initial window height caused
-                        // a frame-by-frame growth loop when that chrome was taller.
-                        let footer_height = ui.text_style_height(&egui::TextStyle::Body)
-                            + (ui.text_style_height(&egui::TextStyle::Button)
-                                + 2.0 * ui.spacing().button_padding.y + 4.0).max(34.0)
-                            + 64.0;
-                        let table_height = (ui.available_height() - footer_height - 30.0).max(0.0);
-                        if self.engine_settings_tab == EngineSettingsTab::Uci {
-                            self.engine_uci_options_ui(ui, width, row_height, table_height);
-                        } else { egui_extras::TableBuilder::new(ui)
-                            .id_salt(("engine_settings_table", analysis, full_game))
-                            .striped(true)
-                            .resizable(false)
-                            .cell_layout(Layout::left_to_right(Align::Center))
-                            .column(egui_extras::Column::exact((width * 0.34).min(210.0)))
-                            .column(egui_extras::Column::remainder().clip(true))
-                            .min_scrolled_height(table_height)
-                            .max_scroll_height(table_height)
-                            .auto_shrink([false, false])
-                            .header(30.0, |mut header| {
-                                header.col(|ui| {
-                                    Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Setting", true);
-                                });
-                                header.col(|ui| {
-                                    Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Value", true);
-                                });
-                            })
-                            .body(|body| {
-                                body.rows(row_height, rows.len(), |mut row| {
-                                    let name = rows[row.index()];
-                                    row.col(|ui| {
-                                        ui.label(name);
-                                    });
-                                    row.col(|ui| {
-                                        self.engine_setting_value(
-                                            ui,
-                                            name,
-                                            analysis,
-                                            full_game,
-                                            clock,
-                                            available_threads,
-                                        );
-                                    });
-                                })
-                            }); }
-                    });
-                    Self::paint_sunken_border(ui, settings_frame.response.rect);
-                    ui.add_space(10.0);
-                    // Single-line help keeps the footer in the same place on every tab.
-                    ui.add(egui::Label::new(if self.engine_settings_tab == EngineSettingsTab::Uci {
-                    "Advertised UCI options apply to this engine in play and analysis."
-                } else if remote {
-                    "Resources and engine-specific controls are on the Engine options tab."
-                } else if full_game {
-                    "The second-pass preference is remembered for this engine."
-                } else if clock {
-                    "The game clock controls search time; manual search limits are inactive."
-                } else {
-                    "Inactive settings are retained for their corresponding mode."
-                }).truncate());
-                    ui.add_space(10.0);
-                    ui.separator();
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        reset_defaults = ui.add(egui::Button::new(RichText::new("Reset this context").color(Color32::from_rgb(211, 173, 98))).min_size(Vec2::new(150.0, 34.0))).clicked();
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            apply = ui
-                                .add_sized([76.0, 30.0], egui::Button::new(RichText::new("Apply").strong().color(Color32::from_rgb(25, 29, 35))).fill(Color32::from_rgb(211, 173, 98)).corner_radius(5.0).raised_gold())
-                                .clicked();
-                            if ui
-                                .add_sized([76.0, 30.0], egui::Button::new("Cancel"))
-                                .clicked()
-                            {
-                                close = true;
-                            }
+        ui.scope(|ui| {
+            let grain=ui.painter().add(egui::Shape::Noop);
+            let width = ui.available_width();
+            let row_height = 36.0;
+            ui.add_space(4.0);
+            #[cfg(target_arch = "wasm32")]
+            if crate::companion::enabled() { self.companion_engine_selector(ui); }
+            Self::linen_sunken_section(ui, |ui| {
+            let context_index = match self.engine_settings_tab {
+                EngineSettingsTab::Play => 0,
+                EngineSettingsTab::Analysis => 1,
+                EngineSettingsTab::FullGame => 2,
+                EngineSettingsTab::Uci => 3,
+            };
+            let selected_context = Self::styled_settings_tabs(
+                ui,
+                &["Play", "Realtime Analysis", "Full game Analysis", "Engine options"],
+                context_index,
+                true,
+            );
+            self.engine_settings_tab = match selected_context {
+                1 => EngineSettingsTab::Analysis,
+                2 => EngineSettingsTab::FullGame,
+                3 => EngineSettingsTab::Uci,
+                _ => EngineSettingsTab::Play,
+            };
+            });
+            ui.add_space(12.0);
+            let analysis = self.engine_settings_tab == EngineSettingsTab::Analysis;
+            let full_game = self.engine_settings_tab == EngineSettingsTab::FullGame;
+            let clock =
+                !analysis && !full_game && !self.fics_active && self.local_clock.is_some();
+            let remote = self.analysis_draft.opponent == OpponentEngine::Companion;
+            let rows: &[&str] = if full_game && remote && self.full_game_analysis_draft.budget == FullGameBudget::Seconds {
+                &["Budget", "Seconds per position", "Second pass"]
+            } else if full_game && remote {
+                &["Budget", "Analysis quality", "Nodes per position", "Second pass"]
+            } else if remote && analysis {
+                &["Search limit", "Time limit", "Search depth", "Search nodes", "Candidate lines"]
+            } else if remote && !full_game {
+                &["Engine Elo", "Search limit", "Time per move", "Search depth", "Search nodes"]
+            } else if full_game && self.full_game_analysis_draft.budget == FullGameBudget::Seconds {
+                &["Budget", "Seconds per position", "Second pass", "Search threads", "Hash memory", "Candidate lines", "Strength", "Network"]
+            } else if full_game {
+                &[
+                    "Budget",
+                    "Analysis quality",
+                    "Nodes per position",
+                    "Second pass",
+                    "Search threads",
+                    "Hash memory",
+                    "Candidate lines",
+                    "Strength",
+                    "Network",
+                ]
+            } else if analysis {
+                &[
+                    "Strength",
+                    "Search limit",
+                    "Time limit",
+                    "Search depth",
+                    "Search nodes",
+                    "Search threads",
+                    "Hash memory",
+                    "Candidate lines",
+                    "Network",
+                ]
+            } else {
+                &[
+                    "Strength mode",
+                    "Skill level",
+                    "Target Elo",
+                    "Search limit",
+                    "Time per move",
+                    "Search depth",
+                    "Search nodes",
+                    "Search threads",
+                    "Hash memory",
+                    "Candidate lines",
+                    "Network",
+                ]
+            };
+            let settings_frame = Frame::new().fill(Color32::from_rgb(13, 17, 22))
+                .corner_radius(6.0).inner_margin(12.0).show(ui, |ui| {
+                ui.set_min_width(ui.available_width());
+                ui.spacing_mut().item_spacing.y = 0.0;
+                ui.spacing_mut().slider_width = (width - 310.0).max(75.0);
+                // Measure the remaining space after the real header/tabs.
+                // Reserving chrome from the initial window height caused
+                // a frame-by-frame growth loop when that chrome was taller.
+                let footer_height = ui.text_style_height(&egui::TextStyle::Body)
+                    + (ui.text_style_height(&egui::TextStyle::Button)
+                        + 2.0 * ui.spacing().button_padding.y + 4.0).max(34.0)
+                    + 64.0;
+                let table_height = (ui.available_height() - footer_height - 30.0).max(0.0);
+                if self.engine_settings_tab == EngineSettingsTab::Uci {
+                    self.engine_uci_options_ui(ui, width, row_height, table_height);
+                } else { egui_extras::TableBuilder::new(ui)
+                    .id_salt(("engine_settings_table", analysis, full_game))
+                    .striped(true)
+                    .resizable(false)
+                    .cell_layout(Layout::left_to_right(Align::Center))
+                    .column(egui_extras::Column::exact((width * 0.34).min(210.0)))
+                    .column(egui_extras::Column::remainder().clip(true))
+                    .min_scrolled_height(table_height)
+                    .max_scroll_height(table_height)
+                    .auto_shrink([false, false])
+                    .header(30.0, |mut header| {
+                        header.col(|ui| {
+                            Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Setting", true);
                         });
-                    });
-                    let paper=Self::paper_grain_texture(ui.ctx());
-                    let surface=ui.min_rect().expand(6.0);
-                    ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
-                        egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
+                        header.col(|ui| {
+                            Self::game_moves_glass_label(ui, Vec2::new(ui.available_width(), 28.0), "Value", true);
+                        });
+                    })
+                    .body(|body| {
+                        body.rows(row_height, rows.len(), |mut row| {
+                            let name = rows[row.index()];
+                            row.col(|ui| {
+                                ui.label(name);
+                            });
+                            row.col(|ui| {
+                                self.engine_setting_value(
+                                    ui,
+                                    name,
+                                    analysis,
+                                    full_game,
+                                    clock,
+                                    available_threads,
+                                );
+                            });
+                        })
+                    }); }
+            });
+            Self::paint_sunken_border(ui, settings_frame.response.rect);
+            ui.add_space(10.0);
+            // Single-line help keeps the footer in the same place on every tab.
+            ui.add(egui::Label::new(if self.engine_settings_tab == EngineSettingsTab::Uci {
+            "Advertised UCI options apply to this engine in play and analysis."
+        } else if remote {
+            "Resources and engine-specific controls are on the Engine options tab."
+        } else if full_game {
+            "The second-pass preference is remembered for this engine."
+        } else if clock {
+            "The game clock controls search time; manual search limits are inactive."
+        } else {
+            "Inactive settings are retained for their corresponding mode."
+        }).truncate());
+            ui.add_space(10.0);
+            ui.separator();
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                reset_defaults = ui.add(egui::Button::new(RichText::new("Reset this context").color(Color32::from_rgb(211, 173, 98))).min_size(Vec2::new(150.0, 34.0))).clicked();
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    apply = ui
+                        .add_sized([76.0, 30.0], egui::Button::new(RichText::new("Apply").strong().color(Color32::from_rgb(25, 29, 35))).fill(Color32::from_rgb(211, 173, 98)).corner_radius(5.0).raised_gold())
+                        .clicked();
+                    if ui
+                        .add_sized([76.0, 30.0], egui::Button::new("Cancel"))
+                        .clicked()
+                    {
+                        close = true;
+                    }
                 });
-
-        if let Some(window) = &response {
-            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id), window.response.rect);
-        }
+            });
+            let paper=Self::paper_grain_texture(ui.ctx());
+            let surface=ui.min_rect().expand(6.0);
+            ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
+                egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
+        });
         if reset_defaults {
             match self.engine_settings_tab {
                 EngineSettingsTab::Play => {
@@ -8624,11 +8851,11 @@ impl ChessApp {
             self.analysis_running = false;
             self.ignore_next_bestmove = was_stockfish_search;
             self.engine_status = "Engine settings updated".into();
-            self.strength_dialog_open = false;
+            self.prepare_engine_settings();
             #[cfg(target_arch = "wasm32")]
             self.request_engine_move();
         } else if close {
-            self.strength_dialog_open = false;
+            self.prepare_engine_settings();
         }
     }
 
@@ -10248,7 +10475,6 @@ impl ChessApp {
                     Self::pgn_tag(text, "White").unwrap_or_else(|| "White".into());
                 self.review_black_player =
                     Self::pgn_tag(text, "Black").unwrap_or_else(|| "Black".into());
-                Self::set_page_title(true, &self.review_white_player, &self.review_black_player);
                 #[cfg(target_arch = "wasm32")]
                 if let Some(engine) = &self.engine {
                     engine.command("stop");
@@ -10648,7 +10874,6 @@ impl ChessApp {
         self.pgn_error = None;
         self.pgn_dialog_open = false;
         self.engine_status = "Ironwood analysis restored from JSON".into();
-        Self::set_page_title(true, &self.review_white_player, &self.review_black_player);
         #[cfg(target_arch = "wasm32")]
         start_new_stored_game("imported");
         self.save_game();
@@ -10713,11 +10938,6 @@ impl ChessApp {
         } else {
             format!("Reviewing position {index} of {}", self.review_moves.len())
         };
-        Self::set_page_title(
-            !live_position,
-            &self.review_white_player,
-            &self.review_black_player,
-        );
         self.save_game();
         self.schedule_realtime_analysis();
         #[cfg(target_arch = "wasm32")]
@@ -10731,7 +10951,7 @@ impl ChessApp {
         let current=self.review_index.unwrap_or(total).min(total);
         let mut destination=current;
         let gold=Color32::from_rgb(215,185,121);
-        let allowed=total>0&&!self.training_live()&&!self.puzzle_navigation_locked()
+        let allowed=total>0&&self.analysis_workspace_active(ui.ctx())&&!self.training_live()&&!self.puzzle_navigation_locked()
             &&(!self.fics_active||self.fics_game_finished)&&!self.study.as_ref().is_some_and(|study|study.practice);
         Self::textured_sunken_section(ui,true,|ui| {
                 ui.set_min_width(ui.available_width());
@@ -11088,6 +11308,7 @@ impl ChessApp {
 
     fn wheel_move_navigation(&mut self, ui: &mut egui::Ui, rect: egui::Rect) {
         if self.puzzle_navigation_locked() { return; }
+        if !self.analysis_workspace_active(ui.ctx()) { return; }
         if (self.board_3d_rendering() && ui.input(|input| input.pointer.button_down(egui::PointerButton::Secondary)))
             || self.training_live() || self.best_move_attempt.is_some()
             || (self.fics_active && self.fics_playing && !self.fics_game_finished)
@@ -11748,7 +11969,7 @@ impl ChessApp {
         let can_switch = !self.game_analysis_running && state["busy"] != true;
         if let Some(index) = Self::saved_analysis_number_shortcut(ui.ctx(), runs.len(),
             can_switch && !self.expanded_graph_open && ui.is_enabled() && !self.new_game_dialog_open && !self.pgn_dialog_open
-                && !self.strength_dialog_open && !self.background_dialog_open && !self.about_dialog_open)
+                && !self.settings.open && !self.background_dialog_open && !self.about_dialog_open)
         {
             if let Some(id) = runs[index]["id"].as_str() { chosen = id.to_owned(); }
         }
@@ -12312,6 +12533,11 @@ impl ChessApp {
 
     fn preferences_snapshot(&self) -> UserPreferences {
         UserPreferences {
+                move_sound_style: self.move_sound_style,
+                move_sound_volume: self.move_sound_volume,
+                board_tap_octave: self.board_tap_octave,
+                board_tap_decay: self.board_tap_decay,
+                balance_bar_location: self.balance_bar_location,
                 engine_uci_preferences: self.engine_uci_preferences.clone(),
                 engine_verification_preferences: self.engine_verification_preferences.clone(),
                 engine_full_game_preferences: self.engine_full_game_preferences.clone(),
@@ -12583,6 +12809,11 @@ impl ChessApp {
     }
 
     fn reset_for_side(&mut self, player_side: PlayerSide) {
+        self.puzzle_context.data_mut(|data| {
+            data.remove_temp::<bool>(egui::Id::new("analysis_workspace"));
+        });
+        #[cfg(target_arch = "wasm32")]
+        { self.clocked_search = None; }
         self.playback_target=None;
         self.local_game_actions_suspended = false;
         self.transient_profile_review = false;
@@ -12663,7 +12894,6 @@ impl ChessApp {
         } else {
             "Your move".into()
         };
-        Self::set_page_title(false, "", "");
         #[cfg(target_arch = "wasm32")]
         if !self.fics_active {
             track_usage("game_started");
@@ -12796,7 +13026,6 @@ impl ChessApp {
         } else {
             "Your move".into()
         };
-        Self::set_page_title(false, "", "");
         #[cfg(target_arch = "wasm32")]
         start_new_stored_game("mine");
         self.save_game();
@@ -12953,7 +13182,7 @@ impl ChessApp {
     fn keyboard_move_ui(&mut self, ctx: &egui::Context) {
         let blocked = ctx.egui_wants_keyboard_input()
             || self.new_game_dialog_open || self.training_dialog_open || self.elo_calculator_open
-            || self.pgn_dialog_open || self.strength_dialog_open || self.about_dialog_open
+            || self.pgn_dialog_open || self.settings.open || self.about_dialog_open
             || self.batch_pgn_dialog_open || self.batch_pgn_result_open || self.print_confirm_open
             || self.background_dialog_open || self.board_theme_open || self.expanded_graph_open || !self.prediction_windows.is_empty() || self.fics_console_open || self.fics_challenge_open
             || self.fics_sign_in_open || self.fics_resign_dialog_open;
@@ -13338,8 +13567,55 @@ impl ChessApp {
                         SearchLimit::Nodes => format!("go nodes {}", self.engine_config.nodes),
                     }
                 };
+                let watchdog = self.engine_config.opponent == OpponentEngine::Stockfish
+                    && search.starts_with("go wtime ");
+                self.clocked_search = watchdog.then(|| ClockedSearch {
+                    board: self.board,
+                    deadline: Self::animation_time() + 20.0,
+                    stop_sent: false,
+                    retried: self.clocked_search.as_ref().is_some_and(|search| {
+                        search.board == self.board && search.retried
+                    }),
+                });
                 engine.command(&search);
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn watch_clocked_search(&mut self, ctx: &egui::Context) {
+        if self.clocked_search.as_ref().is_some_and(|search| search.board != self.board) {
+            self.clocked_search = None;
+        }
+        if !self.engine_searching || self.analysis_running || self.review_index.is_some()
+            || !self.engine_enabled || self.game_result() != "*"
+        {
+            return;
+        }
+        let Some(search) = self.clocked_search.as_mut() else { return };
+        let now = Self::animation_time();
+        if now < search.deadline {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(search.deadline - now));
+        } else if !search.stop_sent {
+            if let Some(engine) = &self.engine {
+                engine.command("stop");
+            }
+            search.stop_sent = true;
+            search.deadline = now + 3.0;
+            ctx.request_repaint_after(std::time::Duration::from_secs(3));
+        } else {
+            self.engine = None;
+            self.engine_ready = false;
+            self.engine_searching = false;
+            self.engine_start_failed = search.retried;
+            self.resume_engine_after_ready = !search.retried;
+            self.engine_status = if search.retried {
+                "Stockfish worker failed to return a move after retrying.".into()
+            } else {
+                "Stockfish timed out · restarting engine…".into()
+            };
+            search.retried = true;
+            ctx.request_repaint();
         }
     }
 
@@ -13600,6 +13876,7 @@ impl ChessApp {
                                 self.engine_status = "Real-time analysis complete".into();
                             }
                         } else if self.engine_searching && self.engine_enabled {
+                            self.clocked_search = None;
                             if let Some(mv) = Self::parse_uci_move(&line) {
                                 self.play(mv);
                             }
@@ -14913,8 +15190,8 @@ impl ChessApp {
             } else {
                 0.0
             };
-        let show_balance = !self.focus_mode && !self.training_live() && !self.study.as_ref().is_some_and(|s|s.practice) && (!self.fics_active || self.fics_game_finished);
-        let balance_width = if show_balance { 44.0 } else { 0.0 };
+        let balance_width = self.board_balance_width();
+        let balance_on_left = self.balance_bar_location == BalanceBarLocation::Left;
         let board_available_width = (available.x - balance_width).max(180.0);
         let board_size = board_available_width
             .min(
@@ -14983,6 +15260,11 @@ impl ChessApp {
             ),
             Layout::top_down(Align::Min),
             |ui| {
+                let mut board_area = ui.available_rect_before_wrap();
+                if balance_on_left {
+                    board_area.min.x += balance_width;
+                }
+                ui.scope_builder(egui::UiBuilder::new().max_rect(board_area), |ui| {
                 if observe_tabs_height > 0.0 {
                     let mut selected = None;
                     let mut closed = None;
@@ -15296,11 +15578,11 @@ impl ChessApp {
                     egui::Id::new("game_moves_board_alignment"),
                     (board_rect.top(), board_rect.bottom() - frame_width as f32 / 2.0),
                 ));
-                if show_balance {
-                    let board_rect = board_response.response.rect.expand(frame_width as f32);
+                if balance_width > 0.0 {
+                    let x = if balance_on_left { board_rect.left() - 29.0 } else { board_rect.right() + 15.0 };
                     self.evaluation_bar(ui,egui::Rect::from_min_size(
-                        egui::pos2(board_rect.right()+15.0,board_rect.top()),
-                        Vec2::new(14.0,board_rect.height())));
+                        egui::pos2(x, board_rect.top()),
+                        Vec2::new(14.0,board_rect.height())), false);
                 }
                 if !self.board_3d_rendering() && self.show_board_frame && self.show_coordinates {
                     let rect = board_response.response.rect;
@@ -15478,6 +15760,7 @@ impl ChessApp {
                     );
                 }
                 }
+                });
             },
         );
     }
@@ -17893,7 +18176,7 @@ mod tests {
         app.training_profiles.profiles.push(Profile {id:"wide".into(),name:"A very long training profile name to check width containment".into(),results:vec![],engine:training::TrainingEngine::default(),starting_level:1,starting_elo:1320});
         app.training_profiles.selected_id="wide".into();
         let draw=|app:&mut ChessApp| {
-            for _ in 0..5 {run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1400.0,1000.0))),..Default::default()},|_|app.new_game_dialog(&ctx));}
+            for _ in 0..5 {run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1400.0,1000.0))),..Default::default()},|_|app.new_game_dialog(&ctx, ctx.content_rect().bottom()));}
             ctx.memory(|m|m.area_rect(egui::Id::new("new_game_window"))).unwrap().width()
         };
         let before=draw(&mut app);
@@ -17911,7 +18194,7 @@ mod tests {
         app.engine_uci_catalog.insert(key,vec![engine_uci_settings::parse_option("option name Elo type spin default 1500 min 0 max 5000").unwrap()]);
         app.prepare_new_game_strength();let mut texts=Vec::new();
         for _ in 0..4 {
-            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1300.0,1100.0))),..Default::default()},|_|app.new_game_dialog(&ctx));
+            let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1300.0,1100.0))),..Default::default()},|_|app.new_game_dialog(&ctx, ctx.content_rect().bottom()));
             texts.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape{Some(text.galley.job.text.clone())}else{None}));
         }
         assert!(texts.iter().any(|text|text=="Maia3 79M (GPU)"),"{texts:?}");
@@ -17945,7 +18228,7 @@ mod tests {
             app.new_game_training=mode==2;app.new_game_online=mode==3;app.new_game_lichess=true;
             let mut texts=Vec::new();
             for _ in 0..3 {
-                let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1100.0,1000.0))),..Default::default()},|_|app.new_game_dialog(&ctx));
+                let output=run_test_ui(&ctx,egui::RawInput{screen_rect:Some(egui::Rect::from_min_size(egui::Pos2::ZERO,Vec2::new(1100.0,1000.0))),..Default::default()},|_|app.new_game_dialog(&ctx, ctx.content_rect().bottom()));
                 texts.extend(output.shapes.iter().filter_map(|shape|if let egui::Shape::Text(text)=&shape.shape {Some(text.galley.job.text.clone())}else{None}));
             }
             if mode == 3 {
@@ -17954,7 +18237,7 @@ mod tests {
                 assert!(!texts.iter().any(|text| text == "Online via Lichess"));
                 continue;
             }
-            let title = if mode==1 { "Self-play" } else { "New game against AI" };
+            let title = if mode==1 { "Self-play" } else { "New game against Engine" };
             assert!(texts.iter().any(|text|text==title), "{texts:?}");
             for removed in ["PLAY MODE", "You vs Engine", "Play Both Sides", "Training vs AI", "CHESS SERVER"] {
                 assert!(!texts.iter().any(|text|text==removed), "Unexpected tab {removed}");
@@ -20730,12 +21013,12 @@ mod tests {
                 let mut output = ctx.run_ui(egui::RawInput {
                     screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1400.0, 1100.0))),
                     ..Default::default()
-                }, |ui| app.strength_dialog(ui.ctx()));
+                }, |ui| app.settings_panel(ui.ctx(), 1060.0));
                 output.textures_delta.clear();
-                heights.push(ctx.memory(|m| m.area_rect(egui::Id::new("stockfish_strength_settings"))).unwrap().height());
+                heights.push(ctx.memory(|m| m.area_rect(egui::Id::new("ironwood_settings"))).unwrap().height());
             }
         }
-        assert!(heights.iter().all(|h| *h < 700.0), "Window grew beyond its opening size: {heights:?}");
+        assert!(heights.iter().skip(1).all(|h| (*h - 1060.0).abs() < 2.0), "Settings should reach the status dock: {heights:?}");
         assert!((heights[5] - heights[35]).abs() < 2.0, "Window height drifted: {heights:?}");
     }
 
@@ -21286,7 +21569,7 @@ impl ChessApp {
         }) && self.best_move_attempt.is_none()
             && !ctx.egui_wants_keyboard_input()
             && !self.pgn_dialog_open
-            && !self.strength_dialog_open
+            && !self.settings.open
             && !self.background_dialog_open
             && !self.about_dialog_open
             && !self.new_game_dialog_open
@@ -21310,7 +21593,7 @@ impl ChessApp {
                 {
                     self.prediction_to(destination);
                 }
-            } else {
+            } else if self.analysis_workspace_active(ctx) {
                 let destination = ctx.input(|input| {
                     if input.key_pressed(egui::Key::ArrowLeft) {
                         Some(index.saturating_sub(1))
@@ -21335,7 +21618,7 @@ impl ChessApp {
         if !self.review_positions.is_empty()
             && !ctx.egui_wants_keyboard_input()
             && !self.pgn_dialog_open
-            && !self.strength_dialog_open
+            && !self.settings.open
             && !self.background_dialog_open
             && !self.about_dialog_open
             && !self.new_game_dialog_open
@@ -21394,6 +21677,7 @@ impl ChessApp {
                 }
             }
             self.poll_engine();
+            self.watch_clocked_search(ctx);
             self.poll_fics(ctx);
         }
         #[cfg(not(target_arch = "wasm32"))]
@@ -21414,6 +21698,7 @@ impl ChessApp {
 
     pub(crate) fn sidebar_contents_ui(&mut self, ui: &mut egui::Ui, detached: bool) {
         let ctx = &ui.ctx().clone();
+        let analysis = self.analysis_workspace_active(ctx);
         let tab_id = egui::Id::new("game_sidebar_tab");
         let mut selected_tab = ctx.data(|data|data.get_temp::<usize>(tab_id)).filter(|&tab|tab < 7).unwrap_or(0);
         ctx.data_mut(|d| d.insert_temp(tab_id, selected_tab));
@@ -21435,6 +21720,7 @@ impl ChessApp {
             if sorted == [0,1,2,3,4,5,6,7] { order = saved; }
         }
         let previous_order = order;
+        let tab_order = if analysis { &previous_order[..] } else { &[0, 1] };
         let labels = ["Moves", "Prediction", "Analysis", "Position", "Explore", "Tactical", "Annotations", "Study"];
         let mut requested = None;
         ui.horizontal(|ui| {
@@ -21452,8 +21738,8 @@ impl ChessApp {
                     .auto_shrink([false,true]).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().button_padding = Vec2::new(10.0, 7.0);
-                        for &index in &order {
-                            if enabled[index] {
+                        for &index in tab_order {
+                            if !analysis || enabled[index] {
                                 let tab = Self::compact_panel_button(ui, labels[index], selected_tab == index);
                                 tab_center_y = Some(tab.rect.center().y);
                                 if tab.clicked() { requested = Some(index); }
@@ -21467,6 +21753,9 @@ impl ChessApp {
                     });
                 });
             });
+            if !analysis {
+                return;
+            }
             let (_, mut gear_rect) = ui.allocate_space(Vec2::splat(36.0));
             if let Some(y) = tab_center_y { gear_rect = gear_rect.translate(Vec2::new(0.0, y - gear_rect.center().y)); }
             let gear = ui.put(gear_rect, egui::Button::new(""))
@@ -21512,7 +21801,11 @@ impl ChessApp {
             }
         }
         ctx.data_mut(|d| { d.insert_temp(preference_id, enabled); d.insert_temp(order_id, order); });
-        if !enabled[selected_tab] { requested = order.iter().copied().find(|&i| enabled[i]); }
+        if analysis && !enabled[selected_tab] {
+            requested = order.iter().copied().find(|&i| enabled[i]);
+        } else if !analysis && selected_tab > 1 && requested.is_none() {
+            requested = Some(0);
+        }
         if let Some(index) = requested {
             if index != selected_tab {
                 self.finish_saved_line_preview();
@@ -21526,7 +21819,7 @@ impl ChessApp {
             selected_tab = index;
             ctx.data_mut(|d| d.insert_temp(tab_id, selected_tab));
         }
-        if !enabled.iter().any(|on| *on) {
+        if analysis && !enabled.iter().any(|on| *on) {
             self.finish_saved_line_preview();
             self.board_mark_mode = false;
             self.board_mark_drag = None;
@@ -21551,7 +21844,9 @@ impl ChessApp {
                 content_rect.set_width(content_width);
                 let mut content_ui = ui.new_child(egui::UiBuilder::new().max_rect(content_rect));
                 let ui = &mut content_ui;
-                if selected_tab != 7 {self.position_navigation_ui(ui);}
+                if analysis && selected_tab != 7 {
+                    self.position_navigation_ui(ui);
+                }
                 if selected_tab == 6 {
                     self.annotations_panel(ui);
                     return;
@@ -21605,6 +21900,12 @@ impl ChessApp {
                     self.training_game_summary_ui(ui);
                 } else if show_analysis {
                     ui.add_space(6.0);
+                    if self.balance_bar_location == BalanceBarLocation::AnalysisPanel && self.balance_bar_visible() {
+                        let (slot, _) = ui.allocate_exact_size(
+                            Vec2::new(ui.available_width(), 26.0), Sense::hover(),
+                        );
+                        self.evaluation_bar(ui, slot.shrink2(Vec2::new(3.0, 4.0)), true);
+                    }
                 }
                 if let Some(index) = self.review_index.or_else(|| {
                     (!self.review_positions.is_empty()).then(|| self.review_positions.len() - 1)
@@ -21684,7 +21985,7 @@ impl ChessApp {
                                                     move_width,
                                                 );
                                                 self.move_context_response(&response, white_ply + 1);
-                                                if response.clicked() || response.secondary_clicked() {
+                                                if analysis && (response.clicked() || response.secondary_clicked()) {
                                                     jump_to = Some(white_ply + 1);
                                                 }
                                             } else {
@@ -21702,7 +22003,7 @@ impl ChessApp {
                                                     move_width,
                                                 );
                                                 self.move_context_response(&response, black_ply + 1);
-                                                if response.clicked() || response.secondary_clicked() {
+                                                if analysis && (response.clicked() || response.secondary_clicked()) {
                                                     jump_to = Some(black_ply + 1);
                                                 }
                                             } else {
@@ -21716,7 +22017,7 @@ impl ChessApp {
                             ui.add_space((controls_top - ui.cursor().top()).max(0.0));
                             ui.ctx().data_mut(|data| data.insert_temp(offset_id, moves_output.state.offset.y));
                             ui.horizontal(|ui| {
-                                if self.puzzle_navigation_locked() { ui.disable(); }
+                                if !analysis || self.puzzle_navigation_locked() { ui.disable(); }
                                 let gaps = ui.spacing().item_spacing.x * 4.0;
                                 let button_width = ((ui.available_width() - gaps) / 5.0).max(32.0);
                                 if ui
@@ -21916,6 +22217,7 @@ impl ChessApp {
                         ui.add_space(16.0);
                     }
                     }
+                    if show_position || show_explore || self.game_analysis.iter().any(Option::is_some) {
                     let details_min_height = (ui.clip_rect().bottom() - ui.cursor().top() - 26.0).max(0.0);
                     let mut details_grain=None;
                     let details_frame = Frame::new()
@@ -22297,6 +22599,7 @@ impl ChessApp {
                     }
                     Self::paint_sunken_border(ui, details_frame.response.rect);
                     }
+                    }
                 }
                 if self.review_positions.is_empty() && show_moves {
                     ui.label(RichText::new("Moves").strong());
@@ -22448,7 +22751,6 @@ impl eframe::App for ChessApp {
         if self.focus_mode && ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             self.set_focus_mode(false);
         }
-        if !self.focus_mode { self.lichess_ui(ctx); }
         self.fics_available_was_open = self.fics_available_open_this_frame;
         self.fics_observe_was_open = self.fics_observe_open_this_frame;
         self.fics_available_open_this_frame = false;
@@ -22675,10 +22977,11 @@ impl eframe::App for ChessApp {
                 self.show_observed_game(game);
             }
         }
+        let mut status_dock_top = ctx.content_rect().bottom();
         if !self.focus_mode {
         self.navigation_ui(root_ui);
 
-        egui::Panel::bottom("engine_status_dock")
+        status_dock_top = egui::Panel::bottom("engine_status_dock")
             .resizable(false)
             .frame(
                 Frame::new()
@@ -22786,7 +23089,7 @@ impl eframe::App for ChessApp {
                         ui.label(RichText::new(detail).small().weak());
                     });
                 }
-            });
+            }).response.rect.top();
 
         #[cfg(target_arch="wasm32")]
         let sidebar_detached=sidebar_popout_open();
@@ -22808,7 +23111,7 @@ impl eframe::App for ChessApp {
         // Share a draggable board boundary across the game, study, and puzzle workspaces.
         let available=root_ui.available_size();
         let chrome=self.live_board_vertical_chrome(root_ui.spacing().item_spacing.y,available.x,true);
-        let balance=if !self.focus_mode&&!self.training_live()&&(!self.fics_active||self.fics_game_finished){44.0}else{0.0};
+        let balance = self.board_balance_width();
         let workspace_width=Self::game_sidebar_width(available,chrome,balance);
         if study_open && !self.puzzle_mode() {
             egui::Panel::right("game_sidebar_height_fit_panel").default_size(workspace_width)
@@ -22972,33 +23275,7 @@ impl eframe::App for ChessApp {
                                 )
                                 .clicked()
                             {
-                                if self.fics_active {
-                                    #[cfg(target_arch = "wasm32")]
-                                    {
-                                        if self.lichess.active { lichess_command(serde_json::json!({"type":"action", "action":"resign"})); }
-                                        else { fics_send("resign"); }
-                                    }
-                                    self.fics_status = "Resignation sent…".into();
-                                } else {
-                                    self.local_resigned_white = Some(if self.engine_enabled {
-                                        self.player_side == PlayerSide::White
-                                    } else {
-                                        self.board.side_to_move() == Color::White
-                                    });
-                                    #[cfg(target_arch = "wasm32")]
-                                    self.stop_analysis();
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let Some(engine) = &self.engine {
-                                        engine.command("stop");
-                                    }
-                                    self.engine_searching = false;
-                                    self.resume_engine_after_ready = false;
-                                    self.selected = None;
-                                    self.legal_targets.clear();
-                                    self.promotion = None;
-                                    self.engine_status = "Game ended by resignation".into();
-                                    self.save_game();
-                                }
+                                self.resign_current_game();
                                 self.fics_resign_dialog_open = false;
                             }
                             if ui
@@ -23068,9 +23345,7 @@ impl eframe::App for ChessApp {
         let graph_in_study_panel = false;
         if !graph_in_study_panel { self.expanded_analysis_graph(ctx); }
         self.expanded_engine_prediction(ctx);
-        self.background_dialog(ctx);
-        self.board_theme_dialog(ctx);
-        self.theme_adjustments_dialog(ctx);
+        self.settings_panel(ctx, status_dock_top);
 
         if self.print_confirm_open {
             let mut open = true;
@@ -23349,7 +23624,7 @@ impl eframe::App for ChessApp {
             self.fics_console_open = open;
         }
 
-        self.new_game_dialog(ctx);
+        self.new_game_dialog(ctx, status_dock_top);
 
         }
         if let Some((from, to)) = self.promotion {
@@ -23401,14 +23676,17 @@ impl eframe::App for ChessApp {
         self.settle_training();
         if !self.focus_mode {
         self.training_dialog(ctx);
-        self.elo_calculator_dialog(ctx);
+        self.lichess_ui(ctx, status_dock_top);
+        self.elo_calculator_dialog(ctx, status_dock_top);
         self.about_dialog(ctx);
-        self.strength_dialog(ctx);
-        self.pgn_dialog(ctx);
+
+        self.pgn_dialog(ctx, status_dock_top);
         self.batch_pgn_dialog(ctx);
         self.batch_pgn_progress_dialog(ctx);
         }
         self.keyboard_move_ui(ctx);
+        #[cfg(target_arch = "wasm32")]
+        self.update_page_title(ctx, status_dock_top);
 
         // Moves are made while drawing the central panel, so arm the delayed
         // repaint after all UI interaction for this frame has completed.
@@ -23418,7 +23696,7 @@ impl eframe::App for ChessApp {
             if remaining <= 0.0 {
                 let blocked_temporarily = self.engine_searching
                     || self.pgn_dialog_open
-                    || self.strength_dialog_open
+                    || self.settings.open
                     || self.background_dialog_open
                     || self.about_dialog_open
                     || self.new_game_dialog_open;

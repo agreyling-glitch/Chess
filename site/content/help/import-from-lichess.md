@@ -11,12 +11,12 @@ Bring completed Lichess games into Ironwood without downloading a PGN file first
 
 ## Import a player's recent games
 
-1. Open **Game library → Import…**, or **Manage library → Import games…** in Saved Games.
+1. Open **Import games**, or **Manage library → Import games…** in Saved Games.
 2. On the **Lichess** tab, enter the player's **username**, such as `Dr_Tiger`.
 3. Click the gold **Fetch games** button. Follow the status below the input while Ironwood retrieves up to the chosen number of matching completed games (20 by default).
 4. A collection opens the game-selection window directly. There is no Paste tab or **Continue** step.
 5. Select the games you want, or use **Select matching** to select all games matching the current player filter. Click **Import selected**.
-6. Open **Game library → Saved games** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
+6. Open **Game Library** and choose **Imported Games** to find the imported games. Open a game to review its moves or start analysis.
 
 Ironwood skips games that are already in Saved Games. Importing a collection saves the selected games; analyze them individually after opening them.
 
@@ -56,7 +56,7 @@ Imported games are stored locally in this browser on this device. Use a [backup]
 
 ## Browse without importing
 
-Use [Lichess player profiles](/help/lichess-player-profiles/) when you only want to inspect a player or watch a recent or notable game. Mini-board playback does not add it to the library. **Review on Ironwood** opens a temporary full-board review; **Play → Save current game** keeps it locally. Import remains the workflow for adding selected games or a collection directly to Saved Games.
+Use [Lichess player profiles](/help/lichess-player-profiles/) when you only want to inspect a player or watch a recent or notable game. Mini-board playback does not add it to the library. **Review on Ironwood** opens a temporary full-board review; **Save current game** keeps it locally. Import remains the workflow for adding selected games or a collection directly to Saved Games.
 
 ## Timings when reviewing profile games
 

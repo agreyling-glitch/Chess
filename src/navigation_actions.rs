@@ -1,9 +1,11 @@
 use super::*;
+use super::navigation::ModeSwitch;
 
 impl ChessApp {
     pub(super) fn navigation_open_analysis(&mut self, ctx: &egui::Context) {
-        if self.training_live() || (self.fics_active && self.fics_playing) { return; }
+        if self.training_live() || (self.fics_active && self.fics_playing && !self.fics_game_finished) { return; }
             ctx.data_mut(|d| {
+                d.insert_temp(egui::Id::new("analysis_workspace"), true);
                 d.insert_temp(egui::Id::new("navigation_action_selected"), "Analysis".to_owned());
                 d.insert_temp(egui::Id::new("puzzles_open"), false);
                 d.insert_temp(egui::Id::new("study_window_open"), false);
@@ -22,223 +24,184 @@ impl ChessApp {
             });
     }
 
-    pub(super) fn navigation_analysis(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn navigation_play(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
-        let enabled = !self.training_live() && !(self.fics_active && self.fics_playing);
-        if Self::navigation_action(ui, enabled, "Analyze current game")
-            .on_disabled_hover_text("Finish your training or online game before opening analysis.")
-            .clicked()
-        {
-            self.navigation_open_analysis(ui.ctx());
+        let setup_button = |ui: &mut egui::Ui, label: &str, selected| {
+            ui.add(egui::Button::new("")
+                .left_text(label)
+                .frame(selected)
+                .selected(selected)
+                .wrap()
+                .min_size(Vec2::new(ui.available_width(), 36.0)))
+                .clicked() && !selected
+        };
+        let setup_open = self.new_game_dialog_open && self.navigation.game_setup_attached;
+        if setup_button(ui, "New game against Engine…", setup_open && !self.new_game_both_sides) {
+            self.request_mode_switch(ModeSwitch::Setup { self_play: false, attached: true });
         }
-        if Self::navigation_action(ui, self.navigation_library_enabled(), "Analyze a saved game…").clicked() {
-            self.navigation_open_library();
-        }
-        if Self::navigation_action(ui, !self.engine_settings_locked(), "Engine settings…").clicked() {
-            self.open_engine_settings();
+        egui::CollapsingHeader::new("Online").default_open(true).show(ui, |ui| {
+            if Self::navigation_action(ui, true, "Lichess lobby…").clicked() {
+                self.request_mode_switch(ModeSwitch::OnlineLobby { lichess: true });
+            }
+            if Self::navigation_action(ui, true, "FICS lobby…").clicked() {
+                self.request_mode_switch(ModeSwitch::OnlineLobby { lichess: false });
+            }
+        });
+        if setup_button(ui, "Self-play…", setup_open && self.new_game_both_sides) {
+            self.request_mode_switch(ModeSwitch::Setup { self_play: true, attached: true });
         }
     }
 
-    pub(super) fn navigation_play(&mut self, ui: &mut egui::Ui) {
-        Self::set_menu_item_font(ui);
-        if Self::navigation_action(ui, true, "New game against AI…").clicked() {
-            self.navigation_new_game(false);
-        }
-        ui.collapsing("Online", |ui| {
-            if Self::navigation_action(ui, true, "Lichess lobby…").clicked() {
-                self.open_online_lobby(true);
-            }
-            if Self::navigation_action(ui, true, "FICS lobby…").clicked() {
-                self.open_online_lobby(false);
-            }
-        });
-        if Self::navigation_action(ui, true, "Self-play…").clicked() {
-            self.navigation_new_game(true);
-        }
-        if Self::navigation_action(
-            ui,
-            !self.fics_active || self.fics_game_finished,
-            "Save current game",
-        )
-        .clicked()
-        {
-            self.save_current_game();
-        }
-        ui.separator();
-        if Self::navigation_action(ui, true, "Exit to home").clicked() {
-            #[cfg(target_arch = "wasm32")]
-            if let Some(window) = web_sys::window() {
-                let _ = window.location().set_href("/");
-            }
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn exit_to_home() {
+        if let Some(window) = web_sys::window() {
+            let _ = window.location().set_href("/");
         }
     }
     pub(super) fn navigation_training(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
         if Self::navigation_action(ui, true, "Train against AI…").clicked() {
-            self.settle_training();
-            self.training_dialog_open = true;
+            self.request_mode_switch(ModeSwitch::Training);
         }
-        if Self::navigation_action(ui, self.navigation_puzzles_enabled(), "Lichess Puzzles…")
+        if Self::navigation_action(ui, self.navigation_puzzles_enabled() || self.playing_game_before_mode_switch(), "Lichess Puzzles…")
             .on_disabled_hover_text("Finish your training or online game before starting puzzles.")
             .clicked()
         {
-            ui.ctx()
-                .data_mut(|d| d.insert_temp(egui::Id::new("puzzles_open"), true));
+            self.request_mode_switch(ModeSwitch::Puzzles);
         }
-        if Self::navigation_action(ui, self.navigation_puzzles_enabled(), "Study…")
+        if Self::navigation_action(ui, self.navigation_puzzles_enabled() || self.playing_game_before_mode_switch(), "Study…")
             .on_disabled_hover_text("Finish your training or online game before opening Study.").clicked() {
-            ui.ctx().data_mut(|d| {
-                d.insert_temp(egui::Id::new("puzzles_open"), false);
-                d.insert_temp(egui::Id::new("study_window_open"), true);
-            });
+            self.request_mode_switch(ModeSwitch::Study);
         }
     }
-    pub(super) fn navigation_library(&mut self, ui: &mut egui::Ui) {
-        Self::set_menu_item_font(ui);
-        if Self::navigation_action(ui, self.navigation_library_enabled(), "Saved games…").clicked()
+    pub(super) fn board_display_settings(&mut self, ui: &mut egui::Ui) {
+        if ui
+            .checkbox(&mut self.show_highlighted_move, "Show highlighted move")
+            .changed()
         {
-            self.navigation_open_library();
+            self.save_preferences();
         }
-        if Self::navigation_action(ui, true, "Import…").clicked() {
-            if self.fics_active {
-                self.stop_fics();
-            }
-            #[cfg(target_arch = "wasm32")]
-            ensure_imported_index();
-            self.import_input.clear();
-            self.pgn_dialog_open = true;
-            self.pgn_error = None;
+        if ui
+            .checkbox(&mut self.piece_shadows, "Piece shadows")
+            .changed()
+        {
+            self.save_game();
         }
-        if Self::navigation_action(ui, true, "Backup and Restore…").clicked() {
-            #[cfg(target_arch = "wasm32")]
-            open_history_backup();
+        if ui
+            .checkbox(&mut self.show_board_frame, "Show board frame")
+            .changed()
+        {
+            self.save_game();
         }
-        ui.separator();
-        if Self::navigation_action(ui, true, "Storage information…").clicked() {
-            #[cfg(target_arch = "wasm32")]
-            open_storage_info();
+        if ui
+            .checkbox(&mut self.show_coordinates, "Show coordinates")
+            .changed()
+        {
+            self.save_game();
         }
-        ui.separator();
+        if ui
+            .checkbox(&mut self.show_best_move_arrows, "Show best-move arrows")
+            .changed()
+        {
+            self.save_game();
+        }
     }
-    pub(super) fn navigation_settings(&mut self, ui: &mut egui::Ui) {
-        Self::set_menu_item_font(ui);
-        if Self::navigation_action(ui, !self.engine_settings_locked(), "Engine settings…")
-                        .on_disabled_hover_text("Finish active training and stop full-game analysis before changing engine settings")
-                        .clicked() {
-                        self.open_engine_settings();
-
-                    }
+    pub(super) fn move_feedback_settings(&mut self, ui: &mut egui::Ui) {
+        for (figurines, label) in [(false, "Letters (Qf3)"), (true, "Figurines (♕f3)")] {
+            if ui
+                .selectable_value(&mut self.figurine_notation, figurines, label)
+                .changed()
+            {
+                self.save_game();
+            }
+        }
+        ui.separator();
+        if ui
+            .checkbox(&mut self.highlight_checked_king, "Highlight king in check")
+            .changed()
+        {
+            self.save_preferences();
+        }
+        if ui
+            .checkbox(&mut self.animate_captures, "Capture dissolve")
+            .changed()
+        {
+            self.capture_animation = None;
+            self.save_preferences();
+        }
+        ui.label(
+            RichText::new("Animations respect your system's reduced-motion setting.")
+                .small()
+                .weak(),
+        );
+        if ui
+            .checkbox(&mut self.animate_moves, "Animate live moves")
+            .changed()
+        {
+            self.move_animation = None;
+            self.save_game();
+        }
+        if ui
+            .checkbox(&mut self.move_sounds, "Play move sounds")
+            .changed()
+        {
+            self.save_game();
+            #[cfg(target_arch = "wasm32")]
+            if self.move_sounds {
+                self.play_move_sound("move");
+            }
+        }
         #[cfg(target_arch = "wasm32")]
-        if crate::companion::enabled()
-            && Self::navigation_action(ui, true, "Companion connection…").clicked()
         {
-            manage_companion_connection();
+        if ui.add(egui::Slider::new(&mut self.move_sound_volume, 0..=100)
+            .text("Volume").suffix("%")).changed()
+        {
+            self.save_preferences();
         }
-        ui.separator();
-        if Self::navigation_action(ui, true, "Background…").clicked() {
-            self.background_dialog_open = true;
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Move sound");
+            let previous = self.move_sound_style;
+            egui::ComboBox::from_id_salt("move_sound_style")
+                .selected_text(self.move_sound_style.label())
+                .show_ui(ui, |ui| {
+                    for style in MoveSoundStyle::ALL {
+                        ui.selectable_value(&mut self.move_sound_style, style, style.label());
+                    }
+                });
+            if self.move_sound_style != previous {
+                self.save_preferences();
+            }
+            if ui.button("Preview").on_hover_text("Play a sample move sound").clicked() {
+                self.play_move_sound("move");
+            }
+        });
+        if self.move_sound_style == MoveSoundStyle::BoardTap {
+            let octave_changed = ui.add(
+                egui::Slider::new(&mut self.board_tap_octave, -2.0..=1.0)
+                    .step_by(0.1)
+                    .text("Octave"),
+            ).changed();
+            let decay_changed = ui.add(
+                egui::Slider::new(&mut self.board_tap_decay, 25..=300)
+                    .suffix("%")
+                    .text("Decay"),
+            ).changed();
+            if octave_changed || decay_changed {
+                self.save_preferences();
+            }
         }
-        ui.separator();
-        ui.collapsing("Move notation", |ui| {
-            Self::set_menu_item_font(ui);
-            for (figurines, label) in [(false, "Letters (Qf3)"), (true, "Figurines (♕f3)")] {
-                if ui
-                    .selectable_value(&mut self.figurine_notation, figurines, label)
-                    .changed()
-                {
-                    self.save_game();
-                }
-            }
-        });
-        ui.collapsing("Board", |ui| {
-            Self::set_menu_item_font(ui);
-            if Self::navigation_action(ui, true, "Theme…").clicked() {
-                self.open_board_theme_dialog();
-            }
-            if Self::navigation_action(ui, true, "Theme adjustments…").clicked() {
-                self.theme_adjustments_open = true;
-            }
-            ui.separator();
-            if ui
-                .checkbox(&mut self.show_highlighted_move, "Show highlighted move")
-                .changed()
-            {
-                self.save_preferences();
-            }
-            if ui
-                .checkbox(&mut self.piece_shadows, "Piece shadows")
-                .changed()
-            {
-                self.save_game();
-            }
-            if ui
-                .checkbox(&mut self.show_board_frame, "Show board frame")
-                .changed()
-            {
-                self.save_game();
-            }
-            if ui
-                .checkbox(&mut self.show_coordinates, "Show coordinates")
-                .changed()
-            {
-                self.save_game();
-            }
-            if ui
-                .checkbox(&mut self.show_best_move_arrows, "Show best-move arrows")
-                .changed()
-            {
-                self.save_game();
-            }
-        });
-        ui.collapsing("Move feedback", |ui| {
-            Self::set_menu_item_font(ui);
-            if ui
-                .checkbox(&mut self.highlight_checked_king, "Highlight king in check")
-                .changed()
-            {
-                self.save_preferences();
-            }
-            if ui
-                .checkbox(&mut self.animate_captures, "Capture dissolve")
-                .changed()
-            {
-                self.capture_animation = None;
-                self.save_preferences();
-            }
-            ui.label(
-                RichText::new("Animations respect your system's reduced-motion setting.")
-                    .small()
-                    .weak(),
-            );
-            if ui
-                .checkbox(&mut self.animate_moves, "Animate live moves")
-                .changed()
-            {
-                self.move_animation = None;
-                self.save_game();
-            }
-            if ui
-                .checkbox(&mut self.move_sounds, "Play move sounds")
-                .changed()
-            {
-                self.save_game();
-                #[cfg(target_arch = "wasm32")]
-                if self.move_sounds {
-                    play_chess_sound("move");
-                }
-            }
-        });
-        ui.separator();
-        ui.collapsing("Local data", |ui| {
-            if Self::navigation_action(ui, true, "Clear saved games…").clicked() {
-                #[cfg(target_arch = "wasm32")]
-                clear_saved_games();
-            }
-            if Self::navigation_action(ui, true, "Reset all local data…").clicked() {
-                #[cfg(target_arch = "wasm32")]
-                reset_local_data();
-            }
-        });
+        }
+    }
+    #[cfg(target_arch = "wasm32")]
+    pub(super) fn local_data_settings(&mut self, ui: &mut egui::Ui) {
+        if Self::navigation_action(ui, true, "Clear saved games…").clicked() {
+            #[cfg(target_arch = "wasm32")]
+            clear_saved_games();
+        }
+        if Self::navigation_action(ui, true, "Reset all local data…").clicked() {
+            #[cfg(target_arch = "wasm32")]
+            reset_local_data();
+        }
     }
     pub(super) fn navigation_tools(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);

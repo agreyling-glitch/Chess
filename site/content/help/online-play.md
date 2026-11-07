@@ -57,7 +57,7 @@ In **History**, enter a handle in **History for**, then choose **Look up** or pr
 - **Preview** opens the existing moves player for the archived game, keeping your main board and current game unchanged.
 - **Review** loads the game onto the main board at its starting position for navigation and analysis. Finish active online play or training before reviewing another game. The FICS connection stays open.
 
-Reviewing an archived game is temporary. Use **Play → Save current game** if you want it in your local library. Games can become unavailable as a player's server history changes or if access is restricted.
+Reviewing an archived game is temporary. Use **Save current game** if you want it in your local library. Games can become unavailable as a player's server history changes or if access is restricted.
 
 ## Watch: public games
 

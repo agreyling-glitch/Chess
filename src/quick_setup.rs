@@ -142,7 +142,7 @@ impl ChessApp {
         )
     }
 
-    pub(super) fn new_game_dialog(&mut self, ctx: &egui::Context) {
+    pub(super) fn new_game_dialog(&mut self, ctx: &egui::Context, status_dock_top: f32) {
         if !self.new_game_dialog_open {
             return;
         }
@@ -153,9 +153,15 @@ impl ChessApp {
         self.new_game_training = false;
         let screen = ctx.content_rect();
         let mobile = screen.width() < 600.0;
-        let left = screen.left() + if mobile { 0.0 } else { 56.0 };
+        let attached = self.navigation.game_setup_attached;
+        let docked = attached && screen.width() >= 760.0;
+        let left = screen.left()
+            + if mobile { 0.0 } else { navigation::RAIL_WIDTH }
+            + if docked { navigation::DRAWER_WIDTH } else { 0.0 };
         let width = (screen.right() - left).min(560.0);
-        let height = screen.height();
+        let bottom = if docked { screen.bottom() } else { status_dock_top };
+        let height = bottom - screen.top();
+        let parent_closed = attached && (!self.navigation.expanded || self.navigation.section != 0);
         let mut close = false;
         let mut start = false;
         let area = egui::Area::new(egui::Id::new("new_game_window"))
@@ -163,18 +169,16 @@ impl ChessApp {
             .fixed_pos(egui::pos2(left, screen.top()))
             .default_size(Vec2::new(width, height))
             .movable(false);
-        let response = egui::Modal::new(egui::Id::new("new_game_window"))
-            .area(area)
-            .frame(Frame::NONE)
-            .backdrop_color(Color32::from_black_alpha(24))
-            .show(ctx, |ui| {
-                Frame::new()
-                    .fill(Color32::from_rgb(21, 27, 31))
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(66, 57, 35)))
-                    .corner_radius(CornerRadius::same(10))
+        let contents = |ui: &mut egui::Ui| {
+                let mut grain_layer = None;
+                let panel = Frame::new()
+                    .fill(Color32::from_rgb(19, 24, 28))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
                     .inner_margin(Margin::same(22))
                     .show(ui, |ui| {
+                        grain_layer = Some(ui.painter().add(egui::Shape::Noop));
                         ui.set_width((width - 46.0).max(100.0));
+                        ui.set_min_height((height - 46.0).max(0.0));
                         ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
                         ui.spacing_mut().interact_size.y = 40.0;
                         ui.spacing_mut().button_padding = Vec2::new(12.0, 8.0);
@@ -213,7 +217,16 @@ impl ChessApp {
                             );
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 close |= ui
-                                    .add(egui::Button::new("×").frame(false))
+                                    .add(
+                                        egui::Button::new(
+                                            RichText::new("×")
+                                                .size(18.0)
+                                                .color(Color32::from_rgb(244, 221, 176)),
+                                        )
+                                        .fill(Color32::from_rgb(41, 40, 32))
+                                        .stroke(Stroke::new(1.0, Color32::from_rgb(211, 173, 98)))
+                                        .corner_radius(CornerRadius::same(6)),
+                                    )
                                     .on_hover_text("Close new game")
                                     .clicked();
                             });
@@ -222,7 +235,7 @@ impl ChessApp {
                             RichText::new(if self.new_game_both_sides {
                                 "Self-play"
                             } else {
-                                "New game against AI"
+                                "New game against Engine"
                             })
                             .size(22.0),
                         );
@@ -231,16 +244,15 @@ impl ChessApp {
                                 .color(Color32::from_rgb(174, 183, 181)),
                         );
                         ui.add_space(6.0);
-                        ui.separator();
-                        egui::ScrollArea::vertical()
-                            .id_salt("quick_setup_fields")
-                            // Keep the app's floating privacy control clear of Start on phones.
-                            .max_height((height - 270.0).max(60.0))
-                            .auto_shrink([false, true])
-                            .show(ui, |ui| {
-                                self.quick_setup_fields(ui);
-                            });
-                        ui.separator();
+                        Self::textured_sunken_section(ui, true, |ui| {
+                            egui::ScrollArea::vertical()
+                                .id_salt("quick_setup_fields")
+                                // Keep the app's floating privacy control clear of Start on phones.
+                                .max_height((height - 294.0).max(60.0))
+                                .auto_shrink([false, true])
+                                .show(ui, |ui| self.quick_setup_fields(ui));
+                        });
+                        ui.add_space(6.0);
                         ui.add(
                             egui::Label::new(RichText::new(self.quick_summary()).small().weak())
                                 .wrap(),
@@ -272,10 +284,28 @@ impl ChessApp {
                             });
                         });
                     });
-            });
-        // The backdrop consumes outside clicks rather than passing them to the board.
-        close |= response.should_close();
-        if close {
+                if let Some(layer) = grain_layer {
+                    let surface = panel.response.rect.shrink(1.0);
+                    let grain = Self::paper_grain_texture(ctx);
+                    let uv = egui::Rect::from_min_size(egui::Pos2::ZERO, surface.size() / 256.0);
+                    let image = egui::Shape::image(grain.id(), surface, uv, Color32::WHITE);
+                    ui.painter().set(layer, egui::Shape::Vec(vec![image.clone(), image]));
+                }
+        };
+        if !parent_closed {
+            if docked {
+                area.show(ctx, contents);
+            } else {
+                close |= egui::Modal::new(egui::Id::new("new_game_window"))
+                    .area(area)
+                    .frame(Frame::NONE)
+                    .backdrop_color(Color32::from_black_alpha(24))
+                    .show(ctx, contents)
+                    .should_close();
+            }
+        }
+        if close || parent_closed {
+            self.navigation.game_setup_attached = false;
             self.new_game_dialog_open = false;
             self.new_game_engine_draft = None;
             if self.new_game_engine_selection.is_some() {
@@ -283,6 +313,10 @@ impl ChessApp {
             }
             self.new_game_opponent = self.engine_config.opponent;
         } else if start {
+            if attached {
+                self.navigation.game_setup_attached = false;
+                self.navigation.expanded = false;
+            }
             self.start_quick_game();
         }
     }
@@ -593,6 +627,7 @@ impl ChessApp {
             self.apply_new_game_strength();
         }
         self.reset_for_side(side);
+        self.navigation.local_game_started = true;
         self.board = match self.new_game_position {
             1 => {
                 let mut bytes = [0u8; 2];
@@ -658,12 +693,18 @@ mod tests {
     }
 
     #[test]
-    fn quick_setup_height_tracks_content_not_desktop_height() {
-        let mut heights = Vec::new();
-        for height in [1000.0, 1600.0] {
+    fn setup_height_matches_its_docking_mode() {
+        for (height, dock_height, attached, self_play) in [
+            (1000.0, 34.0, false, false),
+            (1000.0, 34.0, true, false),
+            (1600.0, 66.0, true, true),
+        ] {
+            let dock_top = height - dock_height;
             let ctx = egui::Context::default();
             let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
-            app.navigation_new_game(false);
+            app.navigation_new_game(self_play);
+            app.navigation.game_setup_attached = attached;
+            app.navigation.expanded = attached;
             app.new_game_opponent = OpponentEngine::Companion;
             for frame in 0..5 {
                 let mut output = ctx.run_ui(
@@ -675,23 +716,19 @@ mod tests {
                         time: Some(frame as f64),
                         ..Default::default()
                     },
-                    |_| app.new_game_dialog(&ctx),
+                    |_| app.new_game_dialog(&ctx, dock_top),
                 );
                 output.textures_delta.clear();
             }
             let rect = ctx
                 .memory(|m| m.area_rect(egui::Id::new("new_game_window")))
                 .unwrap();
+            let expected_bottom = if attached { height } else { dock_top };
             assert!(
-                rect.height() < 750.0,
-                "Panel should fit its contents: {rect:?}"
+                (rect.bottom() - expected_bottom).abs() < 1.0,
+                "Expected panel to end at {expected_bottom}: {rect:?}"
             );
-            heights.push(rect.height());
         }
-        assert!(
-            (heights[0] - heights[1]).abs() < 1.0,
-            "Panel grew with the viewport: {heights:?}"
-        );
     }
 
     #[test]
@@ -714,7 +751,7 @@ mod tests {
                         time: Some(frame as f64),
                         ..Default::default()
                     },
-                    |_| app.new_game_dialog(&ctx),
+                    |_| app.new_game_dialog(&ctx, ctx.content_rect().bottom()),
                 );
                 output.textures_delta.clear();
             }
@@ -741,7 +778,7 @@ mod tests {
                     }],
                     ..Default::default()
                 },
-                |_| app.new_game_dialog(&ctx),
+                |_| app.new_game_dialog(&ctx, ctx.content_rect().bottom()),
             );
             output.textures_delta.clear();
             assert!(!app.new_game_dialog_open);
@@ -797,7 +834,7 @@ mod tests {
                     {
                         underlying_clicks += 1;
                     }
-                    app.new_game_dialog(&ctx);
+                    app.new_game_dialog(&ctx, ctx.content_rect().bottom());
                 },
             );
             output.textures_delta.clear();

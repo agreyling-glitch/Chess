@@ -45,7 +45,7 @@ Renaming an engine changes its display label and keeps its registration identity
 
 ## Import into an archive
 
-Open **Game library → Import…** and choose the named Companion in the location list. Choose a supported file with **Browse…**, drag it onto the app, or paste PGN. Review the selection and destination before importing. Choose **Browser** instead if the collection should stay in this browser.
+Open **Import games** and choose the named Companion in the location list. Choose a supported file with **Browse…**, drag it onto the app, or paste PGN. Review the selection and destination before importing. Choose **Browser** instead if the collection should stay in this browser.
 
 For Scid databases, clearing **Through game** returns the range to the database's last game. Use the full matching set of Scid files, or a supported archive containing that set. Scid import reads the source without changing it.
 
@@ -72,6 +72,6 @@ To compare results already saved for a game, use [Saved Analysis](/help/saved-an
 
 ## Unified game management
 
-The old **Your game archive** window has been retired. Use **Game library → Saved games…** for collections, browsing, metadata, copies, moves, exports and deletion. Choose Browser or a named Companion there. Use **Game library → Backup and Restore…** for backups, **Settings → Companion connection…** for connections, and the Import Games window for folder-import progress.
+The old **Your game archive** window has been retired. Use **Game Library** for collections, browsing, metadata, copies, moves, exports and deletion. Choose Browser or a named Companion there. Use **Settings → Storage → Backup and Restore** for backups, **Settings → Companion** for connections, and the Import Games window for folder-import progress.
 
 In Browser Saved Games, copy and move controls use your Companion’s saved name. If several Companions are configured, open **Copy to…** or **Move to…** and choose a named destination from the submenu; disconnected destinations are disabled. These controls are available for selected games above the list and in each saved game’s **☰** menu, including its larger preview. See [Saved games and backups](/help/saved-games-and-backups/#copy-games-to-an-archive).

@@ -365,6 +365,29 @@ pub fn hover_arrow(ctx: &egui::Context, board: Board) -> Option<chess::ChessMove
         .filter(|(position, _)| *position == board)
         .map(|(_, mv)| mv)
 }
+pub fn source_settings(ui: &mut egui::Ui) {
+    let mut state = ui.ctx().data_mut(|data| data.get_temp::<State>(id())).unwrap_or_default();
+    if state.local && !crate::companion::enabled() {
+        state = State::default();
+    }
+    tablebase_source_controls(ui, &mut state);
+    ui.ctx().data_mut(|data| data.insert_temp(id(), state));
+}
+
+fn tablebase_source_controls(ui: &mut egui::Ui, state: &mut State) {
+    ui.horizontal_wrapped(|ui| {
+        ui.label("Source");
+        let before = state.local;
+        ui.selectable_value(&mut state.local, false, "Lichess online");
+        if crate::companion::enabled() { ui.selectable_value(&mut state.local, true, "Local Companion"); }
+        if before != state.local { state.select_node(None); state.nodes.clear(); }
+    });
+    if state.local && ui.button("Connect Companion / inspect local coverage").clicked() {
+        #[cfg(target_arch = "wasm32")]
+        let _ = lookup("", false, true, true);
+    }
+}
+
 pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl Fn(&str) -> String) {
     let mut state = ui
         .ctx()
@@ -395,17 +418,7 @@ pub fn panel(ui: &mut egui::Ui, root: Board, root_fen: &str, display_san: impl F
             .size(13.0)
             .weak(),
     );
-    ui.horizontal_wrapped(|ui| {
-        ui.label("Source");
-        let before = state.local;
-        ui.selectable_value(&mut state.local, false, "Lichess online");
-        if crate::companion::enabled() { ui.selectable_value(&mut state.local, true, "Local Companion"); }
-        if before != state.local { state.select_node(None); state.nodes.clear(); }
-    });
-    if state.local && ui.button("Connect Companion / inspect local coverage").clicked() {
-        #[cfg(target_arch = "wasm32")]
-        let _ = lookup("", false, true, true);
-    }
+    tablebase_source_controls(ui, &mut state);
     ui.add_space(3.0);
     let tree_request = sunken_section(ui, |ui| {
     ui.label(RichText::new("EXPLORATION").size(11.0).strong().color(GOLD));

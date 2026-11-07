@@ -527,7 +527,6 @@ impl ChessApp {
                 "Opponent's move"
             }
             .into();
-            Self::set_page_title(false, &self.review_white_player, &self.review_black_player);
         } else {
             let result = match event["state"]["winner"].as_str() {
                 Some("white") => "1-0",
@@ -543,7 +542,6 @@ impl ChessApp {
             };
             self.pgn_input = lichess_pgn(&event, &self.review_moves, result);
             self.review_index = Some(self.review_moves.len());
-            Self::set_page_title(true, &self.review_white_player, &self.review_black_player);
             self.compact_panel = CompactPanel::Analysis;
             self.fics_status = format!("Game finished · {status} · {result}");
             let id = event["id"].as_str().unwrap_or("");
@@ -756,12 +754,12 @@ impl ChessApp {
             self.review_black_player = state["black"].as_str().unwrap_or_default().to_owned();
             self.player_side = if state["side"] == "black" { PlayerSide::Black } else { PlayerSide::White };
             self.lichess.open = true;
-            self.lichess_ui(ui.ctx());
+            self.lichess_ui(ui.ctx(), ui.ctx().content_rect().bottom());
         } else { ui.label("Keep the main Ironwood window open to use the Lichess lobby."); }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
     }
 
-    fn lichess_ui(&mut self, ctx: &egui::Context) {
+    fn lichess_ui(&mut self, ctx: &egui::Context, status_dock_top: f32) {
         self.lichess_history_ui(ctx);
         if !self.lichess.open {
             return;
@@ -769,18 +767,32 @@ impl ChessApp {
         let mut open = true;
         let mut close_after = false;
         let connected = self.lichess.connected();
-        let width = (ctx.content_rect().width() - 64.0).clamp(280.0, if connected { 760.0 } else { 600.0 });
+        let screen = ctx.content_rect();
+        #[cfg(target_arch = "wasm32")]
+        let companion = lobby_companion_mode();
+        #[cfg(not(target_arch = "wasm32"))]
+        let companion = false;
+        let left = screen.left() + if companion || screen.width() < 600.0 { 0.0 } else { navigation::RAIL_WIDTH };
+        let width = (screen.right() - left).min(if connected { 800.0 } else { 640.0 });
+        let size = Vec2::new(width, status_dock_top - screen.top());
         let mut detached = false;
-        let lobby_window = egui::Window::new("Lichess lobby").title_bar(false).collapsible(false)
-            .drag_area(egui::WindowDrag::Anywhere).resizable(true)
-            .default_pos(egui::pos2(48.0,48.0))
-            .default_size(Vec2::new(width, 800.0))
-            .min_size(Vec2::new(380.0,340.0))
-            .max_width((ctx.content_rect().width()-40.0).max(280.0))
-            .max_height((ctx.content_rect().height()-40.0).max(240.0))
-            .frame(Self::dialog_frame().shadow(egui::epaint::Shadow {
-                offset: [4,6], blur: 14, spread: 2, color: Color32::from_black_alpha(160),
-            })).show(ctx, |ui| {
+        let id = egui::Id::new("lichess_lobby");
+        let area = egui::Area::new(id)
+            .order(egui::Order::Foreground)
+            .fixed_pos(egui::pos2(left, screen.top()))
+            .default_size(size)
+            .movable(false);
+        let frame = Self::dialog_frame()
+            .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
+            .corner_radius(CornerRadius::ZERO);
+        let content_size = size - frame.total_margin().sum();
+        let lobby_window = egui::Modal::new(id)
+            .area(area)
+            .frame(frame)
+            .backdrop_color(Color32::TRANSPARENT)
+            .show(ctx, |ui| {
+            ui.set_min_size(content_size);
+            ui.set_max_size(content_size);
             let grain_background = ui.painter().add(egui::Shape::Noop);
             ui.horizontal(|ui| {
                 ui.add_sized([(ui.available_width()-82.0).max(80.0),28.0],
@@ -848,9 +860,15 @@ impl ChessApp {
                         if ui.add(egui::Button::new(egui::WidgetText::from("Player profile").color(Color32::from_rgb(25, 29, 35))).raised_gold()).clicked() {
                             #[cfg(target_arch="wasm32")]
                             if lobby_companion_mode() { lobby_action_in_main("profile"); }
-                            else { self.open_lichess_history(); }
+                            else {
+                                self.open_lichess_history();
+                                close_after = true;
+                            }
                             #[cfg(not(target_arch="wasm32"))]
-                            self.open_lichess_history();
+                            {
+                                self.open_lichess_history();
+                                close_after = true;
+                            }
                         }
                         Self::lichess_account_link(ui);
                     });
@@ -1102,9 +1120,7 @@ impl ChessApp {
                 egui::Rect::from_min_max(egui::Pos2::ZERO,
                     egui::pos2(surface.width() / 256.0, surface.height() / 256.0)), Color32::WHITE));
         });
-        if let Some(window) = lobby_window {
-            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id), window.response.rect);
-        }
+        open &= !lobby_window.should_close();
         self.lichess.open = open && !close_after && !detached;
         #[cfg(target_arch="wasm32")]
         if lobby_companion_mode() && (!open || close_after) { close_lobby_companion(); }
