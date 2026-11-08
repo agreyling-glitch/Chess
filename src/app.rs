@@ -1,7 +1,7 @@
 use crate::rules::{Board, MoveGen};
 #[path = "studies.rs"]
 mod studies;
-use studies::{StudyWorkspace, StudyChapter};
+use studies::StudyWorkspace;
 // Exact PGN text is the cache key. Only successful legal timelines are retained;
 // notes, analysis and tags are never cached or substituted between records.
 struct CachedPgnTimeline { source:String,positions:Vec<Board>,moves:Vec<String>,bytes:usize,content:Option<Vec<(bool,String,usize)>> }
@@ -36,6 +36,8 @@ mod navigation_actions;
 mod prediction_ui;
 #[path = "quick_setup.rs"]
 mod quick_setup;
+#[path = "companion_3d.rs"]
+mod companion_3d;
 #[cfg(any(target_arch = "wasm32", test))]
 #[path = "piece_themes.rs"]
 mod piece_themes;
@@ -44,7 +46,7 @@ use crate::training::{self, Profiles, Profile, Session, Side as TrainingSide, An
 use chess::{BoardStatus, ChessMove, Color, File, Piece, Rank, Square};
 use eframe::egui::{
     self, Align, Align2, Color32, CornerRadius, FontFamily, FontId, Frame, Layout, Margin,
-    RichText, Sense, Stroke, Vec2, epaint::TextShape,
+    RichText, Sense, Stroke, Vec2,
 };
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
@@ -370,6 +372,14 @@ extern "C" {
     fn publish_3d_position(state: &str);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodRead3dPosition)]
     fn read_3d_position() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodSubmit3dMove)]
+    fn submit_3d_move(request: &str) -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodTake3dMoves)]
+    fn take_3d_moves() -> String;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwood3dCompanionOpen)]
+    fn companion_3d_open() -> bool;
+    #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodInstall3dRepaint)]
+    fn install_3d_repaint(callback: &wasm_bindgen::JsValue);
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodFirstFrame)]
     fn report_first_frame();
     #[wasm_bindgen::prelude::wasm_bindgen(js_namespace = window, js_name = ironwoodUploadBackground)]
@@ -847,8 +857,6 @@ enum MateOutcome {
 }
 
 impl MateOutcome {
-    const ALL: [Self; 4] = [Self::Found, Self::Missed, Self::Allowed, Self::Escaped];
-
     fn color(self) -> Color32 {
         match self {
             Self::Found | Self::Escaped => Color32::from_rgb(112, 193, 133),
@@ -3190,38 +3198,6 @@ impl ChessApp {
         }
     }
 
-    fn paint_arc_text(
-        ui: &egui::Ui,
-        center: egui::Pos2,
-        radius: f32,
-        text: &str,
-        start_angle: f32,
-        end_angle: f32,
-        color: Color32,
-    ) {
-        let characters: Vec<char> = text.chars().collect();
-        let denominator = (characters.len().saturating_sub(1)).max(1) as f32;
-        let font = FontId::new(10.5, FontFamily::Proportional);
-        for (index, character) in characters.into_iter().enumerate() {
-            let progress = index as f32 / denominator;
-            let angle = start_angle + (end_angle - start_angle) * progress;
-            let point = center + Vec2::angled(angle) * radius;
-            let galley =
-                ui.fonts_mut(|fonts| fonts.layout_no_wrap(character.to_string(), font.clone(), color));
-            let position = point - galley.rect.center().to_vec2();
-            let tangent = if end_angle >= start_angle {
-                angle + std::f32::consts::FRAC_PI_2
-            } else {
-                angle - std::f32::consts::FRAC_PI_2
-            };
-            ui.painter().add(
-                TextShape::new(position, galley, color)
-                    .with_override_text_color(color)
-                    .with_angle_and_anchor(tangent, Align2::CENTER_CENTER),
-            );
-        }
-    }
-
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         #[cfg(target_arch = "wasm32")]
         if !companion_mode() {
@@ -3231,6 +3207,9 @@ impl ChessApp {
                 ctx.request_repaint();
             });
             register_companion_settings(&open.into_js_value());
+            let ctx = cc.egui_ctx.clone();
+            let repaint = Closure::<dyn FnMut()>::new(move || ctx.request_repaint());
+            install_3d_repaint(&repaint.into_js_value());
         }
         egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut style = (*cc.egui_ctx.style_of(cc.egui_ctx.theme())).clone();
@@ -3914,16 +3893,6 @@ impl ChessApp {
         let (marker, _) = ui.allocate_exact_size(Vec2::splat(10.0), Sense::hover());
         ui.painter().circle_filled(marker.center(), 3.5, color);
         ui.colored_label(color, if connected { "Connected" } else { "Disconnected" });
-    }
-
-    fn gold_menu_button<R>(
-        ui: &mut egui::Ui,
-        title: &'static str,
-        contents: impl FnOnce(&mut egui::Ui) -> R,
-    ) {
-        egui::containers::menu::MenuButton::new(title)
-            .config(egui::containers::menu::MenuConfig::new().style(Self::gold_menu_style))
-            .ui(ui, contents);
     }
 
     fn main_menu_button<R>(
@@ -6093,12 +6062,6 @@ impl ChessApp {
         })
     }
 
-    fn classification_count(&self, classification: MoveClassification) -> usize {
-        (1..self.review_positions.len())
-            .filter(|index| self.move_classification(*index) == Some(classification))
-            .count()
-    }
-
     fn classification_count_for_color(
         &self,
         classification: MoveClassification,
@@ -6108,16 +6071,6 @@ impl ChessApp {
             .filter(|index| self.review_positions[index - 1].side_to_move() == color)
             .filter(|index| self.move_classification(*index) == Some(classification))
             .count()
-    }
-
-    fn next_classified_move(
-        &self,
-        classification: MoveClassification,
-        current: usize,
-    ) -> Option<usize> {
-        ((current + 1)..self.review_positions.len())
-            .chain(1..=current.min(self.review_positions.len().saturating_sub(1)))
-            .find(|index| self.move_classification(*index) == Some(classification))
     }
 
     fn next_classified_move_for_color(
@@ -6443,57 +6396,6 @@ impl ChessApp {
                 ui.painter().galley(chip.min+Vec2::new(5.0,2.0),galley,ink);
             }
         });
-    }
-
-    fn move_explanation(&self, position_index: usize) -> Option<String> {
-        let root_index = position_index.checked_sub(1)?;
-        let root = *self.review_positions.get(root_index)?;
-        let before = self.game_analysis.get(root_index)?.as_ref()?;
-        let after = self.game_analysis.get(position_index)?.as_ref()?;
-        if let Some(outcome) = self.move_mate_outcome(position_index) {
-            return Some(format!("{} {}", outcome.label(), outcome.explanation()));
-        }
-        if before.mate.is_some() || after.mate.is_some() {
-            return None;
-        }
-        let mover_factor = if root.side_to_move() == Color::White {
-            1
-        } else {
-            -1
-        };
-        let before_score = Self::position_score(before, &root).map(|score| score * mover_factor);
-        let after_score = Self::position_score(after, self.review_positions.get(position_index)?)
-            .map(|score| score * mover_factor);
-        let explanation = if matches!((before_score, after_score), (Some(before), Some(after)) if before >= 100 && after <= -100)
-        {
-            "The position swings from an advantage to a disadvantage.".to_owned()
-        } else {
-            match self.move_classification(position_index)? {
-                MoveClassification::Blunder => {
-                    "This move causes a decisive evaluation swing.".to_owned()
-                }
-                MoveClassification::Mistake => {
-                    "This move gives away a significant part of the position's value.".to_owned()
-                }
-                MoveClassification::Inaccuracy => {
-                    "This move is playable, but it gives the opponent a noticeably better position."
-                        .to_owned()
-                }
-                MoveClassification::Best | MoveClassification::Good => return None,
-            }
-        };
-        let recommendation = before
-            .best_move
-            .as_deref()
-            .and_then(Self::parse_uci_value)
-            .map(|best_move| Self::san_for_move(&root, best_move));
-        Some(match recommendation {
-            Some(best_move) => format!(
-                "{explanation} The engine prefers {}.",
-                self.display_san(&best_move)
-            ),
-            None => explanation,
-        })
     }
 
     fn analyzed_move_button(
@@ -8274,17 +8176,6 @@ impl ChessApp {
         );
     }
 
-    fn strength_summary(config: &EngineConfig) -> String {
-        if config.opponent == OpponentEngine::Companion { return format!("{} · options set in Engine settings", config.label()); }
-        if config.limit_strength {
-            format!("Limited strength · {} Elo", config.elo)
-        } else if config.skill_level < 20 {
-            format!("Skill level {} of 20", config.skill_level)
-        } else {
-            "Maximum strength · Skill 20".to_owned()
-        }
-    }
-
     fn engine_setting_value(
         &mut self,
         ui: &mut egui::Ui,
@@ -8461,77 +8352,6 @@ impl ChessApp {
             }
             _ => {}
         }
-    }
-
-    fn settings_tab_bar(ui: &mut egui::Ui, tabs: &[&str], selected: usize) -> usize {
-        let mut chosen = selected;
-        let border = ui.visuals().widgets.noninteractive.bg_stroke.color;
-        let active_fill = ui.visuals().window_fill();
-        let inactive_fill = ui.visuals().faint_bg_color;
-        let width = ui.available_width();
-        let start = ui.cursor().min;
-        let bottom = start.y + 34.0;
-        ui.painter().line_segment(
-            [
-                egui::pos2(start.x, bottom),
-                egui::pos2(start.x + width, bottom),
-            ],
-            Stroke::new(1.0, border),
-        );
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 0.0;
-            for (index, text) in tabs.iter().enumerate() {
-                let active = index == selected;
-                let text_width = ui
-                    .painter()
-                    .layout_no_wrap(
-                        (*text).into(),
-                        FontId::proportional(18.0),
-                        ui.visuals().text_color(),
-                    )
-                    .size()
-                    .x;
-                let (slot, _) =
-                    ui.allocate_exact_size(Vec2::new(text_width + 28.0, 34.0), Sense::hover());
-                let rect = egui::Rect::from_min_max(
-                    egui::pos2(slot.left(), slot.top() + if active { 0.0 } else { 4.0 }),
-                    slot.right_bottom(),
-                );
-                let response = ui.put(
-                    rect,
-                    egui::Button::new(RichText::new(*text).size(18.0))
-                        .fill(if active { active_fill } else { inactive_fill })
-                        .stroke(Stroke::new(1.0, border))
-                        .corner_radius(CornerRadius {
-                            nw: 5,
-                            ne: 5,
-                            sw: 0,
-                            se: 0,
-                        }),
-                );
-                if response.clicked() {
-                    chosen = index;
-                }
-                if active {
-                    // Open the selected tab's lower edge into the content panel.
-                    ui.painter().line_segment(
-                        [
-                            egui::pos2(rect.left() + 1.0, bottom),
-                            egui::pos2(rect.right() - 1.0, bottom),
-                        ],
-                        Stroke::new(2.0, active_fill),
-                    );
-                    ui.painter().line_segment(
-                        [
-                            rect.left_top() + Vec2::new(5.0, 1.0),
-                            rect.right_top() + Vec2::new(-5.0, 1.0),
-                        ],
-                        Stroke::new(2.0, Color32::from_rgb(211, 173, 98)),
-                    );
-                }
-            }
-        });
-        chosen
     }
 
     fn engine_settings_tabs(ui: &mut egui::Ui, tabs: &[&str], selected: usize) -> usize {
@@ -10459,6 +10279,7 @@ impl ChessApp {
     fn load_pgn_with_storage(&mut self, text: &str, new_record: bool) -> bool {
         match Self::parse_pgn_mainline(text) {
             Ok((positions, moves)) => {
+                self.invalidate_external_3d_context();
                 self.playback_target=None;
                 if new_record { self.transient_profile_review=false; }
                 self.settle_training();
@@ -10760,6 +10581,7 @@ impl ChessApp {
             }
         }
 
+        self.invalidate_external_3d_context();
         self.transient_profile_review=false;
         #[cfg(target_arch = "wasm32")]
         if let Some(engine) = &self.engine {
@@ -12809,6 +12631,7 @@ impl ChessApp {
     }
 
     fn reset_for_side(&mut self, player_side: PlayerSide) {
+        self.invalidate_external_3d_context();
         self.puzzle_context.data_mut(|data| {
             data.remove_temp::<bool>(egui::Id::new("analysis_workspace"));
         });
@@ -13133,26 +12956,11 @@ impl ChessApp {
     }
 
     fn select(&mut self, square: Square) {
-        if self.fics_active && self.lichess.active && !self.lichess.connected() { return; }
-        if self.fics_active
-            && (!self.fics_playing
-                || self.fics_pending_move
-                || self.board.side_to_move() != self.player_side.color())
-        {
+        if self.has_3d_companion_input() {
+            self.select_3d_companion(square);
             return;
         }
-        if self.review_index.is_some() && self.best_move_attempt.is_none() && self.study.is_none() {
-            return;
-        }
-        if self.promotion.is_some() || self.board.status() != BoardStatus::Ongoing {
-            return;
-        }
-        if self.best_move_attempt.is_none()
-            && self.engine_enabled
-            && self.board.side_to_move() != self.player_side.color()
-        {
-            return;
-        }
+        if !self.board_move_input_allowed() { return; }
         if let Some(from) = self.selected {
             if self.legal_targets.contains(&square) {
                 let promotion_needed = self.board.piece_on(from) == Some(Piece::Pawn)
@@ -13961,16 +13769,6 @@ impl ChessApp {
         }
     }
 
-    fn piece_glyph(&self, square: Square) -> &'static str {
-        let Some(color) = self.board.color_on(square) else {
-            return "";
-        };
-        let Some(piece) = self.board.piece_on(square) else {
-            return "";
-        };
-        Self::piece_glyph_for(color, piece)
-    }
-
     fn piece_glyph_for(color: Color, piece: Piece) -> &'static str {
         match (color, piece) {
             (Color::White, Piece::King) => "♔",
@@ -13986,12 +13784,6 @@ impl ChessApp {
             (Color::Black, Piece::Knight) => "♞",
             (Color::Black, Piece::Pawn) => "♟",
         }
-    }
-
-    fn piece_image(&self, ctx: &egui::Context, square: Square) -> Option<egui::ImageSource<'static>> {
-        let color = self.board.color_on(square)?;
-        let piece = self.board.piece_on(square)?;
-        Self::piece_image_for(ctx, self.piece_set, color, piece).map(|(source, _)| source)
     }
 
     fn piece_image_for(
@@ -14696,10 +14488,11 @@ impl ChessApp {
     #[cfg(target_arch = "wasm32")]
     fn companion_3d_ui(&mut self, ui: &mut egui::Ui) {
         let snapshot = serde_json::from_str::<serde_json::Value>(&read_3d_position()).ok();
+        let connected = self.sync_3d_companion_input(snapshot.as_ref());
         self.board_3d_active = true;
-        self.selected = None;
-        self.legal_targets.clear();
         self.review_index = None;
+        self.board_mark_mode = false;
+        self.board_mark_drag = None;
         let theme_id = egui::Id::new("companion_theme_override");
         let flip_id = egui::Id::new("companion_flipped_override");
         self.flipped = ui.ctx().data(|data| data.get_temp::<bool>(flip_id))
@@ -14754,6 +14547,7 @@ impl ChessApp {
                             ui.separator();
                             egui::Grid::new("companion_camera_help").spacing(Vec2::new(16.0, 7.0)).show(ui, |ui| {
                                 for (gesture, action) in [
+                                    ("Click or drag", "Move a piece"),
                                     ("Right-drag", "Rotate and tilt"),
                                     ("Shift + right-drag", "Tilt only"),
                                     ("Right button + scroll", "Zoom"),
@@ -14765,18 +14559,19 @@ impl ChessApp {
                                 }
                             });
                             ui.separator();
-                            ui.label("Make moves and browse history on the main board.");
+                            ui.label("Moves are checked and applied by the main board. Browse history there.");
                             ui.label("Theme, flip, and camera changes apply only to this window.");
                         });
                         if ui.available_width() > 65.0 {
-                            ui.label(RichText::new("View only").small().weak());
+                            ui.label(RichText::new(if !connected { "Disconnected" }
+                                else if self.companion_3d_can_move() { "Your move" }
+                                else { "Waiting" }).small().weak());
                         }
                     });
                 });
             });
         ui.add_space(6.0);
-        if let Some(value) = snapshot {
-            if let Some(board) = value["fen"].as_str().and_then(|fen| Board::from_str(fen).ok()) { self.board = board; }
+        if let Some(value) = snapshot.filter(|_| connected) {
             self.board_3d_theme = theme;
             let appearance = if theme_override.is_some() {
                 Some(self.theme_adjustments.get(&theme_adjustment_key(true, self.piece_set, theme)).copied().unwrap_or_default())
@@ -14796,11 +14591,14 @@ impl ChessApp {
             crate::board3d::assets::request(ui.ctx(), self.board_3d_theme);
             if self.board_3d_rendering() {
                 let rect = Self::companion_board_rect(ui.available_rect_before_wrap());
+                let can_move = self.companion_3d_can_move();
                 ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
-                    self.board_3d_ui(ui, rect.size(), false);
+                    let response = self.board_3d_ui(ui, rect.size(), can_move);
+                    self.piece_drag_ui(ui, response.response.rect, rect.width() / 8.0, can_move);
                 });
             } else { crate::board3d::assets::status_ui(ui, self.board_3d_theme); }
         } else { ui.label("Main window disconnected. Reopen this view from the main board."); }
+        self.companion_3d_promotion_ui(ui.ctx());
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
     }
 
@@ -14957,7 +14755,7 @@ impl ChessApp {
                     self.review_index.and_then(|_| self.tactical_knight_3d_hit(ui.ctx(), pos, rect))
                         .or_else(|| crate::board3d::square_at(pos, rect, self.flipped, view, &self.board, &self.legal_targets))
             {
-                if !self.select_mobility_piece(ui.ctx(), square) { self.select(square); }
+                if self.has_3d_companion_input() || !self.select_mobility_piece(ui.ctx(), square) { self.select(square); }
             }
         })
     }
@@ -17094,94 +16892,6 @@ impl ChessApp {
         }
     }
 
-    fn game_moves_status_ui(&mut self, ui: &mut egui::Ui) {
-        if self.fics_active && !self.fics_game_finished {
-            return;
-        }
-        let result = self.game_result();
-        if result == "*" {
-            let status = if self.board.side_to_move() == Color::White {
-                "White to move"
-            } else {
-                "Black to move"
-            };
-            let response = ui
-                .label(RichText::new(status).size(16.0).weak())
-                .interact(Sense::click());
-            let index = self.review_index.unwrap_or(self.review_moves.len());
-            self.move_context_response(&response, index);
-        } else {
-            let final_board = self.review_positions.last().copied().unwrap_or(self.board);
-            let (heading, detail, accent) = match result.as_str() {
-                "1-0" => (
-                    "WHITE WINS · 1–0".to_owned(),
-                    if final_board.status() == BoardStatus::Checkmate {
-                        format!("{} won by checkmate", self.review_white_player)
-                    } else {
-                        format!("{} won", self.review_white_player)
-                    },
-                    Color32::from_rgb(112, 193, 133),
-                ),
-                "0-1" => (
-                    "BLACK WINS · 0–1".to_owned(),
-                    if final_board.status() == BoardStatus::Checkmate {
-                        format!("{} won by checkmate", self.review_black_player)
-                    } else {
-                        format!("{} won", self.review_black_player)
-                    },
-                    Color32::from_rgb(112, 193, 133),
-                ),
-                _ => (
-                    "DRAW · ½–½".to_owned(),
-                    if final_board.status() == BoardStatus::Stalemate {
-                        "Draw by stalemate".to_owned()
-                    } else {
-                        "Drawn game".to_owned()
-                    },
-                    Color32::from_rgb(211, 173, 98),
-                ),
-            };
-            let detail = if !self.fics_active && self.local_agreed_draw {
-                "Game drawn by agreement".to_owned()
-            } else if !self.fics_active && self.local_resigned_white.is_some() {
-                "Game ended by resignation".to_owned()
-            } else if !self.fics_active
-                && let Some(white) = self
-                    .local_clock
-                    .as_ref()
-                    .and_then(|clock| clock.flagged_white)
-            {
-                format!("{} ran out of time", if white { "White" } else { "Black" })
-            } else if self.fics_active && !self.fics_playing {
-                self.fics_observed_games
-                    .iter()
-                    .find(|game| Some(game.id) == self.fics_game_id)
-                    .and_then(|game| game.end_message.as_deref())
-                    .and_then(|message| message.split_once(") "))
-                    .and_then(|(_, tail)| tail.rsplit_once('}'))
-                    .map(|(reason, _)| reason.to_owned())
-                    .unwrap_or(detail)
-            } else {
-                detail
-            };
-            Frame::new()
-                .fill(Color32::from_rgba_unmultiplied(
-                    accent.r(),
-                    accent.g(),
-                    accent.b(),
-                    24,
-                ))
-                .stroke(Stroke::new(1.0, accent))
-                .corner_radius(CornerRadius::same(6))
-                .inner_margin(Margin::symmetric(10, 7))
-                .show(ui, |ui| {
-                    ui.label(RichText::new(heading).size(15.0).strong().color(accent));
-                    ui.label(RichText::new(detail).weak());
-                });
-        }
-        ui.separator();
-    }
-
     fn fics_clock(seconds: i32) -> String {
         if seconds >= 86400 { return format!("{}d {}h", seconds / 86400, seconds % 86400 / 3600); }
         format!("{}:{:02}", seconds.max(0) / 60, seconds.max(0) % 60)
@@ -17523,12 +17233,6 @@ impl ChessApp {
             if compact {Layout::top_down(Align::Min)} else {Layout::left_to_right(Align::Center)},contents)
     }
 
-    fn prediction_flat_label(ui: &mut egui::Ui, size: Vec2, text: &str) {
-        let (rect,_)=ui.allocate_exact_size(size,Sense::hover());
-        ui.painter().text(rect.center(),Align2::CENTER_CENTER,text,
-            egui::TextStyle::Body.resolve(ui.style()),Color32::from_rgb(226,231,235));
-    }
-
     fn game_moves_glass_label(ui: &mut egui::Ui, size: Vec2, text: &str, header: bool) {
         let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
         let painter = ui.painter();
@@ -17574,98 +17278,6 @@ impl ChessApp {
             Self::game_moves_glass_label(ui,Vec2::new(76.0,28.0),"Time",true);
         });
         ui.separator();
-    }
-
-    fn new_game_color_card(
-        ui: &mut egui::Ui,
-        piece_set: PieceSet,
-        choice: NewGameColor,
-        selected: bool,
-    ) -> egui::Response {
-        let size = Vec2::new(150.0, 124.0);
-        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-        let accent = Color32::from_rgb(211, 173, 98);
-        let border = if selected {
-            Stroke::new(2.0, accent)
-        } else {
-            Stroke::new(1.0, Color32::from_white_alpha(36))
-        };
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius::same(8),
-            if selected {
-                Color32::from_rgb(43, 39, 29)
-            } else {
-                Color32::from_rgb(24, 28, 33)
-            },
-        );
-        ui.painter().rect_stroke(
-            rect,
-            CornerRadius::same(8),
-            border,
-            egui::StrokeKind::Inside,
-        );
-
-        match choice {
-            NewGameColor::White | NewGameColor::Black => {
-                let color = if choice == NewGameColor::White {
-                    Color::White
-                } else {
-                    Color::Black
-                };
-                let king_rect = egui::Rect::from_center_size(
-                    egui::pos2(rect.center().x, rect.top() + 40.0),
-                    Vec2::splat(48.0),
-                );
-                Self::paint_piece(ui, king_rect, 48.0, piece_set, color, Piece::King);
-            }
-            NewGameColor::Random => {
-                for (color, x) in [
-                    (Color::White, rect.center().x - 19.0),
-                    (Color::Black, rect.center().x + 19.0),
-                ] {
-                    let king_rect = egui::Rect::from_center_size(
-                        egui::pos2(x, rect.top() + 40.0),
-                        Vec2::splat(40.0),
-                    );
-                    Self::paint_piece(ui, king_rect, 40.0, piece_set, color, Piece::King);
-                }
-            }
-        }
-
-        let (title, subtitle) = match choice {
-            NewGameColor::White => ("White", "Play as White"),
-            NewGameColor::Black => ("Black", "Play as Black"),
-            NewGameColor::Random => ("Random", "Let Ironwood choose"),
-        };
-        ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 73.0),
-            Align2::CENTER_CENTER,
-            title,
-            FontId::proportional(14.0),
-            if selected {
-                accent
-            } else {
-                ui.visuals().text_color()
-            },
-        );
-        ui.painter().text(
-            egui::pos2(rect.center().x, rect.top() + 94.0),
-            Align2::CENTER_CENTER,
-            subtitle,
-            FontId::proportional(12.0),
-            ui.visuals().weak_text_color(),
-        );
-        if selected {
-            ui.painter().text(
-                egui::pos2(rect.center().x, rect.bottom() - 11.0),
-                Align2::CENTER_CENTER,
-                "SELECTED",
-                FontId::proportional(9.5),
-                accent,
-            );
-        }
-        response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 
     fn promotion_piece_card(
@@ -17717,79 +17329,6 @@ impl ChessApp {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     }
 
-    fn start_battle_button(ui: &mut egui::Ui, piece_set: PieceSet, online: bool, lichess: bool) -> egui::Response {
-        let size = Vec2::new(310.0, 64.0);
-        let (rect, response) = ui.allocate_exact_size(size, Sense::click());
-        let accent = Color32::from_rgb(211, 173, 98);
-        let hovered = response.hovered();
-
-        ui.painter().rect_filled(
-            rect,
-            CornerRadius::same(9),
-            if hovered {
-                Color32::from_rgb(58, 49, 29)
-            } else {
-                Color32::from_rgb(43, 39, 29)
-            },
-        );
-        ui.painter().rect_stroke(
-            rect,
-            CornerRadius::same(9),
-            Stroke::new(if hovered { 2.0 } else { 1.0 }, accent),
-            egui::StrokeKind::Inside,
-        );
-
-        let piece_size = 46.0;
-        let left_piece = egui::Rect::from_center_size(
-            egui::pos2(rect.left() + 39.0, rect.center().y),
-            Vec2::splat(piece_size),
-        );
-        let right_piece = egui::Rect::from_center_size(
-            egui::pos2(rect.right() - 39.0, rect.center().y),
-            Vec2::splat(piece_size),
-        );
-        Self::paint_piece(
-            ui,
-            left_piece,
-            piece_size,
-            piece_set,
-            Color::White,
-            Piece::Knight,
-        );
-        Self::paint_piece(
-            ui,
-            right_piece,
-            piece_size,
-            piece_set,
-            Color::Black,
-            Piece::Knight,
-        );
-
-        ui.painter().text(
-            egui::pos2(rect.center().x, rect.center().y - 8.0),
-            Align2::CENTER_CENTER,
-            if online {
-                if lichess { "CONNECT TO LICHESS" } else { "CONNECT TO FICS" }
-            } else {
-                "START GAME"
-            },
-            FontId::proportional(18.0),
-            Color32::WHITE,
-        );
-        ui.painter().text(
-            egui::pos2(rect.center().x, rect.center().y + 13.0),
-            Align2::CENTER_CENTER,
-            if online {
-                "PLAY ONLINE"
-            } else {
-                "BEGIN THE BATTLE"
-            },
-            FontId::proportional(10.0),
-            accent,
-        );
-
-        response.on_hover_cursor(egui::CursorIcon::PointingHand)
-    }
 }
 
 #[cfg(test)]
@@ -21679,10 +21218,14 @@ impl ChessApp {
             self.poll_engine();
             self.watch_clocked_search(ctx);
             self.poll_fics(ctx);
+            self.poll_lichess_play(ctx);
+            self.poll_external_3d_moves(ctx);
         }
         #[cfg(not(target_arch = "wasm32"))]
         let _ = ctx;
         self.settle_training();
+        #[cfg(target_arch = "wasm32")]
+        self.publish_external_3d_position();
     }
 
     pub(crate) fn detached_sidebar_ui(&mut self, ui: &mut egui::Ui) {
@@ -22736,8 +22279,6 @@ impl eframe::App for ChessApp {
             egui::Rect::from_min_max(egui::Pos2::ZERO, egui::pos2(rect.width() / 256.0, rect.height() / 256.0)),
             Color32::WHITE,
         );
-        #[cfg(target_arch = "wasm32")]
-        self.poll_lichess_play(ctx);
         #[cfg(target_arch="wasm32")]
         self.poll_lobby_companion(ctx);
         #[cfg(target_arch = "wasm32")]
@@ -23752,16 +23293,7 @@ impl eframe::App for ChessApp {
                     "target": tab.target, "messages": tab.messages, "draft": tab.draft,
                 })).collect::<Vec<_>>(),
             }).to_string()); }
-            publish_3d_position(&serde_json::json!({
-                "fen": self.board.to_string(), "flipped": self.flipped,
-                "theme": self.board_3d_theme,
-                "appearance": if self.board_3d_active { self.stored_piece_appearance() } else {
-                    self.theme_adjustments.get(&theme_adjustment_key(true, self.piece_set, self.board_3d_theme)).copied().unwrap_or_default()
-                },
-                "coordinates": self.show_coordinates, "highlight": self.show_highlighted_move,
-                "lastMove": self.last_move.map(|mv| [mv.get_source().to_string(), mv.get_dest().to_string()]),
-                "light": self.show_radial_light,
-            }).to_string());
+            self.publish_external_3d_position();
             self.start_engine_if_needed(ctx);
         }
         if let Some(delay) = self.local_clock_repaint_delay(Self::animation_time()) {

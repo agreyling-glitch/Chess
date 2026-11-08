@@ -455,7 +455,62 @@ export function install3dCompanion(target) {
   };
   // OAuth navigation can sever window.opener. Keep a tab-specific, same-origin
   // board channel alive across the main page's reload; no credentials travel here.
-  let boardChannel, boardChannelId, remoteBoard = '';
+  let boardChannel, boardChannelId, remoteBoard = '', remoteBoardAt = -Infinity;
+  let boardMoves = [], boardInput = null, submittedBoardInput = null, boardRepaint;
+  let lastBoardRequest = -Infinity, lastBoardRequestSent = -Infinity;
+  const acceptedBoardMoves = new Set();
+  const submittedBoardMoves = new Set();
+  const boardNow = () => target.performance?.now?.() ?? Date.now();
+  const boardTimeout = 5000;
+  const parseBoardInput = value => {
+    try {
+      const data = JSON.parse(value);
+      return data && !Array.isArray(data) && typeof data.context === 'string' && data.context.length > 0 && data.context.length <= 256
+        && typeof data.fen === 'string' && data.fen.length > 0 && data.fen.length <= 256
+        ? {context:data.context, fen:data.fen, canMove:data.canMove === true} : null;
+    } catch { return null; }
+  };
+  const parseBoardMove = raw => {
+    if (typeof raw !== 'string' || raw.length > 2048) return null;
+    try {
+      const move = JSON.parse(raw), input = parseBoardInput(raw);
+      return input && typeof move.uci === 'string' && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move.uci)
+        ? {context:input.context, fen:input.fen, uci:move.uci} : null;
+    } catch { return null; }
+  };
+  const matchesBoard = (move, input) => input?.canMove === true && move.context === input.context && move.fen === input.fen;
+  const wakeBoard = () => { try { boardRepaint?.(); } catch { /* A closing WASM instance may already be disposed. */ } };
+  const boardPresence = () => { lastBoardRequest = boardNow(); wakeBoard(); };
+  const postBoard = message => {
+    try { if (boardChannel) { boardChannel.postMessage(message); return true; } } catch { /* The channel may close during navigation. */ }
+    return false;
+  };
+  const requestBoard = () => {
+    if (view === '3d-companion' && boardNow() - lastBoardRequestSent >= 1000) {
+      lastBoardRequestSent = boardNow(); postBoard({type:'request'});
+    }
+  };
+  const readRemoteBoard = () => {
+    if (boardNow() - remoteBoardAt <= boardTimeout) return remoteBoard;
+    try {
+      const snapshot = JSON.parse(remoteBoard);
+      return snapshot && !Array.isArray(snapshot) && typeof snapshot === 'object'
+        ? JSON.stringify({...snapshot, canMove:false, connected:false}) : '';
+    } catch { return ''; }
+  };
+  target.ironwoodInstall3dRepaint = callback => {
+    if (!companion && typeof callback === 'function') boardRepaint = callback;
+  };
+  target.ironwood3dCompanionOpen = () => !companion && (!!child && !child.closed || boardNow() - lastBoardRequest < boardTimeout);
+  target.ironwoodQueue3dMove = raw => {
+    const move = parseBoardMove(raw);
+    if (companion || !move || !matchesBoard(move, boardInput) || boardMoves.length >= 8 || acceptedBoardMoves.has(move.uci)) return false;
+    acceptedBoardMoves.add(move.uci); boardMoves.push(move); boardPresence(); return true;
+  };
+  target.ironwoodTake3dMoves = () => {
+    const pending = boardMoves.filter(move => matchesBoard(move, boardInput)); boardMoves = [];
+    return JSON.stringify(pending);
+  };
   try {
     if (target.BroadcastChannel && target.sessionStorage) {
       boardChannelId = companion
@@ -468,26 +523,54 @@ export function install3dCompanion(target) {
       if (boardChannelId && (!companion || view === '3d-companion')) {
         boardChannel = new target.BroadcastChannel(`ironwood-3d-${boardChannelId}`);
         boardChannel.onmessage = ({ data }) => {
-          if (companion && data?.type === 'position' && typeof data.value === 'string') remoteBoard = data.value;
-          if (!companion && data?.type === 'request') boardChannel.postMessage({ type: 'position', value: state });
+          if (companion && data?.type === 'position' && typeof data.value === 'string' && data.value.length <= 262144) {
+            remoteBoard = data.value; remoteBoardAt = boardNow();
+          }
+          if (!companion && data?.type === 'request') { boardPresence(); postBoard({type:'position', value:state}); }
+          if (!companion && data?.type === 'move') target.ironwoodQueue3dMove(data.value);
         };
-        if (companion) boardChannel.postMessage({ type: 'request' });
+        if (companion) requestBoard();
         target.addEventListener?.('pagehide', () => boardChannel.close(), { once: true });
       }
     }
   } catch { /* Direct opener access remains available if browser storage is disabled. */ }
   target.ironwoodPublish3dPosition = value => {
     if (!companion) {
+      const next = typeof value === 'string' ? parseBoardInput(value) : null;
+      if (next?.context !== boardInput?.context || next?.fen !== boardInput?.fen) acceptedBoardMoves.clear();
+      boardInput = next;
+      boardMoves = boardMoves.filter(move => matchesBoard(move, next));
       state = value;
-      boardChannel?.postMessage({ type: 'position', value });
+      postBoard({ type: 'position', value });
     }
   };
-  target.ironwoodRead3dPosition = () => {
-    if (!companion) return state;
+  target.ironwoodRead3dPosition = (request = false) => {
+    if (!companion) { if (request === true) boardPresence(); return state; }
     try {
-      return target.opener && !target.opener.closed
-        ? target.opener.ironwoodRead3dPosition() : remoteBoard;
-    } catch { return remoteBoard; }
+      if (target.opener && !target.opener.closed && typeof target.opener.ironwoodRead3dPosition === 'function')
+        return target.opener.ironwoodRead3dPosition(view === '3d-companion');
+    } catch { /* OAuth isolation can sever direct opener access. */ }
+    requestBoard(); return readRemoteBoard();
+  };
+  target.ironwoodSubmit3dMove = raw => {
+    if (view !== '3d-companion') return false;
+    const move = parseBoardMove(raw), input = parseBoardInput(target.ironwoodRead3dPosition());
+    if (!move || !matchesBoard(move, input)) return false;
+    if (input.context !== submittedBoardInput?.context || input.fen !== submittedBoardInput?.fen) submittedBoardMoves.clear();
+    submittedBoardInput = input;
+    if (submittedBoardMoves.has(move.uci) || submittedBoardMoves.size >= 8) return false;
+    const value = JSON.stringify(move);
+    let delivered;
+    try {
+      if (target.opener && !target.opener.closed && typeof target.opener.ironwoodQueue3dMove === 'function') {
+        delivered = target.opener.ironwoodQueue3dMove(value) === true;
+        if (delivered) submittedBoardMoves.add(move.uci);
+        return delivered;
+      }
+    } catch { /* Fall back only when direct access is unavailable, never after rejection. */ }
+    delivered = boardNow() - remoteBoardAt <= boardTimeout && postBoard({type:'move', value});
+    if (delivered) submittedBoardMoves.add(move.uci);
+    return delivered;
   };
   target.ironwoodOpen3dCompanion = () => {
     if (child && !child.closed) { child.focus(); return true; }

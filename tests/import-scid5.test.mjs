@@ -98,19 +98,24 @@ test('archive streaming prepares bounded batches of 128 games',async()=>{
  assert.deepEqual(batches,[128,128,44]);assert.equal(result.saved,300);assert.equal(result.next,300);
 });
 
-test('Scid dialog reviews checked games through the existing import handoff',async()=>{
+test('Scid dialog reviews checked games through the existing import handoff',async t=>{
  const target=dom.window;target.ironwoodCreateScid5Reader=create;
  target.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
  target.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new target.Event('close'));};
  let text;target.ironwoodScidSelectionReady=value=>{text=value;};
  const dialog=await showScid5Import(target,fixture());
+ t.after(()=>{if(dialog.isConnected)dialog.close();delete target.ironwoodScidSelectionReady;});
  const closeButton=dialog.querySelector('.scid-heading .scid-close');
  assert.ok(dialog.querySelector('.scid-progress-row progress'));
  assert.ok(dialog.querySelector('.scid-progress-row .scid-timing'));
  assert.equal(closeButton.textContent,'×');assert.equal(closeButton.getAttribute('aria-label'),'Close Scid import');
  assert.ok(dialog.querySelector('.scid-actions').compareDocumentPosition(dialog.querySelector('[aria-live]'))&target.Node.DOCUMENT_POSITION_FOLLOWING);
  assert.equal(dialog.querySelector('.scid-actions .scid-close'),null);
- assert.deepEqual([...dialog.querySelector('.scid-content>.scid-actions').children].map(button=>button.textContent),['Browser','Import range','Resume last import','Stop']);
+ const actions=dialog.querySelector('.scid-content>.scid-actions'),location=actions.querySelector('label');
+ assert.equal(location.firstChild.textContent,'Location');
+ assert.equal(location.querySelector('select').getAttribute('aria-label'),'Import destination');
+ assert.equal(location.querySelector('select').selectedOptions[0].textContent,'Browser');
+ assert.deepEqual([...actions.querySelectorAll(':scope>button')].map(button=>button.textContent),['Import range','Resume last import','Stop']);
  assert.deepEqual([...dialog.querySelector('.scid-browse-actions').children].map(button=>button.textContent),['Preview first 100','Previous 100','Next 100','Review selected games']);
  assert.ok(dialog.querySelector('.scid-game-list').compareDocumentPosition(dialog.querySelector('.scid-browse-actions'))&target.Node.DOCUMENT_POSITION_FOLLOWING);
  const through=dialog.querySelectorAll('input[type=number]')[1];
@@ -139,7 +144,7 @@ test('Scid frame drags, resizes at edges/corners and releases pointer listeners 
  dialog.dispatchEvent(new target.Event('close'));event(target,'pointermove',200,100);assert.equal(dialog.style.width,'450px');dialog.remove();
 });
 
-test('named archive destinations preserve the selected endpoint and count',async()=>{
+test('named archive destinations preserve the selected endpoint and count',async t=>{
  const target=dom.window;target.ironwoodCreateScid5Reader=create;
  let selected='browser',chosen,finished,total=1382310;
  target.ironwoodImportLocationCatalog=()=>JSON.stringify({selected,locations:[{value:'browser',label:'Browser',enabled:true},{value:'http://win11',label:'Win11',enabled:true},{value:'http://qnap',label:'QNAP',enabled:true}]});
@@ -148,7 +153,12 @@ test('named archive destinations preserve the selected endpoint and count',async
  target.ironwoodScidArchiveTotal=async()=>total;
  target.ironwoodImportScidBatch=async(pgns,options)=>{chosen=options;total+=pgns.length;return {saved:pgns.length,archiveTotal:total};};
  target.ironwoodFinishScidImport=destination=>{finished=destination;};
- const dialog=await showScid5Import(target,fixture());await new Promise(resolve=>setTimeout(resolve,10));
+ const dialog=await showScid5Import(target,fixture());
+ t.after(()=>{
+  if(dialog.isConnected)dialog.close();
+  for(const key of ['ironwoodImportLocationCatalog','ironwoodSetImportLocation','ironwoodScidArchiveDestination','ironwoodScidArchiveTotal','ironwoodImportScidBatch','ironwoodFinishScidImport'])delete target[key];
+ });
+ await new Promise(resolve=>setTimeout(resolve,10));
  const selector=dialog.querySelector('select');assert.deepEqual([...selector.options].map(o=>o.textContent),['Browser','Win11','QNAP']);
  selector.value='http://qnap';selector.dispatchEvent(new target.Event('change'));await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(dialog.querySelector('.scid-archive-total').textContent,'QNAP: 1,382,310 games');
@@ -156,5 +166,4 @@ test('named archive destinations preserve the selected endpoint and count',async
  await new Promise(resolve=>setTimeout(resolve,50));
  assert.equal(chosen.destination,'archive');assert.equal(chosen.endpoint,'http://qnap');assert.equal(finished,'archive');
  assert.equal(dialog.querySelector('.scid-archive-total').textContent,'QNAP: 1,382,312 games');
- dialog.close();for(const key of ['ironwoodImportLocationCatalog','ironwoodSetImportLocation','ironwoodScidArchiveDestination','ironwoodScidArchiveTotal'])delete target[key];
 });

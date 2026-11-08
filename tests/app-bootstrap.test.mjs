@@ -690,3 +690,149 @@ test('3D board reconnects after OAuth severs opener and the main page reloads', 
   for (const env of [main, view, returned, other]) env.dom.window.close();
   for (const channel of channels) channel.close();
 });
+
+const playableBoard = (context = 'game-a:1', changes = {}) => ({
+  context, fen:'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', canMove:true, ...changes,
+});
+const boardMove = (snapshot, uci = 'e2e4', extra = {}) => JSON.stringify({context:snapshot.context, fen:snapshot.fen, uci, ...extra});
+function boardChannelNetwork(t) {
+  const channels = new Set(), posts = [], held = [];
+  let holdMoves = false;
+  const deliver = (sender, data) => {
+    for (const peer of channels) if (peer !== sender && peer.name === sender.name) peer.onmessage?.({data:structuredClone(data)});
+  };
+  class Channel {
+    constructor(name) { this.name = name; channels.add(this); }
+    postMessage(data) {
+      posts.push({name:this.name, ...structuredClone(data)});
+      if (holdMoves && data.type === 'move') held.push([this, structuredClone(data)]);
+      else deliver(this, data);
+    }
+    close() { channels.delete(this); }
+  }
+  t.after(() => { for (const channel of channels) channel.close(); });
+  return {
+    channels, posts,
+    holdMoves: () => { holdMoves = true; },
+    deliverMoves: () => { for (const [sender, data] of held.splice(0)) deliver(sender, data); },
+    prepare(env, id, now = () => 0) {
+      Object.assign(env.target, {BroadcastChannel:Channel, sessionStorage:{getItem:() => id}, performance:{now}});
+      env.target.addEventListener = env.dom.window.addEventListener.bind(env.dom.window);
+      t.after(() => env.dom.window.close());
+      install3dCompanion(env.target);
+    },
+  };
+}
+
+test('3D moves use an atomic position-bound request, wake the main board and preserve external focus', t => {
+  const main = environment(), view = environment('http://localhost/play/?view=3d-companion');
+  for (const env of [main, view]) { install3dCompanion(env.target); t.after(() => env.dom.window.close()); }
+  view.target.opener = main.target;
+  main.target.focus = () => assert.fail('Move submission must leave focus in the 3D board');
+  let wakes = 0; main.target.ironwoodInstall3dRepaint(() => wakes++);
+  const snapshot = playableBoard(); main.target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  assert.equal(main.target.ironwood3dCompanionOpen(), false);
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot, 'e2e4', {ignored:'field'})), true);
+  assert.equal(main.target.ironwood3dCompanionOpen(), true); assert.ok(wakes > 0);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTake3dMoves()), [{context:snapshot.context, fen:snapshot.fen, uci:'e2e4'}]);
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), false, 'a drained request cannot be replayed');
+  assert.deepEqual(JSON.parse(main.target.ironwoodTake3dMoves()), []);
+  assert.equal(main.target.ironwoodSubmit3dMove(boardMove(snapshot)), false);
+  main.target.closed = true;
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot, 'd2d4')), false);
+});
+
+test('3D move validation rejects malformed, wrong-context and read-only requests and bounds queued input', t => {
+  const main = environment(), view = environment('http://localhost/play/?view=3d-companion');
+  for (const env of [main, view]) { install3dCompanion(env.target); t.after(() => env.dom.window.close()); }
+  view.target.opener = main.target;
+  const snapshot = playableBoard(); main.target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  for (const raw of [null, {}, '', '{', 'null', '[]', '42', '{}', ' '.repeat(2049),
+    boardMove(snapshot, 'e2e4\n'), boardMove(snapshot, 'e7e8k'), boardMove(snapshot, 'i2e4'),
+    boardMove(snapshot, 'e2e4', {context:[]}), boardMove(snapshot, 'e2e4', {context:'x'.repeat(257)}),
+    boardMove(snapshot, 'e2e4', {fen:'x'.repeat(257)}), boardMove(snapshot, 'e2e4', {context:'another-game'}),
+    boardMove(snapshot, 'e2e4', {fen:snapshot.fen.replace(' w ', ' b ')})]) {
+    assert.equal(view.target.ironwoodSubmit3dMove(raw), false);
+    assert.equal(main.target.ironwoodQueue3dMove(raw), false);
+  }
+  main.target.ironwoodPublish3dPosition(JSON.stringify({...snapshot, canMove:false}));
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), false);
+  main.target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  for (const file of 'abcdefgh') assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot, `${file}2${file}3`)), true);
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot, 'a2a4')), false);
+  assert.equal(main.target.ironwoodQueue3dMove(boardMove(snapshot, 'a2a4')), false);
+  assert.equal(JSON.parse(main.target.ironwoodTake3dMoves()).length, 8);
+  main.target.ironwoodPublish3dPosition(JSON.stringify(playableBoard('promotion')));
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(playableBoard('promotion'), 'e7e8n')), true);
+});
+
+test('publishing a different input position discards queued 3D moves while appearance updates preserve them', t => {
+  const {target, dom} = environment(); t.after(() => dom.window.close()); install3dCompanion(target);
+  for (const changes of [{context:'game-b:1'}, {fen:'8/8/8/8/8/8/4K3/7k w - - 0 1'}, {canMove:false}]) {
+    const snapshot = playableBoard(); target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+    assert.equal(target.ironwoodQueue3dMove(boardMove(snapshot)), true);
+    target.ironwoodPublish3dPosition(JSON.stringify({...snapshot, ...changes}));
+    assert.deepEqual(JSON.parse(target.ironwoodTake3dMoves()), []);
+  }
+  const snapshot = playableBoard('appearance'); target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  assert.equal(target.ironwoodQueue3dMove(boardMove(snapshot)), true);
+  target.ironwoodPublish3dPosition(JSON.stringify({...snapshot, flipped:true}));
+  assert.equal(JSON.parse(target.ironwoodTake3dMoves()).length, 1);
+  assert.equal(target.ironwoodQueue3dMove(boardMove(snapshot)), false);
+});
+
+test('3D moves prefer the opener and never fall back after a direct rejection', t => {
+  const network = boardChannelNetwork(t), main = environment(), view = environment('http://localhost/play/?view=3d-companion&boardChannel=tab-a');
+  network.prepare(main, 'tab-a'); network.prepare(view, 'tab-a'); view.target.opener = main.target;
+  const snapshot = playableBoard(); main.target.ironwoodPublish3dPosition(JSON.stringify(snapshot)); network.posts.length = 0;
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), true);
+  assert.equal(JSON.parse(main.target.ironwoodTake3dMoves()).length, 1);
+  main.target.ironwoodQueue3dMove = () => false;
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot, 'd2d4')), false);
+  assert.equal(network.posts.filter(post => post.type === 'move').length, 0);
+});
+
+test('3D channel moves survive OAuth reload, wake the new main and remain isolated from other tabs', t => {
+  const network = boardChannelNetwork(t), main = environment(), view = environment('http://localhost/play/?view=3d-companion&boardChannel=tab-a');
+  let clock = 0; const now = () => clock;
+  network.prepare(main, 'tab-a', now); network.prepare(view, 'tab-a', now);
+  main.target.ironwoodPublish3dPosition(JSON.stringify(playableBoard('old-session')));
+  main.dom.window.dispatchEvent(new main.dom.window.Event('pagehide')); main.target.closed = true;
+  const returned = environment(), other = environment(), wrongView = environment('http://localhost/play/?view=3d-companion&boardChannel=tab-b');
+  network.prepare(returned, 'tab-a', now); network.prepare(other, 'tab-b', now); network.prepare(wrongView, 'tab-b', now);
+  let wakes = 0; returned.target.ironwoodInstall3dRepaint(() => wakes++);
+  const snapshot = playableBoard('new-session'); returned.target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  other.target.ironwoodPublish3dPosition(JSON.stringify(playableBoard('other-game')));
+  Object.defineProperty(view.target, 'opener', {get() { throw new Error('OAuth severed opener access'); }});
+  assert.equal(returned.target.ironwood3dCompanionOpen(), false);
+  clock = 1001;
+  assert.equal(JSON.parse(view.target.ironwoodRead3dPosition()).context, snapshot.context);
+  assert.equal(returned.target.ironwood3dCompanionOpen(), true); assert.ok(wakes > 0);
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), true);
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), false);
+  assert.equal(wrongView.target.ironwoodSubmit3dMove(boardMove(snapshot, 'd2d4')), false);
+  assert.deepEqual(JSON.parse(other.target.ironwoodTake3dMoves()), []);
+  assert.deepEqual(JSON.parse(returned.target.ironwoodTake3dMoves()), [JSON.parse(boardMove(snapshot))]);
+  assert.deepEqual(JSON.parse(main.target.ironwoodTake3dMoves()), []);
+  const sibling = environment('http://localhost/play/?view=training-companion&boardChannel=tab-a');
+  network.prepare(sibling, 'tab-a', now);
+  sibling.target.opener = returned.target;
+  assert.equal(sibling.target.ironwoodSubmit3dMove(boardMove(snapshot, 'd2d4')), false);
+  assert.equal(network.channels.size, 4, 'non-3D companions do not join board channels');
+});
+
+test('3D channel delivery rejects delayed stale requests and disconnected boards become read-only', t => {
+  const network = boardChannelNetwork(t), main = environment(), view = environment('http://localhost/play/?view=3d-companion&boardChannel=tab-a');
+  let clock = 0; const now = () => clock;
+  network.prepare(main, 'tab-a', now); network.prepare(view, 'tab-a', now);
+  const snapshot = playableBoard(); main.target.ironwoodPublish3dPosition(JSON.stringify(snapshot));
+  network.holdMoves(); assert.equal(view.target.ironwoodSubmit3dMove(boardMove(snapshot)), true);
+  main.target.ironwoodPublish3dPosition(JSON.stringify(playableBoard('next-position'))); network.deliverMoves();
+  assert.deepEqual(JSON.parse(main.target.ironwoodTake3dMoves()), []);
+  main.dom.window.dispatchEvent(new main.dom.window.Event('pagehide'));
+  clock = 6001;
+  const stale = JSON.parse(view.target.ironwoodRead3dPosition());
+  assert.equal(stale.connected, false); assert.equal(stale.canMove, false); assert.equal(stale.context, 'next-position');
+  assert.equal(view.target.ironwoodSubmit3dMove(boardMove(stale)), false);
+  assert.equal(main.target.ironwood3dCompanionOpen(), false);
+});

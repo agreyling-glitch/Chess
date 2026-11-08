@@ -3,7 +3,7 @@ title: "Puzzles"
 description: "Solve Lichess puzzles and review mistakes with local progress."
 category: "play"
 keywords: [puzzles, daily puzzle, practice, tactics, hints, progress, review mistakes]
-lastmod: 2026-11-02T00:00:00-06:00
+lastmod: 2026-11-08T00:00:00-06:00
 weight: 12
 ---
 
@@ -25,7 +25,7 @@ Puzzle data is supplied by [Lichess](https://database.lichess.org/#puzzles) unde
 
 ## Puzzle move history
 
-Choose the **Annotations** tab at the top of the Puzzle panel to add drawings, notes and chess symbols. **Save current game** keeps them even before the first move and confirms the save. Saved puzzles reopen in Puzzle mode with their position, recorded progress and annotations. Older saved attempts may need to download their puzzle data again.
+Choose **Annotations** at the top of the Puzzles panel, then select **Drawings**, **Notes**, or **Chess Symbols**. Switch back to **Puzzles** to see the puzzle controls again. The divider and board stay in place as you switch tabs. **Save current game** keeps annotations even before the first move and confirms the save. Saved puzzles reopen in Puzzle mode with their position, recorded progress and annotations. Older saved attempts may need to download their puzzle data again.
 
 Puzzle attempts appear under **Puzzles** in Saved Games, where you can reopen the attempt and review its recorded moves. These playback records are separate from the puzzle progress used by **Progress** and **Review mistakes**. Deleting a saved playback record does not reset those counts.
 

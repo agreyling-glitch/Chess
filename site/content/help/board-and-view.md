@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-05T00:00:00-06:00
+lastmod: 2026-11-08T00:00:00-06:00
 title: "Board and view settings"
 description: "Switch between 2D and 3D, change notation, and adjust what the board shows."
 category: "using-ironwood"
@@ -9,7 +9,9 @@ weight: 13
 
 Use the **2D/3D** button above the board to switch the board display. The position and moves stay the same. **Flip board** above the board puts the other color at the bottom without changing the position.
 
-Click **3D ↗** beside the board's **2D/3D** button to open a companion 3D window. Drag it to a second monitor while continuing to use the main board. The companion follows moves, game history, and board orientation. Use its theme dropdown to choose Marble, Wood, Glass, Art Deco, or Egyptian independently of the main board. Click **Flip board** to flip only the companion board; its orientation then stays independent of the main board while moves continue to synchronize. **Reset view** resets the camera without changing this orientation. Click **?** for camera controls. Click outside the help pop-up or press Escape to dismiss it. It is view-only, with independent rotation and zoom: right-drag to rotate, hold the right mouse button and scroll to zoom, or click **Reset view**. Click **3D ↗** again to focus the existing window. Closing it leaves your main workspace running. If your browser blocks the window, allow pop-ups for Ironwood. Keep the main window open for synchronization.
+Click **3D ↗** beside the board's **2D/3D** button to open a companion 3D window. Drag it to a second monitor and play from either board: click a piece and its destination, or drag the piece to a legal square. Choose promotions in the window where you make the move. Both boards share the same game, turns, and move rules. Browse game history in the main window; the companion follows its displayed position.
+
+Use the companion's theme dropdown to choose Marble, Wood, Glass, Art Deco, or Egyptian independently of the main board. Click **Flip board** to flip only the companion board; its orientation then stays independent while moves continue to synchronize. **Reset view** resets the camera without changing this orientation. Right-drag to rotate, or hold the right mouse button and scroll to zoom. Click **?** for controls; click outside the help pop-up or press Escape to dismiss it. Click **3D ↗** again to focus the existing window. Closing it leaves your main workspace running. If your browser blocks the window, allow pop-ups for Ironwood. Keep the main window open to play and synchronize moves.
 
 On either a **2D or 3D board**, scroll the mouse wheel over the board to step through moves: **scroll down** goes forward and **scroll up** goes backward. After selecting a move in **Engine prediction**, the wheel steps through that prediction one move at a time, over either the board or the prediction table. Open **Moves** and select a move in Game Moves to return to game navigation. On a **3D board**, hold the **right mouse button** while scrolling over the board to zoom instead. Wheel navigation is disabled during active training and online play.
 

@@ -1,7 +1,7 @@
 ---
 seo_title: "Chess analysis, online play, and board themes — Ironwood Chess"
 title: "Features"
-lastmod: 2026-11-06T00:00:00-06:00
+lastmod: 2026-11-08T00:00:00-06:00
 description: "Play and analyze in your browser, or add desktop engines and a local archive with Ironwood Companion for Windows. Explore online play, puzzles, and study tools."
 layout: "features"
 url: "/features/"
@@ -9,7 +9,7 @@ url: "/features/"
 
 ## Play your way
 
-Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, the selected engine makes the first move and the board follows your perspective. The **Play** sidebar section opens **New game against AI**, **Online → Lichess lobby**, **Online → FICS lobby**, or **Self-play**. Online choices open their lobby; Lichess sign-in starts only when you choose its sign-in control. Open **Training → Train against AI…** for rated personal practice. In the **New game against AI** panel beside the sidebar, choose Built-in Stockfish or an installed engine from a connected Companion. The refresh icon updates the installed-engine list. Set a Stockfish target of 1320–3190 Elo by enabling **Limit to Elo rating**; other engines show the strength controls they advertise. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among nine flat-board themes: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
+Start a game as White or Black, or let Ironwood choose a side at random. When you play Black, the selected engine makes the first move and the board follows your perspective. The **Play** sidebar section opens **New game against Engine**, **Online → Lichess lobby**, **Online → FICS lobby**, or **Self-play**. Online choices open their lobby; Lichess sign-in starts only when you choose its sign-in control. Open **Training → Train against Engine…** for rated personal practice. In the **New game against Engine** panel beside the sidebar, choose Built-in Stockfish or an installed engine from a connected Companion. The refresh icon updates the installed-engine list. Set a Stockfish target of 1320–3190 Elo by enabling **Limit to Elo rating**; other engines show the strength controls they advertise. Engine settings keep Play, Realtime Analysis, and Full Game Analysis in separate tabs, with scrollable controls. Choose among nine flat-board themes: System, Cburnett, Merida, Royal Rascals, Undead Court, Classic Staunton, Neon Geometric, Art Deco Faceted, and Hybrid Marble. The three newest themes have coordinated board palettes. Board frames and piece shadows are on by default; coordinate colors follow the selected theme. Move animation and sounds add feedback for moves, captures, and checks.
 
 ## Keep the board beside your study tools
 
@@ -75,7 +75,7 @@ Expand **Activity** in a Lichess profile to load recent daily results, grouped b
 
 ## Train against an adaptive opponent
 
-Open **Training → Train against AI…** and choose a training profile. The training console shows the next color, opponent difficulty, and unlimited player clock above a gold **Start training game** button. **Manage profiles** keeps profile creation, engine selection, rename, import, export, and deletion together.
+Open **Training → Train against Engine…** and choose a training profile. On wide screens, the training console fills the height beside the Training menu, matching the local game setup panel. Its **Train** tab shows the next color, opponent difficulty, and unlimited player clock above a gold **Start training game** button. The **Profiles** tab keeps profile creation, engine selection, rename, import, export, and deletion in the same panel.
 
 Switch between **Progress**, **Focus areas**, and **Recent games**. Progress retains separate color ratings and rating history. Focus areas adds matching sunken charts for opening, middlegame, and endgame loss over time: gold 10-game rolling averages, individual-game dots, a shared scale, Last 20 / Last 50 / All games, and hover details. Missing analysis stays a gap; coverage and sample counts help interpret partial data. Ratings are personal training measures, not official ratings. [Training and progress guide](/help/training-vs-ai/).
 
@@ -237,7 +237,7 @@ Switch between 2D and 3D using the **2D/3D** button above the board. The 3D boar
 
 ## Put a 3D board on another monitor
 
-Open the **3D ↗** companion window from the board toolbar to watch the current game in a separate browser window. It follows moves and game history while keeping its own theme and camera. Flip its board independently, rotate and zoom, or reset the view; move it to another monitor without giving up the main study workspace. The main window must remain open for synchronization. [Companion board controls](/help/board-and-view/).
+Open the **3D ↗** companion window from the board toolbar to play or watch the current game in a separate browser window. Click or drag pieces and choose promotions there, using the same turns and legal moves as the main board. It follows moves and game history while keeping its own theme and camera. Flip its board independently, rotate and zoom, or reset the view; move it to another monitor without giving up the main study workspace. Keep the main window open to play and synchronize moves. [Companion board controls](/help/board-and-view/).
 
 ## Make each theme your own
 
@@ -283,7 +283,7 @@ First launch uses **Gradient Only**, a **17% gradient**, and **0% 3D background 
 
 Board Theme and Background open at normal sizes and can be moved, resized, or opened in separate browser windows with **↗**. Both have raised **×** buttons, gold 3D borders, heavy outer paper grain, and linen and subtle-grain inset sections. Theme choices and background changes in a pop-out apply to the main workspace; theme **Adjust** controls open in the main window. Import Games uses matching gold borders and textured sections. Engine Settings marks its selected context tab with a raised gold finish and dark text. Allow browser pop-ups for Ironwood and keep the main window open when using companion windows.
 
-Local **New game against AI** uses a content-sized Quick setup panel connected to the sidebar, with chess symbols, side-selection cards, gold strength controls where supported, and time-preset buttons. The installed-engine dropdown and refresh icon use the available width, and help text expands its row without overlapping other controls. Online menu choices open their lobby directly. Backup and Restore and the metadata editor use matching gold frames, heavy outer grain, and fine-grain sunken controls.
+Local **New game against Engine** uses a full-height Quick setup panel connected to the Play menu on wide screens, with chess symbols, side-selection cards, gold strength controls where supported, and time-preset buttons. The installed-engine dropdown and refresh icon use the available width, and help text expands its row without overlapping other controls. Online menu choices open their lobby directly. Backup and Restore and the metadata editor use matching gold frames, heavy outer grain, and fine-grain sunken controls.
 
 Sunken sections, gold accents, and raised primary controls now unify the menus, training profiles and results, saved games and enlarged playback, engine settings, online lobbies, backgrounds, board themes, and study tools. Fine linen adds depth to the main move list, Engine Prediction score and continuation sections, and the Saved Games controls. Paper grain appears around training profiles, engine settings, Tactical Map, Notes, Saved Games, and larger playback. Profile graphs and expanded prediction boards have their own sunken textured surfaces. Training graphs use a gold paper texture. Notes has explicit Add/Edit buttons, and the Position Editor groups board setup, piece selection, import, position details, and FEN controls.
 

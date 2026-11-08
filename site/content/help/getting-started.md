@@ -4,7 +4,7 @@ description: "Find a game, open the analysis workspace, and learn what to look a
 category: "using-ironwood"
 keywords: [game, review, start, library, analyze]
 weight: 10
-lastmod: 2026-11-05T00:00:00-06:00
+lastmod: 2026-11-08T00:00:00-06:00
 ---
 
 ## Open a game
@@ -21,14 +21,14 @@ Click a menu icon to see that section’s options. Click it again to close the m
 
 - **Play** offers **New game against Engine**, the online lobbies, and **Self-play**. **Save current game** has its own icon directly below Play.
 - **Analysis:** open the analysis workspace directly.
-- **Training:** Train against AI, Lichess Puzzles, then Study.
+- **Training:** Train against Engine, Lichess Puzzles, then Study.
 - **Game Library** opens Saved Games directly. Use the separate **Import games** icon to bring in new games.
 - **Settings** opens a searchable panel for engines, Companion connections, board appearance, and storage.
 - **Tools** opens Scoresheet Entry, Elo Calculator, or Position Editor. **Exit to home** sits above the shortcut divider.
 
 The gold gear at the bottom of the sidebar opens Quick access settings, where you can show, hide, or reorder Lichess Puzzles, Lichess Profiles, and Study.
 
-New game against Engine and Self-play open a full-height setup panel beside the Play menu on wide screens. Saved Games, Import Games, the Tools panels, and the Lichess lobby open beside the main menu bar. Use the lobby’s sign-in or reconnect control when needed.
+New game against Engine and Self-play open a full-height setup panel beside the Play menu on wide screens. Train against Engine uses the same layout beside the Training menu. Saved Games, Import Games, the Tools panels, and the Lichess lobby open beside the main menu bar. Use the lobby’s sign-in or reconnect control when needed.
 
 During an active game, switching modes brings up a warning. Choose **Return to game** to keep playing, or **Resign and switch modes** to enter the selected mode after resignation. Online games wait for the server to confirm the result.
 

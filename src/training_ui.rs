@@ -467,6 +467,10 @@ impl ChessApp {
         self.training = Some(session);
         self.new_game_dialog_open = false;
         self.training_dialog_open = false;
+        if self.navigation.training_setup_attached {
+            self.navigation.training_setup_attached = false;
+            self.navigation.expanded = false;
+        }
         self.resume_engine_after_ready = false;
         self.save_game();
         #[cfg(target_arch = "wasm32")]
@@ -547,13 +551,15 @@ impl ChessApp {
                     let table = Frame::new().fill(Color32::from_rgb(19, 24, 30))
                         .corner_radius(6.0).inner_margin(10.0).show(ui, |ui| {
                     ui.style_mut().wrap_mode=Some(egui::TextWrapMode::Truncate);
+                    // Keep columns legible on narrow panels and allow horizontal scrolling.
                     // Reserve checkbox, column gutters, and the radio indicator/padding.
-                    let usable = (ui.available_width() - 28.0 - if companion_enabled {50.0} else {40.0} - 48.0).max(180.0);
+                    let table_width = ui.available_width().max(if companion_enabled {560.0} else {460.0});
+                    let usable = table_width - 28.0 - if companion_enabled {50.0} else {40.0} - 48.0;
                     let name_width = usable * if companion_enabled {0.28} else {0.43};
                     let engine_width = usable * 0.24;
                     let stat_width = usable * if companion_enabled {0.16} else {0.19};
                     ui.spacing_mut().interact_size.y = 32.0;
-                    egui::ScrollArea::vertical().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
+                    egui::ScrollArea::both().id_salt("training_profiles_table_scroll").max_height(220.0).show_gold(ui, |ui| {
                         egui::Grid::new(("training_profiles_table", companion_enabled)).striped(true).num_columns(if companion_enabled {6} else {5}).min_col_width(0.0).spacing(Vec2::new(10.0, 8.0)).show(ui, |ui| {
                             let visible_count = self.training_profiles.profiles.iter().filter(|p| companion_enabled || !p.engine.is_companion()).count();
                             let mut all = visible_count > 0 && manager.selected.len() == visible_count;
@@ -909,6 +915,7 @@ impl ChessApp {
                 .fill(Color32::from_rgb(43, 38, 29)).stroke(Stroke::new(1.0, gold.gamma_multiply(0.65)))
                 .corner_radius(6.0)).clicked() {
                 self.training_dialog_open = true;
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("training_profiles_tab"), false));
             }
         });
         Self::paint_sunken_border(ui, summary.response.rect);
@@ -1078,28 +1085,31 @@ impl ChessApp {
         let manager=self.training_profile_manager_state(ui);
         ui.ctx().data_mut(|d|d.insert_temp(egui::Id::new("training_profile_manager"),manager));
         let gold=Color32::from_rgb(215,185,121);
-        let manage_id=egui::Id::new("training_console_manage");
-        let mut manage=ui.ctx().data(|d|d.get_temp::<bool>(manage_id).unwrap_or(false));
         ui.label(RichText::new("Training profile").size(12.0).weak());
         ui.horizontal(|ui| {
             let available=ui.available_width();
                 let old=self.training_profiles.selected_id.clone();
                 ui.add_enabled_ui(!self.training_live()&&!self.profile_management_busy(),|ui| {
-                    egui::ComboBox::from_id_salt("training_console_profile").width((available-180.0).max(140.0))
+                    egui::ComboBox::from_id_salt("training_console_profile").width(available)
                         .selected_text(self.training_profiles.selected().map(|p|format!("{} · {}",p.name,p.engine.label())).unwrap_or_else(||"Choose a profile".into()))
                         .show_ui(ui,|ui| {for profile in &self.training_profiles.profiles {if crate::companion::enabled() || !profile.engine.is_companion() {
                             ui.selectable_value(&mut self.training_profiles.selected_id,profile.id.clone(),&profile.name);
                         }}});
                 });
-                if old!=self.training_profiles.selected_id {if let Err(e)=self.write_training_profiles(&self.training_profiles){self.training_error=Some(e);}}
-            if Self::compact_panel_button(ui,"Manage profiles",manage).clicked(){manage=!manage;}
+                if old != self.training_profiles.selected_id {
+                    self.training_profile_rename = None;
+                    if let Err(error) = self.write_training_profiles(&self.training_profiles) {
+                        self.training_error = Some(error);
+                    }
+                }
         });
-        if manage {
-            egui::Window::new("Manage training profiles").id(manage_id).open(&mut manage).default_width(640.0)
-                .frame(Self::dialog_frame()).show(ui.ctx(),|ui| {egui::ScrollArea::vertical().max_height((ui.ctx().content_rect().height()-150.0).max(180.0)).show(ui,|ui|self.training_setup_ui(ui));});
-        }
-        ui.ctx().data_mut(|d|d.insert_temp(manage_id,manage));
-        let Some(profile)=self.training_profiles.selected().cloned() else {ui.label("Create a training profile to begin.");return;};
+        let Some(profile)=self.training_profiles.selected().cloned() else {
+            ui.label("Create a training profile to begin.");
+            if Self::compact_panel_button(ui, "Create a profile", false).clicked() {
+                ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("training_profiles_tab"), true));
+            }
+            return;
+        };
         ui.add_space(18.0);
         Self::training_sunken_section(ui,|ui| {
             ui.spacing_mut().item_spacing.y=16.0;
@@ -1136,13 +1146,26 @@ impl ChessApp {
 
     pub(super) fn training_dialog(&mut self, ctx: &egui::Context) {
         if !self.training_dialog_open {
+            self.navigation.training_setup_attached = false;
             return;
         }
+        let attached = self.navigation.training_setup_attached && !Self::is_training_companion();
+        if attached && (!self.navigation.expanded || self.navigation.section != 2) {
+            self.navigation.training_setup_attached = false;
+            self.training_dialog_open = false;
+            return;
+        }
+        let screen = ctx.content_rect();
+        let docked = attached && screen.width() >= 760.0;
+        let left = screen.left()
+            + if screen.width() < 600.0 { 0.0 } else { navigation::RAIL_WIDTH }
+            + if docked { navigation::DRAWER_WIDTH } else { 0.0 };
+        let panel_size = Vec2::new((screen.right() - left).min(700.0), screen.height());
         let mut close = false;
         let mut detached = false;
         let maximize_id = egui::Id::new("training_profiles_maximized");
         let mut maximized = ctx.data(|data| data.get_temp::<bool>(maximize_id).unwrap_or(false));
-        let mut window = egui::Window::new("Train against AI").id(egui::Id::new(("training_profiles", maximized)))
+        let mut window = egui::Window::new("Train against Engine").id(egui::Id::new(("training_profiles", maximized)))
             .title_bar(false).drag_area(egui::WindowDrag::Anywhere).resizable(!maximized).movable(!maximized)
             .default_pos(egui::pos2(48.0,48.0))
             .default_size(Vec2::new(700.0, (ctx.content_rect().height()-96.0).clamp(240.0,780.0)))
@@ -1156,7 +1179,7 @@ impl ChessApp {
             let bounds = ctx.content_rect().shrink(8.0);
             window=window.max_size(bounds.size()).fixed_rect(bounds).resizable(false).movable(false);
         }
-        let response=window.show(ctx, |ui| {
+        let mut contents = |ui: &mut egui::Ui| {
             let grain=ui.painter().add(egui::Shape::Noop);
             ui.style_mut().text_styles.insert(egui::TextStyle::Body, FontId::proportional(14.0));
             ui.style_mut().text_styles.insert(egui::TextStyle::Button, FontId::proportional(14.0));
@@ -1169,25 +1192,41 @@ impl ChessApp {
                 for radius in [12.0,6.0] {ui.painter().circle_stroke(icon.center(),radius,Stroke::new(1.5,Color32::from_rgb(215,185,121)));}
                 ui.allocate_ui_with_layout(Vec2::new((ui.available_width()-122.0).max(80.0),48.0),Layout::top_down(Align::Min),|ui| {
                     ui.label(RichText::new("IRONWOOD / TRAINING").size(11.0).color(Color32::from_rgb(215,185,121)));
-                    ui.label(RichText::new("Train against AI").size(23.0));
+                    ui.label(RichText::new("Train against Engine").size(23.0));
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close Training Profiles").clicked() { close=true; }
-                    if !Self::is_training_companion() && Self::glossy_board_button(ui, if maximized { "❐" } else { "□" }, false, true)
-                        .on_hover_text(if maximized { "Restore Training Profiles window" } else { "Maximize Training Profiles window" }).clicked() {
+                    if Self::glossy_board_button(ui,"×",false,true).on_hover_text("Close training").clicked() { close=true; }
+                    if !attached && !Self::is_training_companion() && Self::glossy_board_button(ui, if maximized { "❐" } else { "□" }, false, true)
+                        .on_hover_text(if maximized { "Restore training window" } else { "Maximize training window" }).clicked() {
                         maximized = !maximized;
                         ui.ctx().request_repaint();
                     }
                     #[cfg(target_arch="wasm32")]
                     if !training_companion_mode() && Self::glossy_board_button(ui,"↗",false,true)
-                        .on_hover_text("Move Training Profiles to a separate window").clicked() { detached=open_training_companion(); }
+                        .on_hover_text("Move training to a separate window").clicked() { detached=open_training_companion(); }
                 });
             });
             ui.add_space(10.0);
+            let tab_id = egui::Id::new("training_profiles_tab");
+            let mut profiles_tab = ctx.data(|d| d.get_temp::<bool>(tab_id).unwrap_or(false));
+            ui.add_enabled_ui(!self.profile_management_busy(), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().button_padding = Vec2::new(20.0, 6.0);
+                    if Self::compact_panel_button(ui, "Train", !profiles_tab).clicked() { profiles_tab = false; }
+                    if Self::compact_panel_button(ui, "Profiles", profiles_tab).clicked() { profiles_tab = true; }
+                });
+            });
+            ctx.data_mut(|d| d.insert_temp(tab_id, profiles_tab));
+            ui.separator();
+            ui.add_space(10.0);
             let content_height=(ui.available_height()-8.0).max(100.0);
-            egui::ScrollArea::vertical().id_salt("training_progress")
+            egui::ScrollArea::vertical().id_salt(("training_progress", profiles_tab))
                 .max_height(content_height).auto_shrink([false, true])
                 .show_gold(ui, |ui| {
+                if profiles_tab {
+                    self.training_setup_ui(ui);
+                    return;
+                }
                 self.training_console_setup(ui);
                 let Some(profile) = self.training_profiles.selected().cloned() else { return; };
                 if self.training_live() { ui.label("Finish the current game to update progress and unlock the next color."); }
@@ -1254,21 +1293,49 @@ impl ChessApp {
                 ui.collapsing("Training rules & profile settings",|ui| {
                     ui.label("No hints or takebacks during training. Analyze after the game. Each color has separate progress. Training ratings are not official ratings.");
                     ui.label(if profile.engine.is_lc0(){"lc0 uses the level’s node budget; levels are not calibrated Elo."}else if profile.engine.is_maia3(){"Maia3 predicts human-style moves at your target Elo."}else{"Stockfish thinks up to one second per move. Your clock is unlimited."});
-                    if ui.button("Manage profiles & engine settings…").clicked(){ctx.data_mut(|d|d.insert_temp(egui::Id::new("training_console_manage"),true));}
+                    if ui.button("Profiles & engine settings").clicked(){ctx.data_mut(|d|d.insert_temp(tab_id,true));}
                 });
             });
             let paper=Self::paper_grain_texture(ui.ctx());
             let surface=ui.min_rect().expand(6.0);
             ui.painter().set(grain,egui::Shape::image(paper.id(),surface,
                 egui::Rect::from_min_max(egui::Pos2::ZERO,egui::pos2(surface.width()/256.0,surface.height()/256.0)),Color32::WHITE));
-        });
-        ctx.data_mut(|data| data.insert_temp(maximize_id, maximized));
-        if let Some(window)=response {
-            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id),window.response.rect);
+        };
+        if attached {
+            let area = egui::Area::new(egui::Id::new("training_setup_panel"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(egui::pos2(left, screen.top()))
+                .default_size(panel_size)
+                .movable(false);
+            let panel = |ui: &mut egui::Ui| {
+                Frame::new()
+                    .fill(Color32::from_rgb(19, 24, 28))
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(133, 109, 65)))
+                    .inner_margin(Margin::same(20))
+                    .show(ui, |ui| {
+                        ui.set_width((panel_size.x - 42.0).max(100.0));
+                        ui.set_height((panel_size.y - 42.0).max(0.0));
+                        contents(ui);
+                    });
+            };
+            if docked {
+                area.show(ctx, panel);
+            } else {
+                close |= egui::Modal::new(egui::Id::new("training_setup_panel"))
+                    .area(area)
+                    .frame(Frame::NONE)
+                    .backdrop_color(Color32::from_black_alpha(24))
+                    .show(ctx, panel)
+                    .should_close();
+            }
+        } else if let Some(window) = window.show(ctx, contents) {
+            Self::paint_fics_window_border(&ctx.layer_painter(window.response.layer_id), window.response.rect);
         }
+        ctx.data_mut(|data| data.insert_temp(maximize_id, maximized));
         #[cfg(target_arch="wasm32")]
         if close && training_companion_mode() { close_training_companion(); }
         if close || detached {
+            self.navigation.training_setup_attached = false;
             self.training_dialog_open = false;
         }
     }

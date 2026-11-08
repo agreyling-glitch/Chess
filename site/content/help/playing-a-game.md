@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-11-05T00:00:00-06:00
+lastmod: 2026-11-08T00:00:00-06:00
 title: "Playing a game"
 description: "Start a local or online game, choose a position, and use the basic game controls."
 category: "using-ironwood"
@@ -9,9 +9,11 @@ weight: 11
 
 The **Play** sidebar section offers **New game against Engine**, **Online → Lichess lobby**, **Online → FICS lobby**, and **Self-play**. The online choices open their lobby directly; the local choices open a setup panel beside the icon rail. Local games run on your device; Self-play lets you make moves for both sides.
 
-In **New game against Engine**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against AI](/help/training-vs-ai/).
+In **New game against Engine**, choose Built-in Stockfish or an installed engine from a connected Companion using the **Engine** dropdown. The refresh icon reloads that list. For Stockfish, enable **Limit to Elo rating** and choose a target from 1320 to 3190 before starting; with limiting off, the current skill setting applies. Other engines show their advertised strength controls; engines without Elo controls use their Engine settings. For a profile with separate White and Black ratings and alternating colors, choose [Train against Engine](/help/training-vs-ai/).
 
 Click a piece and then its destination, or **hold the left mouse button on a piece and drag it** to a legal square. A translucent piece follows the pointer while you drag. Release outside the board or on an illegal square to cancel; press **Escape** to cancel a drag. Promotion opens the usual piece chooser. You can also [type moves with the keyboard](/help/keyboard-input/), such as `e4` or `nc3`, then press Enter.
+
+Open the [separate 3D board](/help/board-and-view/) with **3D ↗** to make moves from a second window. Keep the main window open; both boards show the same game.
 
 On a 3D board, the dragged piece uses the current 3D model, camera angle, and appearance settings.
 

@@ -38,6 +38,7 @@ pub(super) struct NavigationState {
     pub(super) expanded: bool,
     pub(super) section: usize,
     pub(super) game_setup_attached: bool,
+    pub(super) training_setup_attached: bool,
     pending_switch: Option<ModeSwitch>,
     waiting_for_resignation: bool,
     pub(super) local_game_started: bool,
@@ -227,6 +228,9 @@ impl ChessApp {
             ModeSwitch::Library => self.navigation_open_library(),
             ModeSwitch::Training => {
                 self.settle_training();
+                self.navigation.section = 2;
+                self.navigation.expanded = true;
+                self.navigation.training_setup_attached = true;
                 self.training_dialog_open = true;
             }
             ModeSwitch::Puzzles => self.navigation_enter_puzzles(&ctx),
@@ -523,12 +527,19 @@ impl ChessApp {
                                 });
                         });
                 });
+            let training_attached = self.training_dialog_open && self.navigation.training_setup_attached;
             let setup = if attached {
                 ctx.memory(|memory| memory.area_rect(egui::Id::new("new_game_window")))
+            } else if training_attached {
+                ctx.memory(|memory| memory.area_rect(egui::Id::new("training_setup_panel")))
             } else {
                 None
             };
-            if ctx.input(|input| {
+            let training_child_open = training_attached && (
+                egui::Popup::is_any_open(&ctx)
+                    || self.profile_management_busy()
+            );
+            if !training_child_open && ctx.input(|input| {
                 input.key_pressed(egui::Key::Escape)
                     || (input.pointer.any_pressed()
                         && input.pointer.interact_pos().is_some_and(|pos| {
@@ -543,6 +554,7 @@ impl ChessApp {
             .data_mut(|d| d.remove_temp::<String>(egui::Id::new("navigation_action_selected")))
             .is_some()
             && !(self.new_game_dialog_open && self.navigation.game_setup_attached)
+            && !(self.training_dialog_open && self.navigation.training_setup_attached)
         {
             self.navigation.expanded = false;
         }
@@ -860,5 +872,304 @@ mod tests {
         assert!(app.lichess.active && app.fics_active);
         app.fics_pending_move = false;
         assert!(app.navigation_library_enabled());
+    }
+
+    fn training_panel_app(ctx: &egui::Context) -> ChessApp {
+        let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+        app.training_profiles = Profiles {
+            selected_id: "panel-profile".into(),
+            profiles: vec![Profile {
+                id: "panel-profile".into(),
+                name: "Panel profile".into(),
+                engine: training::TrainingEngine::Stockfish,
+                starting_level: 1,
+                starting_elo: training::START_RATING,
+                results: vec![],
+            }],
+        };
+        app
+    }
+
+    fn training_panel_frame(
+        app: &mut ChessApp,
+        ctx: &egui::Context,
+        screen: egui::Rect,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        run_test_ui(ctx, egui::RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        }, |ui| {
+            app.navigation_ui(ui);
+            app.training_dialog(ctx);
+        })
+    }
+
+    fn training_panel_click(
+        app: &mut ChessApp,
+        ctx: &egui::Context,
+        screen: egui::Rect,
+        pos: egui::Pos2,
+    ) {
+        for pressed in [true, false] {
+            training_panel_frame(app, ctx, screen, vec![
+                egui::Event::PointerMoved(pos),
+                egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ]);
+        }
+    }
+
+    #[test]
+    fn training_panel_fills_height_and_stays_on_screen_at_each_layout() {
+        for (width, height) in [(1440.0, 1000.0), (900.0, 420.0), (680.0, 600.0), (390.0, 600.0)] {
+            let ctx = egui::Context::default();
+            let mut app = training_panel_app(&ctx);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(width, height));
+            app.request_mode_switch(ModeSwitch::Training);
+            for _ in 0..5 {
+                training_panel_frame(&mut app, &ctx, screen, vec![]);
+            }
+            let panel = ctx.memory(|m| m.area_rect(egui::Id::new("training_setup_panel"))).unwrap();
+            let expected_left = if width >= 760.0 { RAIL_WIDTH + DRAWER_WIDTH }
+                else if width >= 600.0 { RAIL_WIDTH } else { 0.0 };
+            assert!((panel.left() - expected_left).abs() < 1.0, "Unexpected left edge at {width}×{height}: {panel:?}");
+            assert!((panel.top() - screen.top()).abs() < 1.0, "Unexpected top at {width}×{height}: {panel:?}");
+            assert!((panel.bottom() - screen.bottom()).abs() < 1.0, "Unexpected bottom at {width}×{height}: {panel:?}");
+            assert!(panel.right() <= screen.right() + 1.0, "Panel exceeds screen at {width}×{height}: {panel:?}");
+            assert!(app.navigation.expanded && app.training_dialog_open && app.navigation.training_setup_attached);
+        }
+    }
+
+    #[test]
+    fn training_menu_action_and_panel_clicks_keep_the_menu_open() {
+        let ctx = egui::Context::default();
+        let mut app = training_panel_app(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 1000.0));
+        app.navigation.expanded = true;
+        app.navigation.section = 2;
+        let mut output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        for _ in 0..3 {
+            output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let action = output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == "Train against Engine…" => {
+                Some(text.galley.rect.translate(text.pos.to_vec2()).center())
+            }
+            _ => None,
+        }).expect("Training menu action should be visible");
+        training_panel_click(&mut app, &ctx, screen, action);
+        assert!(app.navigation.expanded && app.training_dialog_open && app.navigation.training_setup_attached);
+        for _ in 0..3 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let panel = ctx.memory(|m| m.area_rect(egui::Id::new("training_setup_panel"))).unwrap();
+        training_panel_click(&mut app, &ctx, screen, panel.left_bottom() + Vec2::new(8.0, -8.0));
+        assert!(app.navigation.expanded && app.training_dialog_open && app.navigation.training_setup_attached);
+        assert!(app.training.is_none(), "Opening and inspecting training must not start a game");
+    }
+
+    #[test]
+    fn closing_or_switching_the_training_menu_closes_its_panel_without_changing_profiles() {
+        for switch_section in [false, true] {
+            let ctx = egui::Context::default();
+            let mut app = training_panel_app(&ctx);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 1000.0));
+            let profiles = serde_json::to_string(&app.training_profiles).unwrap();
+            let board = app.board;
+            app.request_mode_switch(ModeSwitch::Training);
+            for _ in 0..3 {
+                training_panel_frame(&mut app, &ctx, screen, vec![]);
+            }
+            if switch_section {
+                app.navigation.section = 0;
+            } else {
+                app.navigation.expanded = false;
+            }
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+            assert!(!app.training_dialog_open && !app.navigation.training_setup_attached);
+            assert_eq!(app.board, board);
+            assert_eq!(serde_json::to_string(&app.training_profiles).unwrap(), profiles);
+            assert!(app.training.is_none());
+        }
+    }
+
+    #[test]
+    fn starting_training_from_attached_panel_closes_menu_and_preserves_profile_progress() {
+        let ctx = egui::Context::default();
+        let mut app = training_panel_app(&ctx);
+        app.request_mode_switch(ModeSwitch::Training);
+        app.start_training_game();
+        assert!(!app.training_dialog_open && !app.navigation.training_setup_attached && !app.navigation.expanded);
+        let session = app.training.as_ref().expect("Training should have started");
+        assert_eq!(session.profile_id, "panel-profile");
+        assert_eq!(session.side, TrainingSide::White);
+        assert!(app.training_profiles.selected().unwrap().results.is_empty());
+    }
+
+    fn training_text_position(output: &egui::FullOutput, label: &str) -> egui::Pos2 {
+        output.shapes.iter().find_map(|shape| match &shape.shape {
+            egui::Shape::Text(text) if text.galley.job.text == label => {
+                let rect = text.galley.rect.translate(text.pos.to_vec2());
+                shape.clip_rect.contains(rect.center()).then_some(rect.center())
+            }
+            _ => None,
+        }).unwrap_or_else(|| panic!("Expected visible training control: {label}"))
+    }
+
+    #[test]
+    fn training_primary_tabs_keep_the_panel_in_bounds_without_mutating_game_or_profiles() {
+        for (width, height) in [(1440.0, 1000.0), (900.0, 420.0), (680.0, 600.0), (390.0, 600.0)] {
+            let ctx = egui::Context::default();
+            let mut app = training_panel_app(&ctx);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(width, height));
+            let board = app.board;
+            let profiles = serde_json::to_string(&app.training_profiles).unwrap();
+            app.request_mode_switch(ModeSwitch::Training);
+            for _ in 0..4 {
+                training_panel_frame(&mut app, &ctx, screen, vec![]);
+            }
+            let initial_panel = ctx.memory(|m| m.area_rect(egui::Id::new("training_setup_panel"))).unwrap();
+            for (label, profiles_tab, expected_content) in [
+                ("Profiles", true, "TRAINING PROFILE"),
+                ("Train", false, "NEXT TRAINING GAME"),
+            ] {
+                let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+                training_panel_click(&mut app, &ctx, screen, training_text_position(&output, label));
+                for _ in 0..3 {
+                    training_panel_frame(&mut app, &ctx, screen, vec![]);
+                }
+                let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+                assert_eq!(ctx.data(|d| d.get_temp::<bool>(egui::Id::new("training_profiles_tab"))), Some(profiles_tab));
+                assert!(output.shapes.iter().any(|shape| matches!(&shape.shape,
+                    egui::Shape::Text(text) if text.galley.job.text == expected_content)), "Expected {label} content at {width}×{height}");
+                let panel = ctx.memory(|m| m.area_rect(egui::Id::new("training_setup_panel"))).unwrap();
+                assert!((panel.left() - initial_panel.left()).abs() < 1.0, "{label} moved the panel at {width}×{height}: {panel:?}");
+                assert!((panel.top() - screen.top()).abs() < 1.0, "{label} top exceeds screen at {width}×{height}: {panel:?}");
+                assert!((panel.bottom() - screen.bottom()).abs() < 1.0, "{label} must remain full height at {width}×{height}: {panel:?}");
+                assert!(panel.right() <= screen.right() + 1.0, "{label} exceeds screen width at {width}×{height}: {panel:?}");
+                assert!(app.navigation.expanded && app.training_dialog_open && app.navigation.training_setup_attached);
+                assert_eq!(app.board, board);
+                assert_eq!(serde_json::to_string(&app.training_profiles).unwrap(), profiles);
+                assert!(app.training.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn escape_closes_the_profiles_tab_and_its_menu_without_changing_game_or_progress() {
+        for width in [1440.0, 390.0] {
+            let ctx = egui::Context::default();
+            let mut app = training_panel_app(&ctx);
+            let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(width, 800.0));
+            let board = app.board;
+            let profiles = serde_json::to_string(&app.training_profiles).unwrap();
+            app.request_mode_switch(ModeSwitch::Training);
+            for _ in 0..4 {
+                training_panel_frame(&mut app, &ctx, screen, vec![]);
+            }
+            let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+            training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Profiles"));
+            assert_eq!(ctx.data(|d| d.get_temp::<bool>(egui::Id::new("training_profiles_tab"))), Some(true));
+            training_panel_frame(&mut app, &ctx, screen, vec![egui::Event::Key {
+                key: egui::Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            }]);
+            assert!(!app.training_dialog_open && !app.navigation.training_setup_attached && !app.navigation.expanded);
+            assert_eq!(app.board, board);
+            assert_eq!(serde_json::to_string(&app.training_profiles).unwrap(), profiles);
+            assert!(app.training.is_none());
+        }
+    }
+
+    #[test]
+    fn selecting_a_profile_updates_the_train_tab_without_starting_a_game() {
+        let ctx = egui::Context::default();
+        let mut app = training_panel_app(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 1000.0));
+        let mut alternate = app.training_profiles.profiles[0].clone();
+        alternate.id = "alternate-profile".into();
+        alternate.name = "Alternate profile".into();
+        let completed = alternate.session("completed-game".into(), "before".into());
+        alternate.settle(&completed, "1-0", "after".into(), false);
+        app.training_profiles.profiles.push(alternate);
+        let progress = serde_json::to_string(&app.training_profiles.profiles).unwrap();
+        let board = app.board;
+        app.request_mode_switch(ModeSwitch::Training);
+        for _ in 0..4 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Profiles"));
+        for _ in 0..3 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Alternate profile"));
+        assert_eq!(app.training_profiles.selected_id, "alternate-profile");
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Train"));
+        for _ in 0..3 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        for label in ["Alternate profile · Stockfish", "♟ Black", "NEXT TRAINING GAME"] {
+            training_text_position(&output, label);
+        }
+        assert_eq!(app.board, board);
+        assert_eq!(serde_json::to_string(&app.training_profiles.profiles).unwrap(), progress);
+        assert!(app.training.is_none());
+        assert!(app.navigation.expanded && app.training_dialog_open);
+    }
+
+    #[test]
+    fn choosing_a_different_train_profile_discards_the_previous_profiles_rename_draft() {
+        let ctx = egui::Context::default();
+        let mut app = training_panel_app(&ctx);
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1440.0, 1000.0));
+        let mut alternate = app.training_profiles.profiles[0].clone();
+        alternate.id = "alternate-profile".into();
+        alternate.name = "Alternate profile".into();
+        app.training_profiles.profiles.push(alternate);
+        let profiles = serde_json::to_string(&app.training_profiles.profiles).unwrap();
+        let board = app.board;
+        app.request_mode_switch(ModeSwitch::Training);
+        for _ in 0..4 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Profiles"));
+        app.training_profile_rename = Some("Draft name for Panel profile".into());
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Train"));
+        assert!(app.training_profile_rename.is_some(), "Switching tabs alone should retain the current profile's draft");
+        for _ in 0..3 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Panel profile · Stockfish"));
+        for _ in 0..3 {
+            training_panel_frame(&mut app, &ctx, screen, vec![]);
+        }
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Alternate profile"));
+        assert_eq!(app.training_profiles.selected_id, "alternate-profile");
+        assert!(app.training_profile_rename.is_none(), "A profile switch must discard the previous profile's rename draft");
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        training_panel_click(&mut app, &ctx, screen, training_text_position(&output, "Profiles"));
+        let output = training_panel_frame(&mut app, &ctx, screen, vec![]);
+        assert!(!output.shapes.iter().any(|shape| matches!(&shape.shape,
+            egui::Shape::Text(text) if text.galley.job.text == "Save name")));
+        assert_eq!(serde_json::to_string(&app.training_profiles.profiles).unwrap(), profiles);
+        assert_eq!(app.board, board);
+        assert!(app.training.is_none());
     }
 }

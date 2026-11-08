@@ -23,14 +23,13 @@ still requires release authentication; preflight never reads an object.
 Requests require the `RELEASE_READ_TOKEN`
 Worker secret, including HEAD requests. No secret means a closed channel.
 
-The private download section in Version diagnostics is hidden behind the shared
-Companion flag. Preview administrators distribute the release-access token
-privately, separately from each Companion owner/connection token. The browser
-uses it only for the current download and never persists it. It verifies the
-domain-separated manifest signature against the pinned public key, expiry,
-platform, compatibility and ZIP hash before saving the archive. Initial browser
-download does not configure the native updater's DPAPI credential; use the
-internal release-access configuration script on each Windows account for that.
+The browser download entry point opens the public Windows download page at
+`/downloads/companion/`. Private-preview releases remain available only through
+the separately authenticated channel. Preview administrators distribute its
+release-access token privately, separately from each Companion owner/connection
+token. Configure the native updater's DPAPI credential with the internal
+release-access configuration script on each Windows account. The native updater
+continues to verify the signed manifest and package before installation.
 
 ## Provisioning
 
@@ -124,7 +123,7 @@ Before enabling the channel in an installed build, validate real signed
 Cloudflare delivery, publisher pinning and update/restart recovery. Initial
 development builds without an embedded feed require one manual bootstrap
 installation. Older or equal numeric versions are never offered as updates.
-Signing does not enable the Companion flag or advertise the preview publicly.
+Signing does not advertise the private-preview channel publicly.
 
 ## Validation and references
 

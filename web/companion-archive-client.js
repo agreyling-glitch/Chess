@@ -1,10 +1,4 @@
 // Owner credentials are held only by this in-memory client.
-export function archiveCredential(endpoint, typed, archive, engine) {
-  const origin = new URL(endpoint).origin;
-  const credential = typed || (archive?.endpoint === origin ? archive.credential : '') || (engine?.endpoint === origin ? engine.credential : '');
-  if (!credential) throw new Error('Enter the owner credential for this Companion address.');
-  return credential;
-}
 export class CompanionArchiveClient {
   constructor(endpoint, credential, fetcher = fetch) {
     const url = new URL(endpoint);
@@ -55,10 +49,4 @@ export function browserDocuments(records, exporter, details) {
     const {archiveAnalysisRuns,collectionIds,...original}=record;
     return { format: 'ironwood-companion-game', version: 1, record: structuredClone(original), pgn: exporter(record.json, 'annotated'), metadata,...(archiveAnalysisRuns?.length?{analysis_runs:archiveAnalysisRuns}:{}) };
   });
-}
-export function transferDocuments(value) {
-  if (value?.format !== 'ironwood-companion-transfer' || value.version !== 1 || !Array.isArray(value.documents)) throw new Error('Unsupported Companion transfer version. Choose a Companion JSON export or a PGN file.');
-  if (!value.documents.length || value.documents.length > 1000) throw new Error('Import 1 to 1000 games per batch.');
-  if (value.documents.some(d => d?.format !== 'ironwood-companion-game' || d.version !== 1)) throw new Error('Unsupported game version.');
-  return value.documents;
 }

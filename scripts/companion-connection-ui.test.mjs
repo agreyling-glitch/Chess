@@ -1,11 +1,12 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {connectCompanion, disconnectCompanion, manageCompanionConnection,companionConnection} from '../web/companion-connection.js';
+import {connectCompanion, disconnectCompanion, manageCompanionConnection, layoutCompanionSettings, companionConnection} from '../web/companion-connection.js';
 test('engine and tablebase dialogs reuse the connection without rendering token fields', async () => {
   const {JSDOM} = await import('jsdom');
-  const dom = new JSDOM('<body></body>', {url:'http://localhost:8788'});
+  const dom = new JSDOM('<canvas id="chess_canvas"></canvas>', {url:'http://localhost:8788/play/'});
   const previousFetch = globalThis.fetch, previousWindow = globalThis.window, previousDocument = globalThis.document;
   globalThis.window = dom.window; globalThis.document = dom.window.document;
+  window.ironwoodOpenCompanionSettings = () => layoutCompanionSettings({x:220,y:70,width:550,height:520});
   dom.window.HTMLDialogElement.prototype.showModal = function(){this.open=true;};
   dom.window.HTMLDialogElement.prototype.close = function(){this.open=false;this.dispatchEvent(new dom.window.Event('close'));};
   globalThis.fetch = async address => { const url = String(address); return ({ok:true,json:async()=>url.endsWith('capabilities') ? {product:'Ironwood Companion',protocol_version:'1',services:{}} : url.endsWith('engines') ? [] : {materials:{},rejectedFiles:0,unavailableDirectories:0,validation:'Not configured.'}}); };
@@ -13,27 +14,30 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     await connectCompanion('http://localhost:8790','ui-token');
     const managed = manageCompanionConnection();
     assert.equal(managed,manageCompanionConnection());
-    assert.equal(document.querySelectorAll('#companion-connection').length,1);
-    document.querySelector('#companion-connection [data-close]').click();
+    assert.equal(document.querySelectorAll('#companion-settings-editor').length,1);
+    assert.equal(document.querySelector('dialog'),null);
+    layoutCompanionSettings(null);
     assert.equal((await managed).credential,'ui-token');
     assert.equal(document.querySelectorAll('input[type=password]').length,0);
     const remembered = manageCompanionConnection();
-    const rememberForm = document.querySelector('#companion-connection form');
+    const rememberForm = document.querySelector('#companion-settings-editor form');
     assert.equal(rememberForm.elements.remember.checked,false);
     rememberForm.elements.remember.checked = true;
     await rememberForm.onsubmit({preventDefault(){}});
     assert.match(rememberForm.querySelector('[role=status]').textContent,/saved and checked/);
-    rememberForm.querySelector('[data-close]').click();
+    layoutCompanionSettings(null);
     await remembered;
     assert.equal(window.localStorage.length,1);
     const forgetting = manageCompanionConnection();
-    const forgetForm = document.querySelector('#companion-connection form');
+    const forgetForm = document.querySelector('#companion-settings-editor form');
     assert.equal(forgetForm.elements.remember.checked,true);
     forgetForm.querySelector('[data-forget]').click();
+    assert.equal(window.localStorage.length,1,'removing a saved connection requires confirmation');
+    forgetForm.querySelector('[data-confirm-remove]').click();
     assert.equal(window.localStorage.length,0);
     assert.equal(forgetForm.elements.endpoint.value,'http://127.0.0.1:8790');
     assert.equal(forgetForm.elements.credential.value,'');
-    forgetForm.querySelector('[data-close]').click();
+    layoutCompanionSettings(null);
     assert.equal(await forgetting,null);
     await connectCompanion('http://localhost:8790','ui-token');
     await import('../web/companion-engines.js');
@@ -107,6 +111,6 @@ test('engine and tablebase dialogs reuse the connection without rendering token 
     assert.ok(calls.some(call=>call.address.endsWith('/cancel')));
 
   } finally {
-    disconnectCompanion(); globalThis.fetch=previousFetch;globalThis.window=previousWindow;globalThis.document=previousDocument;dom.window.close();
+    layoutCompanionSettings(null); disconnectCompanion(); globalThis.fetch=previousFetch;globalThis.window=previousWindow;globalThis.document=previousDocument;dom.window.close();
   }
 });

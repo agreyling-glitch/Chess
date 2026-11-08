@@ -292,9 +292,12 @@ impl ChessApp {
                 let tool_id = egui::Id::new("draw_tool_arrow");
                 let mut arrow = ctx.data(|d| d.get_temp::<bool>(tool_id)).unwrap_or(false);
                 let mut shape_style = Self::drawing_shape_style(&ctx);
-                let control_size = Vec2::new((ui.available_width() - 24.0 - 5.0 * ui.spacing().item_spacing.x) / 6.0, 42.0);
                 Self::drawing_sunken_section(ui, |ui| {
                 ui.set_min_width(ui.available_width());
+                // Use the frame's inner width so its padding and stroke cannot
+                // make the resizable sidebar grow on every redraw. Round down
+                // to keep six cells from overflowing at fractional widths.
+                let control_size = Vec2::new(((ui.available_width() - 5.0 * ui.spacing().item_spacing.x) / 6.0).floor(), 42.0);
                 ui.label(RichText::new("COLORS & SHAPES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.horizontal(|ui| {
                     for (color, name) in [('G', "Green"), ('R', "Red"), ('Y', "Yellow"), ('B', "Blue"), ('K', "Black"), ('W', "White")] {
@@ -333,6 +336,7 @@ impl ChessApp {
                 });
                 Self::drawing_sunken_section(ui, |ui| {
                 ui.set_min_width(ui.available_width());
+                let control_size = Vec2::new(((ui.available_width() - 5.0 * ui.spacing().item_spacing.x) / 6.0).floor(), 42.0);
                 ui.label(RichText::new("GHOST PIECES").size(11.0).strong().color(Color32::from_rgb(211,173,98)));
                 ui.label(RichText::new("Choose a piece, then click a square. Click again to remove.").small().weak());
                 for (side, glyphs) in [("w", ['♙','♘','♗','♖','♕','♔']), ("b", ['♟','♞','♝','♜','♛','♚'])] {

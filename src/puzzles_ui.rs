@@ -273,6 +273,17 @@ impl ChessApp {
         self.puzzle_context.data(|d| d.get_temp::<bool>(egui::Id::new("puzzles_open"))).unwrap_or(false)
     }
 
+    pub(super) fn puzzle_move_input_allowed(&self) -> bool {
+        self.puzzle_context.data(|d| d.get_temp::<State>(egui::Id::new("puzzles_state")))
+            .is_some_and(|state| !state.loading && state.linked
+                && state.session.is_some_and(|session| !session.done && session.board == self.board))
+    }
+
+    pub(super) fn puzzle_move_context(&self) -> Option<(String, usize, bool)> {
+        self.puzzle_context.data(|d| d.get_temp::<State>(egui::Id::new("puzzles_state")))
+            .and_then(|state| state.session.map(|session| (session.data.puzzle.id, session.step, session.done)))
+    }
+
     pub(super) fn exit_puzzle_mode(&mut self) {
         self.puzzle_context.data_mut(|data| {
             data.insert_temp(egui::Id::new("puzzles_open"), false);
@@ -713,6 +724,86 @@ impl ChessApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn puzzle_workspace_frame(
+        app: &mut ChessApp,
+        ctx: &egui::Context,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        use eframe::App as _;
+        let mut frame = eframe::Frame::_new_kittest();
+        run_test_ui(ctx, egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(1280.0, 1000.0))),
+            events,
+            ..Default::default()
+        }, |ui| app.ui(ui, &mut frame))
+    }
+
+    #[test]
+    fn puzzle_annotation_tabs_preserve_sidebar_width_and_live_board_size() {
+        let panel_id = egui::Id::new("game_sidebar_height_fit_panel");
+        let mut changes = Vec::new();
+        for width in [300.0, 420.0, 421.5, 600.0] {
+            let ctx = egui::Context::default();
+            let mut app = ChessApp::new(&eframe::CreationContext::_new_kittest(ctx.clone()));
+            app.board_3d_active = false;
+            app.navigation_enter_puzzles(&ctx);
+            let mut session = Session::new(example()).unwrap();
+            app.sync_puzzle_position(&mut session).unwrap();
+            let board = app.board;
+            ctx.data_mut(|data| {
+                data.insert_temp(egui::Id::new("puzzles_state"), State {
+                    session: Some(session), linked: true, ..State::default()
+                });
+                data.insert_persisted(panel_id, egui::containers::panel::PanelState {
+                    outer_rect: egui::Rect::from_min_size(egui::pos2(1280.0 - width, 0.0), Vec2::new(width, 1000.0)),
+                });
+            });
+            let mut output = puzzle_workspace_frame(&mut app, &ctx, vec![]);
+            for _ in 0..4 {
+                output = puzzle_workspace_frame(&mut app, &ctx, vec![]);
+            }
+            let original_panel = egui::containers::panel::PanelState::load(&ctx, panel_id).unwrap().outer_rect;
+            let original_board = ctx.data(|data| data.get_temp::<f32>(egui::Id::new("live_board_height"))).unwrap();
+            assert!((original_panel.width() - width).abs() < 1.0, "Puzzle sidebar ignored saved width {width}: {original_panel:?}");
+            for (label, annotation_tab) in [("Annotations", 0), ("Notes", 1), ("Chess Symbols", 2), ("Drawings", 0), ("Puzzles", 0)] {
+                let panel = egui::containers::panel::PanelState::load(&ctx, panel_id).unwrap().outer_rect;
+                let pos = output.shapes.iter().find_map(|shape| match &shape.shape {
+                    egui::Shape::Text(text) if text.galley.job.text.trim() == label
+                        // The Puzzles tab has icon padding; the panel title does not.
+                        && (label != "Puzzles" || text.galley.job.text != label) => {
+                        let rect = text.galley.rect.translate(text.pos.to_vec2());
+                        panel.contains(rect.center()).then_some(rect.center())
+                    }
+                    _ => None,
+                }).unwrap_or_else(|| panic!("{label} tab should be visible at saved width {width}"));
+                for pressed in [true, false] {
+                    puzzle_workspace_frame(&mut app, &ctx, vec![
+                        egui::Event::PointerMoved(pos),
+                        egui::Event::PointerButton {
+                            pos, button: egui::PointerButton::Primary, pressed,
+                            modifiers: egui::Modifiers::NONE,
+                        },
+                    ]);
+                }
+                assert_eq!(ctx.data(|data| data.get_temp::<usize>(egui::Id::new("puzzle_workspace_tab"))), Some(usize::from(label != "Puzzles")));
+                assert_eq!(ctx.data(|data| data.get_temp::<usize>(egui::Id::new("annotations_tab"))), Some(annotation_tab));
+                for pass in 0..20 {
+                    output = puzzle_workspace_frame(&mut app, &ctx, vec![]);
+                    let panel = egui::containers::panel::PanelState::load(&ctx, panel_id).unwrap().outer_rect;
+                    let board_size = ctx.data(|data| data.get_temp::<f32>(egui::Id::new("live_board_height"))).unwrap();
+                    if (panel.left() - original_panel.left()).abs() >= 1.0
+                        || (panel.right() - original_panel.right()).abs() >= 1.0
+                        || (board_size - original_board).abs() >= 1.0 {
+                        changes.push(format!("saved width {width}, {label}, frame {pass}: sidebar {original_panel:?} -> {panel:?}; board {original_board} -> {board_size}"));
+                    }
+                    assert_eq!(app.board, board, "Switching annotation tabs must preserve the puzzle position");
+                }
+            }
+        }
+        assert!(changes.is_empty(), "Annotation tabs resized the puzzle workspace:\n{}", changes.join("\n"));
+    }
+
     #[test]
     fn unsolved_saved_puzzle_restores_mode_and_preserves_annotations() {
         let ctx=egui::Context::default();

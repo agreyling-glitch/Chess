@@ -1,5 +1,7 @@
 //! Parse and validate PGN while retaining tags, comments, NAGs and variations.
-use crate::archive::{Document, Result, invalid};
+use crate::archive::{Result, invalid};
+#[cfg(test)]
+use crate::archive::Document;
 use pgn_reader::{Nag, Outcome, RawComment, RawTag, Reader, SanPlus, Skip, Visitor};
 use shakmaty::{CastlingMode, Chess, Position, fen::Fen};
 use std::{collections::BTreeMap, ops::ControlFlow};
@@ -267,6 +269,7 @@ pub fn parse(input: &str) -> Result<Vec<Parsed>> {
     }
     Ok(games)
 }
+#[cfg(test)]
 pub fn documents(input: &str) -> Result<Vec<Document>> {
     Ok(parse(input)?
         .into_iter()

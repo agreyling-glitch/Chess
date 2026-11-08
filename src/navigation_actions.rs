@@ -60,7 +60,14 @@ impl ChessApp {
     }
     pub(super) fn navigation_training(&mut self, ui: &mut egui::Ui) {
         Self::set_menu_item_font(ui);
-        if Self::navigation_action(ui, true, "Train against AI…").clicked() {
+        let selected = self.training_dialog_open && self.navigation.training_setup_attached;
+        if ui.add(egui::Button::new("")
+            .left_text("Train against Engine…")
+            .frame(selected)
+            .selected(selected)
+            .wrap()
+            .min_size(Vec2::new(ui.available_width(), 36.0)))
+            .clicked() && !selected {
             self.request_mode_switch(ModeSwitch::Training);
         }
         if Self::navigation_action(ui, self.navigation_puzzles_enabled() || self.playing_game_before_mode_switch(), "Lichess Puzzles…")

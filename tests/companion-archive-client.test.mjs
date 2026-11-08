@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { CompanionArchiveClient, browserDocuments, transferDocuments, archiveCredential } from '../web/companion-archive-client.js';
+import { CompanionArchiveClient, browserDocuments } from '../web/companion-archive-client.js';
 globalThis.window=globalThis;
 const storage=await import(`data:text/javascript,${encodeURIComponent(await readFile(new URL('../web/game-storage.js',import.meta.url),'utf8'))}`);
 
@@ -18,12 +18,8 @@ test('archive transfer preserves complete browser records and actual engine iden
   const documents=browserDocuments([record],()=> '[White "You"]\n\n1. e4 *',storage.gameDetails);
   assert.deepEqual(documents[0].record,record);assert.equal(documents[0].metadata.Black,'Owner engine');
   documents[0].record.custom.preserved=false;assert.equal(record.custom.preserved,true);
-  assert.throws(()=>transferDocuments({format:'ironwood-companion-transfer',version:99,documents}),/Unsupported/);
 });
 test('archive client authenticates bounded requests without saving or rebinding credentials',async()=>{
-  const existing = {endpoint:'http://127.0.0.1:8790',credential:'private'};
-  assert.equal(archiveCredential(existing.endpoint,'',existing), 'private');
-  assert.throws(()=>archiveCredential('http://other-server:8790','',existing,existing),/Enter the owner credential/);
   let call;
   const client=new CompanionArchiveClient('http://127.0.0.1:8790','disposable-owner',async function(url,options){assert.equal(this,undefined);call={url,options};return {ok:true,json:async()=>({games:[]})};});
   await client.request('archive/import',{pgn:'1. e4 *'});assert.equal(call.options.headers.Authorization,'Bearer disposable-owner');assert.equal(call.options.credentials,'omit');assert.equal(call.options.redirect,'error');assert.ok(!call.url.includes('disposable-owner'));assert.equal(call.options.body,'{"pgn":"1. e4 *"}');

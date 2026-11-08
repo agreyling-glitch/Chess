@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStyle12, parseFicsChunk, parseFicsMoveRow, parseFicsTimedMoveRow, parseFicsTimeControl, ficsHistoryPgn, squareAt } from '../web/fics/protocol.js';
+import { parseStyle12, parseFicsChunk, parseFicsMoveRow, parseFicsTimedMoveRow, parseFicsTimeControl, ficsHistoryPgn } from '../web/fics/protocol.js';
 
 test('style 12 identifies board, players, turn, clocks, and relation', () => {
   const line = '<12> rnbqkb-r pppppppp -----n-- -------- ----P--- -------- PPPPKPPP RNBQ-BNR B -1 0 0 1 1 0 7 Newton Einstein 1 2 12 39 39 119 122 2 K/e1-e2 (0:06) Ke2 0';
@@ -19,8 +19,6 @@ test('partial TCP chunks preserve a complete style 12 line', () => {
   const second = parseFicsChunk(first.rest, 'qkbnr\r\nlogin: ');
   assert.deepEqual(second.lines, ['<12> rnbqkbnr']);
   assert.equal(second.rest, 'login: ');
-  assert.equal(squareAt(0, 0), 'a8');
-  assert.equal(squareAt(7, 7), 'h1');
 });
 
 test('terminal control characters do not appear in server text', () => {

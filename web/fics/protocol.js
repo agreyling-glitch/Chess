@@ -24,10 +24,6 @@ export function parseFicsChunk(buffer, chunk) {
   return { lines: lines.slice(0, -1), rest: lines.at(-1).slice(-8192) };
 }
 
-export function squareAt(rank, file) {
-  return 'abcdefgh'[file] + String(8 - rank);
-}
-
 // Keep the legacy SAN-only API for live-history backfill.
 export function parseFicsMoveRow(line) {
   return parseFicsTimedMoveRow(line)?.moves.map(move=>move.san) ?? null;

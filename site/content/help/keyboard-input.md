@@ -1,5 +1,5 @@
 ---
-lastmod: 2026-10-27T00:00:00-05:00
+lastmod: 2026-11-08T00:00:00-06:00
 title: "Keyboard move input"
 description: "Type chess moves with a translucent input overlay, and navigate game positions with arrow keys."
 category: "using-ironwood"
@@ -31,7 +31,7 @@ Piece letters can be lowercase. Pawn notation is checked first, so `b4` still me
 
 An illegal or unrecognized move stays in the overlay with an error message. Correct it with Backspace and press Enter again, or cancel with Escape. Typing does not pause the game clock.
 
-Move entry works in local games, [Train against AI](/help/training-vs-ai/), and online games when it is your turn. It pauses while an app dialog or text field is active, while viewing past positions, and during your opponent's turn. In Self-play, you can type moves for either color.
+Move entry works in local games, [Train against Engine](/help/training-vs-ai/), and online games when it is your turn. It pauses while an app dialog or text field is active, while viewing past positions, and during your opponent's turn. In Self-play, you can type moves for either color.
 
 ## Navigate positions
 

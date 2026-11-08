@@ -319,6 +319,7 @@ impl Manager {
         Ok(())
     }
 }
+#[cfg(test)]
 fn idle(control: &Control, archive: &Archive) -> bool {
     wait_reason(control, archive).is_none()
 }

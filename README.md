@@ -388,7 +388,7 @@ The expanded evaluation graph supports hover/click inspection, Previous/Next, a 
 
 ### Workspace and documentation
 
-Fine linen and procedural paper grain distinguish recessed study surfaces without adding third-party artwork. Engine predictions use plain table headings and a centered gray Expand button; snapshot boards have frames and coordinates. Play opens local setup or online lobbies directly. Training → Train against AI opens training profiles separately. Local setup uses a 3D gold frame and a full-width sunken settings section with an installed-engine dropdown and refresh icon. Saved Games controls, Notes, Draw on board, Tactical Map, engine settings, and training profiles use the shared visual treatment.
+Fine linen and procedural paper grain distinguish recessed study surfaces without adding third-party artwork. Engine predictions use plain table headings and a centered gray Expand button; snapshot boards have frames and coordinates. Play opens local setup or online lobbies directly. Training → Train against Engine opens the training console in a full-height panel beside the Training menu on wide screens, matching local game setup. Train and Profiles tabs keep practice and profile management in that same panel. Local setup uses a 3D gold frame and a full-width sunken settings section with an installed-engine dropdown and refresh icon. Saved Games controls, Notes, Draw on board, Tactical Map, engine settings, and training profiles use the shared visual treatment.
 
 Puzzles now synchronize with the **main board**, using its appearance. Played attempts are saved in the Puzzles library category separately from device-wide progress. Save a temporary profile review explicitly before switching to a puzzle; reopen saved games from the library afterward.
 
@@ -396,7 +396,7 @@ The Help center supports article-text search with multiple terms, topic filters,
 
 ### Current menus and library tools
 
-Play opens vs AI Engine, Online via Lichess, Online via FICS, and Self-play. Online choices open their lobby directly; opening the signed-out Lichess lobby does not start OAuth. Training contains Train against AI and Lichess Puzzles. Game library contains Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. Settings starts with Engine settings and Companion connection. The former Storage menu and Your game archive window are retired.
+Play opens vs AI Engine, Online via Lichess, Online via FICS, and Self-play. Online choices open their lobby directly; opening the signed-out Lichess lobby does not start OAuth. Training contains Train against Engine and Lichess Puzzles. Game library contains Saved games, Import, Backup and Restore, Storage information, Clear saved games, and Reset all local data. Settings starts with Engine settings and Companion connection. The former Storage menu and Your game archive window are retired.
 
 The AI setup dropdown lists Built-in Stockfish and installed engines from named Companions. A refresh icon reloads the catalog. Live play prevents duplicate search requests while a search is active. Game Moves shows elapsed times in its Time column and available remaining clocks on hover; wheel navigation keeps visible rows stationary. PGN timing preservation also applies to Lichess reviews and FICS history when their clock data is available.
 

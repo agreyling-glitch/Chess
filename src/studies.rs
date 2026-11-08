@@ -802,6 +802,7 @@ impl ChessApp {
     }
     fn open_study_with_storage(&mut self, text: &str, new_record: bool) -> Result<(), String> {
         let study = StudyWorkspace::parse(text)?;
+        self.invalidate_external_3d_context();
         self.pgn_input.clear();
         self.review_positions.clear();
         self.move_notes.clear();

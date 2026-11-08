@@ -1,8 +1,5 @@
 import { installCompanionFeature } from './companion-feature.js';
 installCompanionFeature(window);
-if (!window.ironwoodCompanionFeatureEnabled()) {
-  document.querySelector('main').innerHTML = '<h1>Diagnostics disabled</h1><p>Enable Companion in Ironwood’s Help → About → Version diagnostics first.</p><a href="/play/">Back to Ironwood</a>';
-}
 import { requireCompanionConnection, manageCompanionConnection } from './companion-connection.js';
 if (document.querySelector('#manage')) document.querySelector('#manage').onclick = () => manageCompanionConnection();
 // Standalone feasibility probe. Does not touch game storage or the engine worker.
